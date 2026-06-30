@@ -3,3 +3,7 @@ dist
 .DS_Store
 *.local
 .vite
+.vercel
+
+# Glim Studio generations (local iteration artifacts)
+.illustrate/studio/

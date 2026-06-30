@@ -1,128 +1,94 @@
-export type Persona = "collector" | "thrifter" | "inheritor" | "reseller" | "seller";
-
-export type PaywallVariant = "trial" | "no_trial";
-
-export type StepRole =
-	| "landing"
-	| "question"
-	| "interstitial"
-	| "loading"
-	| "reveal"
-	| "auth"
-	| "paywall"
-	| "success";
+// Step model for the Northstar funnel. Kept intentionally small — the funnel is
+// being rebuilt from basics. FunnelHog parses the `const X: StepConfig = {...}`
+// declarations in manifest.ts, so every step keeps an `id`, a `type`, and a
+// `title` it can read for the editor label.
 
 export type StepType =
-	| "landing"
-	| "quiz"
-	| "multi-select"
-	| "agreement"
-	| "interstitial"
-	| "loading"
-	| "results"
-	| "auth"
-	| "paywall"
-	| "success";
+	| "welcome"
+	| "name"
+	| "choice"
+	| "goals"
+	| "transition"
+	| "quiz-intro"
+	| "statement"
+	| "personality"
+	| "fact"
+	| "result"
+	| "reveal"
+	| "meet"
+	| "onboarding-chat"
+	| "complete";
 
-export interface QuizOption {
-	label: string;
+export type StepRole = "landing" | "question" | "interstitial" | "success";
+
+export interface GoalOption {
 	value: string;
-	description?: string;
+	label: string;
+	/** Path to a Sidekick-style icon in /public (preferred). */
+	icon?: string;
+	/** Fallback emoji if no icon is set. */
 	emoji?: string;
 }
 
-export interface QuizQuestion {
+export interface GoalsConfig {
 	id: string;
 	title: string;
 	subtitle?: string;
-	options: QuizOption[];
-}
-
-export interface MultiSelectQuestion {
-	id: string;
-	title: string;
-	subtitle?: string;
+	/** Minimum goals the user must pick before continuing. */
 	minSelections: number;
-	options: QuizOption[];
+	options: GoalOption[];
 }
 
-export interface AgreementConfig {
+/** The five Big Five traits. Stored per item so answers can be scored later. */
+export type BigFiveTrait = "O" | "C" | "E" | "A" | "N";
+
+export interface PersonalityScaleOption {
+	value: string;
+	label: string;
+}
+
+export interface PersonalityItem {
 	id: string;
-	statements: Partial<Record<Persona, string>>;
-	fallback: string;
-	subtitle?: string;
+	text: string;
+	trait: BigFiveTrait;
+	/** Reverse-keyed item (disagreement indicates a high trait score). */
+	reverse?: boolean;
+	/** Optional themed hero illustration shown above the statement. */
+	image?: string;
 }
 
-export type InterstitialKind =
-	| "authority"
-	| "social-proof"
-	| "how-it-works"
-	| "micro-education"
-	| "pre-paywall";
-
-export interface StepIllustration {
-	src: string;
-	alt: string;
-	width: number;
-	height: number;
-}
-
-export interface InterstitialConfig {
-	kind: InterstitialKind;
-	title: string;
-	subtitle?: string;
-	body?: string;
-	illustration?: StepIllustration;
-	/** Center the title/subtitle instead of the default left alignment. */
-	align?: "center";
-	/** Render the illustration above the title rather than below it. */
-	illustrationPosition?: "top";
+/** A single-select choice option (age groups, gender, …). */
+export interface ChoiceOption {
+	value: string;
+	label: string;
 }
 
 export type StepConfig = (
-	| { id: string; type: "landing"; role: "landing" }
-	| { id: string; type: "quiz"; role: "question"; question: QuizQuestion }
-	| { id: string; type: "multi-select"; role: "question"; question: MultiSelectQuestion }
-	| { id: string; type: "agreement"; role: "question"; agreement: AgreementConfig }
-	| { id: string; type: "interstitial"; role: "interstitial"; interstitial: InterstitialConfig }
-	| { id: string; type: "loading"; role: "loading" }
-	| { id: string; type: "results"; role: "reveal" }
-	| { id: string; type: "auth"; role: "auth" }
-	| { id: string; type: "paywall"; role: "paywall" }
-	| { id: string; type: "success"; role: "success" }
+	| { id: string; type: "welcome"; role: "landing"; title: string; subtitle?: string; cta?: string }
+	| { id: string; type: "name"; role: "question"; title: string; subtitle?: string; placeholder?: string }
+	| { id: string; type: "choice"; role: "question"; key: string; title: string; subtitle?: string; options: ChoiceOption[] }
+	| { id: string; type: "statement"; role: "interstitial"; title: string; image?: string; cta?: string }
+	| { id: string; type: "goals"; role: "question"; question: GoalsConfig }
+	| { id: string; type: "transition"; role: "interstitial"; title: string; body?: string }
+	| { id: string; type: "quiz-intro"; role: "interstitial"; title: string; body?: string }
+	| { id: string; type: "fact"; role: "interstitial"; label?: string; title: string }
+	| { id: string; type: "personality"; role: "question"; question: PersonalityItem }
+	| { id: string; type: "complete"; role: "success"; title: string; subtitle?: string }
+	| { id: string; type: "result"; role: "success"; title: string }
+	| { id: string; type: "reveal"; role: "success"; title: string; subtitle?: string; cta?: string }
+	| { id: string; type: "meet"; role: "success"; title?: string; cta?: string }
+	| { id: string; type: "onboarding-chat"; role: "success"; title: string }
 ) & {
-	/** Bump when a step's copy/options change so PostHog can tell versions apart. */
+	/** Bump when a step's copy/options change so analytics can tell versions apart. */
 	version?: number;
 };
 
-export interface FunnelManifest {
-	funnelId: string;
-	funnelVersion: number;
-	/** Unique per deployed variant, e.g. `relic_web_quiz.v1.default.2026-06-18`. */
-	funnelRevisionId: string;
-	experimentKey: string;
-	variantKey: string;
-	steps: StepConfig[];
-}
-
-export interface FunnelAssignment {
-	variant: string;
-	paywallVariant: PaywallVariant;
-	assignedAt: string;
-}
-
 export interface FunnelAnswers {
-	persona?: Persona;
-	[questionId: string]: string | string[] | undefined;
-}
-
-export interface FunnelTrackingProps {
-	fbclid: string | null;
-	fbc: string | null;
-	fbp: string | null;
-	utmSource: string | null;
-	utmMedium: string | null;
-	utmCampaign: string | null;
-	utmContent: string | null;
-	utmTerm: string | null;
+	name?: string;
+	age?: string;
+	gender?: string;
+	goals?: string[];
+	/** itemId -> chosen scale value (e.g. "q1" -> "4"). */
+	personality?: Record<string, string>;
+	[questionId: string]: string | string[] | Record<string, string> | undefined;
 }

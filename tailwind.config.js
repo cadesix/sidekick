@@ -4,7 +4,7 @@ export default {
 	theme: {
 		extend: {
 			fontFamily: {
-				serif: ["var(--font-serif)"],
+				sans: ['"ABC Diatype Rounded"', "ui-rounded", "system-ui", "sans-serif"],
 			},
 		},
 	},

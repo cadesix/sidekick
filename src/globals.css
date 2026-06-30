@@ -1,15 +1,46 @@
+@font-face {
+	font-family: "ABC Diatype Rounded";
+	src: url("/fonts/ABCDiatypeRounded.ttf") format("truetype");
+	font-weight: 100 900;
+	font-style: normal;
+	font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-:root {
-	--font-serif: "Cormorant Garamond", Georgia, serif;
-}
 
 html,
 body,
 #root {
 	min-height: 100svh;
+}
+
+html,
+body {
+	font-family: "ABC Diatype Rounded", ui-rounded, system-ui, sans-serif;
+	background: #ffffff;
+}
+
+/* Animated "…" for loading-style text. */
+@keyframes ellipsis-dots {
+	0%,
+	100% {
+		content: "";
+	}
+	25% {
+		content: ".";
+	}
+	50% {
+		content: "..";
+	}
+	75% {
+		content: "...";
+	}
+}
+.ellipsis-dots::after {
+	content: "";
+	animation: ellipsis-dots 1.6s steps(1, end) infinite;
 }
 
 #root {
@@ -161,6 +192,116 @@ body,
 
 .animate-glow-pulse {
 	animation: glow-pulse 3.4s ease-in-out infinite;
+}
+
+/* Reveal screen — a little side-to-side rotation "shake" that fires, then rests. */
+@keyframes shake-strong {
+	0%, 18%, 100% {
+		transform: rotate(0deg);
+	}
+	3% {
+		transform: rotate(-3deg);
+	}
+	7% {
+		transform: rotate(3deg);
+	}
+	11% {
+		transform: rotate(-2deg);
+	}
+	15% {
+		transform: rotate(2deg);
+	}
+}
+
+.animate-shake-strong {
+	animation: shake-strong 2.2s ease-in-out infinite;
+	transform-origin: center;
+}
+
+@keyframes shake-soft {
+	0%, 26%, 100% {
+		transform: rotate(0deg);
+	}
+	5% {
+		transform: rotate(-1.4deg);
+	}
+	11% {
+		transform: rotate(1.4deg);
+	}
+	17% {
+		transform: rotate(-0.9deg);
+	}
+	23% {
+		transform: rotate(0.9deg);
+	}
+}
+
+.animate-shake-soft {
+	animation: shake-soft 3.6s ease-in-out infinite;
+	transform-origin: center;
+}
+
+/* Bottom-sheet slide up / down (home2 chat). translate3d + will-change keep the
+   sheet on its own GPU layer for the whole animation so the base UI behind it
+   isn't repainted/jittered as it moves. */
+@keyframes sheet-up {
+	from {
+		transform: translate3d(0, 100%, 0);
+	}
+	to {
+		transform: translate3d(0, 0, 0);
+	}
+}
+
+.animate-sheet-up {
+	animation: sheet-up 0.45s cubic-bezier(0.32, 0.72, 0, 1) both;
+	will-change: transform;
+}
+
+@keyframes sheet-down {
+	from {
+		transform: translate3d(0, 0, 0);
+	}
+	to {
+		transform: translate3d(0, 100%, 0);
+	}
+}
+
+.animate-sheet-down {
+	animation: sheet-down 0.4s cubic-bezier(0.4, 0, 1, 1) both;
+	will-change: transform;
+}
+
+/* Peeking sidekick on home2: fades in while scaling up from the box edge,
+   overshoots slightly, then settles. Scaling from the bottom keeps the bottom of
+   the illustration anchored to the top of the box (no gap). */
+@keyframes peek-pop {
+	0% {
+		opacity: 0;
+		transform: scale(0.72);
+	}
+	60% {
+		opacity: 1;
+		transform: scale(1.06);
+	}
+	100% {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+.animate-peek-pop {
+	animation: peek-pop 0.52s cubic-bezier(0.22, 1, 0.36, 1) both;
+	transform-origin: bottom center;
+}
+
+/* Hide scrollbars (chat message list) while keeping scroll functional. */
+.no-scrollbar {
+	-ms-overflow-style: none;
+	scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+	display: none;
 }
 
 /* Hide number input spinners (used by the funnel inputs) */

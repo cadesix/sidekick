@@ -13,10 +13,10 @@ export function ProgressBar({ current, total }: { current: number; total: number
 				return (
 					<div
 						key={`seg-${i}`}
-						className="flex-1 h-[3px] bg-stone-200 rounded-full overflow-hidden"
+						className="flex-1 h-2 bg-[#F0F0F2] rounded-full overflow-hidden"
 					>
 						<div
-							className="h-full bg-stone-800 rounded-full transition-all duration-500 ease-out"
+							className="h-full bg-[#9DC4F2] rounded-full transition-all duration-500 ease-out"
 							style={{ width: `${fill * 100}%` }}
 						/>
 					</div>

@@ -1,20 +1,21 @@
 import { Funnel } from "~/components/funnel/funnel";
-import type { FunnelTrackingProps } from "~/components/funnel/types";
+import Home from "./home";
+import Home2 from "./home2";
+import SidekickStudio from "./sidekick-studio";
 
-// In production the host page (pages/funnel.tsx) derived these from the Meta click
-// cookies + UTM query params and ran the pixel. Locally they're inert nulls — the
-// mock backend ignores them and analytics is disabled.
-const tracking: FunnelTrackingProps = {
-	fbclid: null,
-	fbc: null,
-	fbp: null,
-	utmSource: null,
-	utmMedium: null,
-	utmCampaign: null,
-	utmContent: null,
-	utmTerm: null,
-};
-
+// Minimal path routing: /home and /home2 show post-funnel home variants, /sidekick is the
+// character-iteration studio, everything else (/, /quiz) shows the funnel. (Vite's dev
+// server serves index.html for any path.)
 export default function App() {
-	return <Funnel tracking={tracking} />;
+	const path = typeof window !== "undefined" ? window.location.pathname : "/";
+	if (path === "/sidekick") {
+		return <SidekickStudio />;
+	}
+	if (path === "/home2") {
+		return <Home2 />;
+	}
+	if (path === "/home") {
+		return <Home />;
+	}
+	return <Funnel />;
 }
