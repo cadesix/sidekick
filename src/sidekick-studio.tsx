@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import CosmeticsTab from "./sidekick-cosmetics";
 
 // Sidekick Studio — a lightweight dev surface for iterating on the Sidekick character.
 //  • Generations tab: one-off pose/prop/scene renders against the canonical refs.
@@ -56,8 +57,26 @@ function cost(quality: string, count: number) {
 
 // ---------------------------------------------------------------------------
 
-export default function SidekickStudio() {
-	const [tab, setTab] = useState<"poses" | "sheet">("poses");
+// The studio's sub-tabs, exported so the admin shell can render them inline in
+// its top bar (controlled mode). Standalone (/sidekick) uses its own header.
+export const STUDIO_TABS = [
+	["cosmetics", "Cosmetics"],
+	["poses", "Generations"],
+	["sheet", "Character Sheet"],
+] as const;
+export type StudioTab = (typeof STUDIO_TABS)[number][0];
+
+export default function SidekickStudio({
+	tab: tabProp,
+	onTabChange,
+}: {
+	tab?: StudioTab;
+	onTabChange?: (t: StudioTab) => void;
+} = {}) {
+	const [tabState, setTabState] = useState<StudioTab>("cosmetics");
+	const tab = tabProp ?? tabState;
+	const setTab = onTabChange ?? setTabState;
+	const controlled = onTabChange != null; // admin renders the nav; hide our own
 	const [profile, setProfile] = useState<Profile | null>(null);
 
 	useEffect(() => {
@@ -69,30 +88,33 @@ export default function SidekickStudio() {
 
 	return (
 		<div className="min-h-screen bg-neutral-100 text-neutral-900">
-			<header className="flex items-center gap-6 border-b border-neutral-200 bg-white px-6 py-3">
-				<span className="text-lg font-semibold">Sidekick Studio</span>
-				<nav className="flex gap-1">
-					{(
-						[
-							["poses", "Generations"],
-							["sheet", "Character Sheet"],
-						] as const
-					).map(([key, label]) => (
-						<button
-							key={key}
-							onClick={() => setTab(key)}
-							className={`rounded-full px-3 py-1 text-sm font-medium transition ${
-								tab === key
-									? "bg-amber-100 text-amber-700"
-									: "text-neutral-500 hover:text-neutral-800"
-							}`}
-						>
-							{label}
-						</button>
-					))}
-				</nav>
-			</header>
-			{tab === "poses" ? <PosesTab profile={profile} /> : <SheetTab profile={profile} />}
+			{!controlled && (
+				<header className="flex items-center gap-6 border-b border-neutral-200 bg-white px-6 py-3">
+					<span className="text-lg font-semibold">Sidekick Studio</span>
+					<nav className="flex gap-1">
+						{STUDIO_TABS.map(([key, label]) => (
+							<button
+								key={key}
+								onClick={() => setTab(key)}
+								className={`rounded-full px-3 py-1 text-sm font-medium transition ${
+									tab === key
+										? "bg-amber-100 text-amber-700"
+										: "text-neutral-500 hover:text-neutral-800"
+								}`}
+							>
+								{label}
+							</button>
+						))}
+					</nav>
+				</header>
+			)}
+			{tab === "cosmetics" ? (
+				<CosmeticsTab profile={profile} />
+			) : tab === "poses" ? (
+				<PosesTab profile={profile} />
+			) : (
+				<SheetTab profile={profile} />
+			)}
 		</div>
 	);
 }
@@ -347,6 +369,26 @@ function SheetTab({ profile }: { profile: Profile | null }) {
 
 	return (
 		<div className="mx-auto max-w-[1200px] p-6">
+			{/* Masked-inpaint fidelity test result (dev note) */}
+			<div className="mb-6 rounded-xl border border-neutral-200 bg-white p-4">
+				<h2 className="mb-2 text-sm font-semibold text-neutral-700">
+					Item-layer pipeline — coordinate-consistent (masked)
+				</h2>
+				<img
+					src="/masktest.png"
+					alt="masked item layer pipeline: base, masked edit, item layer, superimpose"
+					className="w-full rounded-lg border border-neutral-200"
+				/>
+				<p className="mt-2 text-xs text-neutral-500">
+					The free-generation/matte method drifted the character (~6% non-uniform), so extracted items
+					didn't line up. Fix: a <b>masked edit never redraws the base</b> (panel 2 — same position as
+					panel 1). The item lands on a keyable fill inside the mask; key it out → an <b>item layer in
+					the base's exact coordinates</b> (panel 3) → superimpose and the character is identical, hat
+					aligned (panel 4). Tradeoffs to solve in the build: per-slot masks, keyed fill limits dark
+					items (needs a cleaner key), and a drift-guard to retry if a run ignores the mask.
+				</p>
+			</div>
+
 			{/* Large current/selected sheet */}
 			<div className="rounded-xl border border-neutral-200 bg-white p-4">
 				<div className="mb-2 flex items-center justify-between">

@@ -22,7 +22,8 @@ export default async function handler(req, res) {
 	try {
 		const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
 		const messages = Array.isArray(body.messages) ? body.messages : [];
-		const full = [{ role: "system", content: SIDEKICK_SYSTEM }, ...messages];
+		const sys = typeof body.system === "string" && body.system.trim() ? body.system : SIDEKICK_SYSTEM;
+		const full = [{ role: "system", content: sys }, ...messages];
 		const r = await fetch("https://api.openai.com/v1/chat/completions", {
 			method: "POST",
 			headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },

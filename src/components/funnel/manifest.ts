@@ -161,6 +161,21 @@ const MEET: StepConfig = {
 	cta: "Let's go!",
 };
 
+// Customize the sidekick — color, then name (separate steps; stored as properties).
+const CHOOSE_COLOR: StepConfig = {
+	id: "choose-color",
+	type: "choose-color",
+	role: "success",
+	title: "Choose your Sidekick's color",
+};
+
+const NAME_SIDEKICK: StepConfig = {
+	id: "name-sidekick",
+	type: "name-sidekick",
+	role: "success",
+	title: "Name your Sidekick",
+};
+
 // Onboarding chat — guided setup: turn each goal into an action item + cadence,
 // pick a reminder cadence, and offer push notifications. The last onboarding step.
 const ONBOARDING_CHAT: StepConfig = {
@@ -188,6 +203,8 @@ const VARIANT_STEPS: Record<string, StepConfig[]> = {
 		RESULT,
 		REVEAL,
 		MEET,
+		CHOOSE_COLOR,
+		NAME_SIDEKICK,
 		ONBOARDING_CHAT,
 	],
 };

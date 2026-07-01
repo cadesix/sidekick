@@ -47,7 +47,22 @@ const GOAL_PLANS: Record<string, { how: { q: string; options: string[] }; cadenc
 	},
 };
 
-const INTRO = ["yay — we're officially a team! 🎉", "let's turn your goals into a plan i can actually hold you to."];
+function loadSidekickName(): string {
+	try {
+		const raw = localStorage.getItem("sidekick_profile_v1");
+		const name = raw ? (JSON.parse(raw) as { name?: string }).name : "";
+		return name && name !== "Sidekick" ? name : "";
+	} catch {
+		return "";
+	}
+}
+
+function buildIntro(name: string): string[] {
+	return [
+		name ? `i'm ${name} — and we're officially a team! 🎉` : "yay — we're officially a team! 🎉",
+		"let's turn your goals into a plan i can actually hold you to.",
+	];
+}
 
 function buildPrompts(goals: { value: string; label: string }[]): Prompt[] {
 	const prompts: Prompt[] = [];
@@ -119,7 +134,7 @@ export function OnboardingChat({ onDone }: { onDone: () => void }) {
 
 	// Kick off: intro, then the first prompt.
 	useEffect(() => {
-		showBotThen(INTRO, () => runStep(0));
+		showBotThen(buildIntro(loadSidekickName()), () => runStep(0));
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 

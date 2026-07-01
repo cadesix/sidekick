@@ -4,6 +4,8 @@ import { CompleteStep } from "./complete-step";
 import { ResultStep } from "./result-step";
 import { RevealStep } from "./reveal-step";
 import { MeetStep } from "./meet-step";
+import { ColorStep } from "./color-step";
+import { NameSidekickStep } from "./name-sidekick-step";
 import { OnboardingChat } from "./onboarding-chat";
 import { FactStep } from "./fact-step";
 import { NameStep } from "./name-step";
@@ -60,6 +62,8 @@ export function Funnel() {
 		currentStep?.type === "result" ||
 		currentStep?.type === "reveal" ||
 		currentStep?.type === "meet" ||
+		currentStep?.type === "choose-color" ||
+		currentStep?.type === "name-sidekick" ||
 		currentStep?.type === "onboarding-chat";
 	const showBack = safeIndex > 0;
 
@@ -191,6 +195,10 @@ export function Funnel() {
 				return <RevealStep config={currentStep} onContinue={goNext} />;
 			case "meet":
 				return <MeetStep config={currentStep} onDone={goNext} />;
+			case "choose-color":
+				return <ColorStep onContinue={goNext} />;
+			case "name-sidekick":
+				return <NameSidekickStep onContinue={goNext} />;
 			case "onboarding-chat":
 				return <OnboardingChat onDone={() => (window.location.href = "/home2")} />;
 			default:

@@ -12,7 +12,7 @@ export function RevealStep({
 	return (
 		<div className="h-full flex flex-col items-center px-6 pt-8 pb-8 text-center">
 			<div className="flex-1 min-h-0 flex flex-col items-center justify-center">
-				<h1 className="text-[56px] font-extrabold leading-none tracking-[-0.02em] text-[#111]">
+				<h1 className="text-[56px] font-black leading-none tracking-[-0.02em] text-[#111] -rotate-[20deg]">
 					{config.title}
 				</h1>
 
@@ -20,7 +20,7 @@ export function RevealStep({
 					src="/sidekick-silhouette.webp"
 					alt=""
 					aria-hidden="true"
-					className="animate-shake-soft my-3 max-h-[42vh] w-auto object-contain select-none"
+					className="animate-shake-soft my-7 max-h-[42vh] w-auto object-contain select-none"
 					draggable={false}
 				/>
 

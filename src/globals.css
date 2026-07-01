@@ -223,21 +223,21 @@ body {
 		transform: rotate(0deg);
 	}
 	5% {
-		transform: rotate(-1.4deg);
+		transform: rotate(-5deg);
 	}
 	11% {
-		transform: rotate(1.4deg);
+		transform: rotate(5deg);
 	}
 	17% {
-		transform: rotate(-0.9deg);
+		transform: rotate(-3.5deg);
 	}
 	23% {
-		transform: rotate(0.9deg);
+		transform: rotate(3.5deg);
 	}
 }
 
 .animate-shake-soft {
-	animation: shake-soft 3.6s ease-in-out infinite;
+	animation: shake-soft 2s ease-in-out infinite;
 	transform-origin: center;
 }
 

@@ -29,8 +29,9 @@ function chatApiPlugin(apiKey: string): PluginOption {
 						return;
 					}
 					try {
-						const { messages = [] } = JSON.parse(body || "{}");
-						const full = [{ role: "system", content: SIDEKICK_SYSTEM }, ...messages];
+						const { messages = [], system } = JSON.parse(body || "{}");
+						const sys = typeof system === "string" && system.trim() ? system : SIDEKICK_SYSTEM;
+						const full = [{ role: "system", content: sys }, ...messages];
 						const r = await fetch("https://api.openai.com/v1/chat/completions", {
 							method: "POST",
 							headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },

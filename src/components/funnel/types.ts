@@ -16,6 +16,8 @@ export type StepType =
 	| "result"
 	| "reveal"
 	| "meet"
+	| "choose-color"
+	| "name-sidekick"
 	| "onboarding-chat"
 	| "complete";
 
@@ -77,6 +79,8 @@ export type StepConfig = (
 	| { id: string; type: "result"; role: "success"; title: string }
 	| { id: string; type: "reveal"; role: "success"; title: string; subtitle?: string; cta?: string }
 	| { id: string; type: "meet"; role: "success"; title?: string; cta?: string }
+	| { id: string; type: "choose-color"; role: "success"; title: string }
+	| { id: string; type: "name-sidekick"; role: "success"; title: string }
 	| { id: string; type: "onboarding-chat"; role: "success"; title: string }
 ) & {
 	/** Bump when a step's copy/options change so analytics can tell versions apart. */

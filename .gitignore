@@ -7,3 +7,6 @@ dist
 
 # Glim Studio generations (local iteration artifacts)
 .illustrate/studio/
+
+# Claude Code local state
+.claude/
