@@ -10,9 +10,9 @@ export function RevealStep({
 	onContinue: () => void;
 }) {
 	return (
-		<div className="h-full flex flex-col items-center px-6 pt-8 pb-8 text-center">
+		<div className="h-full flex flex-col items-center px-8 pt-10 pb-10 text-center">
 			<div className="flex-1 min-h-0 flex flex-col items-center justify-center">
-				<h1 className="text-[56px] font-black leading-none tracking-[-0.02em] text-[#111] -rotate-[20deg]">
+				<h1 className="text-[64px] font-black leading-none tracking-[-0.02em] text-[#111] -rotate-[7deg]">
 					{config.title}
 				</h1>
 
@@ -25,7 +25,7 @@ export function RevealStep({
 				/>
 
 				{config.subtitle ? (
-					<h2 className="text-[30px] font-extrabold leading-tight tracking-[-0.01em] text-[#111]">
+					<h2 className="text-[36px] font-black leading-tight tracking-[-0.01em] text-[#111]">
 						{config.subtitle}
 					</h2>
 				) : null}
