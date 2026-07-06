@@ -199,8 +199,9 @@ export function OnboardingChat({ onDone }: { onDone: () => void }) {
 							className="w-8 h-8 object-contain shrink-0"
 							draggable={false}
 						/>
-						<div className="rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-3">
-							<span className="ellipsis-dots inline-flex items-center h-5 w-7 text-[18px] leading-none text-[#111]/40" />
+						{/* Sized exactly like a one-line message bubble so the swap to text doesn't shift the list. */}
+						<div className="rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-2.5 text-[15px] leading-snug">
+							<span className="ellipsis-dots inline-block w-7 text-[#111]/40">&#8203;</span>
 						</div>
 					</div>
 				) : null}
@@ -212,12 +213,13 @@ export function OnboardingChat({ onDone }: { onDone: () => void }) {
 						Enter Sidekick
 					</button>
 				) : options ? (
-					<div className="flex flex-wrap gap-2 justify-end">
+					<div className="flex flex-col items-end gap-2 animate-fade-up">
+						<div className="text-[12px] font-medium text-[#111]/40 pr-1">Choose your reply</div>
 						{options.map((o) => (
 							<button
 								key={o.label}
 								onClick={() => select(o)}
-								className="rounded-full bg-[#111] text-white text-[15px] font-semibold px-4 py-2.5 transition active:scale-95"
+								className="rounded-3xl rounded-br-md bg-[#E9E9EC] px-4 py-2.5 text-[15px] leading-snug text-[#111] text-right transition active:scale-95"
 							>
 								{o.label}
 							</button>

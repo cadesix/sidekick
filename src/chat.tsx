@@ -130,8 +130,9 @@ export function Chat({
 							className="w-8 h-8 object-contain shrink-0"
 							draggable={false}
 						/>
-						<div className="rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-3">
-							<span className="ellipsis-dots inline-flex items-center h-5 w-7 text-[18px] leading-none text-[#111]/40" />
+						{/* Sized exactly like a one-line message bubble so the swap to text doesn't shift the list. */}
+						<div className="rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-2.5 text-[15px] leading-snug">
+							<span className="ellipsis-dots inline-block w-7 text-[#111]/40">&#8203;</span>
 						</div>
 					</div>
 				) : null}
