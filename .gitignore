@@ -10,3 +10,6 @@ dist
 
 # Claude Code local state
 .claude/
+
+# Worktree dev-server logs
+.logs/

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import ChatLab from "./chat-lab";
+import DesignLanguage from "./design-language";
 import GraphicAssets from "./graphic-assets";
 import SidekickStudio, { STUDIO_TABS, type StudioTab } from "./sidekick-studio";
 
@@ -9,6 +10,7 @@ import SidekickStudio, { STUDIO_TABS, type StudioTab } from "./sidekick-studio";
 type Tool = { id: string; label: string; path: string; scroll: boolean };
 
 const TOOLS: Tool[] = [
+	{ id: "design-language", label: "Design Language", path: "/admin/design-language", scroll: true },
 	{ id: "chat-lab", label: "Chat Lab", path: "/admin/chat-lab", scroll: false },
 	{ id: "studio", label: "Sidekick Studio", path: "/admin/studio", scroll: true },
 	{ id: "graphic-assets", label: "Graphic Assets", path: "/admin/graphic-assets", scroll: true },
@@ -79,7 +81,9 @@ export default function Admin() {
 			</header>
 
 			<div className={`flex-1 min-h-0 ${active.scroll ? "overflow-y-auto" : ""}`}>
-				{tool === "studio" ? (
+				{tool === "design-language" ? (
+					<DesignLanguage />
+				) : tool === "studio" ? (
 					<SidekickStudio tab={studioTab} onTabChange={setStudioTab} />
 				) : tool === "graphic-assets" ? (
 					<GraphicAssets />
