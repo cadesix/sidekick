@@ -13,3 +13,5 @@ dist
 
 # Worktree dev-server logs
 .logs/
+
+.playwright-mcp
