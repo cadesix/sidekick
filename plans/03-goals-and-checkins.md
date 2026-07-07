@@ -42,6 +42,8 @@ What Apple *does* sanction is **threshold events**, which is the right primitive
 
 Framing this as *the user's own commitment the OS enforces*, not us watching them, is both the privacy-correct story and the better product story. We never see what they browse; we see whether they kept a promise to themselves.
 
+**This section is the passive tier** — threshold events feeding check-ins. The full **focus mode** (actively blocking apps with shields, daily budgets, force-block, temporary unlocks) builds on the same entitlement and module and lives in [13-focus-mode.md](13-focus-mode.md).
+
 **Build path:** use the existing community module **[`react-native-device-activity`](https://github.com/kingstinct/react-native-device-activity)** (kingstinct) rather than writing the native module from scratch — it wraps `FamilyControls` + `ManagedSettings` + `DeviceActivity`, exposes the picker/threshold/monitor surface to JS, and, critically, handles the EAS/Expo provisioning of the extension targets and the **Family Controls (Distribution)** entitlement (set up once, then automatic). Two non-negotiable lead-time items: (a) the Distribution entitlement requires an **Apple approval request that has run days-to-weeks** in practice — file it the moment we commit, well before we need it; (b) it needs a config-plugin/dev-client build (the extensions can't exist in Expo Go). Because of the approval lead time and native surface, this ships **Phase 4**, gated behind a capability check, with self-report live from v1 so the goals are never blocked on it.
 
 ## Daily check-in engine

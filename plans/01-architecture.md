@@ -38,8 +38,8 @@ The chat lab and cosmetics studio stay on the web — they're internal tooling a
 Server-authoritative, unlike the prototype (localStorage history won't work with memory, multi-device, or ads):
 
 1. Client sends just the new user message to `chat.send` (tRPC) with the active `conversationId`.
-2. Server loads: conversation history (last ~30 messages), the rendered **memory block** (see user-memory.md), goal/streak state, and today's check-in status.
-3. Server builds the system prompt from `packages/shared/prompts/` (versioned in git, editable via chat lab), calls the model via AI SDK with **tools**: `record_goal_progress`, `update_memory`, `set_reminder` (definitions in 03 and user-memory plans), and **streams** the reply to the client (AI SDK `streamText` → SSE; tRPC subscription or a plain fetch-stream endpoint alongside tRPC).
+2. Server loads: the **compacted context view** — rolling summary + verbatim tail, see [08-chat-thread-compaction.md](08-chat-thread-compaction.md) — plus the rendered **memory block** (see user-memory.md), goal/streak state, and today's check-in status.
+3. Server builds the system prompt from `packages/shared/prompts/` (versioned in git, editable via chat lab), calls the model via AI SDK with **tools** from a central registry in `packages/shared/tools/` — each capability plan contributes its own (check-ins: 03/user-memory; reminders: 10; attachments: 09; documents: 15; search: 11; health/music: 12; focus: 13), individually feature-flaggable — and **streams** the reply to the client (AI SDK `streamText` → SSE; tRPC subscription or a plain fetch-stream endpoint alongside tRPC).
 4. Tool calls execute server-side against Postgres; results loop back to the model within the same turn.
 5. Everything is persisted: messages, tool calls, token usage, model id, prompt version — this is what makes evals and prompt iteration possible later.
 6. Ad slotting hooks into this same pipeline server-side (a post-response step decides if this turn gets a sponsored unit — see 05-monetization.md), so ad decisions can see conversation context without a second client integration.
@@ -56,13 +56,13 @@ messages: {
 }
 ```
 
-One long-running `main` conversation per user (the sidekick is a continuous friendship, not sessions); history windowing + memory carry the long-term context.
+One long-running `main` conversation per user (the sidekick is a continuous friendship, not sessions). Messages are append-only and the LLM context is a derived view (rolling summary + tail); the full compaction design — schema, triggers, cache breakpoints, infinite-scroll pagination — is [08-chat-thread-compaction.md](08-chat-thread-compaction.md).
 
 ## Scheduled work
 
 Vercel Cron (or Inngest if cron + fan-out gets hairy) drives:
 - **Daily check-in generation** per user at their local reminder time (03-goals-and-checkins.md)
-- **Nightly memory extraction/compaction** pass (user-memory.md)
+- **Session-idle job**: memory extraction then thread compaction, in that order (user-memory.md, 08-chat-thread-compaction.md)
 - **Streak evaluation / reward grants** (04-gamification.md)
 - **Ad-targeting profile refresh** (05-monetization.md)
 

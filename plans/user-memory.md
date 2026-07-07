@@ -8,6 +8,8 @@ How Sidekick builds, stores, uses, and monetizes an evolving understanding of ea
 - Onboarding (`src/components/funnel/`) already collects: name, age bracket, gender, goals (slugs like `get-fit`, `sleep-better`), and a 20-item Big Five test scored into OCEAN percents + a branded archetype (`personality.ts`).
 - This is a **small-context problem**. One user's entire profile — demographics, goals, dozens of interests, months of episodic events — fits comfortably in 1.5–3k tokens. A year of heavy use, with compaction, stays under ~4k. So the design is: **one Postgres-backed profile, rendered fully into the system prompt every turn**. No vector DB, no RAG, no embeddings. The point where retrieval becomes worth it is when a rendered profile can't be compacted below ~8–10k tokens — realistically multiple years of daily use, and even then summarization is the first lever, not vectors.
 
+- **Sibling system:** [08-chat-thread-compaction.md](08-chat-thread-compaction.md) owns the *conversational* short-term layer (rolling summary of the endless thread). Division of labor: memory = durable facts about the user (matters in a week); the rolling summary = thread texture (open loops, promises, running jokes). The two share the idle-trigger job — **extraction always runs before compaction**, so no fact can be squeezed out of the verbatim transcript before the extractor has seen it.
+
 Assumed backend for v1: the Vercel deployment we already have + Postgres (Neon or Supabase). Nothing below depends on that choice.
 
 ---
@@ -131,7 +133,7 @@ The handler upserts on `(goal_id, date)` and bumps `users.memory_version`.
 
 ### Async extraction pass
 
-Runs when a conversation goes idle (no message for 30 min) or at the user's local end-of-day, whichever first — one cheap-model call per session, so cost is trivial. The extractor receives:
+Runs when a conversation goes idle (no message for 30 min) or at the user's local end-of-day, whichever first — one cheap-model call per session, so cost is trivial. This is the same idle job that then runs thread compaction (08 §triggers); extraction goes first and advances `last_extracted_message_id`, which is the ceiling the compaction watermark may never pass. The extractor receives:
 
 1. The user's **current active memories** (id + kind + content) — this is what makes dedup work: it must reference existing IDs instead of re-adding.
 2. The **suppression list** (never re-learn these).
@@ -180,6 +182,8 @@ Extraction prompt guardrails worth writing explicitly: max ~8 ops per session; d
 ## 3. Read path
 
 **Recommendation: render the entire active profile into the system prompt on every request.** Token math: 40 active goals+memories × ~20 tokens ≈ 800 tokens; a heavy six-month user with caps (§7) lands ~1,500–2,500. On any modern model that's noise — and with prompt caching the memory block is cache-stable between writes (key the cache on `memory_version`), so marginal cost per turn is near zero. Rejected: retrieval/RAG — adds an embedding pipeline, a recall failure mode ("sidekick forgot my dog"), and infra, to save ~2k tokens. Revisit only past ~8–10k rendered tokens (§7 compaction pushes that years out).
+
+Prompt-cache layout (full assembly order + breakpoints in 08): persona prompt gets its own breakpoint (never invalidates between deploys); the memory block + rolling summary share the second breakpoint. Two renderer rules protect the cache: render **today's date, never the clock time**, and compute relative-date strings ("yesterday", "in 9 days") so they only change at local midnight. A `log_checkin` mid-conversation bumps `memory_version` and re-renders the goal tallies — that one cache break per day is accepted; do not try to engineer around it.
 
 ### Rendered format
 
@@ -264,7 +268,7 @@ create table consents (
 
 The nightly projection job takes active `interest` + explicit purchase-intent memories and classifies them into **IAB Content Taxonomy** codes (one small-model call with the taxonomy's relevant slice; deterministic mapping table for our own goal slugs, e.g. `get-fit` → Healthy Living/Fitness). Purchase-intent signals ("running shoes are dead") get a strength and a 30–60 day TTL so stale intent doesn't linger.
 
-Hard exclusions from projection, regardless of what memory holds: health/medical, mental & emotional state, sexuality, religion, politics, finances-distress, anything about third parties (partner, family), and all `emotional`/`relationship` kinds wholesale. This is both GDPR Art. 9 (special categories) hygiene and just not being gross.
+Hard exclusions from projection, regardless of what memory holds: health/medical, mental & emotional state, sexuality, religion, politics, finances-distress, anything about third parties (partner, family), and all `emotional`/`relationship` kinds wholesale. Device-sourced health data (`health_days`, [12-life-integrations.md](12-life-integrations.md)) is excluded as a table, not just a category — it never feeds the projection, and health-derived assistant messages are stripped from ad-forwarded context per 12. This is both GDPR Art. 9 (special categories) hygiene and just not being gross.
 
 Consent & compliance requirements to build in from day one:
 
