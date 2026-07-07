@@ -1,0 +1,466 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list
+  - region "Notifications alt+T"
+  - generic [ref=e3]:
+    - navigation "Main navigation" [ref=e5]:
+      - link "Gravity home" [ref=e6] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e7]:
+          - img [ref=e8]
+          - generic [ref=e9]: Gravity
+      - generic [ref=e10]:
+        - button "Sign Up" [ref=e12] [cursor=pointer]
+        - button "Open menu" [ref=e13] [cursor=pointer]:
+          - img [ref=e14]
+    - dialog "Mobile navigation menu" [ref=e15]:
+      - generic [ref=e16]:
+        - generic [ref=e17]:
+          - link "Gravity home" [ref=e18] [cursor=pointer]:
+            - /url: /
+            - generic [ref=e19]:
+              - img [ref=e20]
+              - generic [ref=e21]: Gravity
+          - button "Close menu" [ref=e22] [cursor=pointer]:
+            - img [ref=e23]
+        - button "Sign up" [ref=e26] [cursor=pointer]
+        - navigation "Mobile navigation" [ref=e27]:
+          - generic [ref=e28]:
+            - link "For Advertisers" [ref=e29] [cursor=pointer]:
+              - /url: /advertisers
+            - link "For AI Platforms" [ref=e30] [cursor=pointer]:
+              - /url: /ai-platforms
+            - link "About" [ref=e31] [cursor=pointer]:
+              - /url: /about
+            - link "Docs" [ref=e32] [cursor=pointer]:
+              - /url: https://docs.trygravity.ai
+            - link "Contact" [ref=e33] [cursor=pointer]:
+              - /url: /contact
+    - generic [ref=e34]:
+      - heading "Turn every interacti on into revenue." [level=1] [ref=e35]:
+        - generic [ref=e36]:
+          - text: Turn every
+          - generic:
+            - generic:
+              - generic: interacti on
+        - generic [ref=e37]:
+          - text: into
+          - emphasis [ref=e38]: revenue.
+      - paragraph [ref=e39]:
+        - text: Contextual ads across AI chats, agents, and workflows.
+        - text: Revenue without compromising experience.
+      - generic [ref=e40]:
+        - link "Calculate Projected":
+          - /url: "#earnings"
+        - link "Integrate Gravity":
+          - /url: https://app.trygravity.ai/platform/signup
+      - generic [ref=e41]:
+        - paragraph [ref=e42]: Compatible with models from
+        - generic [ref=e44]:
+          - generic [ref=e45]:
+            - img [ref=e46]
+            - generic [ref=e48]: OpenAI
+          - generic [ref=e49]:
+            - img [ref=e50]
+            - generic [ref=e52]: Claude
+          - generic [ref=e53]:
+            - img [ref=e54]
+            - generic [ref=e56]: OpenRouter
+          - generic [ref=e57]:
+            - img [ref=e58]
+            - generic [ref=e60]: Gemini
+          - generic [ref=e61]:
+            - img [ref=e62]
+            - generic [ref=e64]: deepseek
+          - generic [ref=e65]:
+            - img [ref=e66]
+            - generic [ref=e68]: OpenAI
+          - generic [ref=e69]:
+            - img [ref=e70]
+            - generic [ref=e72]: Claude
+          - generic [ref=e73]:
+            - img [ref=e74]
+            - generic [ref=e76]: OpenRouter
+          - generic [ref=e77]:
+            - img [ref=e78]
+            - generic [ref=e80]: Gemini
+          - generic [ref=e81]:
+            - img [ref=e82]
+            - generic [ref=e84]: deepseek
+      - generic [ref=e86]:
+        - generic [ref=e87]:
+          - paragraph [ref=e88]: Without
+          - generic [ref=e90]: Gravity
+          - generic [ref=e91]:
+            - paragraph [ref=e92]: For scaling data-driven creative across your campaigns, several platforms can help improve your delivery quality and reach. Based on your current usage and audience profile, here are a few recommendations worth considering for your stack and budget heading into next quarter, along with channels that pair well with your existing workflow and the goals you outlined for growth.
+            - generic [ref=e93]:
+              - paragraph [ref=e94]: Revenue
+              - paragraph [ref=e96]: $0.00
+        - generic [ref=e97]:
+          - paragraph [ref=e98]: With
+          - generic [ref=e100]: Gravity
+          - generic [ref=e101]:
+            - paragraph [ref=e102]: For scaling data-driven creative across your campaigns, several platforms can help improve your delivery quality and reach. Based on your current usage and audience profile, here are a few recommendations worth considering for your stack and budget heading into next quarter, along with channels that pair well with your existing workflow and the goals you outlined for growth.
+            - generic [ref=e103]:
+              - paragraph [ref=e104]: Revenue
+              - generic [ref=e105]:
+                - paragraph [ref=e106]: $42.01
+                - generic [ref=e107]: CPM
+    - generic [ref=e110]:
+      - generic [ref=e111]: How it works
+      - heading "In 3 steps" [level=2] [ref=e112]
+      - generic [ref=e113]:
+        - generic [ref=e114]:
+          - list [ref=e115]:
+            - listitem [ref=e116]:
+              - button "1 Integrate. Add SDK to your platform. Ad request runs in parallel with your LLM call. Client component renders ads natively. SDKs for Node.js and Python, and a REST API for everything else." [expanded] [ref=e118] [cursor=pointer]:
+                - generic [ref=e119]: "1"
+                - generic [ref=e120]:
+                  - text: Integrate. Add SDK to your platform.
+                  - generic [ref=e123]:
+                    - generic [ref=e124]:
+                      - img [ref=e125]
+                      - generic [ref=e127]: Ad request runs in parallel with your LLM call.
+                    - generic [ref=e128]:
+                      - img [ref=e129]
+                      - generic [ref=e131]: Client component renders ads natively.
+                    - generic [ref=e132]:
+                      - img [ref=e133]
+                      - generic [ref=e135]: SDKs for Node.js and Python, and a REST API for everything else.
+            - listitem [ref=e136]:
+              - button "2 Control. Category and brand blocklists. Custom ad styling and placement. Define how relevant ads must be to the user or their conversation." [ref=e138] [cursor=pointer]:
+                - generic [ref=e139]: "2"
+                - generic [ref=e140]:
+                  - text: Control.
+                  - generic [ref=e141]:
+                    - generic [ref=e142]:
+                      - img [ref=e143]
+                      - generic [ref=e145]: Category and brand blocklists.
+                    - generic [ref=e146]:
+                      - img [ref=e147]
+                      - generic [ref=e149]: Custom ad styling and placement.
+                    - generic [ref=e150]:
+                      - img [ref=e151]
+                      - generic [ref=e153]: Define how relevant ads must be to the user or their conversation.
+            - listitem [ref=e154]:
+              - button "3 Earn. Real-time analytics to help you optimize per query and per user revenue. Earn on a per-click, per-impression or per-purchase basis. Receive payouts via wire or Stripe." [ref=e155] [cursor=pointer]:
+                - generic [ref=e156]: "3"
+                - generic [ref=e157]:
+                  - text: Earn.
+                  - generic [ref=e158]:
+                    - generic [ref=e159]:
+                      - img [ref=e160]
+                      - generic [ref=e162]: Real-time analytics to help you optimize per query and per user revenue.
+                    - generic [ref=e163]:
+                      - img [ref=e164]
+                      - generic [ref=e166]: Earn on a per-click, per-impression or per-purchase basis.
+                    - generic [ref=e167]:
+                      - img [ref=e168]
+                      - generic [ref=e170]: Receive payouts via wire or Stripe.
+          - generic [ref=e171]:
+            - img [ref=e172]
+            - text: Keep scrolling to walk through the steps
+        - generic [ref=e174]:
+          - generic [ref=e177]:
+            - generic [ref=e178]:
+              - img [ref=e186]
+              - img [ref=e190]
+              - img [ref=e195]
+              - img [ref=e198]
+              - img [ref=e201]
+            - generic [ref=e205]: npm install @gravity-ai/sdk
+            - generic [ref=e206]: Your App
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - paragraph: Doordash.com
+                      - paragraph: Food, Grocery and Retail — Fast Same Day Delivery
+                    - img
+                - generic:
+                  - generic: Ad block preview
+                - generic:
+                  - generic: Sponsored block
+                  - generic: Inline hyperlink
+                - paragraph: Relevancy
+                - generic:
+                  - generic:
+                    - generic:
+                      - img
+                      - text: Auto-optimize
+                  - generic:
+                    - generic:
+                      - generic:
+                        - img
+                      - text: Show favicon
+                  - generic:
+                    - generic:
+                      - img
+                      - text: Place before the response
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic: 1d
+                  - generic: 1w
+                  - generic: 1m
+                  - generic: 6m
+                  - generic: 1y
+                - paragraph: Earned this week
+                - generic:
+                  - paragraph: $1,203,847.20
+                  - generic:
+                    - img
+                    - text: 12.8% vs last week
+                - generic:
+                  - img
+    - generic [ref=e209]:
+      - generic [ref=e213]:
+        - generic [ref=e214]:
+          - generic [ref=e215]:
+            - generic [ref=e216]: Surfaces
+            - heading "Built for every AI surface." [level=2] [ref=e217]
+            - paragraph [ref=e218]: One SDK that works everywhere your AI runs. Chatbots, agents, copilots, search. If there's a conversation, there's revenue.
+          - generic [ref=e219]:
+            - link "Integrate Gravity" [ref=e220] [cursor=pointer]:
+              - /url: https://app.trygravity.ai/platform/signup
+            - link "Book a Demo" [ref=e221] [cursor=pointer]:
+              - /url: https://calendly.com/josh-trygravity/gravity
+        - generic [ref=e223]:
+          - generic [ref=e224]:
+            - generic [ref=e225]:
+              - img [ref=e227]
+              - heading "Autonomous agents" [level=3] [ref=e229]
+              - paragraph [ref=e230]: Earn revenue mid-task. Gravity places ads as agents research, compare, and execute.
+            - generic [ref=e231]:
+              - generic [ref=e236]: AI Chat
+              - generic [ref=e238]:
+                - generic [ref=e239]: Book a flight + hotel for my Tokyo trip
+                - generic [ref=e240]:
+                  - generic [ref=e241]:
+                    - img [ref=e243]
+                    - generic [ref=e245]:
+                      - paragraph [ref=e246]: Search flights on Google Flights
+                      - paragraph [ref=e247]: Found 12 options
+                  - generic [ref=e248]:
+                    - img [ref=e250]
+                    - generic [ref=e252]:
+                      - paragraph [ref=e253]: Compare prices & layovers
+                      - paragraph [ref=e254]: "Best: Delta $289 nonstop"
+                  - paragraph [ref=e259]: Finding best hotel deals at Booking.com..
+                - generic [ref=e260]:
+                  - generic [ref=e261]: B
+                  - generic [ref=e262]:
+                    - paragraph [ref=e263]: Booking.com
+                    - paragraph [ref=e264]: Best price guarantee. 15% off for first booking.
+                  - generic [ref=e265]: Sponsored
+          - generic [ref=e266]:
+            - generic [ref=e267]:
+              - img [ref=e269]
+              - heading "Consumer chatbots" [level=3] [ref=e271]
+              - paragraph [ref=e272]: Monetize AI conversations with native sponsored suggestions that feel like part of the answer.
+            - generic [ref=e273]:
+              - generic [ref=e278]: AI Chat
+              - generic [ref=e280]:
+                - paragraph [ref=e282]: Best way to learn a new programming language
+                - paragraph [ref=e283]: Start by building something small you actually need. A CLI tool, a script that automates a boring task, whatever solves a real problem for you.
+                - generic [ref=e284]:
+                  - generic [ref=e285]:
+                    - generic [ref=e286]:
+                      - img [ref=e287]
+                      - text: Codecadamy
+                      - img [ref=e289]
+                    - generic [ref=e292]: Sponsored
+                  - paragraph [ref=e293]: Interactive coding lessons with real-time feedback. Start free.
+                - generic [ref=e294]:
+                  - generic [ref=e295]:
+                    - img [ref=e296]
+                    - text: Write a message...
+                  - generic [ref=e297]:
+                    - img [ref=e298]
+                    - text: GPT 5.5
+                    - img [ref=e301]
+          - generic [ref=e303]:
+            - generic [ref=e304]:
+              - img [ref=e306]
+              - heading "Dev tools & IDEs" [level=3] [ref=e310]
+              - paragraph [ref=e311]: Surface relevant tools and services inline while developers code, debug, and build.
+            - generic [ref=e312]:
+              - generic [ref=e317]: api.ts
+              - generic [ref=e319]:
+                - generic [ref=e320]:
+                  - text: "import { PrismaClient } from '@prisma/client' const prisma = new PrismaClient() const user = await prisma.user.create"
+                  - generic [ref=e321]: "({"
+                  - generic [ref=e322]: "data: { email:"
+                  - text: "'dev@example.com' } }) const users = await prisma.user.findMany"
+                  - generic [ref=e323]: "({ where: {"
+                  - text: "active: true } })"
+                - generic [ref=e324]:
+                  - generic [ref=e325]:
+                    - generic [ref=e326]:
+                      - img [ref=e327]
+                      - text: AI Suggest
+                    - generic [ref=e330]: Sponsored
+                  - generic [ref=e331]:
+                    - generic [ref=e332]:
+                      - paragraph [ref=e333]: Planetscale
+                      - paragraph [ref=e334]: Serverless MySQL with branching.
+                    - generic [ref=e335]: See more →
+          - generic [ref=e336]:
+            - generic [ref=e337]:
+              - img [ref=e339]
+              - heading "Search/chat hybrids" [level=3] [ref=e342]
+              - paragraph [ref=e343]: Sponsored results that blend naturally into AI-generated summaries and source lists.
+            - generic [ref=e344]:
+              - generic [ref=e349]: Search AI
+              - generic [ref=e351]:
+                - generic [ref=e352]:
+                  - img [ref=e353]
+                  - generic [ref=e356]: best e-commerce growth strategies 2026
+                  - img [ref=e357]
+                  - img [ref=e360]
+                - generic [ref=e363]:
+                  - generic [ref=e364]: AI Mode
+                  - generic [ref=e365]: All
+                  - generic [ref=e366]: Videos
+                  - generic [ref=e367]: Images
+                  - generic [ref=e368]: Forums
+                - generic [ref=e369]:
+                  - generic [ref=e370]:
+                    - img [ref=e371]
+                    - text: AI Overview
+                  - generic [ref=e374]: 4 sources
+                - paragraph [ref=e375]: The most effective e-commerce growth strategies for 2026 focus on personalization, retention, and channel diversification. For scaling with data-driven creatives, Reach Digital offers performance acquisition systems. [Sponsored]
+                - generic [ref=e376]:
+                  - generic [ref=e377]: Ask anything
+                  - img [ref=e378]
+      - generic [ref=e385]:
+        - heading "Ultra low latency." [level=2] [ref=e386]
+        - paragraph [ref=e387]: Gravity runs in parallel with your LLM call. By the time your response is ready, the ad is too.
+        - generic [ref=e388]:
+          - generic [ref=e389]:
+            - generic [ref=e390]: User query
+            - img [ref=e392]
+            - generic [ref=e394]: AI response + Ad delivered
+          - generic [ref=e397]:
+            - generic [ref=e398]: Sends to
+            - generic [ref=e400]:
+              - img [ref=e401]
+              - generic [ref=e402]: Gravity
+            - generic [ref=e403]: Returns contextual ad
+    - generic [ref=e406]:
+      - generic [ref=e407]: Revenue potential
+      - heading "Calculate your earnings." [level=2] [ref=e408]
+      - paragraph [ref=e409]: See how much you could earn with Gravity based on your conversational traffic.
+      - generic [ref=e410]:
+        - paragraph [ref=e411]: 100M
+        - paragraph [ref=e412]: Queries per month
+        - slider "Queries per month" [ref=e416] [cursor=pointer]: "50"
+        - generic [ref=e417]:
+          - generic [ref=e418]: 1M
+          - generic [ref=e419]: 100M
+          - generic [ref=e420]: 10B
+      - generic [ref=e421]:
+        - paragraph [ref=e422]: Earning potential
+        - paragraph [ref=e423]: $600K – $15M/month
+      - generic [ref=e424]:
+        - generic [ref=e425]:
+          - generic [ref=e426]:
+            - generic [ref=e427]: Low estimate
+            - generic [ref=e428]: $6 CPM
+          - generic [ref=e429]: $600K
+        - generic [ref=e430]:
+          - generic [ref=e431]:
+            - generic [ref=e432]: Mid estimate
+            - generic [ref=e433]: $25 CPM
+          - generic [ref=e434]: $2.5M
+        - generic [ref=e435]:
+          - generic [ref=e436]:
+            - generic [ref=e437]: High estimate
+            - generic [ref=e438]: $150 CPM
+          - generic [ref=e439]: $15M
+      - link "Integrate Gravity" [ref=e440] [cursor=pointer]:
+        - /url: https://app.trygravity.ai/platform/signup
+    - generic [ref=e442]:
+      - generic [ref=e445]:
+        - generic [ref=e446]: Integration
+        - heading "Live in minutes." [level=2] [ref=e447]
+        - paragraph [ref=e448]: Two packages. One to request ads, one to show them. No added latency.
+        - generic [ref=e449]:
+          - generic [ref=e450]:
+            - generic [ref=e455]: Integration Preview
+            - img [ref=e456]
+          - generic [ref=e459]:
+            - generic [ref=e460]: // SERVER @gravity-ai/api
+            - generic [ref=e461]: const ads = await gravity.getAds(
+            - generic [ref=e462]: req, messages, placements
+            - generic [ref=e463]: );
+          - generic [ref=e465]:
+            - generic [ref=e466]: // CLIENT @gravity-ai/react
+            - generic [ref=e467]: "<AdBanner ad={ads[0]}"
+            - generic [ref=e468]: theme="dark" />
+        - link "Read the integration docs" [ref=e469] [cursor=pointer]:
+          - /url: https://docs.trygravity.ai
+          - text: Read the integration docs
+          - img [ref=e470]
+      - generic [ref=e473]:
+        - heading "Your platform is already generating demand. Start generating revenue." [level=2] [ref=e474]:
+          - generic [ref=e475]: Your platform is already generating demand.
+          - generic [ref=e476]: Start generating revenue.
+        - generic [ref=e477]:
+          - link "Integrate Gravity" [ref=e478] [cursor=pointer]:
+            - /url: https://app.trygravity.ai/platform/signup
+          - link "Book Demo" [ref=e479] [cursor=pointer]:
+            - /url: https://calendly.com/josh-trygravity/gravity
+    - contentinfo [ref=e480]:
+      - generic [ref=e484]:
+        - generic [ref=e485]:
+          - link "Gravity home" [ref=e487] [cursor=pointer]:
+            - /url: /
+            - img [ref=e488]
+          - generic [ref=e489]:
+            - heading "Solutions" [level=4] [ref=e490]
+            - list [ref=e491]:
+              - listitem [ref=e492]:
+                - link "For Advertisers" [ref=e493] [cursor=pointer]:
+                  - /url: /advertisers
+              - listitem [ref=e494]:
+                - link "For AI Platforms" [ref=e495] [cursor=pointer]:
+                  - /url: /ai-platforms
+          - generic [ref=e496]:
+            - heading "Company" [level=4] [ref=e497]
+            - list [ref=e498]:
+              - listitem [ref=e499]:
+                - link "About" [ref=e500] [cursor=pointer]:
+                  - /url: /about
+              - listitem [ref=e501]:
+                - link "LinkedIn" [ref=e502] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/company/aigravity/
+              - listitem [ref=e503]:
+                - link "X (Twitter)" [ref=e504] [cursor=pointer]:
+                  - /url: https://x.com/trygravityai
+          - generic [ref=e505]:
+            - heading "Resources" [level=4] [ref=e506]
+            - list [ref=e507]:
+              - listitem [ref=e508]:
+                - link "Docs" [ref=e509] [cursor=pointer]:
+                  - /url: https://docs.trygravity.ai
+              - listitem [ref=e510]:
+                - link "Contact" [ref=e511] [cursor=pointer]:
+                  - /url: /contact
+          - generic [ref=e512]:
+            - heading "Legal" [level=4] [ref=e513]
+            - list [ref=e514]:
+              - listitem [ref=e515]:
+                - link "Terms" [ref=e516] [cursor=pointer]:
+                  - /url: /terms
+              - listitem [ref=e517]:
+                - link "Privacy" [ref=e518] [cursor=pointer]:
+                  - /url: /privacy
+              - listitem [ref=e519]:
+                - link "Brand Safety" [ref=e520] [cursor=pointer]:
+                  - /url: /brand-safety
+        - paragraph [ref=e522]: © Gravity Labs. 2026. All Rights Reserved
+    - generic [ref=e524]: Gravity
