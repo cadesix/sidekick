@@ -5,6 +5,10 @@ dist
 .vite
 .vercel
 
+# Expo / Metro
+.expo/
+*.tsbuildinfo
+
 # Glim Studio generations (local iteration artifacts)
 .illustrate/studio/
 

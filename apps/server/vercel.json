@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
+  "crons": [
+    { "path": "/cron/idle", "schedule": "*/15 * * * *" },
+    { "path": "/cron/ad-profiles", "schedule": "30 8 * * *" },
+    { "path": "/cron/reminders/fire", "schedule": "* * * * *" },
+    { "path": "/cron/reminders/recompute", "schedule": "0 4 * * *" },
+    { "path": "/cron/rewards/grant", "schedule": "15 * * * *" }
+  ]
+}

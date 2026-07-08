@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "Sidekick",
+    "slug": "sidekick",
+    "scheme": "sidekick",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "assetBundlePatterns": [
+      "assets/**/*"
+    ],
+    "ios": {
+      "bundleIdentifier": "software.sans.sidekick",
+      "appleTeamId": "REPLACE_WITH_APPLE_TEAM_ID",
+      "infoPlist": {
+        "NSHealthShareUsageDescription": "Sidekick reads your steps, sleep, and workouts so it can cheer you on without you having to report anything. It only reads — never writes or shares.",
+        "NSLocationWhenInUseUsageDescription": "Sidekick uses your city — only while you're using the app — to know your weather and what's nearby.",
+        "NSAppleMusicUsageDescription": "Sidekick connects to Apple Music so it can make you playlists and learn your taste."
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-notifications",
+      "@react-native-community/datetimepicker",
+      "expo-location",
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "background": true
+        }
+      ],
+      "expo-web-browser",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1"
+          }
+        }
+      ],
+      [
+        "react-native-device-activity",
+        {
+          "appleTeamId": "REPLACE_WITH_APPLE_TEAM_ID",
+          "appGroup": "group.software.sans.sidekick"
+        }
+      ]
+    ],
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
