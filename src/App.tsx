@@ -2,6 +2,8 @@ import { Funnel } from "~/components/funnel/funnel";
 import Admin from "./admin";
 import Home from "./home";
 import Home2 from "./home2";
+import Home3 from "./home3";
+import Sidekick3D from "./sidekick-3d";
 import SidekickStudio from "./sidekick-studio";
 
 // Minimal path routing: /home and /home2 show post-funnel home variants, /sidekick is the
@@ -13,8 +15,14 @@ export default function App() {
 	if (import.meta.env.DEV && path.startsWith("/admin")) {
 		return <Admin />;
 	}
+	if (path === "/sidekick-3d") {
+		return <Sidekick3D />;
+	}
 	if (path === "/sidekick") {
 		return <SidekickStudio />;
+	}
+	if (path === "/home3") {
+		return <Home3 />;
 	}
 	if (path === "/home2") {
 		return <Home2 />;

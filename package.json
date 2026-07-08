@@ -10,15 +10,18 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "lil-gui": "^0.21.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-icons": "^5.4.0",
+    "three": "^0.185.1",
     "usehooks-ts": "^3.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.185.0",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
