@@ -17,7 +17,7 @@ import type { SidekickSettings } from "./sidekick-settings";
 export const FACE_COLOR = "#dd9d43"; // flat yellow sampled from the body albedo
 
 // bump ?v= on every reimport of the GLB so browsers can't serve a stale copy
-export const MODEL_URL = "/sidekick-rigged.glb?v=6";
+export const MODEL_URL = "/sidekick-rigged.glb?v=7";
 
 export type TexSet = {
 	map: THREE.Texture | null;
