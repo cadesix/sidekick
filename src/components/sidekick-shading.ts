@@ -17,7 +17,7 @@ import type { SidekickSettings } from "./sidekick-settings";
 export const FACE_COLOR = "#dd9d43"; // flat yellow sampled from the body albedo
 
 // bump ?v= on every reimport of the GLB so browsers can't serve a stale copy
-export const MODEL_URL = "/sidekick-rigged.glb?v=7";
+export const MODEL_URL = "/sidekick-rigged.glb?v=12";
 
 export type TexSet = {
 	map: THREE.Texture | null;
@@ -290,6 +290,16 @@ export function makeCharacterMaterials(
 	const faceSet: TexSet | null = faceTex
 		? { map: faceTex, normalMap: null, vertexColors: false }
 		: null;
+	// the sheet carries alpha (only the features are opaque) — the head is
+	// sealed under the plane, so transparency lets its own shading show
+	// through instead of a flat color disc that can't match the albedo
+	const withAlpha = (m: THREE.Material): THREE.Material => {
+		if (faceSet) {
+			m.transparent = true;
+			m.alphaTest = 0.02;
+		}
+		return m;
+	};
 	switch (s.shading) {
 		case "toon":
 		case "ramp":
@@ -298,20 +308,20 @@ export function makeCharacterMaterials(
 			return {
 				body: makeStylizedMaterial(s, tex, s.shading),
 				face: faceSet
-					? makeStylizedMaterial(s, faceSet, s.shading)
+					? withAlpha(makeStylizedMaterial(s, faceSet, s.shading))
 					: makeStylizedMaterial(s, tex, s.shading, FACE_COLOR),
 			};
 		case "sss":
 			return {
 				body: makeSssMaterial(s, tex),
-				face: faceSet ? makeSssMaterial(s, faceSet) : makeSssMaterial(s, tex, FACE_COLOR),
+				face: faceSet ? withAlpha(makeSssMaterial(s, faceSet)) : makeSssMaterial(s, tex, FACE_COLOR),
 			};
 		case "matcap":
 			if (matcapTex)
 				return {
 					body: makeMatcapMaterial(s, tex, matcapTex),
 					face: faceSet
-						? makeMatcapMaterial(s, faceSet, matcapTex)
+						? withAlpha(makeMatcapMaterial(s, faceSet, matcapTex))
 						: makeMatcapMaterial(s, tex, matcapTex, FACE_COLOR),
 				};
 			break;
@@ -320,7 +330,7 @@ export function makeCharacterMaterials(
 	}
 	return {
 		body: makePhysicalMaterial(s, tex),
-		face: faceSet ? makePhysicalMaterial(s, faceSet) : makePhysicalMaterial(s, tex, FACE_COLOR),
+		face: faceSet ? withAlpha(makePhysicalMaterial(s, faceSet)) : makePhysicalMaterial(s, tex, FACE_COLOR),
 	};
 }
 

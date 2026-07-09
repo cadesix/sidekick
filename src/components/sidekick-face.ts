@@ -12,7 +12,7 @@ import * as THREE from "three";
 // generated placeholder — replace with real artwork, same grid, no code
 // changes needed.
 
-export const FACE_SHEET_URL = "/face-sheet.png?v=3";
+export const FACE_SHEET_URL = "/face-sheet.png?v=6";
 const GRID = 4;
 
 // name → [col, row]; keep in sync with the sheet
@@ -60,11 +60,14 @@ export type FaceController = {
 	// artwork size relative to the head: >1 samples a smaller centered window
 	// of the cell, so the features render bigger on the face plane
 	setScale: (sc: number) => void;
+	// vertical placement on the head, in cell fractions: positive samples a
+	// lower window of the cell, which renders the features HIGHER on the head
+	setOffsetY: (dy: number) => void;
 	// drive from the render loop
 	update: (t: number) => void;
 };
 
-export function createFaceController(tex: THREE.Texture, scale = 1): FaceController {
+export function createFaceController(tex: THREE.Texture, scale = 1, offsetY = 0): FaceController {
 	let base: FaceExpression = "neutral";
 	let pulseExpr: FaceExpression | null = null;
 	let pulseUntil = 0;
@@ -87,8 +90,24 @@ export function createFaceController(tex: THREE.Texture, scale = 1): FaceControl
 		if (e === current) return;
 		current = e;
 		const [c, r] = FACE_CELLS[e];
-		const inset = (1 / GRID - tex.repeat.x) / 2; // centers the zoomed window
-		tex.offset.set(c / GRID + inset, r / GRID + inset);
+		const cell = 1 / GRID;
+		const win = tex.repeat.y;
+		const inset = (cell - win) / 2; // centers the zoomed window
+		// clamp the window so it never reaches a NEIGHBOR cell's features —
+		// past the ~10% feathered margin you'd sample the next expression's
+		// artwork (reads as a stripe cutting across the face)
+		const bleed = 0.12 * cell + Math.max(0, win - cell) / 2;
+		const top = THREE.MathUtils.clamp(
+			r * cell + inset + offsetY * cell,
+			r * cell - bleed,
+			r * cell + cell - win + bleed,
+		);
+		tex.offset.set(c * cell + inset, top);
+	};
+	const reshow = () => {
+		const e = current;
+		current = null; // force show() to re-apply the offset
+		if (e) show(e);
 	};
 
 	return {
@@ -108,9 +127,11 @@ export function createFaceController(tex: THREE.Texture, scale = 1): FaceControl
 		},
 		setScale: (sc) => {
 			applyScale(sc);
-			const e = current;
-			current = null; // force show() to re-apply the offset at the new zoom
-			if (e) show(e);
+			reshow();
+		},
+		setOffsetY: (dy) => {
+			offsetY = dy;
+			reshow();
 		},
 		update: (t) => {
 			if (pulseExpr && pulseUntil === -1) pulseUntil = t + pulseSeconds;

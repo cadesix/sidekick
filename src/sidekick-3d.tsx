@@ -184,7 +184,7 @@ export default function Sidekick3D() {
 		loadFaceTexture((t) => {
 			if (t) {
 				faceTex = t;
-				faceCtl = createFaceController(t, settings.faceScale);
+				faceCtl = createFaceController(t, settings.faceZoom, settings.faceHeight);
 			}
 			rebuildShading();
 		});
@@ -583,7 +583,8 @@ export default function Sidekick3D() {
 		faceFolder.add(faceCfg, "expression", FACE_EXPRESSIONS).onChange((e: FaceExpression) => faceCtl?.set(e));
 		faceFolder.add(faceCfg, "talking").onChange((v: boolean) => faceCtl?.setTalking(v));
 		faceFolder.add(faceCfg, "blinking").onChange((v: boolean) => faceCtl?.setBlinking(v));
-		faceFolder.add(settings, "faceScale", 0.9, 2, 0.01).name("face size").onChange((v: number) => faceCtl?.setScale(v));
+		faceFolder.add(settings, "faceZoom", 0.9, 2, 0.01).name("face size").onChange((v: number) => faceCtl?.setScale(v));
+		faceFolder.add(settings, "faceHeight", -0.25, 0.25, 0.005).name("face height").onChange((v: number) => faceCtl?.setOffsetY(v));
 
 		const pose = gui.addFolder("Pose");
 		pose.add(settings, "poseArmDown", 0, 1.6, 0.01).name("arm drop");

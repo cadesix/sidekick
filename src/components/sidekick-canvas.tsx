@@ -113,7 +113,7 @@ export function SidekickCanvas({ className }: { className?: string }) {
 		loadFaceTexture((t) => {
 			if (t) {
 				faceTex = t;
-				faceCtl = createFaceController(t, s.faceScale);
+				faceCtl = createFaceController(t, s.faceZoom, s.faceHeight);
 			}
 			applyShading();
 		});

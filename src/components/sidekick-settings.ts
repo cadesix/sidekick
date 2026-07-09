@@ -29,7 +29,11 @@ export type SidekickSettings = {
 	outlineWidth: number;
 	outlineColor: string;
 	// face sprite zoom (>1 = artwork bigger relative to the head)
-	faceScale: number;
+	faceZoom: number;
+	// face vertical placement in cell fractions (positive = higher on the head).
+	// NOTE: renamed from faceOffsetY on purpose — stale saved values from the
+	// pre-plane-move era kept overriding the centered default
+	faceHeight: number;
 	// idle pose (armature fine-tuning; radians)
 	poseArmDown: number;
 	poseArmTwist: number;
@@ -99,7 +103,8 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
 	outline: true,
 	outlineWidth: 0.00722,
 	outlineColor: "#b77d1a",
-	faceScale: 0.91,
+	faceZoom: 1.0,
+	faceHeight: 0,
 	poseArmDown: 0.18,
 	poseArmTwist: 1,
 	poseRollSplit: 0,
