@@ -13,6 +13,7 @@ import {
 import { makeGrassEnvironment, makeSkyTexture } from "./sidekick-grass";
 import { createFaceController, loadFaceTexture, type FaceController } from "./sidekick-face";
 import { createInteraction, POKE_FACE } from "./sidekick-interact";
+import { createCosmetics, type CosmeticsHandle } from "./sidekick-equipment";
 
 // Full 3D home-screen scene: sky gradient, domed lawn with wind-swept grass,
 // and the rigged Sidekick idling in it (blades bend away from his feet).
@@ -44,7 +45,22 @@ type BoneName = keyof typeof BONE_MAP;
 const FALLBACK_CAM_POS: [number, number, number] = [0, 0.96, 2.6];
 const FALLBACK_CAM_TARGET: [number, number, number] = [0, 0.96, 0];
 
-export function SidekickCanvas({ className }: { className?: string }) {
+// Optional camera override: a full-viewport host (e.g. /home4) can frame the
+// character however it likes, ignoring the saved /sidekick-3d camera while
+// still sharing the material/lighting/pose look.
+export type CanvasFraming = {
+	pos: [number, number, number];
+	target: [number, number, number];
+	fov?: number;
+};
+
+export function SidekickCanvas({
+	className,
+	framing,
+}: {
+	className?: string;
+	framing?: CanvasFraming;
+}) {
 	const mountRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
@@ -60,9 +76,9 @@ export function SidekickCanvas({ className }: { className?: string }) {
 		grass.relayout(s.grassHeight, s.grassClumping);
 		scene.add(grass.group);
 
-		const camera = new THREE.PerspectiveCamera(s.fov, mount.clientWidth / mount.clientHeight, 0.1, 60);
-		const camBasePos = new THREE.Vector3().fromArray(s.camPos ?? FALLBACK_CAM_POS);
-		const camBaseTarget = new THREE.Vector3().fromArray(s.camTarget ?? FALLBACK_CAM_TARGET);
+		const camera = new THREE.PerspectiveCamera(framing?.fov ?? s.fov, mount.clientWidth / mount.clientHeight, 0.1, 60);
+		const camBasePos = new THREE.Vector3().fromArray(framing?.pos ?? s.camPos ?? FALLBACK_CAM_POS);
+		const camBaseTarget = new THREE.Vector3().fromArray(framing?.target ?? s.camTarget ?? FALLBACK_CAM_TARGET);
 		camera.position.copy(camBasePos);
 		camera.lookAt(camBaseTarget);
 
@@ -106,6 +122,7 @@ export function SidekickCanvas({ className }: { className?: string }) {
 		let matcapTex: THREE.Texture | null = null;
 		let faceTex: THREE.Texture | null = null;
 		let faceCtl: FaceController | null = null;
+		let cos: CosmeticsHandle | null = null;
 		loadMatcapTexture((t) => {
 			matcapTex = t;
 			applyShading();
@@ -122,6 +139,7 @@ export function SidekickCanvas({ className }: { className?: string }) {
 			const { body, face } = makeCharacterMaterials(s, texSet, matcapTex, faceTex);
 			bodyMesh.material = body;
 			if (faceMesh) faceMesh.material = face;
+			cos?.refresh(s, matcapTex);
 		};
 
 		// pull carries the interactive body-drag lean/offset/squash (anchored at
@@ -186,6 +204,11 @@ export function SidekickCanvas({ className }: { className?: string }) {
 					bones[ours as BoneName] = bone;
 					rest[ours as BoneName] = bone.quaternion.clone();
 				}
+				// modular equipment: manifest-driven cosmetics bound to this rig
+				if (bodyMesh) {
+					cos = createCosmetics(bodyMesh, s, matcapTex);
+					if (s.shirtEnabled) cos.equip("shirt");
+				}
 				ready = true;
 			},
 			undefined,
@@ -196,7 +219,8 @@ export function SidekickCanvas({ className }: { className?: string }) {
 		const interact = createInteraction({
 			dom: renderer.domElement,
 			camera,
-			targets: () => [bodyMesh, faceMesh].filter(Boolean) as THREE.Object3D[],
+			targets: () =>
+				[bodyMesh, faceMesh, ...(cos?.targets() ?? [])].filter(Boolean) as THREE.Object3D[],
 			bone: (n) => bones[n],
 			cameraDrag: true,
 			onPoke: (part) => {
@@ -291,6 +315,7 @@ export function SidekickCanvas({ className }: { className?: string }) {
 		return () => {
 			cancelAnimationFrame(raf);
 			window.removeEventListener("resize", onResize);
+			cos?.dispose();
 			interact.dispose();
 			pmrem.dispose();
 			renderer.dispose();

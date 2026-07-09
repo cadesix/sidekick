@@ -5,7 +5,10 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { BokehPass } from "three/examples/jsm/postprocessing/BokehPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { TiltShiftShader, fovFromFocalLength, focalLengthFromFov } from "./components/sidekick-post";
 import GUI from "lil-gui";
 import {
 	DEFAULT_SETTINGS,
@@ -24,6 +27,7 @@ import {
 } from "./components/sidekick-shading";
 import { makeGrassEnvironment, makeSkyTexture } from "./components/sidekick-grass";
 import { createInteraction, POKE_FACE } from "./components/sidekick-interact";
+import { createCosmetics, type CosmeticsHandle } from "./components/sidekick-equipment";
 import {
 	FACE_EXPRESSIONS,
 	createFaceController,
@@ -126,9 +130,25 @@ export default function Sidekick3D() {
 		scene.environment = pmrem.fromScene(makeEnvScene(), 0.04).texture;
 		scene.environmentIntensity = settings.envIntensity;
 
-		// bloom for the glossy highlight sparkle
+		// post chain: render → depth-of-field → tilt-shift → bloom → output
 		const composer = new EffectComposer(renderer);
 		composer.addPass(new RenderPass(scene, camera));
+		// depth-based DoF (aperture in the GUI is ×1e-4)
+		const bokeh = new BokehPass(scene, camera, {
+			focus: settings.dofFocus,
+			aperture: settings.dofAperture * 1e-4,
+			maxblur: settings.dofMaxBlur,
+		});
+		bokeh.enabled = settings.dofEnabled;
+		composer.addPass(bokeh);
+		// screen-space tilt-shift (miniature look)
+		const tilt = new ShaderPass(TiltShiftShader);
+		tilt.enabled = settings.tiltEnabled;
+		tilt.uniforms.uFocusY.value = settings.tiltFocusY;
+		tilt.uniforms.uBand.value = settings.tiltBand;
+		tilt.uniforms.uBlur.value = settings.tiltBlur;
+		tilt.uniforms.uResolution.value.set(mount.clientWidth, mount.clientHeight);
+		composer.addPass(tilt);
 		const bloom = new UnrealBloomPass(
 			new THREE.Vector2(mount.clientWidth, mount.clientHeight),
 			settings.bloomStrength, settings.bloomRadius, settings.bloomThreshold,
@@ -170,6 +190,8 @@ export default function Sidekick3D() {
 		let bodyMesh: THREE.SkinnedMesh | null = null;
 		let faceMesh: THREE.SkinnedMesh | null = null;
 		let outlineMesh: THREE.SkinnedMesh | null = null;
+		let cos: CosmeticsHandle | null = null;
+		let buildEquipGui: ((c: CosmeticsHandle) => void) | null = null;
 		let texSet: TexSet = { map: null, normalMap: null, vertexColors: false };
 		let matcapTex: THREE.Texture | null = null;
 		let faceTex: THREE.Texture | null = null;
@@ -213,6 +235,7 @@ export default function Sidekick3D() {
 				outlineMesh.material = makeOutlineMaterial(settings);
 				outlineMesh.visible = settings.outline;
 			}
+			cos?.refresh(settings, matcapTex);
 		};
 
 		// pull carries the interactive body-drag lean/offset/squash (anchored at
@@ -294,6 +317,21 @@ export default function Sidekick3D() {
 				skeletonHelper.visible = false;
 				scene.add(skeletonHelper);
 
+				// modular equipment: manifest-driven cosmetics bound to this rig
+				if (bodyMesh) {
+					cos = createCosmetics(bodyMesh, settings, matcapTex);
+					const c = cos;
+					if (settings.shirtEnabled) c.equip("shirt");
+					c.ready.then(() => buildEquipGui?.(c));
+					if (import.meta.env.DEV) (window as unknown as { __cos: CosmeticsHandle }).__cos = c;
+				}
+				if (import.meta.env.DEV) {
+					(window as unknown as { __dbg: unknown }).__dbg = () => ({
+						shading: settings.shading,
+						bodyMat: bodyMesh?.material && (bodyMesh.material as THREE.Material).type,
+					});
+				}
+
 				ready = true;
 				setStatus("");
 			},
@@ -311,7 +349,8 @@ export default function Sidekick3D() {
 		const interact = createInteraction({
 			dom: renderer.domElement,
 			camera,
-			targets: () => [bodyMesh, faceMesh].filter(Boolean) as THREE.Object3D[],
+			targets: () =>
+				[bodyMesh, faceMesh, ...(cos?.targets() ?? [])].filter(Boolean) as THREE.Object3D[],
 			bone: (n) => bones[n],
 			cameraDrag: false,
 			onPoke: (part) => {
@@ -537,10 +576,20 @@ export default function Sidekick3D() {
 		gui.onFinishChange(persist);
 
 		const cam = gui.addFolder("Camera");
-		cam.add(settings, "fov", 15, 70).onChange((v: number) => {
+		cam.add(settings, "fov", 15, 70).name("fov").listen().onChange((v: number) => {
 			camera.fov = v;
 			camera.updateProjectionMatrix();
 		});
+		// same lens in photographic terms (full-frame mm); writes fov
+		const lensCtl = {
+			get focalLength() { return focalLengthFromFov(settings.fov); },
+			set focalLength(mm: number) {
+				settings.fov = fovFromFocalLength(mm);
+				camera.fov = settings.fov;
+				camera.updateProjectionMatrix();
+			},
+		};
+		cam.add(lensCtl, "focalLength", 18, 200, 1).name("focal length (mm)");
 		// direct position/target controls, two-way synced with the orbit controls
 		const camCtl = {
 			get x() { return camera.position.x; },
@@ -586,6 +635,33 @@ export default function Sidekick3D() {
 		faceFolder.add(settings, "faceZoom", 0.9, 2, 0.01).name("face size").onChange((v: number) => faceCtl?.setScale(v));
 		faceFolder.add(settings, "faceHeight", -0.25, 0.25, 0.005).name("face height").onChange((v: number) => faceCtl?.setOffsetY(v));
 
+		// Equipment folder is populated from the manifest once cosmetics load
+		// (buildEquipGui runs from the GLB load callback after cos.ready), so any
+		// slot the art pipeline adds shows up here with no code change.
+		// Equipment gets its OWN panel, docked on the LEFT (the main panel is
+		// right). Populated from the manifest once cosmetics load (buildEquipGui
+		// runs from the GLB load callback after cos.ready), so any slot the art
+		// pipeline adds shows up here with no code change.
+		const equipGui = new GUI({ title: "Equipment" });
+		equipGui.domElement.style.left = "0px";
+		equipGui.domElement.style.right = "auto";
+		equipGui.onFinishChange(persist);
+		equipGui
+			.addColor(settings, "shirtColor")
+			.name("shirt color (plain)")
+			.onChange(() => cos?.refresh(settings, matcapTex));
+		buildEquipGui = (c) => {
+			const slots = c.slots();
+			for (const [slot, def] of Object.entries(slots)) {
+				const cfg = { on: slot === "shirt" && settings.shirtEnabled, variant: def.variants[0]?.id ?? "" };
+				const sf = equipGui.addFolder(slot);
+				sf.add(cfg, "on").name("equip").onChange((v: boolean) => (v ? c.equip(slot, cfg.variant) : c.setVisible(slot, false)));
+				if (def.variants.length > 1 || def.variants[0]?.tex) {
+					sf.add(cfg, "variant", def.variants.map((x) => x.id)).name("variant").onChange((v: string) => c.equip(slot, v));
+				}
+			}
+		};
+
 		const pose = gui.addFolder("Pose");
 		pose.add(settings, "poseArmDown", 0, 1.6, 0.01).name("arm drop");
 		pose.add(settings, "poseArmTwist", -3.2, 3.2, 0.01).name("palm roll");
@@ -594,7 +670,11 @@ export default function Sidekick3D() {
 		pose.add(settings, "poseForeBend", -1, 1, 0.01).name("elbow bend");
 
 		const sh = gui.addFolder("Shading");
-		sh.add(settings, "shading", ["physical", "toon", "ramp", "gooch", "halftone", "sss", "matcap"]);
+		sh.add(settings, "shading", ["physical", "toon", "ramp", "gooch", "halftone", "sss", "matcap", "cel"]);
+		sh.addColor(settings, "celBodyColor").name("cel body color");
+		sh.addColor(settings, "celShadowColor").name("cel shadow");
+		sh.add(settings, "celSoftness", 0, 1).name("cel softness");
+		sh.add(settings, "celShadowAmt", 0, 1).name("cel shadow amt");
 		sh.add(settings, "toonBands", 2, 5, 1);
 		sh.add(settings, "toonSoftness", 0, 1);
 		sh.add(settings, "toonSpecStrength", 0, 1);
@@ -651,6 +731,20 @@ export default function Sidekick3D() {
 		blo.add(settings, "bloomThreshold", 0, 1).onChange((v: number) => (bloom.threshold = v));
 		blo.close();
 
+		const dof = gui.addFolder("Depth of field");
+		dof.add(settings, "dofEnabled").name("enabled").onChange((v: boolean) => (bokeh.enabled = v));
+		dof.add(settings, "dofFocus", 1, 12, 0.05).name("focus dist").onChange((v: number) => ((bokeh.uniforms as Record<string, THREE.IUniform>).focus.value = v));
+		dof.add(settings, "dofAperture", 0, 10, 0.05).name("aperture ×1e-4").onChange((v: number) => ((bokeh.uniforms as Record<string, THREE.IUniform>).aperture.value = v * 1e-4));
+		dof.add(settings, "dofMaxBlur", 0, 0.03, 0.001).name("max blur").onChange((v: number) => ((bokeh.uniforms as Record<string, THREE.IUniform>).maxblur.value = v));
+		dof.close();
+
+		const ts = gui.addFolder("Tilt-shift");
+		ts.add(settings, "tiltEnabled").name("enabled").onChange((v: boolean) => (tilt.enabled = v));
+		ts.add(settings, "tiltFocusY", 0, 1, 0.01).name("band center").onChange((v: number) => (tilt.uniforms.uFocusY.value = v));
+		ts.add(settings, "tiltBand", 0, 0.5, 0.01).name("band width").onChange((v: number) => (tilt.uniforms.uBand.value = v));
+		ts.add(settings, "tiltBlur", 0, 8, 0.1).name("blur").onChange((v: number) => (tilt.uniforms.uBlur.value = v));
+		ts.close();
+
 		const scn = gui.addFolder("Scene");
 		scn.add(settings, "shadowOpacity", 0, 0.6).onChange((v: number) => (key.shadow.intensity = v * 3));
 		scn.add(settings, "autoRotate").onChange((v: boolean) => (controls.autoRotate = v));
@@ -667,14 +761,17 @@ export default function Sidekick3D() {
 			camera.updateProjectionMatrix();
 			renderer.setSize(mount.clientWidth, mount.clientHeight);
 			composer.setSize(mount.clientWidth, mount.clientHeight);
+			tilt.uniforms.uResolution.value.set(mount.clientWidth, mount.clientHeight);
 		};
 		window.addEventListener("resize", onResize);
 
 		return () => {
 			cancelAnimationFrame(raf);
 			window.removeEventListener("resize", onResize);
+			cos?.dispose();
 			interact.dispose();
 			gui.destroy();
+			equipGui.destroy();
 			controls.dispose();
 			pmrem.dispose();
 			composer.dispose();

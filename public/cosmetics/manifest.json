@@ -1,0 +1,78 @@
+{
+  "shirt": {
+    "model": "/cosmetics/shirt/base-v1.glb",
+    "attach": "skinned",
+    "variants": [
+      {
+        "id": "sky",
+        "name": "Sky Blue",
+        "tex": "/cosmetics/shirt/sky.webp"
+      },
+      {
+        "id": "coral",
+        "name": "Coral",
+        "tex": "/cosmetics/shirt/coral.webp",
+        "roughness": 0.55
+      },
+      {
+        "id": "dots",
+        "name": "Polka",
+        "tex": "/cosmetics/shirt/dots.webp"
+      }
+    ]
+  },
+  "pants": {
+    "model": "/cosmetics/pants/base-v1.glb",
+    "attach": "skinned",
+    "variants": [
+      {
+        "id": "denim",
+        "name": "Denim",
+        "tex": "/cosmetics/pants/denim.webp"
+      },
+      {
+        "id": "khaki",
+        "name": "Khaki",
+        "tex": "/cosmetics/pants/khaki.webp",
+        "roughness": 0.85
+      }
+    ]
+  },
+  "hat": {
+    "model": "/cosmetics/hat/base-v1.glb",
+    "attach": "bone:Head",
+    "variants": [
+      {
+        "id": "forest",
+        "name": "Forest",
+        "tex": "/cosmetics/hat/forest.webp"
+      },
+      {
+        "id": "berry",
+        "name": "Berry",
+        "tex": "/cosmetics/hat/berry.webp"
+      }
+    ]
+  },
+  "shoes": {
+    "model": "/cosmetics/shoes/base-v1.glb",
+    "attach": "bone:Calf",
+    "meshes": {
+      "Shoe_L": "L_Calf",
+      "Shoe_R": "R_Calf"
+    },
+    "variants": [
+      {
+        "id": "red",
+        "name": "Red",
+        "tex": "/cosmetics/shoes/red.webp"
+      },
+      {
+        "id": "white",
+        "name": "White",
+        "tex": "/cosmetics/shoes/white.webp",
+        "roughness": 0.5
+      }
+    ]
+  }
+}

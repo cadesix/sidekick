@@ -3,6 +3,7 @@ import Admin from "./admin";
 import Home from "./home";
 import Home2 from "./home2";
 import Home3 from "./home3";
+import Home4 from "./home4";
 import Sidekick3D from "./sidekick-3d";
 import SidekickStudio from "./sidekick-studio";
 
@@ -20,6 +21,9 @@ export default function App() {
 	}
 	if (path === "/sidekick") {
 		return <SidekickStudio />;
+	}
+	if (path === "/home4") {
+		return <Home4 />;
 	}
 	if (path === "/home3") {
 		return <Home3 />;

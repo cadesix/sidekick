@@ -12,7 +12,7 @@ import * as THREE from "three";
 // generated placeholder — replace with real artwork, same grid, no code
 // changes needed.
 
-export const FACE_SHEET_URL = "/face-sheet.png?v=6";
+export const FACE_SHEET_URL = "/face-sheet-v2.png?v=7";
 const GRID = 4;
 
 // name → [col, row]; keep in sync with the sheet
@@ -91,18 +91,18 @@ export function createFaceController(tex: THREE.Texture, scale = 1, offsetY = 0)
 		current = e;
 		const [c, r] = FACE_CELLS[e];
 		const cell = 1 / GRID;
-		const win = tex.repeat.y;
-		const inset = (cell - win) / 2; // centers the zoomed window
-		// clamp the window so it never reaches a NEIGHBOR cell's features —
-		// past the ~10% feathered margin you'd sample the next expression's
-		// artwork (reads as a stripe cutting across the face)
-		const bleed = 0.12 * cell + Math.max(0, win - cell) / 2;
-		const top = THREE.MathUtils.clamp(
-			r * cell + inset + offsetY * cell,
-			r * cell - bleed,
-			r * cell + cell - win + bleed,
-		);
-		tex.offset.set(c * cell + inset, top);
+		const win = tex.repeat.y; // 1/(GRID*zoom); < cell when zoomed in
+		const inset = (cell - win) / 2; // center the zoomed window in the cell
+		// v9 disc plane (facesprite-contract.md): UV [0,1] inscribes the disc.
+		// The contract's (GRID-1-row) row term samples the sheet vertically
+		// flipped for our sheet (row 0 = top, flipY=false) — verified in-engine
+		// (it showed row 1's art for a row-2 request) — so per the contract's own
+		// "if vertically flipped, swap the row term" note we use row*cell, which
+		// selects the right cell and renders upright. The disc clips the cell
+		// corners and the sheet has transparent gutters, so no bleed clamp.
+		const u = c * cell + inset;
+		const v = r * cell + inset + offsetY * cell;
+		tex.offset.set(u, v);
 	};
 	const reshow = () => {
 		const e = current;

@@ -17,7 +17,7 @@ import type { SidekickSettings } from "./sidekick-settings";
 export const FACE_COLOR = "#dd9d43"; // flat yellow sampled from the body albedo
 
 // bump ?v= on every reimport of the GLB so browsers can't serve a stale copy
-export const MODEL_URL = "/sidekick-rigged.glb?v=12";
+export const MODEL_URL = "/sidekick-rigged.glb?v=13";
 
 export type TexSet = {
 	map: THREE.Texture | null;
@@ -223,6 +223,54 @@ export function makeStylizedMaterial(
 	return mat;
 }
 
+// ---- cel: the clean flat-illustration look ----
+// A single soft terminator against a FIXED key direction (not the scene lights),
+// so the result is exactly two tones — full albedo in light, albedo × a warm
+// multiply tint in shadow — with a pixel-clean, resolution-independent boundary.
+// Ignoring the scene's fill/rim/env is the whole trick: multi-light toon shading
+// stacks several terminators and colored bounces, which is what makes stock
+// cel-shaders look muddy. Pair with the inverted-hull outline for the ink edge.
+export function makeCelMaterial(
+	s: SidekickSettings,
+	tex: TexSet,
+	colorOverride?: string,
+): THREE.MeshToonMaterial {
+	const mat = new THREE.MeshToonMaterial({
+		side: THREE.DoubleSide, // open head-shell hem (see makePhysicalMaterial)
+		color: new THREE.Color(colorOverride ?? s.tint),
+		map: colorOverride ? null : tex.map,
+		vertexColors: colorOverride ? false : tex.vertexColors,
+	});
+	const u = {
+		uKeyDir: { value: new THREE.Vector3(2, 3, 2).normalize() }, // matches the key light
+		uCelSoft: { value: 0.015 + 0.6 * THREE.MathUtils.clamp(s.celSoftness, 0, 1) },
+		uCelShadow: { value: new THREE.Color(s.celShadowColor) },
+		uCelAmt: { value: s.celShadowAmt },
+	};
+	mat.onBeforeCompile = (shader) => {
+		Object.assign(shader.uniforms, u);
+		shader.fragmentShader =
+			`uniform vec3 uKeyDir;
+			uniform float uCelSoft;
+			uniform vec3 uCelShadow;
+			uniform float uCelAmt;
+			` +
+			shader.fragmentShader.replace(
+				"#include <opaque_fragment>",
+				`{
+					vec3 Nw = inverseTransformDirection( normalize( normal ), viewMatrix );
+					float ndl = dot( Nw, uKeyDir );
+					float t = smoothstep( -uCelSoft, uCelSoft, ndl );
+					vec3 tint = mix( vec3( 1.0 ), uCelShadow, uCelAmt );
+					outgoingLight = diffuseColor.rgb * mix( tint, vec3( 1.0 ), t );
+				}
+				#include <opaque_fragment>`,
+			);
+	};
+	mat.customProgramCacheKey = () => "sidekick-cel";
+	return mat;
+}
+
 // ---- sss: physical vinyl + warm translucent edge glow (fake subsurface) ----
 
 export function makeSssMaterial(s: SidekickSettings, tex: TexSet, colorOverride?: string): THREE.MeshPhysicalMaterial {
@@ -311,6 +359,14 @@ export function makeCharacterMaterials(
 					? withAlpha(makeStylizedMaterial(s, faceSet, s.shading))
 					: makeStylizedMaterial(s, tex, s.shading, FACE_COLOR),
 			};
+		case "cel":
+			// body drops its baked-shading albedo for a flat brand color (that
+			// baked shading is what keeps it from reading clean); the face keeps
+			// its sprite map so the features still show
+			return {
+				body: makeCelMaterial(s, tex, s.celBodyColor),
+				face: faceSet ? withAlpha(makeCelMaterial(s, faceSet)) : makeCelMaterial(s, tex, FACE_COLOR),
+			};
 		case "sss":
 			return {
 				body: makeSssMaterial(s, tex),
@@ -332,6 +388,59 @@ export function makeCharacterMaterials(
 		body: makePhysicalMaterial(s, tex),
 		face: faceSet ? withAlpha(makePhysicalMaterial(s, faceSet)) : makePhysicalMaterial(s, tex, FACE_COLOR),
 	};
+}
+
+// A cosmetic variant's look: either a flat color OR an albedo map, plus optional
+// PBR overrides (satin/neon/metallic). Map wins over color when present.
+export type ItemLook = {
+	color?: string;
+	map?: THREE.Texture | null;
+	roughness?: number;
+	metalness?: number;
+	emissive?: string;
+};
+
+// builds a single item material (shirt/hat/…) in the ACTIVE shading mode, so
+// cosmetics read in the same family as the body. A textured variant supplies a
+// map; a plain one supplies a color. Optional params tweak the surface.
+export function makeItemMaterial(
+	s: SidekickSettings,
+	look: ItemLook,
+	matcapTex: THREE.Texture | null,
+): THREE.Material {
+	// the factories treat colorOverride and map as mutually exclusive (a color
+	// nulls the map), so pick one: a mapped variant renders the map at full
+	// color (tint white); a plain one renders the solid color with no map.
+	const tex: TexSet = { map: look.map ?? null, normalMap: null, vertexColors: false };
+	const color = look.map ? undefined : look.color ?? "#ffffff";
+	let mat: THREE.Material;
+	switch (s.shading) {
+		case "toon":
+		case "ramp":
+		case "halftone":
+		case "gooch":
+			mat = makeStylizedMaterial(s, tex, s.shading, color);
+			break;
+		case "cel":
+			mat = makeCelMaterial(s, tex, color);
+			break;
+		case "sss":
+			mat = makeSssMaterial(s, tex, color);
+			break;
+		case "matcap":
+			mat = matcapTex
+				? makeMatcapMaterial(s, tex, matcapTex, color)
+				: makePhysicalMaterial(s, tex, color);
+			break;
+		default:
+			mat = makePhysicalMaterial(s, tex, color);
+	}
+	// per-variant surface overrides (guarded — matcap has none of these)
+	const m = mat as THREE.MeshPhysicalMaterial;
+	if (look.roughness !== undefined && "roughness" in m) m.roughness = look.roughness;
+	if (look.metalness !== undefined && "metalness" in m) m.metalness = look.metalness;
+	if (look.emissive !== undefined && "emissive" in m) m.emissive = new THREE.Color(look.emissive);
+	return mat;
 }
 
 // ---- matcap ----

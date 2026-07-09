@@ -6,7 +6,7 @@
 // defaults to white — the key bump discards stale amber tints
 export const SETTINGS_KEY = "sidekick3d-settings-v2";
 
-export type ShadingMode = "physical" | "toon" | "ramp" | "gooch" | "halftone" | "sss" | "matcap";
+export type ShadingMode = "physical" | "toon" | "ramp" | "gooch" | "halftone" | "sss" | "matcap" | "cel";
 
 export type SidekickSettings = {
 	// shading mode + stylized params (see sidekick-shading.ts)
@@ -20,6 +20,13 @@ export type SidekickSettings = {
 	toonShadowAmt: number;
 	rampMid: string;
 	rampLight: string;
+	// clean cel mode: one soft terminator, a tinted (multiply) shadow, no spec.
+	// celBodyColor replaces the body's baked-shading albedo with a flat color —
+	// the baked highlights are exactly what keep it from reading as clean cel
+	celBodyColor: string;
+	celShadowColor: string;
+	celSoftness: number;
+	celShadowAmt: number;
 	goochCool: string;
 	goochWarm: string;
 	halftoneScale: number;
@@ -34,6 +41,9 @@ export type SidekickSettings = {
 	// NOTE: renamed from faceOffsetY on purpose — stale saved values from the
 	// pre-plane-move era kept overriding the centered default
 	faceHeight: number;
+	// equipment / cosmetics (phase 1: a single skinned shirt slot)
+	shirtEnabled: boolean;
+	shirtColor: string;
 	// idle pose (armature fine-tuning; radians)
 	poseArmDown: number;
 	poseArmTwist: number;
@@ -76,6 +86,15 @@ export type SidekickSettings = {
 	// scene
 	shadowOpacity: number;
 	autoRotate: boolean;
+	// lens / depth-of-field / tilt-shift (editor post-processing)
+	dofEnabled: boolean;
+	dofFocus: number; // focus distance in world units
+	dofAperture: number; // bokeh strength (×1e-4 in the GUI)
+	dofMaxBlur: number;
+	tiltEnabled: boolean;
+	tiltFocusY: number; // screen-space band center (0 bottom → 1 top)
+	tiltBand: number; // half-height of the sharp band
+	tiltBlur: number; // max blur radius (px)
 	// camera — null means "use the route's own default framing"
 	fov: number;
 	camPos: [number, number, number] | null;
@@ -86,7 +105,7 @@ export type SidekickSettings = {
 // localStorage state on :3103) so prod ships the approved look without any
 // saved state — includes the editor camera, which /home3 also adopts
 export const DEFAULT_SETTINGS: SidekickSettings = {
-	shading: "sss",
+	shading: "cel",
 	toonBands: 3,
 	toonSoftness: 0.173,
 	toonSpecStrength: 0,
@@ -96,16 +115,22 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
 	toonShadowAmt: 0.504,
 	rampMid: "#ffb061",
 	rampLight: "#ffedc4",
+	celBodyColor: "#f2b13c",
+	celShadowColor: "#c98f52",
+	celSoftness: 0.12,
+	celShadowAmt: 0.85,
 	goochCool: "#7a86b8",
 	goochWarm: "#fff1d6",
 	halftoneScale: 10,
 	sssColor: "#ce7036",
 	sssStrength: 0.552,
-	outline: false,
+	outline: true,
 	outlineWidth: 0.0139,
 	outlineColor: "#b77d1a",
-	faceZoom: 1.14,
+	faceZoom: 1.0,
 	faceHeight: 0.015,
+	shirtEnabled: true,
+	shirtColor: "#5c8ad6",
 	poseArmDown: 1.29,
 	poseArmTwist: 1.08,
 	poseRollSplit: 0.08,
@@ -136,12 +161,20 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
 	rimIntensity: 1.4,
 	rimColor: "#fff8ec",
 	hemiIntensity: 0.3,
-	bloomEnabled: true,
+	bloomEnabled: false,
 	bloomStrength: 0.15,
 	bloomRadius: 0.5,
 	bloomThreshold: 0.92,
 	shadowOpacity: 0,
 	autoRotate: false,
+	dofEnabled: false,
+	dofFocus: 5.4,
+	dofAperture: 2,
+	dofMaxBlur: 0.01,
+	tiltEnabled: false,
+	tiltFocusY: 0.42,
+	tiltBand: 0.16,
+	tiltBlur: 3,
 	fov: 19.455,
 	camPos: [-0.8622328104178634, 0.8720766906255945, 5.542186848594252],
 	camTarget: [0, 0.7, 0],
