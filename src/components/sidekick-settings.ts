@@ -83,11 +83,12 @@ export type SidekickSettings = {
 };
 
 // baked from the look-dev session of 2026-07-08 (copied out of the tuned
-// localStorage state) so prod ships the approved look without any saved state
+// localStorage state on :3103) so prod ships the approved look without any
+// saved state — includes the editor camera, which /home3 also adopts
 export const DEFAULT_SETTINGS: SidekickSettings = {
 	shading: "sss",
 	toonBands: 3,
-	toonSoftness: 0.478,
+	toonSoftness: 0.173,
 	toonSpecStrength: 0,
 	toonSpecSize: 0.275,
 	toonRimStrength: 0.348,
@@ -100,16 +101,16 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
 	halftoneScale: 10,
 	sssColor: "#ce7036",
 	sssStrength: 0.552,
-	outline: true,
-	outlineWidth: 0.00722,
+	outline: false,
+	outlineWidth: 0.0139,
 	outlineColor: "#b77d1a",
-	faceZoom: 1.0,
-	faceHeight: 0,
-	poseArmDown: 0.18,
-	poseArmTwist: 1,
-	poseRollSplit: 0,
-	poseArmForward: 0.15,
-	poseForeBend: -1,
+	faceZoom: 1.14,
+	faceHeight: 0.015,
+	poseArmDown: 1.29,
+	poseArmTwist: 1.08,
+	poseRollSplit: 0.08,
+	poseArmForward: 0.25,
+	poseForeBend: -0.13,
 	skyTop: "#66d9ff",
 	skyHorizon: "#c7f1ff",
 	grassHill: "#498f24",
@@ -127,9 +128,9 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
 	emissiveColor: "#767323",
 	emissiveIntensity: 0.08,
 	exposure: 0.7896,
-	envIntensity: 1.038,
+	envIntensity: 0.786,
 	keyIntensity: 1.1,
-	keyColor: "#dac5a4",
+	keyColor: "#9ef4ff",
 	fillIntensity: 0.5,
 	fillColor: "#baebf2",
 	rimIntensity: 1.4,
@@ -142,7 +143,7 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
 	shadowOpacity: 0,
 	autoRotate: false,
 	fov: 19.455,
-	camPos: [-0.1624955088332611, 1.5336097879571755, 5.116429421879912],
+	camPos: [-0.8622328104178634, 0.8720766906255945, 5.542186848594252],
 	camTarget: [0, 0.7, 0],
 };
 
