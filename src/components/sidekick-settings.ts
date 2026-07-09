@@ -1,3 +1,5 @@
+import { type ScenePreset, type TimeOfDay, SCENE_DEFAULTS } from "./sidekick-scene";
+
 // Shared look-dev settings for the 3D Sidekick. The /sidekick-3d route is the
 // editor (lil-gui writes here on every change); /home3 reads the same state so
 // lighting, material, and camera stay in sync across routes.
@@ -50,6 +52,10 @@ export type SidekickSettings = {
 	poseRollSplit: number;
 	poseArmForward: number;
 	poseForeBend: number;
+	// time-of-day scene: which preset is active + the per-time editable presets
+	// (each drives sky + fog + grass + character tint + lights + exposure)
+	timeOfDay: TimeOfDay;
+	scenes: Record<TimeOfDay, ScenePreset>;
 	// environment colors
 	skyTop: string;
 	skyHorizon: string;
@@ -136,13 +142,15 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
 	poseRollSplit: 0.08,
 	poseArmForward: 0.25,
 	poseForeBend: -0.13,
-	skyTop: "#66d9ff",
-	skyHorizon: "#c7f1ff",
-	grassHill: "#498f24",
-	grassBase: "#649825",
-	grassTip: "#569400",
-	grassHeight: 2.5,
-	grassClumping: 0.39,
+	timeOfDay: "day",
+	scenes: SCENE_DEFAULTS,
+	skyTop: "#3f86cc",
+	skyHorizon: "#dcecfb",
+	grassHill: "#5aa838",
+	grassBase: "#519d2d",
+	grassTip: "#93cf4f",
+	grassHeight: 0.62,
+	grassClumping: 0.55,
 	tint: "#ffffff",
 	roughness: 1,
 	clearcoat: 0,
@@ -154,13 +162,13 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
 	emissiveIntensity: 0.08,
 	exposure: 0.7896,
 	envIntensity: 0.786,
-	keyIntensity: 1.1,
-	keyColor: "#9ef4ff",
+	keyIntensity: 1.5,
+	keyColor: "#fff4dc",
 	fillIntensity: 0.5,
-	fillColor: "#baebf2",
-	rimIntensity: 1.4,
-	rimColor: "#fff8ec",
-	hemiIntensity: 0.3,
+	fillColor: "#a9c9ff",
+	rimIntensity: 1.0,
+	rimColor: "#ffffff",
+	hemiIntensity: 0.55,
 	bloomEnabled: false,
 	bloomStrength: 0.15,
 	bloomRadius: 0.5,
@@ -184,7 +192,17 @@ export function loadSettings(): SidekickSettings {
 	try {
 		const raw = localStorage.getItem(SETTINGS_KEY);
 		if (!raw) return { ...DEFAULT_SETTINGS };
-		return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+		const saved = JSON.parse(raw);
+		const merged = { ...DEFAULT_SETTINGS, ...saved };
+		// deep-merge the scene presets so newly-added preset fields survive an
+		// older saved `scenes` object (shallow spread would drop them)
+		const savedScenes = saved.scenes as Partial<Record<TimeOfDay, Partial<ScenePreset>>> | undefined;
+		merged.scenes = {
+			day: { ...SCENE_DEFAULTS.day, ...savedScenes?.day },
+			evening: { ...SCENE_DEFAULTS.evening, ...savedScenes?.evening },
+			night: { ...SCENE_DEFAULTS.night, ...savedScenes?.night },
+		};
+		return merged;
 	} catch {
 		return { ...DEFAULT_SETTINGS };
 	}

@@ -29,6 +29,8 @@ export type SlotDef = {
 	model: string;
 	attach: string; // "skinned" | "bone:<BoneName>"
 	defaultColor?: string;
+	scale?: number; // rigid-attach only: multiply the authored local scale
+	offset?: [number, number, number]; // rigid-attach only: nudge in bone-local space
 	variants: Variant[];
 };
 export type Manifest = Record<string, SlotDef>;
@@ -190,7 +192,8 @@ export function createCosmetics(
 			if (!target) continue;
 			const pos = mesh.position.clone();
 			const quat = mesh.quaternion.clone();
-			const scl = mesh.scale.clone();
+			const scl = mesh.scale.clone().multiplyScalar(def.scale ?? 1);
+			if (def.offset) pos.add(new THREE.Vector3().fromArray(def.offset));
 			target.add(mesh);
 			mesh.position.copy(pos);
 			mesh.quaternion.copy(quat);

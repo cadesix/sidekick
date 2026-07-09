@@ -43,6 +43,11 @@
     "attach": "bone:Head",
     "variants": [
       {
+        "id": "khaki",
+        "name": "Khaki",
+        "tex": "/cosmetics/hat/khaki.webp"
+      },
+      {
         "id": "forest",
         "name": "Forest",
         "tex": "/cosmetics/hat/forest.webp"
@@ -72,6 +77,22 @@
         "name": "White",
         "tex": "/cosmetics/shoes/white.webp",
         "roughness": 0.5
+      }
+    ]
+  },
+  "phone": {
+    "model": "/cosmetics/phone/base-v1.glb",
+    "attach": "bone:R_Hand",
+    "scale": 1.7,
+    "offset": [-0.025, -0.028, 0],
+    "meshes": {
+      "Phone": "R_Hand",
+      "PhoneScreen": "R_Hand"
+    },
+    "variants": [
+      {
+        "id": "default",
+        "name": "Phone"
       }
     ]
   }

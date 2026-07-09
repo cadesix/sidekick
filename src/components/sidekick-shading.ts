@@ -19,6 +19,10 @@ export const FACE_COLOR = "#dd9d43"; // flat yellow sampled from the body albedo
 // bump ?v= on every reimport of the GLB so browsers can't serve a stale copy
 export const MODEL_URL = "/sidekick-rigged.glb?v=13";
 
+// midday sun direction (end-goal vista): high and to the upper-right-front for
+// bright, soft-shadowed light. Drives the scene light rig.
+export const SUN_DIR = new THREE.Vector3(2.6, 4.4, 2.2).normalize();
+
 export type TexSet = {
 	map: THREE.Texture | null;
 	normalMap: THREE.Texture | null;
@@ -235,16 +239,20 @@ export function makeCelMaterial(
 	tex: TexSet,
 	colorOverride?: string,
 ): THREE.MeshToonMaterial {
+	// the cel body + shadow shift with the active time-of-day scene (warmer at
+	// evening, cool + dim at night) so the character reads as part of the scene
+	const scene = s.scenes[s.timeOfDay];
+	const envTint = new THREE.Color(scene.charTint);
 	const mat = new THREE.MeshToonMaterial({
 		side: THREE.DoubleSide, // open head-shell hem (see makePhysicalMaterial)
-		color: new THREE.Color(colorOverride ?? s.tint),
+		color: new THREE.Color(colorOverride ?? s.tint).multiply(envTint),
 		map: colorOverride ? null : tex.map,
 		vertexColors: colorOverride ? false : tex.vertexColors,
 	});
 	const u = {
 		uKeyDir: { value: new THREE.Vector3(2, 3, 2).normalize() }, // matches the key light
 		uCelSoft: { value: 0.015 + 0.6 * THREE.MathUtils.clamp(s.celSoftness, 0, 1) },
-		uCelShadow: { value: new THREE.Color(s.celShadowColor) },
+		uCelShadow: { value: new THREE.Color(scene.shadeColor).multiply(envTint) },
 		uCelAmt: { value: s.celShadowAmt },
 	};
 	mat.onBeforeCompile = (shader) => {

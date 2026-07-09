@@ -81,21 +81,20 @@ export function Chat({
 
 	return (
 		<div className={`h-full flex flex-col ${transparentTop ? "" : "bg-[#FBEFC9]"}`}>
-			{/* Peeking Sidekick header */}
-			<div className="shrink-0 flex justify-center px-4 pt-3">
-				<img
-					src="/chat-header.webp"
-					alt="Sidekick"
-					className={`w-44 object-contain relative z-10 mb-[-22px] select-none ${
-						peekIn
-							? peekPop
-								? "animate-peek-pop"
-								: "opacity-100 transition-opacity duration-200 delay-75"
-							: "opacity-0"
-					}`}
-					draggable={false}
-				/>
-			</div>
+			{/* Peeking Sidekick header (only when requested; /home4 uses the real
+			    3D character peeking over instead) */}
+			{peekIn ? (
+				<div className="shrink-0 flex justify-center px-4 pt-3">
+					<img
+						src="/chat-header.webp"
+						alt="Sidekick"
+						className={`w-44 object-contain relative z-10 mb-[-22px] select-none ${
+							peekPop ? "animate-peek-pop" : "opacity-100 transition-opacity duration-200 delay-75"
+						}`}
+						draggable={false}
+					/>
+				</div>
+			) : null}
 
 			{/* White chat container with rounded top corners */}
 			<div className="flex-1 min-h-0 bg-white rounded-t-[32px] flex flex-col overflow-hidden">

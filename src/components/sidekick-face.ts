@@ -12,13 +12,15 @@ import * as THREE from "three";
 // generated placeholder — replace with real artwork, same grid, no code
 // changes needed.
 
-export const FACE_SHEET_URL = "/face-sheet-v2.png?v=7";
+export const FACE_SHEET_URL = "/face-sheet-v3.png?v=8";
 const GRID = 4;
 
 // name → [col, row]; keep in sync with the sheet
 export const FACE_CELLS = {
 	neutral: [0, 0],
-	blink: [1, 0],
+	// this sheet's only closed-eye art is [2,0] (the ^_^ frame); [1,0] is an
+	// open-eyed raised-brow grin, so blinking there read as "eyes stay open"
+	blink: [2, 0],
 	happy: [2, 0],
 	excited: [3, 0],
 	cheer: [0, 1],

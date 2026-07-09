@@ -18,6 +18,7 @@ import {
 } from "./components/sidekick-settings";
 import {
 	MODEL_URL,
+	SUN_DIR,
 	makeCharacterMaterials,
 	makeEnvScene,
 	makeOutlineMaterial,
@@ -25,7 +26,8 @@ import {
 	loadMatcapTexture,
 	type TexSet,
 } from "./components/sidekick-shading";
-import { makeGrassEnvironment, makeSkyTexture } from "./components/sidekick-grass";
+import { makeGrassEnvironment } from "./components/sidekick-grass";
+import { makeSky, TIMES } from "./components/sidekick-scene";
 import { createInteraction, POKE_FACE } from "./components/sidekick-interact";
 import { createCosmetics, type CosmeticsHandle } from "./components/sidekick-equipment";
 import {
@@ -93,27 +95,25 @@ export default function Sidekick3D() {
 			copySettings: () => {},
 			resetSettings: () => {},
 			resetCamera: () => {},
+			saveConfig: () => {},
+			downloadConfig: () => {},
+			loadConfig: () => {},
 			showSkeleton: false,
 		});
 
 		const scene = new THREE.Scene();
-		// real 3D lawn: sky gradient + domed hill + instanced wind-swept grass
-		scene.background = makeSkyTexture(settings.skyTop, settings.skyHorizon);
-		scene.fog = new THREE.Fog(settings.skyHorizon, 8, 30);
+		// real 3D lawn: the active time-of-day scene preset drives sky + grass
+		const sc0 = settings.scenes[settings.timeOfDay];
+		scene.background = makeSky(sc0);
+		scene.fog = new THREE.Fog(sc0.fog, 8, 30);
 		const grass = makeGrassEnvironment();
-		grass.setColors(settings.grassHill, settings.grassBase, settings.grassTip);
+		grass.setColors(sc0.grassHill, sc0.grassBase, sc0.grassTip, sc0.rock);
 		grass.relayout(settings.grassHeight, settings.grassClumping);
 		scene.add(grass.group);
-		const applyEnvColors = () => {
-			(scene.background as THREE.Texture).dispose();
-			scene.background = makeSkyTexture(settings.skyTop, settings.skyHorizon);
-			(scene.fog as THREE.Fog).color.set(settings.skyHorizon);
-			grass.setColors(settings.grassHill, settings.grassBase, settings.grassTip);
-		};
 
 		const DEFAULT_CAM_POS: [number, number, number] = [0, 0.75, 2.6];
 		const DEFAULT_CAM_TARGET: [number, number, number] = [0, 0.45, 0];
-		const camera = new THREE.PerspectiveCamera(settings.fov, mount.clientWidth / mount.clientHeight, 0.1, 50);
+		const camera = new THREE.PerspectiveCamera(settings.fov, mount.clientWidth / mount.clientHeight, 0.1, 260);
 		camera.position.fromArray(settings.camPos ?? DEFAULT_CAM_POS);
 
 		const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -122,7 +122,7 @@ export default function Sidekick3D() {
 		renderer.shadowMap.enabled = true;
 		renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 		renderer.toneMapping = THREE.ACESFilmicToneMapping;
-		renderer.toneMappingExposure = settings.exposure;
+		renderer.toneMappingExposure = sc0.exposure;
 		mount.appendChild(renderer.domElement);
 
 		// warm sunset IBL from the procedural env scene
@@ -164,20 +164,20 @@ export default function Sidekick3D() {
 		controls.minDistance = 1.2;
 		controls.maxDistance = 12;
 
-		// warm key / pink fill / bright rim, matching the reference look
-		const hemi = new THREE.HemisphereLight(0xffe9d2, 0xe8b49a, settings.hemiIntensity);
+		// lighting rig from the active time-of-day scene preset
+		const hemi = new THREE.HemisphereLight(new THREE.Color(sc0.hemiSky), new THREE.Color(sc0.hemiGround), sc0.hemiIntensity);
 		scene.add(hemi);
-		const key = new THREE.DirectionalLight(new THREE.Color(settings.keyColor), settings.keyIntensity);
-		key.position.set(2, 3, 2);
+		const key = new THREE.DirectionalLight(new THREE.Color(sc0.keyColor), sc0.keyIntensity);
+		key.position.copy(SUN_DIR).multiplyScalar(12);
 		key.castShadow = true;
 		key.shadow.mapSize.set(1024, 1024);
 		key.shadow.radius = 6;
 		scene.add(key);
-		const fill = new THREE.DirectionalLight(new THREE.Color(settings.fillColor), settings.fillIntensity);
-		fill.position.set(-2.5, 1.2, 1.5);
+		const fill = new THREE.DirectionalLight(new THREE.Color(sc0.fillColor), sc0.fillIntensity);
+		fill.position.set(-4, 1.5, 3);
 		scene.add(fill);
-		const rim = new THREE.DirectionalLight(new THREE.Color(settings.rimColor), settings.rimIntensity);
-		rim.position.set(-1, 2.5, -2.5);
+		const rim = new THREE.DirectionalLight(new THREE.Color(sc0.rimColor), sc0.rimIntensity);
+		rim.position.copy(SUN_DIR).multiplyScalar(8).setY(2.2);
 		scene.add(rim);
 
 		// the hill receives the real cast shadow; shadowOpacity drives its strength
@@ -547,14 +547,14 @@ export default function Sidekick3D() {
 		const persist = () => {
 			settings.camPos = camera.position.toArray() as [number, number, number];
 			settings.camTarget = controls.target.toArray() as [number, number, number];
-			const { copySettings: _c, resetSettings: _r, resetCamera: _rc, showSkeleton: _s, ...values } = settings;
+			const { copySettings: _c, resetSettings: _r, resetCamera: _rc, saveConfig: _sv, downloadConfig: _d, loadConfig: _l, showSkeleton: _s, ...values } = settings;
 			saveSettings(values);
 		};
 		controls.addEventListener("end", persist);
 
 		settings.copySettings = () => {
 			persist();
-			const { copySettings: _c, resetSettings: _r, resetCamera: _rc, showSkeleton: _s, ...values } = settings;
+			const { copySettings: _c, resetSettings: _r, resetCamera: _rc, saveConfig: _sv, downloadConfig: _d, loadConfig: _l, showSkeleton: _s, ...values } = settings;
 			const json = JSON.stringify(values, null, 2);
 			console.log("[sidekick-3d] settings:", json);
 			navigator.clipboard?.writeText(json).catch(() => {});
@@ -562,6 +562,45 @@ export default function Sidekick3D() {
 		settings.resetSettings = () => {
 			localStorage.removeItem(SETTINGS_KEY);
 			window.location.reload();
+		};
+		// explicit save of the full config (all folders incl. the time-of-day
+		// scene presets) to localStorage. Changes already auto-save on settle;
+		// this is a belt-and-braces button + confirmation.
+		settings.saveConfig = () => {
+			persist();
+			setStatus("config saved ✓");
+			window.setTimeout(() => setStatus(""), 1500);
+		};
+		// save the full current config to a .json file on disk
+		settings.downloadConfig = () => {
+			persist();
+			const { copySettings: _c, resetSettings: _r, resetCamera: _rc, saveConfig: _sv, downloadConfig: _d, loadConfig: _l, showSkeleton: _s, ...values } = settings;
+			const blob = new Blob([JSON.stringify(values, null, 2)], { type: "application/json" });
+			const a = document.createElement("a");
+			a.href = URL.createObjectURL(blob);
+			a.download = "sidekick-config.json";
+			a.click();
+			URL.revokeObjectURL(a.href);
+		};
+		// load a config .json from disk → localStorage → reload so the scene rebuilds
+		settings.loadConfig = () => {
+			const input = document.createElement("input");
+			input.type = "file";
+			input.accept = "application/json,.json";
+			input.onchange = () => {
+				const file = input.files?.[0];
+				if (!file) return;
+				file.text().then((txt) => {
+					try {
+						saveSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(txt) });
+						window.location.reload();
+					} catch (err) {
+						console.error("[sidekick-3d] invalid config file:", err);
+						setStatus("invalid config file");
+					}
+				});
+			};
+			input.click();
 		};
 		settings.resetCamera = () => {
 			camera.position.fromArray(DEFAULT_CAM_POS);
@@ -616,12 +655,64 @@ export default function Sidekick3D() {
 			{ note: "drag to orbit · scroll to zoom — saved automatically" },
 			"note",
 		).disable();
+		// apply the ACTIVE time-of-day scene preset to everything: sky, fog,
+		// grass palette, light rig, exposure, and the character (cel) tint/shade
+		const applyScene = () => {
+			const sc = settings.scenes[settings.timeOfDay];
+			(scene.background as THREE.Texture).dispose();
+			scene.background = makeSky(sc);
+			(scene.fog as THREE.Fog).color.set(sc.fog);
+			grass.setColors(sc.grassHill, sc.grassBase, sc.grassTip, sc.rock);
+			hemi.color.set(sc.hemiSky);
+			hemi.groundColor.set(sc.hemiGround);
+			hemi.intensity = sc.hemiIntensity;
+			key.color.set(sc.keyColor);
+			key.intensity = sc.keyIntensity;
+			fill.color.set(sc.fillColor);
+			fill.intensity = sc.fillIntensity;
+			rim.color.set(sc.rimColor);
+			rim.intensity = sc.rimIntensity;
+			renderer.toneMappingExposure = sc.exposure;
+			rebuildShading(); // re-tint the cel character for the scene
+			persist();
+		};
+
+		// Time of Day panel: pick day/evening/night, then tune EVERY variable of
+		// that preset live. The variables sub-folder rebuilds when the scene changes.
+		const todFolder = gui.addFolder("Time of Day");
+		let sceneVars: GUI | null = null;
+		const buildSceneVars = () => {
+			if (sceneVars) sceneVars.destroy();
+			sceneVars = todFolder.addFolder(`${settings.timeOfDay} variables`);
+			const sc = settings.scenes[settings.timeOfDay];
+			sceneVars.addColor(sc, "skyTop").name("sky top").onChange(applyScene);
+			sceneVars.addColor(sc, "skyMid").name("sky mid").onChange(applyScene);
+			sceneVars.addColor(sc, "skyHorizon").name("sky horizon").onChange(applyScene);
+			sceneVars.addColor(sc, "fog").onChange(applyScene);
+			sceneVars.addColor(sc, "grassHill").name("grass hill").onChange(applyScene);
+			sceneVars.addColor(sc, "grassBase").name("grass base").onChange(applyScene);
+			sceneVars.addColor(sc, "grassTip").name("grass tip").onChange(applyScene);
+			sceneVars.addColor(sc, "rock").name("rock color").onChange(applyScene);
+			sceneVars.addColor(sc, "charTint").name("character tint").onChange(applyScene);
+			sceneVars.addColor(sc, "shadeColor").name("shade color").onChange(applyScene);
+			sceneVars.addColor(sc, "keyColor").name("key color").onChange(applyScene);
+			sceneVars.add(sc, "keyIntensity", 0, 4, 0.05).name("key intensity").onChange(applyScene);
+			sceneVars.addColor(sc, "fillColor").name("fill color").onChange(applyScene);
+			sceneVars.add(sc, "fillIntensity", 0, 3, 0.05).name("fill intensity").onChange(applyScene);
+			sceneVars.addColor(sc, "rimColor").name("rim color").onChange(applyScene);
+			sceneVars.add(sc, "rimIntensity", 0, 4, 0.05).name("rim intensity").onChange(applyScene);
+			sceneVars.addColor(sc, "hemiSky").name("hemi sky").onChange(applyScene);
+			sceneVars.addColor(sc, "hemiGround").name("hemi ground").onChange(applyScene);
+			sceneVars.add(sc, "hemiIntensity", 0, 2, 0.02).name("hemi intensity").onChange(applyScene);
+			sceneVars.add(sc, "exposure", 0.3, 2, 0.01).onChange(applyScene);
+		};
+		todFolder.add(settings, "timeOfDay", TIMES).name("scene").onChange(() => {
+			buildSceneVars();
+			applyScene();
+		});
+		buildSceneVars();
+
 		const envFolder = gui.addFolder("Environment");
-		envFolder.addColor(settings, "skyTop").onChange(applyEnvColors);
-		envFolder.addColor(settings, "skyHorizon").onChange(applyEnvColors);
-		envFolder.addColor(settings, "grassHill").onChange(applyEnvColors);
-		envFolder.addColor(settings, "grassBase").onChange(applyEnvColors);
-		envFolder.addColor(settings, "grassTip").onChange(applyEnvColors);
 		const relayoutGrass = () => grass.relayout(settings.grassHeight, settings.grassClumping);
 		envFolder.add(settings, "grassHeight", 0.3, 2.5, 0.01).name("grass height").onChange(relayoutGrass);
 		envFolder.add(settings, "grassClumping", 0, 1, 0.01).name("grass clumping").onChange(relayoutGrass);
@@ -712,16 +803,10 @@ export default function Sidekick3D() {
 		mat.addColor(settings, "emissiveColor").onChange((v: string) => vinyl.emissive.set(v));
 		mat.add(settings, "emissiveIntensity", 0, 0.5).onChange((v: number) => (vinyl.emissiveIntensity = v));
 
+		// key / fill / rim / hemi / exposure now live in the Time of Day panel
+		// (per-scene); only the IBL intensity remains a global here
 		const lit = gui.addFolder("Lighting");
-		lit.add(settings, "exposure", 0.3, 2).onChange((v: number) => (renderer.toneMappingExposure = v));
-		lit.add(settings, "envIntensity", 0, 3).onChange((v: number) => (scene.environmentIntensity = v));
-		lit.add(settings, "keyIntensity", 0, 4).onChange((v: number) => (key.intensity = v));
-		lit.addColor(settings, "keyColor").onChange((v: string) => key.color.set(v));
-		lit.add(settings, "fillIntensity", 0, 4).onChange((v: number) => (fill.intensity = v));
-		lit.addColor(settings, "fillColor").onChange((v: string) => fill.color.set(v));
-		lit.add(settings, "rimIntensity", 0, 4).onChange((v: number) => (rim.intensity = v));
-		lit.addColor(settings, "rimColor").onChange((v: string) => rim.color.set(v));
-		lit.add(settings, "hemiIntensity", 0, 2).onChange((v: number) => (hemi.intensity = v));
+		lit.add(settings, "envIntensity", 0, 3).name("env (IBL) intensity").onChange((v: number) => (scene.environmentIntensity = v));
 		lit.close();
 
 		const blo = gui.addFolder("Bloom");
@@ -753,7 +838,10 @@ export default function Sidekick3D() {
 		});
 		scn.close();
 
+		gui.add(settings, "saveConfig").name("💾 save config");
 		gui.add(settings, "copySettings").name("copy settings JSON");
+		gui.add(settings, "downloadConfig").name("download config (.json)");
+		gui.add(settings, "loadConfig").name("load config (.json)");
 		gui.add(settings, "resetSettings").name("reset all to defaults");
 
 		const onResize = () => {

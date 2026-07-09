@@ -14,28 +14,37 @@ const HERO_FRAMING: CanvasFraming = {
 	fov: 32,
 };
 
+// When the chat drawer is up it covers the lower ~55%, so the camera pulls back
+// and lifts the character up so it sits fully in the sky band ABOVE the box.
+const CHAT_FRAMING: CanvasFraming = {
+	pos: [0, 1.0, 7.7],
+	target: [0, -0.55, 0],
+	fov: 31,
+};
+
 export default function Home4() {
 	const [chatOpen, setChatOpen] = useState(false);
-	// `mounted` keeps the drawer in the DOM through its slide-down exit; `peek`
-	// drives the quick fade-in of the peeking Sidekick once it's on its way up.
+	// `mounted` keeps the drawer in the DOM through its slide-down exit
 	const [mounted, setMounted] = useState(false);
-	const [peek, setPeek] = useState(false);
 
 	const open = () => {
 		setMounted(true);
 		setChatOpen(true);
-		window.setTimeout(() => setPeek(true), 100);
 	};
 	const close = () => {
 		setChatOpen(false);
-		setPeek(false);
 		window.setTimeout(() => setMounted(false), 400);
 	};
 
 	return (
 		<div className="relative h-[100svh] overflow-hidden bg-white">
-			{/* Full-viewport 3D scene: sky, lawn, grass, character (centered) */}
-			<SidekickCanvas className="absolute inset-0" framing={HERO_FRAMING} />
+			{/* Full-viewport 3D scene: sky, lawn, grass, character. The camera eases
+			    to CHAT_FRAMING (zoomed out) when the chat drawer opens. */}
+			<SidekickCanvas
+				className="absolute inset-0"
+				framing={chatOpen ? CHAT_FRAMING : HERO_FRAMING}
+				holdingPhone={chatOpen}
+			/>
 
 			{/* Floating chat button (bottom-right) — fades out while the drawer is open */}
 			<button
@@ -48,17 +57,18 @@ export default function Home4() {
 				<img src="/chat-tab.webp" alt="" className="w-14 h-14 object-contain" draggable={false} />
 			</button>
 
-			{/* Chat drawer — mounted only while open (and during its slide-down exit) */}
+			{/* Chat drawer — covers the lower ~55%, leaving the character visible in
+			    the band above it. Mounted through the slide-down exit. */}
 			{mounted ? (
 				<>
-					{/* Tap the strip above the drawer to close */}
+					{/* Tap the character band above the drawer to close */}
 					<button
 						onClick={close}
 						aria-label="Close chat"
-						className="absolute inset-x-0 top-0 h-[7%] z-30"
+						className="absolute inset-x-0 top-0 h-[45%] z-30"
 					/>
 					<div
-						className={`absolute inset-x-0 bottom-0 top-[7%] z-20 ${
+						className={`absolute inset-x-0 bottom-0 top-[45%] z-20 ${
 							chatOpen ? "animate-sheet-up" : "animate-sheet-down"
 						}`}
 					>
@@ -69,7 +79,7 @@ export default function Home4() {
 						>
 							<LuChevronDown className="w-5 h-5 text-[#111]/60" strokeWidth={2.5} />
 						</button>
-						<Chat peekIn={peek} transparentTop peekPop />
+						<Chat transparentTop peekIn={false} />
 					</div>
 				</>
 			) : null}

@@ -4,13 +4,16 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { loadSettings } from "./sidekick-settings";
 import {
 	MODEL_URL,
+	SUN_DIR,
 	makeCharacterMaterials,
 	makeEnvScene,
 	makeOutlineMaterial,
 	loadMatcapTexture,
 	type TexSet,
 } from "./sidekick-shading";
-import { makeGrassEnvironment, makeSkyTexture } from "./sidekick-grass";
+import { makeGrassEnvironment } from "./sidekick-grass";
+import { makeSky } from "./sidekick-scene";
+import { makeLandscape } from "./sidekick-landscape";
 import { createFaceController, loadFaceTexture, type FaceController } from "./sidekick-face";
 import { createInteraction, POKE_FACE } from "./sidekick-interact";
 import { createCosmetics, type CosmeticsHandle } from "./sidekick-equipment";
@@ -45,6 +48,26 @@ type BoneName = keyof typeof BONE_MAP;
 const FALLBACK_CAM_POS: [number, number, number] = [0, 0.96, 2.6];
 const FALLBACK_CAM_TARGET: [number, number, number] = [0, 0.96, 0];
 
+// "holding phone" pose: right arm swung forward with a hard elbow bend so the
+// hand — and the phone parented to R_Hand — comes up in front of the chest, plus
+// a head pitch to look down at it. Blended in when `holdingPhone` is set.
+// both hands come up in front to hold the phone (texting): mirrored L/R arms
+// meeting at the centre, elbows bent, plus a head pitch to look down at it.
+// Right paw folds the phone across the chest; the left paw comes in beside it so
+// the two hands read as a two-handed hold near the centre. The L/R arms are NOT
+// a clean mirror (the chibi rig's roll axis differs per side), so the numbers are
+// tuned independently rather than sign-flipped.
+// Both paws meet at the centre to cradle the phone (texting). The right paw folds
+// the phone across the chest; the left upper arm is swung PAST vertical (big
+// negative swingZ) so it crosses the body to the centre, where its forearm folds
+// up beside the phone. The two arms are NOT sign-mirrors of each other — the
+// chibi rig's forearm roll behaves differently per side, so each is tuned solo.
+const PHONE_R = { swingX: 0.55, swingZ: 1.0, foreX: -1.7, twist: 0.7 };
+const PHONE_L = { swingX: 0.5, swingZ: -2.4, foreX: -1.9, twist: 0.4 };
+// turn the body off-square to the camera (3/4 view) while holding the phone;
+// the head yaws slightly back so the face still reads toward the viewer.
+const PHONE_POSE = { headPitch: 0.42, headYaw: -0.22, bodyYaw: 0.55 };
+
 // Optional camera override: a full-viewport host (e.g. /home4) can frame the
 // character however it likes, ignoring the saved /sidekick-3d camera while
 // still sharing the material/lighting/pose look.
@@ -57,26 +80,41 @@ export type CanvasFraming = {
 export function SidekickCanvas({
 	className,
 	framing,
+	landscape,
+	holdingPhone,
 }: {
 	className?: string;
 	framing?: CanvasFraming;
+	landscape?: boolean;
+	holdingPhone?: boolean;
 }) {
 	const mountRef = useRef<HTMLDivElement>(null);
+	// kept current so the render loop can ease the camera toward a new framing
+	// (e.g. /home4 zooms out when the chat drawer opens) without re-mounting
+	const framingRef = useRef(framing);
+	framingRef.current = framing;
+	// when true, the character raises its right hand + looks down at the phone
+	const phoneRef = useRef(holdingPhone);
+	phoneRef.current = holdingPhone;
 
 	useEffect(() => {
 		const mount = mountRef.current;
 		if (!mount) return;
 		const s = loadSettings();
 
+		const sc = s.scenes[s.timeOfDay];
 		const scene = new THREE.Scene();
-		scene.background = makeSkyTexture(s.skyTop, s.skyHorizon);
-		scene.fog = new THREE.Fog(s.skyHorizon, 8, 30);
+		scene.background = makeSky(sc);
+		// the vista wants light, far haze so distant mountains recede; the close
+		// meadow keeps its tighter fog
+		scene.fog = landscape ? new THREE.Fog(sc.fog, 70, 230) : new THREE.Fog(sc.fog, 8, 30);
 		const grass = makeGrassEnvironment();
-		grass.setColors(s.grassHill, s.grassBase, s.grassTip);
+		grass.setColors(sc.grassHill, sc.grassBase, sc.grassTip, sc.rock);
 		grass.relayout(s.grassHeight, s.grassClumping);
 		scene.add(grass.group);
+		if (landscape) scene.add(makeLandscape());
 
-		const camera = new THREE.PerspectiveCamera(framing?.fov ?? s.fov, mount.clientWidth / mount.clientHeight, 0.1, 60);
+		const camera = new THREE.PerspectiveCamera(framing?.fov ?? s.fov, mount.clientWidth / mount.clientHeight, 0.1, 260);
 		const camBasePos = new THREE.Vector3().fromArray(framing?.pos ?? s.camPos ?? FALLBACK_CAM_POS);
 		const camBaseTarget = new THREE.Vector3().fromArray(framing?.target ?? s.camTarget ?? FALLBACK_CAM_TARGET);
 		camera.position.copy(camBasePos);
@@ -88,7 +126,7 @@ export function SidekickCanvas({
 		renderer.shadowMap.enabled = true;
 		renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 		renderer.toneMapping = THREE.ACESFilmicToneMapping;
-		renderer.toneMappingExposure = s.exposure;
+		renderer.toneMappingExposure = sc.exposure;
 		mount.appendChild(renderer.domElement);
 
 		// same warm-panel IBL as the viewer so the vinyl reads identically
@@ -96,19 +134,19 @@ export function SidekickCanvas({
 		scene.environment = pmrem.fromScene(makeEnvScene(), 0.04).texture;
 		scene.environmentIntensity = s.envIntensity;
 
-		// lighting rig mirrors /sidekick-3d exactly, driven by the same settings
-		scene.add(new THREE.HemisphereLight(0xffe9d2, 0xe8b49a, s.hemiIntensity));
-		const key = new THREE.DirectionalLight(new THREE.Color(s.keyColor), s.keyIntensity);
-		key.position.set(2, 3, 2);
+		// lighting rig from the active time-of-day scene preset
+		scene.add(new THREE.HemisphereLight(new THREE.Color(sc.hemiSky), new THREE.Color(sc.hemiGround), sc.hemiIntensity));
+		const key = new THREE.DirectionalLight(new THREE.Color(sc.keyColor), sc.keyIntensity);
+		key.position.copy(SUN_DIR).multiplyScalar(12);
 		key.castShadow = true;
 		key.shadow.mapSize.set(1024, 1024);
 		key.shadow.radius = 6;
 		scene.add(key);
-		const fill = new THREE.DirectionalLight(new THREE.Color(s.fillColor), s.fillIntensity);
-		fill.position.set(-2.5, 1.2, 1.5);
+		const fill = new THREE.DirectionalLight(new THREE.Color(sc.fillColor), sc.fillIntensity);
+		fill.position.set(-4, 1.5, 3);
 		scene.add(fill);
-		const rim = new THREE.DirectionalLight(new THREE.Color(s.rimColor), s.rimIntensity);
-		rim.position.set(-1, 2.5, -2.5);
+		const rim = new THREE.DirectionalLight(new THREE.Color(sc.rimColor), sc.rimIntensity);
+		rim.position.copy(SUN_DIR).multiplyScalar(8).setY(2.2);
 		scene.add(rim);
 
 		// the lawn receives his cast shadow; shadowOpacity drives its strength
@@ -208,6 +246,8 @@ export function SidekickCanvas({
 				if (bodyMesh) {
 					cos = createCosmetics(bodyMesh, s, matcapTex);
 					if (s.shirtEnabled) cos.equip("shirt");
+					// preload the phone into the hand, hidden until holdingPhone
+					cos.equip("phone").then(() => cos?.setVisible("phone", false));
 				}
 				ready = true;
 			},
@@ -266,6 +306,11 @@ export function SidekickCanvas({
 		const clock = new THREE.Clock();
 		const camSph = new THREE.Spherical();
 		const camOff = new THREE.Vector3();
+		const wantPos = new THREE.Vector3();
+		const wantTgt = new THREE.Vector3();
+		let phoneBlend = 0; // 0 idle → 1 holding the phone up
+		let phoneShown = false;
+		const lerp = THREE.MathUtils.lerp;
 		const animate = () => {
 			raf = requestAnimationFrame(animate);
 			const now = clock.getElapsedTime();
@@ -278,11 +323,38 @@ export function SidekickCanvas({
 				const breath = 1 + Math.sin(now * 2.2) * 0.012;
 				rig.scale.set(1 / Math.sqrt(breath), breath, 1 / Math.sqrt(breath));
 				const sway = Math.sin(now * 2.2) * 0.04;
-				setArm("armL", "forearmL", 1, s.poseArmForward + fr.armL.fwd, -s.poseArmDown + sway + fr.armL.swing, s.poseArmTwist, s.poseForeBend);
-				setArm("armR", "forearmR", -1, s.poseArmForward + fr.armR.fwd, s.poseArmDown - sway + fr.armR.swing, -s.poseArmTwist, s.poseForeBend);
+				// ease the "holding phone" pose in/out and toggle the prop's visibility
+				phoneBlend += ((phoneRef.current ? 1 : 0) - phoneBlend) * 0.09;
+				const wantShown = phoneBlend > 0.02;
+				if (wantShown !== phoneShown) {
+					phoneShown = wantShown;
+					cos?.setVisible("phone", wantShown);
+				}
+				const pb = phoneBlend;
+				// both arms blend from idle toward the two-handed phone-hold pose
+				setArm(
+					"armL",
+					"forearmL",
+					1,
+					lerp(s.poseArmForward + fr.armL.fwd, PHONE_L.swingX, pb),
+					lerp(-s.poseArmDown + sway + fr.armL.swing, PHONE_L.swingZ, pb),
+					lerp(s.poseArmTwist, PHONE_L.twist, pb),
+					lerp(s.poseForeBend, PHONE_L.foreX, pb),
+				);
+				setArm(
+					"armR",
+					"forearmR",
+					-1,
+					lerp(s.poseArmForward + fr.armR.fwd, PHONE_R.swingX, pb),
+					lerp(s.poseArmDown - sway + fr.armR.swing, PHONE_R.swingZ, pb),
+					lerp(-s.poseArmTwist, PHONE_R.twist, pb),
+					lerp(s.poseForeBend, PHONE_R.foreX, pb),
+				);
 				bones.armL.scale.setScalar(1 + fr.armL.stretch);
 				bones.armR.scale.setScalar(1 + fr.armR.stretch);
-				setBone("head", fr.headPitch, fr.headYaw, 0);
+				setBone("head", fr.headPitch + PHONE_POSE.headPitch * pb, fr.headYaw + PHONE_POSE.headYaw * pb, 0);
+				// swing the whole body off-square to the camera for a 3/4 view
+				pull.rotation.y = PHONE_POSE.bodyYaw * pb;
 				// body-drag bend splits across waist + spine (arc toward the grab
 				// point); the trailing leg lifts and its knee curls when off balance
 				setBone("waist", fr.bendX * 0.5, 0, fr.bendZ * 0.5);
@@ -291,6 +363,17 @@ export function SidekickCanvas({
 				setBone("calfL", fr.legL.curl, 0, 0);
 				setBone("thighR", 0, 0, fr.legR.lift);
 				setBone("calfR", fr.legR.curl, 0, 0);
+			}
+			// ease the base framing toward the current prop (smooth zoom on chat open)
+			const wf = framingRef.current;
+			if (wf) {
+				camBasePos.lerp(wantPos.fromArray(wf.pos), 0.07);
+				camBaseTarget.lerp(wantTgt.fromArray(wf.target), 0.07);
+				const wfFov = wf.fov ?? camera.fov;
+				if (Math.abs(wfFov - camera.fov) > 0.02) {
+					camera.fov += (wfFov - camera.fov) * 0.07;
+					camera.updateProjectionMatrix();
+				}
 			}
 			// springy orbit offset around the saved framing; snaps back on release
 			camOff.copy(camBasePos).sub(camBaseTarget);
