@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type MutableRefObject } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { loadSettings } from "./sidekick-settings";
@@ -17,6 +17,7 @@ import { makeLandscape } from "./sidekick-landscape";
 import { createFaceController, loadFaceTexture, type FaceController } from "./sidekick-face";
 import { createInteraction, POKE_FACE } from "./sidekick-interact";
 import { createCosmetics, type CosmeticsHandle } from "./sidekick-equipment";
+import { loadWardrobe, saveWardrobe, WARDROBE_SLOTS, type CosmeticsControls, type Wardrobe } from "./sidekick-wardrobe";
 
 // Full 3D home-screen scene: sky gradient, domed lawn with wind-swept grass,
 // and the rigged Sidekick idling in it (blades bend away from his feet).
@@ -78,18 +79,72 @@ export type CanvasFraming = {
 	fov?: number;
 };
 
+// Studio (Shop) backdrop: a soft warm vertical sweep (light top → warm floor) so
+// the character pops out of the meadow into a clean "photo studio". Mapped onto an
+// inward sphere so it can crossfade over the sky as the Shop opens.
+function makeStudioBackground(): THREE.Texture {
+	const c = document.createElement("canvas");
+	c.width = 8;
+	c.height = 512;
+	const x = c.getContext("2d")!;
+	const g = x.createLinearGradient(0, 0, 0, 512);
+	g.addColorStop(0, "#f6f1e9");
+	g.addColorStop(0.55, "#ece2d3");
+	g.addColorStop(1, "#d6ccbb");
+	x.fillStyle = g;
+	x.fillRect(0, 0, 8, 512);
+	const t = new THREE.CanvasTexture(c);
+	t.colorSpace = THREE.SRGBColorSpace;
+	return t;
+}
+
+// soft elliptical contact shadow under the feet so he's grounded on the studio floor
+function makeContactShadow(): THREE.Mesh {
+	const c = document.createElement("canvas");
+	c.width = c.height = 128;
+	const x = c.getContext("2d")!;
+	const g = x.createRadialGradient(64, 64, 3, 64, 64, 62);
+	g.addColorStop(0, "rgba(30,24,16,0.42)");
+	g.addColorStop(0.7, "rgba(30,24,16,0.12)");
+	g.addColorStop(1, "rgba(30,24,16,0)");
+	x.fillStyle = g;
+	x.fillRect(0, 0, 128, 128);
+	const tex = new THREE.CanvasTexture(c);
+	const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
+	const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 0.95), mat);
+	mesh.rotation.x = -Math.PI / 2;
+	mesh.position.y = 0.006;
+	mesh.renderOrder = -1;
+	return mesh;
+}
+
 export function SidekickCanvas({
 	className,
 	framing,
 	landscape,
 	holdingPhone,
+	raised,
+	studio,
+	controlsRef,
 }: {
 	className?: string;
 	framing?: CanvasFraming;
 	landscape?: boolean;
 	holdingPhone?: boolean;
+	// lift the whole character up out of the grass so the legs/shoes are visible
+	// (used by the Shop so you can see pants & shoes swaps)
+	raised?: boolean;
+	// Shop "studio": hide the meadow and show the character on a clean backdrop
+	studio?: boolean;
+	// populated once cosmetics are ready so a host (e.g. the Shop) can dress the
+	// live character; cleared on unmount
+	controlsRef?: MutableRefObject<CosmeticsControls | null>;
 }) {
 	const mountRef = useRef<HTMLDivElement>(null);
+	const raisedRef = useRef(raised);
+	raisedRef.current = raised;
+	const studioRef = useRef(studio);
+	studioRef.current = studio;
 	// kept current so the render loop can ease the camera toward a new framing
 	// (e.g. /home4 zooms out when the chat drawer opens) without re-mounting
 	const framingRef = useRef(framing);
@@ -102,6 +157,10 @@ export function SidekickCanvas({
 		const mount = mountRef.current;
 		if (!mount) return;
 		const s = loadSettings();
+		// StrictMode (dev) mounts→cleans→remounts; the async GLB load below isn't
+		// abortable, so guard its callback — a cleaned-up mount must never build
+		// cosmetics or publish controls, or controlsRef ends up on a dead canvas.
+		let cancelled = false;
 
 		const sc = s.scenes[s.timeOfDay];
 		const scene = new THREE.Scene();
@@ -114,6 +173,29 @@ export function SidekickCanvas({
 		grass.relayout(s.grassHeight, s.grassClumping);
 		scene.add(grass.group);
 		if (landscape) scene.add(makeLandscape());
+
+		// Shop "studio" look, crossfaded in by `studio`: an inward backdrop sphere
+		// + contact shadow fade IN while the meadow fades OUT. Built once; the loop
+		// eases the blend.
+		const meadowFog = scene.fog;
+		const studioTex = makeStudioBackground();
+		const studioSphere = new THREE.Mesh(
+			new THREE.SphereGeometry(60, 32, 20),
+			new THREE.MeshBasicMaterial({ map: studioTex, side: THREE.BackSide, transparent: true, opacity: 0, depthWrite: false, fog: false }),
+		);
+		studioSphere.renderOrder = -2; // draw behind the character
+		studioSphere.visible = false;
+		scene.add(studioSphere);
+		const contactShadow = makeContactShadow();
+		contactShadow.visible = false;
+		scene.add(contactShadow);
+		// every meadow material, so we can fade the whole meadow out together
+		const meadowMats: THREE.Material[] = [];
+		grass.group.traverse((o) => {
+			const m = (o as THREE.Mesh).material;
+			if (Array.isArray(m)) meadowMats.push(...m);
+			else if (m) meadowMats.push(m as THREE.Material);
+		});
 
 		const camera = new THREE.PerspectiveCamera(framing?.fov ?? s.fov, mount.clientWidth / mount.clientHeight, 0.1, 260);
 		const camBasePos = new THREE.Vector3().fromArray(framing?.pos ?? s.camPos ?? FALLBACK_CAM_POS);
@@ -196,6 +278,7 @@ export function SidekickCanvas({
 		new GLTFLoader().load(
 			MODEL_URL,
 			(gltf) => {
+				if (cancelled) return; // this mount was already torn down (StrictMode)
 				const model = gltf.scene;
 				model.traverse((child) => {
 					if (child instanceof THREE.SkinnedMesh) {
@@ -243,12 +326,46 @@ export function SidekickCanvas({
 					bones[ours as BoneName] = bone;
 					rest[ours as BoneName] = bone.quaternion.clone();
 				}
-				// modular equipment: manifest-driven cosmetics bound to this rig
+				// modular equipment: manifest-driven cosmetics bound to this rig,
+				// dressed from the saved wardrobe (the Shop drives it live)
 				if (bodyMesh) {
 					cos = createCosmetics(bodyMesh, s, matcapTex);
-					if (s.shirtEnabled) cos.equip("shirt");
+					const wardrobe: Wardrobe = loadWardrobe();
+					for (const slot of WARDROBE_SLOTS) {
+						const st = wardrobe[slot];
+						if (!st.equipped) continue;
+						cos.equip(slot, st.variantId).then(() => {
+							if (st.color) cos?.setColor(slot, st.color);
+						});
+					}
 					// preload the phone into the hand, hidden until holdingPhone
 					cos.equip("phone").then(() => cos?.setVisible("phone", false));
+
+					// hand imperative dressing controls to React (Shop UI)
+					if (controlsRef) {
+						controlsRef.current = {
+							manifest: () => cos!.slots(),
+							getState: () => structuredClone(wardrobe),
+							equipVariant: (slot, variantId) => {
+								wardrobe[slot] = { equipped: true, variantId, color: undefined };
+								saveWardrobe(wardrobe);
+								cos?.equip(slot, variantId);
+							},
+							setColor: (slot, color) => {
+								const wasOff = !wardrobe[slot].equipped;
+								const variantId = wardrobe[slot].variantId ?? cos!.slots()[slot]?.variants[0]?.id;
+								wardrobe[slot] = { equipped: true, variantId, color };
+								saveWardrobe(wardrobe);
+								if (wasOff) cos?.equip(slot, variantId).then(() => cos?.setColor(slot, color));
+								else cos?.setColor(slot, color);
+							},
+							remove: (slot) => {
+								wardrobe[slot] = { ...wardrobe[slot], equipped: false };
+								saveWardrobe(wardrobe);
+								cos?.unequip(slot);
+							},
+						};
+					}
 				}
 				ready = true;
 			},
@@ -311,13 +428,36 @@ export function SidekickCanvas({
 		const wantTgt = new THREE.Vector3();
 		let phoneBlend = 0; // 0 idle → 1 holding the phone up
 		let phoneShown = false;
+		let liftY = 0; // eased height the character floats above the meadow (Shop)
+		let studioT = 0; // eased meadow→studio blend (0 meadow, 1 studio)
 		const lerp = THREE.MathUtils.lerp;
 		const animate = () => {
 			raf = requestAnimationFrame(animate);
 			const now = clock.getElapsedTime();
 			const fr = interact.update(now);
+			// crossfade the meadow out / studio in when the Shop opens (and back)
+			const targetT = studioRef.current ? 1 : 0;
+			studioT += (targetT - studioT) * 0.3;
+			if (Math.abs(targetT - studioT) < 0.003) studioT = targetT;
+			const inStudio = studioT > 0.001;
+			studioSphere.visible = inStudio;
+			(studioSphere.material as THREE.MeshBasicMaterial).opacity = studioT;
+			contactShadow.visible = inStudio;
+			(contactShadow.material as THREE.MeshBasicMaterial).opacity = studioT;
+			grass.group.visible = studioT < 0.999;
+			if (studioT < 0.999) {
+				const o = 1 - studioT;
+				for (const m of meadowMats) {
+					m.transparent = inStudio;
+					m.depthWrite = !inStudio; // while fading, don't occlude the studio sphere
+					m.opacity = o;
+				}
+			}
+			scene.fog = inStudio ? null : meadowFog;
+			// ease the "raised out of the grass" lift used by the Shop
+			liftY += ((raisedRef.current ? 0.62 : 0) - liftY) * 0.1;
 			// body-drag lean/offset/squash (springs home to rest on release)
-			pull.position.set(fr.bodyX, 0, fr.bodyZ);
+			pull.position.set(fr.bodyX, liftY, fr.bodyZ);
 			pull.rotation.set(fr.tiltX, 0, fr.tiltZ);
 			pull.scale.set(1 / Math.sqrt(fr.squash), fr.squash, 1 / Math.sqrt(fr.squash));
 			if (ready) {
@@ -402,8 +542,15 @@ export function SidekickCanvas({
 		window.addEventListener("resize", onResize);
 
 		return () => {
+			cancelled = true;
 			cancelAnimationFrame(raf);
 			window.removeEventListener("resize", onResize);
+			if (controlsRef) controlsRef.current = null;
+			studioTex.dispose();
+			studioSphere.geometry.dispose();
+			(studioSphere.material as THREE.Material).dispose();
+			contactShadow.geometry.dispose();
+			(contactShadow.material as THREE.Material).dispose();
 			cos?.dispose();
 			interact.dispose();
 			pmrem.dispose();

@@ -41,6 +41,8 @@
   "hat": {
     "model": "/cosmetics/hat/base-v1.glb",
     "attach": "bone:Head",
+    "scale": 0.76,
+    "offset": [0, 0.028, 0],
     "variants": [
       {
         "id": "khaki",

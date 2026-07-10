@@ -40,6 +40,9 @@ export type CosmeticsHandle = {
 	slots: () => Manifest;
 	equip: (slot: string, variantId?: string) => Promise<void>;
 	setVariant: (slot: string, variantId: string) => void;
+	// solid-color override for a slot (replaces its texture); null clears it back
+	// to the current variant's texture/pattern.
+	setColor: (slot: string, color: string | null) => void;
 	unequip: (slot: string) => void;
 	setVisible: (slot: string, on: boolean) => void;
 	// rebuild all equipped materials for the current shading mode / settings
@@ -54,6 +57,7 @@ type Equipped = {
 	meshes: THREE.Mesh[]; // one for skinned/hat, possibly two for shoes
 	outline: THREE.SkinnedMesh | null;
 	variantId: string;
+	color?: string; // solid-color override; when set it replaces the variant's texture
 };
 
 export function createCosmetics(
@@ -127,8 +131,12 @@ export function createCosmetics(
 		const eq = equipped.get(slot);
 		if (!eq) return;
 		const v = eq.def.variants.find((x) => x.id === eq.variantId) ?? eq.def.variants[0];
-		const map = v.tex ? texCache.get(v.tex) ?? null : null;
-		const look = lookFor(eq.def, v, map);
+		// a solid-color override wins over the variant's texture (the shading
+		// factories treat map + color as mutually exclusive)
+		const map = eq.color ? null : v.tex ? texCache.get(v.tex) ?? null : null;
+		const look: ItemLook = eq.color
+			? { color: eq.color, map: null, roughness: v.roughness, metalness: v.metalness }
+			: lookFor(eq.def, v, map);
 		for (const mesh of eq.meshes) {
 			(mesh.material as THREE.Material).dispose();
 			mesh.material = makeItemMaterial(lastS, look, lastMatcap);
@@ -217,10 +225,13 @@ export function createCosmetics(
 			}
 			const want = variantId ?? equipped.get(slot)?.variantId ?? def.variants[0].id;
 			if (equipped.has(slot)) {
-				(equipped.get(slot) as Equipped).meshes.forEach((m) => (m.visible = true));
+				const cur = equipped.get(slot) as Equipped;
+				cur.meshes.forEach((m) => (m.visible = true));
 				const v = def.variants.find((x) => x.id === want);
 				if (v?.tex) await loadTex(v.tex);
-				(equipped.get(slot) as Equipped).variantId = want;
+				cur.variantId = want;
+				// switching to an explicit pattern clears any solid-color override
+				if (variantId) cur.color = undefined;
 				applyVariant(slot);
 				return;
 			}
@@ -240,12 +251,27 @@ export function createCosmetics(
 			const eq = equipped.get(slot);
 			if (!eq) return;
 			eq.variantId = variantId;
+			eq.color = undefined; // picking a pattern clears the solid-color override
 			const v = eq.def.variants.find((x) => x.id === variantId);
 			if (v?.tex && !texCache.has(v.tex)) {
 				loadTex(v.tex).then(() => applyVariant(slot));
 			} else {
 				applyVariant(slot);
 			}
+		},
+		setColor: (slot, color) => {
+			const eq = equipped.get(slot);
+			if (!eq) return;
+			eq.color = color ?? undefined;
+			if (!color) {
+				// reverting to the pattern — make sure its texture is loaded first
+				const v = eq.def.variants.find((x) => x.id === eq.variantId);
+				if (v?.tex && !texCache.has(v.tex)) {
+					loadTex(v.tex).then(() => applyVariant(slot));
+					return;
+				}
+			}
+			applyVariant(slot);
 		},
 		unequip: (slot) => {
 			const eq = equipped.get(slot);
