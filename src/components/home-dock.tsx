@@ -28,7 +28,7 @@ function AppTile({
 			type="button"
 			aria-label={label}
 			onClick={onClick}
-			className={`relative h-[58px] w-[58px] overflow-hidden rounded-[14px] shadow-[0_4px_10px_rgba(0,0,0,0.18)] ring-1 ring-black/5 transition-transform duration-100 active:scale-90 ${className ?? ""}`}
+			className={`relative h-[58px] w-[58px] overflow-hidden rounded-[14px] ring-1 ring-black/5 transition-transform duration-100 active:scale-90 ${className ?? ""}`}
 		>
 			{children}
 		</button>

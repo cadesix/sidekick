@@ -36,6 +36,9 @@ export function Chat({
 	const [input, setInput] = useState("");
 	const [loading, setLoading] = useState(false);
 	const listRef = useRef<HTMLDivElement>(null);
+	// first layout jumps to the bottom instantly (open already at the bottom of the
+	// chat); later message additions animate smoothly
+	const didInitScroll = useRef(false);
 
 	// Persist the conversation across reloads / tab switches.
 	useEffect(() => {
@@ -48,9 +51,11 @@ export function Chat({
 
 	useEffect(() => {
 		// Scroll only the message list — never scrollIntoView (which can scroll
-		// ancestors/the page and visibly nudge the UI behind the sheet).
+		// ancestors/the page and visibly nudge the UI behind the sheet). On open,
+		// jump instantly so it just appears at the bottom (no scroll animation).
 		const el = listRef.current;
-		if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+		if (el) el.scrollTo({ top: el.scrollHeight, behavior: didInitScroll.current ? "smooth" : "auto" });
+		didInitScroll.current = true;
 	}, [messages, loading]);
 
 	const send = async () => {
