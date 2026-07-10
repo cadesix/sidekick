@@ -13,6 +13,8 @@ export type ScenePreset = {
 	skyMid: string;
 	skyHorizon: string;
 	fog: string;
+	fogNear: number; // distance where fog starts
+	fogFar: number; // distance where fog fully saturates
 	// ground / grass palette
 	grassHill: string;
 	grassBase: string;
@@ -42,6 +44,8 @@ export const SCENE_DEFAULTS: Record<TimeOfDay, ScenePreset> = {
 		skyMid: "#6aa8e0",
 		skyHorizon: "#dcecfb",
 		fog: "#dcecfb",
+		fogNear: 8,
+		fogFar: 30,
 		grassHill: "#5aa838",
 		grassBase: "#519d2d",
 		grassTip: "#93cf4f",
@@ -64,6 +68,8 @@ export const SCENE_DEFAULTS: Record<TimeOfDay, ScenePreset> = {
 		skyMid: "#d18a72",
 		skyHorizon: "#ffe0a0",
 		fog: "#e8a877",
+		fogNear: 8,
+		fogFar: 30,
 		grassHill: "#5f8f3c",
 		grassBase: "#638f34",
 		grassTip: "#b9c25e",
@@ -86,6 +92,8 @@ export const SCENE_DEFAULTS: Record<TimeOfDay, ScenePreset> = {
 		skyMid: "#1a2748",
 		skyHorizon: "#41547d",
 		fog: "#26355c",
+		fogNear: 8,
+		fogFar: 30,
 		grassHill: "#2e5233",
 		grassBase: "#2b4d2d",
 		grassTip: "#4c744a",

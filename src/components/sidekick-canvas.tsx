@@ -62,11 +62,12 @@ const FALLBACK_CAM_TARGET: [number, number, number] = [0, 0.96, 0];
 // negative swingZ) so it crosses the body to the centre, where its forearm folds
 // up beside the phone. The two arms are NOT sign-mirrors of each other — the
 // chibi rig's forearm roll behaves differently per side, so each is tuned solo.
-const PHONE_R = { swingX: 0.55, swingZ: 1.0, foreX: -1.7, twist: 0.7 };
-const PHONE_L = { swingX: 0.5, swingZ: -2.4, foreX: -1.9, twist: 0.4 };
-// turn the body off-square to the camera (3/4 view) while holding the phone;
-// the head yaws slightly back so the face still reads toward the viewer.
-const PHONE_POSE = { headPitch: 0.42, headYaw: -0.22, bodyYaw: 0.55 };
+// authored in the /pose studio ("phone-hold-fixed"): both paws cupped together at
+// the centre of the belly to cradle the phone, head tipped slightly down.
+const PHONE_R = { swingX: -0.1, swingZ: 2.12, foreX: -0.47, foreZ: -0.53, twist: -1.06 };
+const PHONE_L = { swingX: -1.41, swingZ: -1.56, foreX: -0.6, foreZ: -0.06, twist: 0.51 };
+// slight 3/4 body turn; the head yaws slightly back so the face still reads to camera.
+const PHONE_POSE = { headPitch: 0.19, headYaw: -0.13, bodyYaw: 0.55 };
 
 // Optional camera override: a full-viewport host (e.g. /home4) can frame the
 // character however it likes, ignoring the saved /sidekick-3d camera while
@@ -107,7 +108,7 @@ export function SidekickCanvas({
 		scene.background = makeSky(sc);
 		// the vista wants light, far haze so distant mountains recede; the close
 		// meadow keeps its tighter fog
-		scene.fog = landscape ? new THREE.Fog(sc.fog, 70, 230) : new THREE.Fog(sc.fog, 8, 30);
+		scene.fog = landscape ? new THREE.Fog(sc.fog, 70, 230) : new THREE.Fog(sc.fog, sc.fogNear, sc.fogFar);
 		const grass = makeGrassEnvironment();
 		grass.setColors(sc.grassHill, sc.grassBase, sc.grassTip, sc.rock);
 		grass.relayout(s.grassHeight, s.grassClumping);
@@ -290,13 +291,13 @@ export function SidekickCanvas({
 		const qRoll = new THREE.Quaternion();
 		const qArm = new THREE.Quaternion();
 		const armAxis = new THREE.Vector3();
-		const setArm = (arm: BoneName, forearm: BoneName, side: 1 | -1, swingX: number, swingZ: number, roll: number, foreX: number) => {
+		const setArm = (arm: BoneName, forearm: BoneName, side: 1 | -1, swingX: number, swingZ: number, roll: number, foreX: number, foreZ = 0) => {
 			qSwing.setFromEuler(e.set(swingX, 0, swingZ));
 			armAxis.set(side, 0, 0).applyQuaternion(qSwing);
 			qRoll.setFromAxisAngle(armAxis, roll * s.poseRollSplit);
 			qArm.copy(qRoll).multiply(qSwing);
 			setBoneQ(arm, qArm);
-			qSwing.setFromEuler(e.set(foreX, 0, 0));
+			qSwing.setFromEuler(e.set(foreX, 0, foreZ));
 			qRoll.setFromAxisAngle(armAxis, roll * (1 - s.poseRollSplit));
 			qArm.copy(qRoll).multiply(qSwing);
 			setBoneQ(forearm, qArm);
@@ -331,6 +332,11 @@ export function SidekickCanvas({
 					cos?.setVisible("phone", wantShown);
 				}
 				const pb = phoneBlend;
+				// swing the whole body off-square BEFORE posing the arms — setBoneQ maps
+				// each arm's world-space delta through the parent's current world
+				// quaternion, so the body yaw must already be in place or the arms
+				// resolve to a different local pose than the /pose studio authored.
+				pull.rotation.y = PHONE_POSE.bodyYaw * pb;
 				// both arms blend from idle toward the two-handed phone-hold pose
 				setArm(
 					"armL",
@@ -340,6 +346,7 @@ export function SidekickCanvas({
 					lerp(-s.poseArmDown + sway + fr.armL.swing, PHONE_L.swingZ, pb),
 					lerp(s.poseArmTwist, PHONE_L.twist, pb),
 					lerp(s.poseForeBend, PHONE_L.foreX, pb),
+					lerp(0, PHONE_L.foreZ, pb),
 				);
 				setArm(
 					"armR",
@@ -349,12 +356,11 @@ export function SidekickCanvas({
 					lerp(s.poseArmDown - sway + fr.armR.swing, PHONE_R.swingZ, pb),
 					lerp(-s.poseArmTwist, PHONE_R.twist, pb),
 					lerp(s.poseForeBend, PHONE_R.foreX, pb),
+					lerp(0, PHONE_R.foreZ, pb),
 				);
 				bones.armL.scale.setScalar(1 + fr.armL.stretch);
 				bones.armR.scale.setScalar(1 + fr.armR.stretch);
 				setBone("head", fr.headPitch + PHONE_POSE.headPitch * pb, fr.headYaw + PHONE_POSE.headYaw * pb, 0);
-				// swing the whole body off-square to the camera for a 3/4 view
-				pull.rotation.y = PHONE_POSE.bodyYaw * pb;
 				// body-drag bend splits across waist + spine (arc toward the grab
 				// point); the trailing leg lifts and its knee curls when off balance
 				setBone("waist", fr.bendX * 0.5, 0, fr.bendZ * 0.5);

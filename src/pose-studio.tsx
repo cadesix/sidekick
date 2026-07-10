@@ -472,8 +472,7 @@ export default function PoseStudio() {
 
 		// ---- export ----
 		const armLit = (a: ArmPose) =>
-			`{ swingX: ${r3(a.swingX)}, swingZ: ${r3(a.swingZ)}, foreX: ${r3(a.foreX)}, twist: ${r3(a.twist)} }` +
-			(a.foreZ ? ` /* foreZ: ${r3(a.foreZ)} */` : "");
+			`{ swingX: ${r3(a.swingX)}, swingZ: ${r3(a.swingZ)}, foreX: ${r3(a.foreX)}, foreZ: ${r3(a.foreZ)}, twist: ${r3(a.twist)} }`;
 		const copy = (text: string, label: string) => {
 			navigator.clipboard?.writeText(text).then(
 				() => flash(`copied ${label}`),

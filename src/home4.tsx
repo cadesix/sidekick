@@ -2,16 +2,18 @@ import { useState } from "react";
 import { LuChevronDown } from "react-icons/lu";
 import { Chat } from "./chat";
 import { SidekickCanvas, type CanvasFraming } from "./components/sidekick-canvas";
+import { HomeDock } from "./components/home-dock";
 
 // Home4: a stripped-back hero. The Three.js scene fills the whole viewport with
 // the character centered, and the only UI is the floating chat entrypoint plus
 // the chat drawer that slides up over the scene. No header, no goals sheet.
 
 // Front-on framing that centers the full character in a tall phone viewport.
+// fov 41.1° ≈ 32 mm full-frame equiv (a touch wider than before), pulled back.
 const HERO_FRAMING: CanvasFraming = {
-	pos: [0, 0.64, 3.6],
+	pos: [0, 0.66, 4.2],
 	target: [0, 0.56, 0],
-	fov: 32,
+	fov: 41.1,
 };
 
 // When the chat drawer is up it covers the lower ~55%, so the camera pulls back
@@ -46,16 +48,9 @@ export default function Home4() {
 				holdingPhone={chatOpen}
 			/>
 
-			{/* Floating chat button (bottom-right) — fades out while the drawer is open */}
-			<button
-				onClick={open}
-				aria-label="Talk to Sidekick"
-				className={`absolute bottom-6 right-5 z-30 w-[68px] h-[68px] rounded-full bg-white shadow-[0_5px_0_0_rgba(0,0,0,0.16)] flex items-center justify-center transition-all duration-300 active:translate-y-[2px] active:shadow-[0_3px_0_0_rgba(0,0,0,0.16)] ${
-					chatOpen ? "opacity-0 scale-75 pointer-events-none" : "opacity-100 scale-100"
-				}`}
-			>
-				<img src="/chat-tab.webp" alt="" className="w-14 h-14 object-contain" draggable={false} />
-			</button>
+			{/* iOS-style home dock — Messages opens the chat sheet; the dock fades
+			    down while the sheet is up (like an app covering the dock) */}
+			<HomeDock hidden={chatOpen} onMessages={open} />
 
 			{/* Chat drawer — covers the lower ~55%, leaving the character visible in
 			    the band above it. Mounted through the slide-down exit. */}

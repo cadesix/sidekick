@@ -105,7 +105,7 @@ export default function Sidekick3D() {
 		// real 3D lawn: the active time-of-day scene preset drives sky + grass
 		const sc0 = settings.scenes[settings.timeOfDay];
 		scene.background = makeSky(sc0);
-		scene.fog = new THREE.Fog(sc0.fog, 8, 30);
+		scene.fog = new THREE.Fog(sc0.fog, sc0.fogNear, sc0.fogFar);
 		const grass = makeGrassEnvironment();
 		grass.setColors(sc0.grassHill, sc0.grassBase, sc0.grassTip, sc0.rock);
 		grass.relayout(settings.grassHeight, settings.grassClumping);
@@ -661,7 +661,12 @@ export default function Sidekick3D() {
 			const sc = settings.scenes[settings.timeOfDay];
 			(scene.background as THREE.Texture).dispose();
 			scene.background = makeSky(sc);
-			(scene.fog as THREE.Fog).color.set(sc.fog);
+			{
+				const fog = scene.fog as THREE.Fog;
+				fog.color.set(sc.fog);
+				fog.near = sc.fogNear;
+				fog.far = sc.fogFar;
+			}
 			grass.setColors(sc.grassHill, sc.grassBase, sc.grassTip, sc.rock);
 			hemi.color.set(sc.hemiSky);
 			hemi.groundColor.set(sc.hemiGround);
@@ -688,7 +693,9 @@ export default function Sidekick3D() {
 			sceneVars.addColor(sc, "skyTop").name("sky top").onChange(applyScene);
 			sceneVars.addColor(sc, "skyMid").name("sky mid").onChange(applyScene);
 			sceneVars.addColor(sc, "skyHorizon").name("sky horizon").onChange(applyScene);
-			sceneVars.addColor(sc, "fog").onChange(applyScene);
+			sceneVars.addColor(sc, "fog").name("fog color").onChange(applyScene);
+			sceneVars.add(sc, "fogNear", 0, 40, 0.5).name("fog near").onChange(applyScene);
+			sceneVars.add(sc, "fogFar", 5, 120, 0.5).name("fog far").onChange(applyScene);
 			sceneVars.addColor(sc, "grassHill").name("grass hill").onChange(applyScene);
 			sceneVars.addColor(sc, "grassBase").name("grass base").onChange(applyScene);
 			sceneVars.addColor(sc, "grassTip").name("grass tip").onChange(applyScene);
