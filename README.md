@@ -34,8 +34,10 @@ Web deploys to Vercel. The app lives in `packages/web`, so the Vercel project's
 outside of Root Directory" enabled so the root lockfile is visible). The
 serverless function is `packages/web/api/chat.js`.
 
-## Porting docs
+## Docs
 
+`docs/MONOREPO.md` — **start here**: how the two apps relate (web = dev
+surface, expo = prod surface), the parity contract, asset flow, and roadmap.
 `docs/SYNC-PLAN.md` — the web ↔ expo parity/porting playbook (predates the
 monorepo; its shared-code endgame is what this structure implements).
 `packages/expo/README.md` — expo-gl porting rules and device/simulator gotchas.
