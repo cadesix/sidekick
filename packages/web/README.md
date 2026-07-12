@@ -29,6 +29,9 @@ is the serverless chat endpoint; `vercel.json` holds the SPA rewrites.
 - `public/cosmetics/` — canonical cosmetics GLBs + variant textures + `manifest.json`
 - `design-system/` — static HTML style-guide pages
 - `vite-plugin-sidekick.ts` — the /sidekick-3d studio's dev-server plugin
+- `.illustrate/` — the /illustrate skill's style profile (config, character spec,
+  reference images) for generating on-brand art; `outDir`/ref paths are relative
+  to this package, so run illustrate from `packages/web`
 
 ## Funnel lineage
 
