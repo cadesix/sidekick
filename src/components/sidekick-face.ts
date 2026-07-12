@@ -12,7 +12,7 @@ import * as THREE from "three";
 // generated placeholder — replace with real artwork, same grid, no code
 // changes needed.
 
-export const FACE_SHEET_URL = "/face-sheet-v3.png?v=8";
+export const FACE_SHEET_URL = "/face-sheet-v4.png?v=1";
 const GRID = 4;
 
 // name → [col, row]; keep in sync with the sheet
