@@ -1,8 +1,21 @@
 # Web ↔ iOS sync plan
 
-Intent: **develop and tweak in the web app** (`~/Desktop/sidekick`, fast
-iteration, look-dev editor), then **port to this RN app for prod**. This doc is
-the pipeline for making that repeatable and drift-proof.
+> **Status (2026-07-12):** partially superseded. This doc was written when web
+> and mobile were separate repos; both now live in this monorepo
+> (`packages/web` + `packages/expo`), which IS the "true monorepo endgame"
+> described in §1 — so the rsync/checksum copy-script machinery is obsolete.
+> Shared code goes in `packages/shared/core` (`@sidekick/core`) as a real
+> workspace dependency instead. §0's prerequisites are done (both apps
+> committed/remoted; `three` pinned to 0.185.1 workspace-wide via root pnpm
+> overrides). Still-relevant parts: the shared-vs-platform-specific inventory
+> (§1's table), bake-config (§2), the asset pipeline + manifest codegen (§3),
+> the port protocol/PARITY.md (§4), the platform gotchas (§5), and the
+> screenshot harness (§6). Referenced scripts (`sync-shared`, `sync-assets`,
+> `bake-config`) are still TODO, not real yet.
+
+Intent: **develop and tweak in the web app** (`packages/web`, fast
+iteration, look-dev editor), then **port to the RN app** (`packages/expo`) for
+prod. This doc is the pipeline for making that repeatable and drift-proof.
 
 ## 0. Prerequisites (one-time, do first)
 

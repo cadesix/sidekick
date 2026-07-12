@@ -1,10 +1,11 @@
-# sidekick-mobile
+# @sidekick/expo
 
 React Native (Expo) port of the sidekick web app's `/home4` interface — a
-full-screen cel-shaded 3D mascot with a chat drawer. Same stack conventions as
-the `relic` / `fieldquote` apps (Expo SDK 54, expo-router, NativeWind, Zustand,
-Reanimated), plus a native GL layer (`expo-gl` + `expo-three` + `three`) for the
-imperative Three.js scene ported from `sidekick/src/components/sidekick-*`.
+full-screen cel-shaded 3D mascot with a chat drawer. Lives in the sidekick
+monorepo alongside its source-of-truth web app (`packages/web`). Stack: Expo
+SDK 54, expo-router, NativeWind, Zustand, Reanimated, plus a native GL layer
+(`expo-gl` + `expo-three` + `three`) for the imperative Three.js scene ported
+from `packages/web/src/components/sidekick-*`.
 
 ## Running (requires a dev client — NOT Expo Go)
 
@@ -12,11 +13,11 @@ imperative Three.js scene ported from `sidekick/src/components/sidekick-*`.
 client once, then Metro reloads JS instantly after that.
 
 ```bash
-npm install
-npm run ios        # or: npm run android  (prebuilds + builds the dev client)
+pnpm install                          # at the repo root (workspace install)
+pnpm --filter @sidekick/expo ios      # or: ... android  (prebuilds + builds the dev client)
 ```
 
-Subsequent runs: `npm start` (Metro with the dev client).
+Subsequent runs: `pnpm --filter @sidekick/expo start` (Metro with the dev client).
 
 Optional real AI replies: copy `.env.example` → `.env` and set
 `EXPO_PUBLIC_OPENAI_API_KEY`. Without a key the chat uses canned replies so the
@@ -70,7 +71,7 @@ current simulator stack.
 
 ## Asset pipeline
 
-The mascot/phone GLBs are texture-stripped (`npm run strip-glb`) because three's
+The mascot/phone GLBs are texture-stripped (`pnpm --filter @sidekick/expo strip-glb`) because three's
 GLTFLoader can't decode a GLB's embedded images in RN. In cel mode the body is a
 flat color and the face uses a separate bundled sheet, so no baked texture is
 needed. Re-run `strip-glb` if you replace a source `.glb` in `assets/models/`.

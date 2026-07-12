@@ -36,9 +36,6 @@ importers:
       '@sidekick/core':
         specifier: workspace:*
         version: link:../shared/core
-      babel-preset-expo:
-        specifier: ~54.0.10
-        version: 54.0.11(@babel/core@7.29.7)(@babel/runtime@7.29.7)(expo@54.0.35)(react-refresh@0.17.0)
       expo:
         specifier: ~54.0.34
         version: 54.0.35(@babel/core@7.29.7)(@expo/metro-runtime@6.1.2)(expo-router@6.0.24)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
@@ -142,15 +139,15 @@ importers:
       '@sidekick/tailwind-config':
         specifier: workspace:*
         version: link:../config/tailwind
-      '@sidekick/tsconfig':
-        specifier: workspace:*
-        version: link:../config/tsconfig
       '@types/react':
         specifier: ~19.1.0
         version: 19.1.17
       '@types/three':
         specifier: 0.185.0
         version: 0.185.0
+      babel-preset-expo:
+        specifier: ~54.0.10
+        version: 54.0.11(@babel/core@7.29.7)(@babel/runtime@7.29.7)(expo@54.0.35)(react-refresh@0.17.0)
       eslint:
         specifier: ^9.25.0
         version: 9.39.5(jiti@1.21.7)
@@ -182,10 +179,10 @@ importers:
         specifier: ^0.21.0
         version: 0.21.0
       react:
-        specifier: ^19.0.0
+        specifier: 19.1.0
         version: 19.1.0
       react-dom:
-        specifier: ^19.0.0
+        specifier: 19.1.0
         version: 19.1.0(react@19.1.0)
       react-icons:
         specifier: ^5.4.0

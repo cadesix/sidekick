@@ -1,46 +1,37 @@
-# funnel-local
+# @sidekick/web
 
-Standalone, local-only copy of the Relic web funnel (quiz → results → paywall →
-auth → success), lifted out of the `marketing-site` package of the Relic monorepo
-into a plain **Vite + React + TypeScript + Tailwind** SPA.
+Vite + React + TypeScript + Tailwind web app for Sidekick — the canonical dev
+surface (fast iteration + look-dev editor) that the expo app ports from.
 
-The goal here is **frontend iteration without a backend**. Every server call the
-funnel made is replaced by a mock, so the whole flow runs offline.
+Notable routes: `/home4` (current home), `/sidekick-3d` (look-dev editor),
+`/pose-studio`, `/biomes-preview`, plus the onboarding funnel.
 
 ## Run it
 
 ```bash
-npm install
-npm run dev        # http://localhost:3100
+pnpm install                          # at the repo root
+pnpm --filter @sidekick/web dev       # or `pnpm dev` from the root
 ```
 
-`npm run build` / `npm run typecheck` also work.
+Real AI chat replies need `OPENAI_API_KEY` in `.env.local` (used by the dev
+proxy in `vite.config.ts` and by `api/chat.js` in production). Without it the
+chat endpoint errors and the UI falls back gracefully.
 
-## What's real vs. mocked
+## Deploy
 
-The funnel UI is copied **verbatim** from the source — all 26 components in
-`src/components/funnel/` are unchanged except `paywall-step.tsx`. The only edits
-live at the backend/framework boundary:
+Vercel, with the project's Root Directory set to `packages/web`. `api/chat.js`
+is the serverless chat endpoint; `vercel.json` holds the SPA rewrites.
 
-| Source dependency        | Replaced with                                  |
-| ------------------------ | ---------------------------------------------- |
-| tRPC client (`@sans/api`)| `src/utils/trpc.tsx` — canned mock responses   |
-| `@sans/api` types        | `src/lib/sans-api-types.ts` — minimal shapes   |
-| Stripe Elements paywall  | `paywall-step.tsx` — mock CTA + dummy card sheet|
-| `next/image`             | `src/shims/next-image.tsx` — plain `<img>`     |
-| `posthog-js`             | `src/shims/posthog.ts` — no-op proxy           |
-| `@sentry/nextjs`         | removed                                        |
-| `process.env.NEXT_PUBLIC_*` | inlined in `vite.config.ts` `define`        |
+## Layout
 
-### Restoring a real backend
+- `src/components/sidekick-*.ts` — imperative three.js scene (renderer, shading,
+  grass, cosmetics/equipment, interaction, biomes)
+- `public/cosmetics/` — canonical cosmetics GLBs + variant textures + `manifest.json`
+- `design-system/` — static HTML style-guide pages
+- `vite-plugin-sidekick.ts` — the /sidekick-3d studio's dev-server plugin
 
-Swap `src/utils/trpc.tsx` back to a real tRPC `httpBatchLink` (pointing at a live
-API) and restore the Stripe Elements paywall from the source repo. Everything else
-is already production-faithful.
+## Funnel lineage
 
-## A/B variants
-
-The funnel resolves its step sequence from PostHog feature flags, which are no-ops
-here, so it always renders the **`default`** variant (the full 18-step flow). To QA
-the short `direct` variant, change `DEFAULT_VARIANT` in
-`src/components/funnel/manifest.ts` or pin the assignment in localStorage.
+The onboarding funnel in `src/components/funnel/` started as a local-only copy
+of the Relic web funnel and has since evolved into Sidekick's own flow. The
+step sequence comes from `src/components/funnel/manifest.ts`.

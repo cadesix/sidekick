@@ -5,9 +5,5 @@ module.exports = {
     './src/**/*.{js,jsx,ts,tsx}',
     './components/**/*.{js,jsx,ts,tsx}',
   ],
-  presets: [require('nativewind/preset')],
-  theme: {
-    extend: {},
-  },
-  plugins: [],
+  presets: [require('nativewind/preset'), require('@sidekick/tailwind-config')],
 };
