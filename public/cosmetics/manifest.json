@@ -97,5 +97,117 @@
         "name": "Phone"
       }
     ]
+  },
+  "hoodie": {
+    "slot": "shirt",
+    "model": "/cosmetics/shirt/hoodie-v1.glb",
+    "attach": "skinned",
+    "variants": [
+      { "id": "heather", "name": "Heather", "tex": "/cosmetics/shirt/heather.webp", "roughness": 0.85 },
+      { "id": "navy", "name": "Navy", "tex": "/cosmetics/shirt/navy-h.webp", "roughness": 0.85 },
+      { "id": "crimson", "name": "Crimson", "tex": "/cosmetics/shirt/crimson.webp", "roughness": 0.85 }
+    ]
+  },
+  "shorts": {
+    "slot": "pants",
+    "model": "/cosmetics/pants/shorts-v1.glb",
+    "attach": "skinned",
+    "variants": [
+      { "id": "navy", "name": "Gym Navy", "tex": "/cosmetics/pants/gym-navy.webp" },
+      { "id": "red", "name": "Gym Red", "tex": "/cosmetics/pants/gym-red.webp" },
+      { "id": "black", "name": "Gym Black", "tex": "/cosmetics/pants/gym-black.webp" }
+    ]
+  },
+  "beanie": {
+    "slot": "hat",
+    "model": "/cosmetics/hat/beanie-v1.glb",
+    "attach": "bone:Head",
+    "scale": 0.76,
+    "offset": [0, 0.028, 0],
+    "variants": [
+      { "id": "charcoal", "name": "Charcoal", "tex": "/cosmetics/hat/charcoal.webp", "roughness": 0.9 },
+      { "id": "tangerine", "name": "Tangerine", "tex": "/cosmetics/hat/tangerine.webp", "roughness": 0.9 },
+      { "id": "teal", "name": "Teal", "tex": "/cosmetics/hat/teal.webp", "roughness": 0.9 }
+    ]
+  },
+  "bucket": {
+    "slot": "hat",
+    "model": "/cosmetics/hat/bucket-v1.glb",
+    "attach": "bone:Head",
+    "scale": 0.76,
+    "offset": [0, 0.028, 0],
+    "variants": [
+      { "id": "sand", "name": "Sand", "tex": "/cosmetics/hat/sand.webp" },
+      { "id": "night", "name": "Night", "tex": "/cosmetics/hat/night.webp" }
+    ]
+  },
+  "wizard": {
+    "slot": "hat",
+    "model": "/cosmetics/hat/wizard-v1.glb",
+    "attach": "bone:Head",
+    "scale": 0.76,
+    "offset": [0, 0.028, 0],
+    "variants": [
+      { "id": "purple", "name": "Arcane", "tex": "/cosmetics/hat/wiz-purple.webp" },
+      { "id": "night", "name": "Starry Night", "tex": "/cosmetics/hat/wiz-night.webp" }
+    ]
+  },
+  "crown": {
+    "slot": "hat",
+    "model": "/cosmetics/hat/crown-v1.glb",
+    "attach": "bone:Head",
+    "scale": 0.76,
+    "offset": [0, 0.028, 0],
+    "variants": [
+      { "id": "gold", "name": "Gold", "tex": "/cosmetics/hat/gold.webp", "roughness": 0.35 },
+      { "id": "silver", "name": "Silver", "tex": "/cosmetics/hat/silver.webp", "roughness": 0.3 }
+    ]
+  },
+  "sneakers": {
+    "slot": "shoes",
+    "model": "/cosmetics/shoes/sneakers-v1.glb",
+    "attach": "bone:Calf",
+    "meshes": {
+      "Shoe_L": "L_Calf",
+      "Shoe_R": "R_Calf"
+    },
+    "variants": [
+      { "id": "white", "name": "Classic White", "tex": "/cosmetics/shoes/snk-white.webp", "roughness": 0.55 },
+      { "id": "black", "name": "Black", "tex": "/cosmetics/shoes/snk-black.webp", "roughness": 0.55 },
+      { "id": "red", "name": "Red", "tex": "/cosmetics/shoes/snk-red.webp", "roughness": 0.55 }
+    ]
+  },
+  "boots": {
+    "slot": "shoes",
+    "model": "/cosmetics/shoes/boots-v1.glb",
+    "attach": "bone:Calf",
+    "meshes": {
+      "Shoe_L": "L_Calf",
+      "Shoe_R": "R_Calf"
+    },
+    "variants": [
+      { "id": "brown", "name": "Leather", "tex": "/cosmetics/shoes/boot-brown.webp", "roughness": 0.75 },
+      { "id": "black", "name": "Black", "tex": "/cosmetics/shoes/boot-black.webp", "roughness": 0.75 }
+    ]
+  },
+  "glasses": {
+    "slot": "glasses",
+    "model": "/cosmetics/glasses/base-v1.glb",
+    "attach": "bone:Head",
+    "variants": [
+      { "id": "black", "name": "Black", "tex": "/cosmetics/glasses/black.webp", "roughness": 0.25 },
+      { "id": "white", "name": "White", "tex": "/cosmetics/glasses/white.webp", "roughness": 0.25 },
+      { "id": "pink", "name": "Pink", "tex": "/cosmetics/glasses/pink.webp", "roughness": 0.25 }
+    ]
+  },
+  "backpack": {
+    "slot": "back",
+    "model": "/cosmetics/back/backpack-v1.glb",
+    "attach": "bone:Spine01",
+    "variants": [
+      { "id": "red", "name": "Red", "tex": "/cosmetics/back/bp-red.webp" },
+      { "id": "sky", "name": "Sky", "tex": "/cosmetics/back/bp-sky.webp" },
+      { "id": "forest", "name": "Forest", "tex": "/cosmetics/back/bp-forest.webp" }
+    ]
   }
 }
