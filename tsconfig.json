@@ -1,25 +1,8 @@
 {
+	"//": "Root config for editors only. Each package has its own tsconfig; builds never use this. Kept self-contained so tooling that scans parent tsconfigs (Vite/tsconfck) doesn't try to resolve a workspace extends from the repo root.",
+	"files": [],
 	"compilerOptions": {
-		"target": "ES2020",
-		"useDefineForClassFields": true,
-		"lib": ["ES2020", "DOM", "DOM.Iterable"],
-		"module": "ESNext",
-		"skipLibCheck": true,
-		"moduleResolution": "bundler",
-		"allowImportingTsExtensions": true,
-		"resolveJsonModule": true,
-		"isolatedModules": true,
-		"moduleDetection": "force",
-		"noEmit": true,
-		"jsx": "react-jsx",
 		"strict": true,
-		"noUnusedLocals": false,
-		"noUnusedParameters": false,
-		"noFallthroughCasesInSwitch": true,
-		"baseUrl": ".",
-		"paths": {
-			"~/*": ["./src/*"]
-		}
-	},
-	"include": ["src", "vite.config.ts"]
+		"skipLibCheck": true
+	}
 }

@@ -1,0 +1,10 @@
+{
+	"extends": "@sidekick/tsconfig/react-vite.json",
+	"compilerOptions": {
+		"baseUrl": ".",
+		"paths": {
+			"~/*": ["./src/*"]
+		}
+	},
+	"include": ["src", "vite.config.ts"]
+}

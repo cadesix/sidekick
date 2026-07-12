@@ -1,12 +1,20 @@
+# Dependencies (any package)
 node_modules
+
+# Build output / caches
 dist
+.vite
+*.tsbuildinfo
+
+# OS / editor
 .DS_Store
 *.local
-.vite
+
+# Vercel
 .vercel
 
 # Glim Studio generations (local iteration artifacts)
-.illustrate/studio/
+packages/web/.illustrate/studio/
 
 # Claude Code local state
 .claude/

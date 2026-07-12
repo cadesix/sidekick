@@ -1,46 +1,43 @@
-# funnel-local
+# sidekick
 
-Standalone, local-only copy of the Relic web funnel (quiz → results → paywall →
-auth → success), lifted out of the `marketing-site` package of the Relic monorepo
-into a plain **Vite + React + TypeScript + Tailwind** SPA.
+pnpm workspace monorepo for the Sidekick apps — a cel-shaded 3D mascot buddy.
 
-The goal here is **frontend iteration without a backend**. Every server call the
-funnel made is replaced by a mock, so the whole flow runs offline.
-
-## Run it
-
-```bash
-npm install
-npm run dev        # http://localhost:3100
+```
+packages/
+  web/            @sidekick/web    — Vite + React web app (canonical dev surface, deploys to Vercel)
+  expo/           @sidekick/expo   — Expo SDK 54 React Native app (iOS/Android port of /home4)
+  shared/core/    @sidekick/core   — platform-agnostic shared logic (populated incrementally)
+  config/
+    tsconfig/     @sidekick/tsconfig        — shared TS configs
+    tailwind/     @sidekick/tailwind-config — shared Tailwind preset (brand tokens)
 ```
 
-`npm run build` / `npm run typecheck` also work.
+## Commands
 
-## What's real vs. mocked
+```bash
+pnpm install                        # once, at the root
+pnpm dev                            # web dev server (alias for --filter @sidekick/web dev)
+pnpm --filter @sidekick/expo ios    # build + run the expo dev client
+pnpm --filter @sidekick/expo start  # Metro for an existing dev client
+pnpm typecheck                      # typecheck every package
+pnpm build                          # production web build
+```
 
-The funnel UI is copied **verbatim** from the source — all 26 components in
-`src/components/funnel/` are unchanged except `paywall-step.tsx`. The only edits
-live at the backend/framework boundary:
+Conventions: `three` and `@types/three` are pinned workspace-wide via root
+`pnpm.overrides` — bump them there, not in a package. `.npmrc` uses
+`node-linker=hoisted` for Expo/Metro compatibility; don't change it casually.
 
-| Source dependency        | Replaced with                                  |
-| ------------------------ | ---------------------------------------------- |
-| tRPC client (`@sans/api`)| `src/utils/trpc.tsx` — canned mock responses   |
-| `@sans/api` types        | `src/lib/sans-api-types.ts` — minimal shapes   |
-| Stripe Elements paywall  | `paywall-step.tsx` — mock CTA + dummy card sheet|
-| `next/image`             | `src/shims/next-image.tsx` — plain `<img>`     |
-| `posthog-js`             | `src/shims/posthog.ts` — no-op proxy           |
-| `@sentry/nextjs`         | removed                                        |
-| `process.env.NEXT_PUBLIC_*` | inlined in `vite.config.ts` `define`        |
+## Deploys
 
-### Restoring a real backend
+Web deploys to Vercel. The app lives in `packages/web`, so the Vercel project's
+**Root Directory must be set to `packages/web`** (with "Include source files
+outside of Root Directory" enabled so the root lockfile is visible). The
+serverless function is `packages/web/api/chat.js`.
 
-Swap `src/utils/trpc.tsx` back to a real tRPC `httpBatchLink` (pointing at a live
-API) and restore the Stripe Elements paywall from the source repo. Everything else
-is already production-faithful.
+## Docs
 
-## A/B variants
-
-The funnel resolves its step sequence from PostHog feature flags, which are no-ops
-here, so it always renders the **`default`** variant (the full 18-step flow). To QA
-the short `direct` variant, change `DEFAULT_VARIANT` in
-`src/components/funnel/manifest.ts` or pin the assignment in localStorage.
+`docs/MONOREPO.md` — **start here**: how the two apps relate (web = dev
+surface, expo = prod surface), the parity contract, asset flow, and roadmap.
+`docs/SYNC-PLAN.md` — the web ↔ expo parity/porting playbook (predates the
+monorepo; its shared-code endgame is what this structure implements).
+`packages/expo/README.md` — expo-gl porting rules and device/simulator gotchas.
