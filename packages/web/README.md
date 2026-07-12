@@ -4,7 +4,7 @@ Vite + React + TypeScript + Tailwind web app for Sidekick — the canonical dev
 surface (fast iteration + look-dev editor) that the expo app ports from.
 
 Notable routes: `/home4` (current home), `/sidekick-3d` (look-dev editor),
-`/pose-studio`, `/biomes-preview`, plus the onboarding funnel.
+`/pose`, `/biomes`, plus the onboarding funnel.
 
 ## Run it
 
