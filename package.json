@@ -18,6 +18,11 @@
 		"overrides": {
 			"three": "0.185.1",
 			"@types/three": "0.185.0"
-		}
+		},
+		"onlyBuiltDependencies": [
+			"esbuild",
+			"sharp",
+			"unrs-resolver"
+		]
 	}
 }

@@ -1,4 +1,8 @@
 {
-	"extends": "@sidekick/tsconfig/base.json",
-	"files": []
+	"//": "Root config for editors only. Each package has its own tsconfig; builds never use this. Kept self-contained so tooling that scans parent tsconfigs (Vite/tsconfck) doesn't try to resolve a workspace extends from the repo root.",
+	"files": [],
+	"compilerOptions": {
+		"strict": true,
+		"skipLibCheck": true
+	}
 }
