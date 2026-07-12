@@ -113,8 +113,9 @@ export const SCENE_DEFAULTS: Record<TimeOfDay, ScenePreset> = {
 	},
 };
 
-// full-gradient sky texture for a scene preset (top → mid → horizon)
-export function makeSky(sc: ScenePreset): THREE.CanvasTexture {
+// full-gradient sky texture for a scene preset (top → mid → horizon). Takes just
+// the sky-color fields so biome presets (which share them) can reuse it.
+export function makeSky(sc: Pick<ScenePreset, "skyTop" | "skyMid" | "skyHorizon">): THREE.CanvasTexture {
 	const c = document.createElement("canvas");
 	c.width = 4;
 	c.height = 512;

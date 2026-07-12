@@ -8,6 +8,7 @@ import Vista from "./vista";
 import Sidekick3D from "./sidekick-3d";
 import SidekickStudio from "./sidekick-studio";
 import PoseStudio from "./pose-studio";
+import BiomesPreview from "./biomes-preview";
 
 // Minimal path routing: /home and /home2 show post-funnel home variants, /sidekick is the
 // character-iteration studio, /admin is the dev-only admin hub (Chat Lab + Studio),
@@ -23,6 +24,9 @@ export default function App() {
 	}
 	if (path === "/pose") {
 		return <PoseStudio />;
+	}
+	if (path === "/biomes") {
+		return <BiomesPreview />;
 	}
 	if (path === "/sidekick") {
 		return <SidekickStudio />;

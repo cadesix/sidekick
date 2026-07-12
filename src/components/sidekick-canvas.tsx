@@ -18,6 +18,7 @@ import { createFaceController, loadFaceTexture, type FaceController } from "./si
 import { createInteraction, POKE_FACE } from "./sidekick-interact";
 import { createCosmetics, type CosmeticsHandle } from "./sidekick-equipment";
 import { loadWardrobe, saveWardrobe, WARDROBE_SLOTS, type CosmeticsControls, type Wardrobe } from "./sidekick-wardrobe";
+import { BIOMES, type BiomeId, type EnvironmentId } from "./sidekick-biomes";
 
 // Full 3D home-screen scene: sky gradient, domed lawn with wind-swept grass,
 // and the rigged Sidekick idling in it (blades bend away from his feet).
@@ -125,6 +126,7 @@ export function SidekickCanvas({
 	holdingPhone,
 	raised,
 	studio,
+	environment,
 	controlsRef,
 }: {
 	className?: string;
@@ -136,6 +138,8 @@ export function SidekickCanvas({
 	raised?: boolean;
 	// Shop "studio": hide the meadow and show the character on a clean backdrop
 	studio?: boolean;
+	// which world the character stands in: home meadow (default) or a travel biome
+	environment?: EnvironmentId;
 	// populated once cosmetics are ready so a host (e.g. the Shop) can dress the
 	// live character; cleared on unmount
 	controlsRef?: MutableRefObject<CosmeticsControls | null>;
@@ -145,6 +149,8 @@ export function SidekickCanvas({
 	raisedRef.current = raised;
 	const studioRef = useRef(studio);
 	studioRef.current = studio;
+	const envRef = useRef<EnvironmentId>(environment ?? "meadow");
+	envRef.current = environment ?? "meadow";
 	// kept current so the render loop can ease the camera toward a new framing
 	// (e.g. /home4 zooms out when the chat drawer opens) without re-mounting
 	const framingRef = useRef(framing);
@@ -218,7 +224,8 @@ export function SidekickCanvas({
 		scene.environmentIntensity = s.envIntensity;
 
 		// lighting rig from the active time-of-day scene preset
-		scene.add(new THREE.HemisphereLight(new THREE.Color(sc.hemiSky), new THREE.Color(sc.hemiGround), sc.hemiIntensity));
+		const hemi = new THREE.HemisphereLight(new THREE.Color(sc.hemiSky), new THREE.Color(sc.hemiGround), sc.hemiIntensity);
+		scene.add(hemi);
 		const key = new THREE.DirectionalLight(new THREE.Color(sc.keyColor), sc.keyIntensity);
 		key.position.copy(SUN_DIR).multiplyScalar(12);
 		key.castShadow = true;
@@ -234,6 +241,86 @@ export function SidekickCanvas({
 
 		// the lawn receives his cast shadow; shadowOpacity drives its strength
 		key.shadow.intensity = s.shadowOpacity * 3;
+		// crisper, wider shadows for the cinematic biome cast shadows
+		key.shadow.mapSize.set(2048, 2048);
+		key.shadow.camera.left = -12;
+		key.shadow.camera.right = 12;
+		key.shadow.camera.top = 12;
+		key.shadow.camera.bottom = -12;
+		key.shadow.camera.near = 0.5;
+		key.shadow.camera.far = 48;
+		key.shadow.bias = -0.0004;
+		key.shadow.camera.updateProjectionMatrix();
+		// keep the meadow key direction so we can restore it when leaving a biome
+		const meadowKeyPos = key.position.clone();
+		const meadowRimPos = rim.position.clone();
+		const tmpDir = new THREE.Vector3();
+
+		// ---- travel environments (snow / desert biomes) ----------------------
+		// The `environment` prop swaps the whole place: ground, sky, fog, light rig,
+		// exposure. The meadow is the default; biomes are built lazily and cached.
+		// The active ground (`activeGround`) and `envFog` feed the studio crossfade
+		// below so the Shop backdrop still layers over whatever world you're in.
+		const meadowSky = scene.background;
+		let activeGround: THREE.Object3D = grass.group;
+		let envFog = meadowFog;
+		type BiomeBuilt = { group: THREE.Group; sky: THREE.Texture; fog: THREE.Fog };
+		const biomeCache = new Map<BiomeId, BiomeBuilt>();
+		const getBiome = (id: BiomeId): BiomeBuilt => {
+			let bc = biomeCache.get(id);
+			if (!bc) {
+				const def = BIOMES[id];
+				const group = def.build();
+				group.visible = false;
+				scene.add(group);
+				const sky = makeSky(def.preset);
+				const fog = new THREE.Fog(def.preset.fog, def.preset.fogNear, def.preset.fogFar);
+				bc = { group, sky, fog };
+				biomeCache.set(id, bc);
+			}
+			return bc;
+		};
+		// look = the light/exposure bundle to apply (meadow uses `sc`; biomes their preset)
+		const applyEnv = (id: EnvironmentId) => {
+			activeGround.visible = false;
+			let look: typeof sc | (typeof BIOMES)[BiomeId]["preset"];
+			if (id === "meadow") {
+				look = sc;
+				scene.background = meadowSky;
+				envFog = meadowFog;
+				activeGround = grass.group;
+			} else {
+				const bc = getBiome(id);
+				look = BIOMES[id].preset;
+				scene.background = bc.sky;
+				envFog = bc.fog;
+				activeGround = bc.group;
+			}
+			key.color.set(look.keyColor);
+			key.intensity = look.keyIntensity;
+			fill.color.set(look.fillColor);
+			fill.intensity = look.fillIntensity;
+			rim.color.set(look.rimColor);
+			rim.intensity = look.rimIntensity;
+			hemi.color.set(look.hemiSky);
+			hemi.groundColor.set(look.hemiGround);
+			hemi.intensity = look.hemiIntensity;
+			renderer.toneMappingExposure = look.exposure;
+			// cinematic per-biome lighting: a dramatic raking key from `keyDir`, a
+			// colored backlight rim behind the character, and real cast shadows. The
+			// meadow keeps its saved rig.
+			if (id === "meadow") {
+				key.position.copy(meadowKeyPos);
+				rim.position.copy(meadowRimPos);
+				key.shadow.intensity = s.shadowOpacity * 3;
+			} else {
+				const p = BIOMES[id].preset;
+				key.position.copy(tmpDir.fromArray(p.keyDir).normalize()).multiplyScalar(16);
+				rim.position.copy(tmpDir.fromArray(p.rimDir).normalize()).multiplyScalar(12);
+				key.shadow.intensity = p.shadow;
+			}
+			activeGround.visible = true;
+		};
 
 		// character materials come from the shared shading module (same modes
 		// and params as /sidekick-3d); built once the GLB textures are known
@@ -430,12 +517,20 @@ export function SidekickCanvas({
 		let phoneShown = false;
 		let liftY = 0; // eased height the character floats above the meadow (Shop)
 		let studioT = 0; // eased meadow→studio blend (0 meadow, 1 studio)
+		let curEnv: EnvironmentId = "meadow";
+		applyEnv(curEnv);
 		const lerp = THREE.MathUtils.lerp;
 		const animate = () => {
 			raf = requestAnimationFrame(animate);
 			const now = clock.getElapsedTime();
 			const fr = interact.update(now);
-			// crossfade the meadow out / studio in when the Shop opens (and back)
+			// swap the whole world when `environment` changes (map travel). Instant —
+			// the map's full-screen reveal masks it; the studio crossfade layers on top.
+			if (envRef.current !== curEnv) {
+				curEnv = envRef.current;
+				applyEnv(curEnv);
+			}
+			// crossfade the current world out / studio backdrop in when the Shop opens
 			const targetT = studioRef.current ? 1 : 0;
 			studioT += (targetT - studioT) * 0.3;
 			if (Math.abs(targetT - studioT) < 0.003) studioT = targetT;
@@ -444,8 +539,10 @@ export function SidekickCanvas({
 			(studioSphere.material as THREE.MeshBasicMaterial).opacity = studioT;
 			contactShadow.visible = inStudio;
 			(contactShadow.material as THREE.MeshBasicMaterial).opacity = studioT;
-			grass.group.visible = studioT < 0.999;
-			if (studioT < 0.999) {
+			activeGround.visible = studioT < 0.999;
+			// the meadow's grass fades material-by-material for a soft studio wipe;
+			// biome grounds just hide under the (fully opaque) studio sphere
+			if (curEnv === "meadow" && studioT < 0.999) {
 				const o = 1 - studioT;
 				for (const m of meadowMats) {
 					m.transparent = inStudio;
@@ -453,7 +550,7 @@ export function SidekickCanvas({
 					m.opacity = o;
 				}
 			}
-			scene.fog = inStudio ? null : meadowFog;
+			scene.fog = inStudio ? null : envFog;
 			// ease the "raised out of the grass" lift used by the Shop
 			liftY += ((raisedRef.current ? 0.62 : 0) - liftY) * 0.1;
 			// body-drag lean/offset/squash (springs home to rest on release)
@@ -551,6 +648,16 @@ export function SidekickCanvas({
 			(studioSphere.material as THREE.Material).dispose();
 			contactShadow.geometry.dispose();
 			(contactShadow.material as THREE.Material).dispose();
+			for (const bc of biomeCache.values()) {
+				bc.sky.dispose();
+				bc.group.traverse((o) => {
+					const m = o as THREE.Mesh;
+					if (m.geometry) m.geometry.dispose();
+					const mat = m.material;
+					if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+					else if (mat) (mat as THREE.Material).dispose();
+				});
+			}
 			cos?.dispose();
 			interact.dispose();
 			pmrem.dispose();
