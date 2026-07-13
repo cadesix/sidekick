@@ -36,6 +36,13 @@
       "when": 1783515261851,
       "tag": "0004_great_famine",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783961323604,
+      "tag": "0005_bouncy_mimic",
+      "breakpoints": true
     }
   ]
 }

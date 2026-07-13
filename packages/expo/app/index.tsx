@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Dimensions, Pressable, View } from 'react-native';
 
@@ -7,7 +8,6 @@ import { SettingsSheet } from '../src/components/SettingsSheet';
 import { ShopSheet } from '../src/components/ShopSheet';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { WorldMap } from '../src/components/WorldMap';
-import { ChatSheet } from '../src/features/chat/ChatSheet';
 import { SCENE_3D_ENABLED } from '../src/three/enabled';
 import type { Framing, SidekickController } from '../src/three/renderer';
 import { hydrateSettings, loadSettings, type SidekickSettings } from '../src/three/settings';
@@ -51,7 +51,7 @@ const SHOP_FRAMING: Framing = {
 const { height: SCREEN_H } = Dimensions.get('window');
 
 export default function Home() {
-  const [chatOpen, setChatOpen] = useState(false);
+  const router = useRouter();
   // mapOpen drives the camera pull-back; mapShown drives the map's circle
   // reveal, a beat later, so the camera starts flying out before the map grows.
   const [mapOpen, setMapOpen] = useState(false);
@@ -93,11 +93,10 @@ export default function Home() {
                 ? MAP_FRAMING
                 : shopOpen
                   ? SHOP_FRAMING
-                  : chatOpen || settingsOpen
+                  : settingsOpen
                     ? CHAT_FRAMING
                     : HERO_FRAMING
             }
-            holdingPhone={chatOpen}
             studio={shopOpen}
             onControls={setControls}
             onController={setController}
@@ -111,7 +110,7 @@ export default function Home() {
           full-screen map reveal hides it */}
       <HomeDock
         hidden={mapShown}
-        onMessages={() => setChatOpen(true)}
+        onMessages={() => router.push('/messages')}
         onShop={() => setShopOpen(true)}
         onMap={openMap}
         onSettings={() => setSettingsOpen(true)}
@@ -124,7 +123,7 @@ export default function Home() {
         onClose={closeMap}
         onChat={() => {
           closeMap();
-          setChatOpen(true);
+          router.push('/messages');
         }}
       />
 
@@ -158,13 +157,6 @@ export default function Home() {
         />
       ) : null}
 
-      {/* Chat sheet — full-screen, self-animating. The root AuthGate has already
-          established the anonymous session, so the sheet opens authed. */}
-      {chatOpen ? (
-        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }}>
-          <ChatSheet onClose={() => setChatOpen(false)} />
-        </View>
-      ) : null}
     </View>
   );
 }

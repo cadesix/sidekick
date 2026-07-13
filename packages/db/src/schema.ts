@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   bigserial,
   boolean,
@@ -18,6 +19,18 @@ import {
 
 const now = () =>
   timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow();
+
+type MessageReaction = {
+  type:
+    | "heart"
+    | "thumbsUp"
+    | "thumbsDown"
+    | "haha"
+    | "exclamation"
+    | "question"
+    | `emoji:${string}`;
+  from: "me" | "them";
+};
 
 /**
  * Postgres `tsvector`. Only ever written by a generated column and read through
@@ -131,6 +144,11 @@ export const messages = pgTable(
       .references(() => conversations.id),
     role: text("role").notNull(),
     content: text("content").notNull(),
+    replyToId: bigint("reply_to_id", { mode: "number" }).references(
+      (): AnyPgColumn => messages.id,
+      { onDelete: "set null" },
+    ),
+    reactions: jsonb("reactions").$type<MessageReaction[]>().notNull().default([]),
     toolCalls: jsonb("tool_calls"),
     adUnitId: text("ad_unit_id"),
     tokenEstimate: integer("token_estimate").notNull(),
@@ -297,6 +315,7 @@ export const attachments = pgTable("attachments", {
   width: integer("width"),
   height: integer("height"),
   durationMs: integer("duration_ms"),
+  waveform: jsonb("waveform").$type<number[]>(),
   transcript: text("transcript"),
   extractedText: text("extracted_text"),
   caption: text("caption"),

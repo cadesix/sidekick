@@ -1,15 +1,19 @@
 import {
   attachmentStatusInput,
   attachmentUploadedInput,
+  chatDeleteMessageInput,
   chatHistoryAroundInput,
   chatHistoryInput,
+  chatReactInput,
   chatSearchInput,
   chatSendInput,
   createUploadUrlInput,
   deviceToolResultInput,
   retryAttachmentInput,
 } from "@sidekick/shared";
+import type { Reaction } from "@sidekick/shared";
 import { TRPCError } from "@trpc/server";
+import { and, eq } from "drizzle-orm";
 import { protectedProcedure, router } from "../trpc";
 import {
   chatHistory,
@@ -28,7 +32,7 @@ import {
   markUploaded,
 } from "../attachments/upload";
 import type { Storage } from "../storage";
-import type { Database } from "@sidekick/db";
+import { type Database, conversations, messages } from "@sidekick/db";
 import { runIdleJob } from "../jobs/idle";
 import { completedDeepTalkSlugs, settleDeepTalks } from "../deep-talks/session";
 import { adsForMessages, runAdDecision } from "../ads";
@@ -111,7 +115,7 @@ export const chatRouter = router({
   attachmentUploaded: protectedProcedure
     .input(attachmentUploadedInput)
     .mutation(async ({ ctx, input }) => {
-      const ok = await markUploaded(ctx.db, ctx.userId, input.attachmentId);
+      const ok = await markUploaded(ctx.db, ctx.userId, input.attachmentId, input.waveform);
       if (!ok) {
         throw new TRPCError({ code: "NOT_FOUND", message: "attachment not found" });
       }
@@ -173,6 +177,54 @@ export const chatRouter = router({
   search: protectedProcedure
     .input(chatSearchInput)
     .query(({ ctx, input }) => chatSearch(ctx.db, input)),
+
+  react: protectedProcedure.input(chatReactInput).mutation(async ({ ctx, input }) => {
+    const rows = await ctx.db
+      .select({ reactions: messages.reactions })
+      .from(messages)
+      .innerJoin(conversations, eq(messages.conversationId, conversations.id))
+      .where(and(eq(messages.id, input.messageId), eq(conversations.userId, ctx.userId)))
+      .limit(1);
+    const message = rows[0];
+    if (!message) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "message not found" });
+    }
+
+    const otherReactions = message.reactions.filter((reaction) => reaction.from !== "me");
+    const current = message.reactions.find((reaction) => reaction.from === "me");
+    let reactions: Reaction[] = otherReactions;
+    if (input.type !== null && current?.type !== input.type) {
+      reactions = [...otherReactions, { type: input.type, from: "me" }];
+    }
+
+    await ctx.db
+      .update(messages)
+      .set({ reactions })
+      .where(eq(messages.id, input.messageId));
+    return reactions;
+  }),
+
+  deleteMessage: protectedProcedure
+    .input(chatDeleteMessageInput)
+    .mutation(async ({ ctx, input }) => {
+      await ctx.db.transaction(async (tx) => {
+        const owned = await tx
+          .select({ id: messages.id })
+          .from(messages)
+          .innerJoin(conversations, eq(messages.conversationId, conversations.id))
+          .where(and(eq(messages.id, input.messageId), eq(conversations.userId, ctx.userId)))
+          .limit(1);
+        if (!owned[0]) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "message not found" });
+        }
+        await tx
+          .update(messages)
+          .set({ replyToId: null })
+          .where(eq(messages.replyToId, input.messageId));
+        await tx.delete(messages).where(eq(messages.id, input.messageId));
+      });
+      return { ok: true };
+    }),
 
   deviceToolResult: protectedProcedure
     .input(deviceToolResultInput)

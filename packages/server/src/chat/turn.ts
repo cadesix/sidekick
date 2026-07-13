@@ -351,7 +351,12 @@ type ProviderResult = { toolCallId: string; toolName: string; output: unknown };
  */
 export async function beginTurn(
   services: TurnServices,
-  input: { conversationId: string; text: string; attachmentIds?: string[] },
+  input: {
+    conversationId: string;
+    text: string;
+    attachmentIds?: string[];
+    replyToId?: number;
+  },
 ): Promise<{ textStream: AsyncGenerator<string>; done: Promise<TurnOutcome> }> {
   const { db, userId } = services;
   const conversation = await assertConversationOwned(db, input.conversationId, userId);
@@ -364,6 +369,7 @@ export async function beginTurn(
       role: "user",
       content: input.text,
       tokenEstimate: estimateTokens(input.text),
+      replyToId: input.replyToId,
     })
     .returning({ id: messages.id });
   const userMessageId = insertedUser[0]?.id;
@@ -738,7 +744,12 @@ async function driveTurn(
 /** Non-streaming turn: drives the model to completion and returns the outcome. */
 export async function sendChatTurn(
   services: TurnServices,
-  input: { conversationId: string; text: string; attachmentIds?: string[] },
+  input: {
+    conversationId: string;
+    text: string;
+    attachmentIds?: string[];
+    replyToId?: number;
+  },
 ): Promise<TurnOutcome> {
   const { textStream, done } = await beginTurn(services, input);
   for await (const _delta of textStream) {

@@ -93,6 +93,7 @@ export async function markUploaded(
   db: Database,
   userId: string,
   attachmentId: string,
+  waveform?: number[],
 ): Promise<boolean> {
   const owned = await ownedAttachment(db, userId, attachmentId);
   if (!owned) {
@@ -100,7 +101,7 @@ export async function markUploaded(
   }
   await db
     .update(attachments)
-    .set({ status: "processing" })
+    .set({ status: "processing", waveform })
     .where(eq(attachments.id, attachmentId));
   return true;
 }
@@ -134,6 +135,7 @@ export type AttachmentStatusView = {
   width: number | null;
   height: number | null;
   durationMs: number | null;
+  waveform: number[] | null;
 };
 
 export type MessageAttachment = {
@@ -148,6 +150,7 @@ export type MessageAttachment = {
   width: number | null;
   height: number | null;
   durationMs: number | null;
+  waveform: number[] | null;
   status: string;
 };
 
@@ -186,6 +189,7 @@ export async function attachmentsForMessages(
       width: row.width,
       height: row.height,
       durationMs: row.durationMs,
+      waveform: row.waveform,
       status: row.status,
     });
     grouped.set(row.messageId, list);
@@ -216,5 +220,6 @@ export async function attachmentStatuses(
     width: row.width,
     height: row.height,
     durationMs: row.durationMs,
+    waveform: row.waveform,
   }));
 }

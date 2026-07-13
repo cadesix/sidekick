@@ -1,5 +1,7 @@
 import { trpcServer } from "@hono/trpc-server";
+import { attachments } from "@sidekick/db";
 import { chatContinueInput, chatSendInput } from "@sidekick/shared";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { beginTurn, continueTurn } from "./chat/turn";
@@ -22,6 +24,24 @@ function authorizeCron(authorization: string | null): boolean {
     return false;
   }
   return authorization === `Bearer ${secret}`;
+}
+
+/** A single `bytes=` range, clamped to the object; null when absent or unsatisfiable. */
+function parseByteRange(
+  header: string | undefined,
+  size: number,
+): { start: number; end: number } | null {
+  const match = header?.match(/^bytes=(\d*)-(\d*)$/);
+  if (!match || (match[1] === "" && match[2] === "")) {
+    return null;
+  }
+  const suffix = match[1] === "";
+  const start = suffix ? Math.max(0, size - Number(match[2])) : Number(match[1]);
+  const end = suffix || match[2] === "" ? size - 1 : Math.min(Number(match[2]), size - 1);
+  if (start > end || start >= size) {
+    return null;
+  }
+  return { start, end };
 }
 
 /**
@@ -146,11 +166,33 @@ export function buildApp(services: Services) {
     return c.body(null, 204);
   });
 
+  /**
+   * Reads serve the attachment's stored mime and honour `Range`: AVPlayer (the
+   * app's voice messages) probes a media URL with a byte range and won't play a
+   * source that answers with the whole body or an unrecognized content type.
+   */
   app.get("/blob/*", async (c) => {
     const key = c.req.path.slice("/blob/".length);
     try {
       const bytes = await services.storage.getObject(key);
-      return new Response(new Uint8Array(bytes));
+      const rows = await services.db
+        .select({ mime: attachments.mime })
+        .from(attachments)
+        .where(eq(attachments.storageKey, key))
+        .limit(1);
+      const headers: Record<string, string> = {
+        "content-type": rows[0]?.mime ?? "application/octet-stream",
+        "accept-ranges": "bytes",
+      };
+      const range = parseByteRange(c.req.header("range"), bytes.byteLength);
+      if (!range) {
+        headers["content-length"] = String(bytes.byteLength);
+        return new Response(new Uint8Array(bytes), { headers });
+      }
+      const slice = bytes.slice(range.start, range.end + 1);
+      headers["content-length"] = String(slice.byteLength);
+      headers["content-range"] = `bytes ${range.start}-${range.end}/${bytes.byteLength}`;
+      return new Response(new Uint8Array(slice), { status: 206, headers });
     } catch {
       return c.json({ error: "not found" }, 404);
     }

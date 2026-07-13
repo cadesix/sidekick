@@ -148,7 +148,13 @@ async function consumeChatStream(
  * `chatHistory`.
  */
 export async function streamChatTurn(
-  input: { conversationId: string; text: string; attachmentIds?: string[] },
+  input: {
+    conversationId: string;
+    text: string;
+    attachmentIds?: string[];
+    /** Set when the user swiped-to-reply on an earlier message (imessage chat). */
+    replyToId?: number;
+  },
   onDelta: (delta: string) => void,
   onSearch: (active: boolean) => void = () => {},
   onMeta: (meta: StreamMeta) => void = () => {},
@@ -295,6 +301,8 @@ export async function uploadAttachment(input: {
   width?: number;
   height?: number;
   durationMs?: number;
+  /** Normalized 0..1 amplitude bars for a voice message, so it survives a reload. */
+  waveform?: number[];
 }): Promise<{ attachmentId: string }> {
   const created = await trpc.chat.createUploadUrl.mutate({
     kind: input.kind,
@@ -317,7 +325,10 @@ export async function uploadAttachment(input: {
     throw new Error(`upload failed (${put.status})`);
   }
 
-  await trpc.chat.attachmentUploaded.mutate({ attachmentId: created.attachmentId });
+  await trpc.chat.attachmentUploaded.mutate({
+    attachmentId: created.attachmentId,
+    waveform: input.waveform,
+  });
   return { attachmentId: created.attachmentId };
 }
 

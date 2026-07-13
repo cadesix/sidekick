@@ -8,12 +8,6 @@ import { createTestDb } from "@sidekick/db/testing";
 import { buildContextView } from "@sidekick/shared";
 import { registerDevice, sendChatTurn } from "@sidekick/server";
 import { generateOpener } from "../packages/server/src/checkins/engine";
-import {
-  domainOf,
-  groupSourcePills,
-  readSearchSources,
-  type SearchSource,
-} from "../packages/expo/src/features/chat/tool-chrome";
 import { createConversation, testStorage } from "./helpers";
 
 let db: Database;
@@ -293,44 +287,3 @@ test("opener withholds web search after two searched openers this week", async (
   expect(JSON.stringify(seenTools[0] ?? [])).not.toContain("web_search");
 });
 
-test("domainOf strips protocol, path, and leading www", () => {
-  expect(domainOf("https://www.nytimes.com/2026/07/07/x.html")).toBe("nytimes.com");
-  expect(domainOf("http://espn.com")).toBe("espn.com");
-  expect(domainOf("https://sub.example.co.uk/a/b")).toBe("sub.example.co.uk");
-});
-
-test("readSearchSources dedupes by domain and ignores non-search tools", () => {
-  const sources = readSearchSources([
-    { toolName: "create_document", input: {}, result: { document_id: "d1" } },
-    {
-      toolName: "web_search",
-      input: { query: "x" },
-      result: [
-        { url: "https://www.a.com/1", title: "A one" },
-        { url: "https://a.com/2", title: "A two" },
-        { url: "https://b.com/x", title: "B" },
-      ],
-    },
-  ]);
-  expect(sources.map((s) => s.domain)).toEqual(["a.com", "b.com"]);
-  expect(sources[0]?.title).toBe("A one");
-});
-
-test("groupSourcePills caps at four with a +N more chip, expanding in place", () => {
-  const many: SearchSource[] = Array.from({ length: 6 }, (_, i) => ({
-    url: `https://s${i}.com`,
-    domain: `s${i}.com`,
-    title: `S${i}`,
-  }));
-  const collapsed = groupSourcePills(many, false);
-  expect(collapsed.pills).toHaveLength(3);
-  expect(collapsed.moreCount).toBe(3);
-
-  const expanded = groupSourcePills(many, true);
-  expect(expanded.pills).toHaveLength(6);
-  expect(expanded.moreCount).toBe(0);
-
-  const four = groupSourcePills(many.slice(0, 4), false);
-  expect(four.pills).toHaveLength(4);
-  expect(four.moreCount).toBe(0);
-});

@@ -5,6 +5,32 @@ import { memoryKindSchema } from "./memory/ops";
 export const messageRole = z.enum(["user", "assistant", "tool"]);
 export type MessageRole = z.infer<typeof messageRole>;
 
+export type ReactionType =
+  | "heart"
+  | "thumbsUp"
+  | "thumbsDown"
+  | "haha"
+  | "exclamation"
+  | "question"
+  | `emoji:${string}`;
+export type Reaction = { type: ReactionType; from: "me" | "them" };
+
+const namedReactionTypes = new Set<string>([
+  "heart",
+  "thumbsUp",
+  "thumbsDown",
+  "haha",
+  "exclamation",
+  "question",
+]);
+
+export const reactionTypeSchema = z.custom<ReactionType>(
+  (value) =>
+    typeof value === "string" &&
+    (namedReactionTypes.has(value) || /^emoji:.+$/u.test(value)),
+  "invalid reaction type",
+);
+
 /** Device registration → anonymous account (01-architecture.md auth). */
 export const registerInput = z.object({
   deviceId: z.string().min(8),
@@ -17,6 +43,7 @@ export const chatSendInput = z
     conversationId: z.string().uuid(),
     text: z.string().default(""),
     attachmentIds: z.array(z.string().uuid()).max(4).optional(),
+    replyToId: z.number().int().positive().optional(),
   })
   .refine((v) => v.text.trim().length > 0 || (v.attachmentIds?.length ?? 0) > 0, {
     message: "a message needs text or an attachment",
@@ -40,8 +67,22 @@ export const createUploadUrlInput = z.object({
 export type CreateUploadUrlInput = z.infer<typeof createUploadUrlInput>;
 
 /** The client telling the server its PUT finished, so ingest can start (09). */
-export const attachmentUploadedInput = z.object({ attachmentId: z.string().uuid() });
+export const attachmentUploadedInput = z.object({
+  attachmentId: z.string().uuid(),
+  waveform: z.array(z.number().min(0).max(1)).optional(),
+});
 export type AttachmentUploadedInput = z.infer<typeof attachmentUploadedInput>;
+
+export const chatReactInput = z.object({
+  messageId: z.number().int().positive(),
+  type: reactionTypeSchema.nullable(),
+});
+export type ChatReactInput = z.infer<typeof chatReactInput>;
+
+export const chatDeleteMessageInput = z.object({
+  messageId: z.number().int().positive(),
+});
+export type ChatDeleteMessageInput = z.infer<typeof chatDeleteMessageInput>;
 
 /** Poll one attachment's ingest status (09 — client gates send on `ready`). */
 export const attachmentStatusInput = z.object({
