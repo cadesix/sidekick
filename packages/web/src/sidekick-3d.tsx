@@ -15,6 +15,7 @@ import {
 	SETTINGS_KEY,
 	loadSettings,
 	saveSettings,
+	type SidekickSettings,
 } from "./components/sidekick-settings";
 import {
 	MODEL_URL,
@@ -44,6 +45,15 @@ import {
 // the brand vinyl material/lighting. No runtime rigging or face painting.
 
 // Our clip logic → GLB bone names (Tripo/AccuRig-style humanoid rig)
+// Checked-in look-dev states (config-presets/README.md) — recovered saved
+// states from earlier dev-server origins. Any *.json dropped in that folder
+// appears in the panel's Config presets picker.
+const CONFIG_PRESETS = Object.fromEntries(
+	Object.entries(
+		import.meta.glob<Partial<SidekickSettings>>("./config-presets/*.json", { eager: true, import: "default" }),
+	).map(([path, cfg]) => [path.split("/").pop()!.replace(/\.json$/, ""), cfg]),
+);
+
 const BONE_MAP = {
 	waist: "Waist",
 	spine: "Spine01",
@@ -844,6 +854,22 @@ export default function Sidekick3D() {
 			if (skeletonHelper) skeletonHelper.visible = v;
 		});
 		scn.close();
+
+		// checked-in presets: apply = overwrite saved state + reload, same
+		// semantics as "load config (.json)" but sourced from the repo
+		const presetNames = Object.keys(CONFIG_PRESETS).sort();
+		if (presetNames.length) {
+			const presetCtl = {
+				preset: presetNames[0],
+				apply: () => {
+					saveSettings({ ...DEFAULT_SETTINGS, ...CONFIG_PRESETS[presetCtl.preset] });
+					window.location.reload();
+				},
+			};
+			const pf = gui.addFolder("Config presets");
+			pf.add(presetCtl, "preset", presetNames);
+			pf.add(presetCtl, "apply").name("apply preset (reloads)");
+		}
 
 		gui.add(settings, "saveConfig").name("💾 save config");
 		gui.add(settings, "copySettings").name("copy settings JSON");
