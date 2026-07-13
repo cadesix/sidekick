@@ -10,7 +10,12 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.cadesix.sidekick-mobile"
+      "bundleIdentifier": "com.cadesix.sidekick-mobile",
+      "appleTeamId": "REPLACE_WITH_APPLE_TEAM_ID",
+      "infoPlist": {
+        "NSHealthShareUsageDescription": "Sidekick reads your steps, sleep, and workouts so it can cheer you on without you having to report anything. It only reads — never writes or shares.",
+        "NSLocationWhenInUseUsageDescription": "Sidekick uses your city — only while you're using the app — to know your weather and what's nearby."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -40,7 +45,30 @@
           }
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-location",
+      "@react-native-community/datetimepicker",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Sidekick uses the microphone so you can send voice notes in chat."
+        }
+      ],
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "background": true
+        }
+      ],
+      [
+        "react-native-device-activity",
+        {
+          "appleTeamId": "REPLACE_WITH_APPLE_TEAM_ID",
+          "appGroup": "group.com.cadesix.sidekick-mobile"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

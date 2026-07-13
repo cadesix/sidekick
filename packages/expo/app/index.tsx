@@ -1,24 +1,22 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { Dimensions, Pressable, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
-import { Chat } from '../src/components/Chat';
 import { HomeDock } from '../src/components/HomeDock';
 import { SettingsSheet } from '../src/components/SettingsSheet';
 import { ShopSheet } from '../src/components/ShopSheet';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { WorldMap } from '../src/components/WorldMap';
+import { ChatSheet } from '../src/features/chat/ChatSheet';
+import { AuthGate } from '../src/lib/auth';
 import type { Framing, SidekickController } from '../src/three/renderer';
 import { hydrateSettings, loadSettings, type SidekickSettings } from '../src/three/settings';
 import type { CosmeticsControls } from '../src/three/wardrobe';
-import { useChat } from '../src/store/chat';
 
 // RN port of sidekick/src/home4.tsx: full-viewport 3D mascot with an iOS-style
-// dock. Messages slides the chat drawer up over the lower ~55% (camera eases to
-// CHAT_FRAMING, mascot holds its phone), Shop swaps the meadow for a studio and
-// opens the wardrobe sheet, Map rockets the camera up while the world map
-// circle-reveals over it.
+// dock. Messages opens the full chat sheet (camera eases to CHAT_FRAMING, the
+// mascot holds its phone under the sheet's header art), Shop swaps the meadow
+// for a studio and opens the wardrobe sheet, Map rockets the camera up while
+// the world map circle-reveals over it.
 
 const HERO_FRAMING: Framing = {
   pos: [0, 0.66, 4.2],
@@ -50,10 +48,9 @@ const SHOP_FRAMING: Framing = {
 };
 
 const { height: SCREEN_H } = Dimensions.get('window');
-const DRAWER_TOP = SCREEN_H * 0.45; // drawer covers the lower 55%
 
 export default function Home() {
-  const [open, setOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   // mapOpen drives the camera pull-back; mapShown drives the map's circle
   // reveal, a beat later, so the camera starts flying out before the map grows.
   const [mapOpen, setMapOpen] = useState(false);
@@ -70,19 +67,6 @@ export default function Home() {
   useEffect(() => {
     hydrateSettings().then(() => setSettings(loadSettings()));
   }, []);
-  const loading = useChat((s) => s.loading);
-
-  // 0 = closed (drawer off-screen), 1 = open
-  const progress = useSharedValue(0);
-
-  const openDrawer = () => {
-    setOpen(true);
-    progress.value = withTiming(1, { duration: 380 });
-  };
-  const closeDrawer = () => {
-    setOpen(false);
-    progress.value = withTiming(0, { duration: 340 });
-  };
 
   const openMap = () => {
     setMapOpen(true); // camera rockets up + back immediately
@@ -92,11 +76,6 @@ export default function Home() {
     setMapShown(false); // map scales back out…
     setMapOpen(false); // …while the camera flies back to the meadow
   };
-
-  const drawerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: (1 - progress.value) * (SCREEN_H - DRAWER_TOP) }],
-    opacity: progress.value < 0.02 ? 0 : 1,
-  }));
 
   return (
     <View className="flex-1 bg-white">
@@ -111,23 +90,14 @@ export default function Home() {
               ? MAP_FRAMING
               : shopOpen
                 ? SHOP_FRAMING
-                : open || settingsOpen
+                : chatOpen || settingsOpen
                   ? CHAT_FRAMING
                   : HERO_FRAMING
           }
-          holdingPhone={open}
-          talking={loading}
+          holdingPhone={chatOpen}
           studio={shopOpen}
           onControls={setControls}
           onController={setController}
-        />
-      ) : null}
-
-      {/* Tap the character band above the drawer to close */}
-      {open ? (
-        <Pressable
-          onPress={closeDrawer}
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: DRAWER_TOP }}
         />
       ) : null}
 
@@ -135,7 +105,7 @@ export default function Home() {
           full-screen map reveal hides it */}
       <HomeDock
         hidden={mapShown}
-        onMessages={openDrawer}
+        onMessages={() => setChatOpen(true)}
         onShop={() => setShopOpen(true)}
         onMap={openMap}
         onSettings={() => setSettingsOpen(true)}
@@ -148,7 +118,7 @@ export default function Home() {
         onClose={closeMap}
         onChat={() => {
           closeMap();
-          openDrawer();
+          setChatOpen(true);
         }}
       />
 
@@ -182,25 +152,15 @@ export default function Home() {
         />
       ) : null}
 
-      {/* Chat drawer */}
-      <Animated.View
-        style={[
-          drawerStyle,
-          { position: 'absolute', left: 0, right: 0, top: DRAWER_TOP, bottom: 0, zIndex: 40 },
-        ]}
-        pointerEvents={open ? 'auto' : 'none'}
-      >
-        {/* keyboard avoidance lives inside Chat (animated padding driven by
-            keyboard frame events — KAV can't measure inside this translated
-            absolute drawer) */}
-        <Pressable
-          onPress={closeDrawer}
-          className="absolute top-2.5 right-3 z-20 w-9 h-9 rounded-full bg-white/85 items-center justify-center"
-        >
-          <Ionicons name="chevron-down" size={20} color="rgba(17,17,17,0.6)" />
-        </Pressable>
-        <Chat transparentTop />
-      </Animated.View>
+      {/* Chat sheet — full-screen, self-animating; AuthGate owns the register/
+          retry states so an unreachable server never blocks the 3D home */}
+      {chatOpen ? (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }}>
+          <AuthGate>
+            <ChatSheet onClose={() => setChatOpen(false)} />
+          </AuthGate>
+        </View>
+      ) : null}
     </View>
   );
 }

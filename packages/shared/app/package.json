@@ -1,0 +1,30 @@
+{
+	"name": "@sidekick/shared",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"main": "./src/index.ts",
+	"types": "./src/index.ts",
+	"exports": {
+		".": "./src/index.ts",
+		"./schemas": "./src/schemas.ts",
+		"./prompts": "./src/prompts/index.ts",
+		"./tools": "./src/tools/index.ts",
+		"./context": "./src/context.ts"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@ai-sdk/anthropic": "^2.0.0",
+		"@sidekick/db": "workspace:*",
+		"ai": "^5.0.0",
+		"rrule": "^2.8.1",
+		"zod": "^3.25.0"
+	},
+	"devDependencies": {
+		"@sidekick/tsconfig": "workspace:*",
+		"@types/node": "^22.20.0",
+		"typescript": "^5.7.2"
+	}
+}

@@ -13,6 +13,10 @@ dist
 # Vercel
 .vercel
 
+# Local env + @sidekick/server local blob store
+.env
+.blob-store/
+
 # Glim Studio generations (local iteration artifacts)
 packages/web/.illustrate/studio/
 
