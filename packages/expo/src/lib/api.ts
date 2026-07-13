@@ -260,8 +260,12 @@ export async function historyAround(
  * browser), and `dismissAd` on the "hide ads like this" long-press. Slotting is
  * server-decided — the client never requests ads.
  */
-export function recordAdImpression(adUnitId: string): Promise<unknown> {
-  return trpc.ads.impression.mutate({ adUnitId });
+export async function recordAdImpression(adUnitId: string): Promise<unknown> {
+  const result = await trpc.ads.impression.mutate({ adUnitId });
+  if (result.fresh && result.impressionUrl) {
+    await fetch(result.impressionUrl);
+  }
+  return result;
 }
 
 export function recordAdClick(adUnitId: string): Promise<unknown> {

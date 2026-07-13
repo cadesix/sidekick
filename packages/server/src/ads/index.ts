@@ -21,4 +21,9 @@ export {
   hasFrequencyHeadroom,
 } from "./eligibility";
 export { type AdView, serveAd, adsForMessages, recordAdEvent } from "./store";
-export { type AdDecisionResult, runAdDecision } from "./decision";
+export {
+  type AdDecisionResult,
+  runAdDecision,
+  GRAVITY_CHAT_PLACEMENT,
+  GRAVITY_CHAT_PLACEMENT_ID,
+} from "./decision";

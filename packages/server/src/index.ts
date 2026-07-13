@@ -127,6 +127,8 @@ export {
   adsForMessages,
   recordAdEvent,
   runAdDecision,
+  GRAVITY_CHAT_PLACEMENT,
+  GRAVITY_CHAT_PLACEMENT_ID,
   ADS_FLAG,
   AD_MAX_PER_DAY,
   AD_MIN_TURNS_APART,

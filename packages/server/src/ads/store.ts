@@ -66,7 +66,7 @@ export async function serveAd(
     messageId,
     turnMessageId: input.turnMessageId,
     network: input.network,
-    externalId: input.ad.id,
+    externalId: input.ad.id ?? null,
     brandName: input.ad.brandName,
     faviconUrl: input.ad.favicon ?? null,
     title: input.ad.title,
@@ -88,9 +88,25 @@ export async function adsForMessages(
     return new Map();
   }
   const rows = await db.select().from(ads).where(inArray(ads.messageId, messageIds));
+  if (rows.length === 0) {
+    return new Map();
+  }
+  const dismissedRows = await db
+    .select({ adId: adEvents.adId })
+    .from(adEvents)
+    .where(
+      and(
+        inArray(
+          adEvents.adId,
+          rows.map((row) => row.id),
+        ),
+        eq(adEvents.type, "dismiss"),
+      ),
+    );
+  const dismissed = new Set(dismissedRows.map((row) => row.adId));
   const byMessage = new Map<number, AdView>();
   for (const row of rows) {
-    if (row.messageId !== null) {
+    if (row.messageId !== null && !dismissed.has(row.id)) {
       byMessage.set(row.messageId, toView(row));
     }
   }
@@ -106,7 +122,7 @@ export async function adsForMessages(
 export async function recordAdEvent(
   db: Database,
   input: { userId: string; adUnitId: string; type: "impression" | "click" | "dismiss" },
-): Promise<{ ok: boolean; impressionUrl: string | null; clickUrl: string | null }> {
+): Promise<{ ok: boolean; fresh: boolean; impressionUrl: string | null; clickUrl: string | null }> {
   const rows = await db
     .select({ impressionUrl: ads.impressionUrl, clickUrl: ads.clickUrl })
     .from(ads)
@@ -114,8 +130,17 @@ export async function recordAdEvent(
     .limit(1);
   const ad = rows[0];
   if (!ad) {
-    return { ok: false, impressionUrl: null, clickUrl: null };
+    return { ok: false, fresh: false, impressionUrl: null, clickUrl: null };
   }
-  await db.insert(adEvents).values({ adId: input.adUnitId, userId: input.userId, type: input.type });
-  return { ok: true, impressionUrl: ad.impressionUrl, clickUrl: ad.clickUrl };
+  const inserted = await db
+    .insert(adEvents)
+    .values({ adId: input.adUnitId, userId: input.userId, type: input.type })
+    .onConflictDoNothing()
+    .returning({ id: adEvents.id });
+  return {
+    ok: true,
+    fresh: inserted.length > 0,
+    impressionUrl: ad.impressionUrl,
+    clickUrl: ad.clickUrl,
+  };
 }

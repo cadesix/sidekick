@@ -49,6 +49,16 @@ export type ChatRow =
   | { type: "message"; key: string; message: ChatMessage }
   | { type: "separator"; key: string; label: string; date: string };
 
+export function activeComposerAd(
+  messages: { role: string; adUnitId: string | null; ad?: AdView | null }[],
+): AdView | undefined {
+  const newest = messages.find((message) => message.role === "user" || message.role === "assistant");
+  if (!newest?.adUnitId) {
+    return undefined;
+  }
+  return newest.ad ?? undefined;
+}
+
 /**
  * Merge the pages of a keyset-paginated infinite query into one newest-first
  * list, de-duplicating by id (a streamed reply that later lands in `history` can
@@ -90,7 +100,7 @@ export function getNextCursor(lastPage: ChatMessage[], limit: number): number | 
  * text. Output stays newest-first (row 0 renders at the visual bottom).
  */
 export function buildChatRows(messages: ChatMessage[], now: Date): ChatRow[] {
-  const visible = messages.filter((m) => m.role !== "tool");
+  const visible = messages.filter((m) => m.role !== "tool" && m.adUnitId === null);
   const chronological = [...visible].reverse();
   const rows: ChatRow[] = [];
   let previousDayKey: string | null = null;

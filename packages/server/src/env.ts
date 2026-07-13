@@ -24,6 +24,8 @@ export type ServerEnv = {
   GRAVITY_API_KEY?: string;
   /** Gravity API base URL override (05); defaults to server.trygravity.ai. */
   GRAVITY_API_URL?: string;
+  /** Paid inventory is opt-in; absent/false keeps Gravity in test mode. */
+  GRAVITY_PRODUCTION?: string;
 };
 
 export function readEnv(): ServerEnv {
@@ -41,5 +43,6 @@ export function readEnv(): ServerEnv {
     SIDEKICK_TRANSCRIBE_MODEL: env.SIDEKICK_TRANSCRIBE_MODEL,
     GRAVITY_API_KEY: env.GRAVITY_API_KEY,
     GRAVITY_API_URL: env.GRAVITY_API_URL,
+    GRAVITY_PRODUCTION: env.GRAVITY_PRODUCTION,
   };
 }

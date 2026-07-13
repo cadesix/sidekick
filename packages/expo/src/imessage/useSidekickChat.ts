@@ -10,6 +10,7 @@ import {
   sidekickThread,
 } from "./server";
 import type { AudioAttachment, Message, Reaction, ReactionType, Thread } from "./types";
+import type { AdView } from "~/lib/chat-thread";
 
 const PAGE_LIMIT = 100;
 
@@ -53,6 +54,7 @@ function optimistic(conversationId: string, input: SendInput): Message {
 export interface SidekickChat {
   thread: Thread | undefined;
   messages: Message[];
+  composerAd: AdView | undefined;
   typing: boolean;
   send: (input: SendInput) => void;
   addReaction: (messageId: string, type: ReactionType) => void;
@@ -136,7 +138,8 @@ export function useSidekickChat(): SidekickChat {
 
   return {
     thread: conversationId === undefined ? undefined : sidekickThread(conversationId),
-    messages: [...(transcript.data ?? []), ...outgoing],
+    messages: [...(transcript.data?.messages ?? []), ...outgoing],
+    composerAd: turn.isPending ? undefined : transcript.data?.composerAd,
     typing: turn.isPending,
     send: turn.mutate,
     addReaction: (messageId, type) => reaction.mutate({ messageId, type }),

@@ -30,6 +30,7 @@ import type { AudioAttachment, Message, ReactionType } from "../types";
 import { Avatar } from "../components/Avatar";
 import { CHAT_HEADER_CONTENT_HEIGHT, ChatHeader } from "../components/ChatHeader";
 import { ChatInputBar } from "../components/ChatInputBar";
+import { SponsoredCard } from "~/components/SponsoredCard";
 import {
 	MessageRow,
 	TIME_REVEAL_WIDTH,
@@ -53,7 +54,7 @@ interface OverlayState {
 
 export function ChatScreen() {
 	const insets = useSafeAreaInsets();
-	const { thread, messages, typing, send, addReaction, removeMessage } =
+	const { thread, messages, composerAd, typing, send, addReaction, removeMessage } =
 		useSidekickChat();
 
 	const [replyTo, setReplyTo] = useState<Message | undefined>(undefined);
@@ -300,6 +301,7 @@ export function ChatScreen() {
 					}}
 				>
 					{replyTo ? <ReplyChain messages={replyChain} /> : null}
+					{composerAd ? <SponsoredCard ad={composerAd} /> : null}
 					<ChatInputBar
 						replyActive={replyTo !== undefined}
 						onSendText={handleSendText}

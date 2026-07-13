@@ -44,6 +44,36 @@ function parseByteRange(
   return { start, end };
 }
 
+async function serveTurnAd(
+  services: Services,
+  input: {
+    db: Services["db"];
+    flags: Services["flags"];
+    userId: string;
+    conversationId: string;
+    turnMessageId: number;
+    device: ReturnType<typeof deviceSignalsFromHeaders>;
+    hasPendingDeviceTools: boolean;
+  },
+): Promise<void> {
+  if (!services.adNetwork || input.hasPendingDeviceTools) {
+    return;
+  }
+  try {
+    await runAdDecision(
+      { db: input.db, network: services.adNetwork, flags: input.flags },
+      {
+        userId: input.userId,
+        conversationId: input.conversationId,
+        turnMessageId: input.turnMessageId,
+        device: input.device,
+      },
+    );
+  } catch (error) {
+    console.error("Gravity ad decision failed", error);
+  }
+}
+
 /**
  * The HTTP surface: tRPC under `/trpc/*` and a plain fetch-stream endpoint at
  * `/chat/stream` for token streaming (01: "SSE endpoint alongside tRPC").
@@ -83,33 +113,20 @@ export function buildApp(services: Services) {
       },
       input,
     );
-    /**
-     * The post-response ad decision (05) for the streaming path — the one the
-     * app actually uses. Kicked off once the turn has fully persisted, with the
-     * REAL client device signals captured above; never delays the stream.
-     */
-    const { adNetwork } = services;
-    if (adNetwork) {
-      void done
-        .then((outcome) =>
-          services.scheduleBackground(() =>
-            runAdDecision(
-              { db: ctx.db, network: adNetwork, flags: ctx.flags },
-              {
-                userId,
-                conversationId: input.conversationId,
-                turnMessageId: outcome.message.id,
-                device,
-              },
-            ),
-          ),
-        )
-        .catch(() => {});
-    }
     return stream(c, async (s) => {
       for await (const delta of textStream) {
         await s.write(delta);
       }
+      const outcome = await done;
+      await serveTurnAd(services, {
+        db: ctx.db,
+        flags: ctx.flags,
+        userId,
+        conversationId: input.conversationId,
+        turnMessageId: outcome.message.id,
+        device,
+        hasPendingDeviceTools: outcome.deviceToolCalls.length > 0,
+      });
     });
   });
 
@@ -138,11 +155,20 @@ export function buildApp(services: Services) {
       },
       input,
     );
-    void done.catch(() => {});
     return stream(c, async (s) => {
       for await (const delta of textStream) {
         await s.write(delta);
       }
+      const outcome = await done;
+      await serveTurnAd(services, {
+        db: ctx.db,
+        flags: ctx.flags,
+        userId,
+        conversationId: input.conversationId,
+        turnMessageId: outcome.message.id,
+        device,
+        hasPendingDeviceTools: outcome.deviceToolCalls.length > 0,
+      });
     });
   });
 

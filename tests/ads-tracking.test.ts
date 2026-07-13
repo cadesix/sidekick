@@ -45,7 +45,13 @@ test("impression and click endpoints write ad_events and echo the network urls",
   const caller = makeCaller(db, textModel("hi"), userId);
 
   const imp = await caller.ads.impression({ adUnitId });
-  expect(imp).toEqual({ ok: true, impressionUrl: "https://imp.example", clickUrl: "https://x.example" });
+  expect(imp).toEqual({
+    ok: true,
+    fresh: true,
+    impressionUrl: "https://imp.example",
+    clickUrl: "https://x.example",
+  });
+  expect(await caller.ads.impression({ adUnitId })).toMatchObject({ fresh: false });
   await caller.ads.click({ adUnitId });
   await caller.ads.dismiss({ adUnitId });
 

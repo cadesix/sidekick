@@ -14,6 +14,9 @@ import { serveAd } from "./store";
 /** Messages of filtered context forwarded to the network (05: a bounded window). */
 const AD_CONTEXT_WINDOW = 12;
 
+export const GRAVITY_CHAT_PLACEMENT = "bottom_page";
+export const GRAVITY_CHAT_PLACEMENT_ID = "expo-chat-composer";
+
 /** Relevancy bar (05 §high threshold, low fill). Lowered on high purchase intent. */
 const RELEVANCY_DEFAULT = 0.6;
 const RELEVANCY_HIGH_INTENT = 0.4;
@@ -116,11 +119,11 @@ export async function runAdDecision(
     messages: window.map((m) => ({ role: m.role, content: m.content })),
     sessionId: input.conversationId,
     userId: input.userId,
-    placement: "below_response",
+    placement: GRAVITY_CHAT_PLACEMENT,
+    placementId: GRAVITY_CHAT_PLACEMENT_ID,
     relevancy,
     excludedTopics: [...EXCLUDED_TOPICS, ...dismissedTopics],
     device: input.device ?? (user.country ? { country: user.country } : undefined),
-    profile: { interests: targeting.interests, intents: targeting.intents },
   });
 
   if (!ad) {
@@ -133,7 +136,7 @@ export async function runAdDecision(
     turnMessageId: input.turnMessageId,
     network: "gravity",
     ad,
-    placement: "below_response",
+    placement: GRAVITY_CHAT_PLACEMENT,
   });
   return logged(input, { status: "served", adUnitId: served.adUnitId, messageId: served.messageId });
 }

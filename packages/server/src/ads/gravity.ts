@@ -54,21 +54,18 @@ export function deviceSignalsFromHeaders(
 
 /**
  * One ad request. `messages` is the ALREADY-FILTERED window (health/sensitive
- * rows stripped upstream — see ad-window.ts); `profile` is our first-party
- * targeting projection, which Gravity's contextual matcher ignores but
- * profile-taking networks use (user-memory.md §5). No raw memory ever appears
- * here — only allowlisted, projected labels.
+ * rows stripped upstream — see ad-window.ts). No raw memory or inferred profile
+ * crosses this boundary.
  */
 export type AdRequest = {
   messages: { role: string; content: string }[];
   sessionId: string;
   userId: string;
   placement: string;
+  placementId: string;
   relevancy: number;
   excludedTopics: string[];
-  hashedEmail?: string;
   device?: AdDeviceSignals;
-  profile?: { interests: string[]; intents: string[] };
 };
 
 /**
@@ -77,7 +74,7 @@ export type AdRequest = {
  * never blocks chat.
  */
 export type SponsoredAd = {
-  id: string;
+  id?: string;
   brandName: string;
   favicon?: string;
   title: string;
@@ -95,9 +92,11 @@ export interface AdNetworkClient {
 export type GravityEnv = {
   GRAVITY_API_KEY?: string;
   GRAVITY_API_URL?: string;
+  GRAVITY_PRODUCTION?: string;
 };
 
 const DEFAULT_GRAVITY_URL = "https://server.trygravity.ai";
+const DEFAULT_TIMEOUT_MS = 3_000;
 
 /**
  * The live Gravity REST client. `POST {baseUrl}/api/v1/ad` with the request body,
@@ -109,6 +108,8 @@ export class GravityHttpClient implements AdNetworkClient {
   constructor(
     private readonly apiKey: string,
     private readonly baseUrl: string = DEFAULT_GRAVITY_URL,
+    private readonly production: boolean = false,
+    private readonly timeoutMs: number = DEFAULT_TIMEOUT_MS,
   ) {}
 
   async requestAd(request: AdRequest): Promise<SponsoredAd | null> {
@@ -119,7 +120,19 @@ export class GravityHttpClient implements AdNetworkClient {
           "content-type": "application/json",
           authorization: `Bearer ${this.apiKey}`,
         },
-        body: JSON.stringify(request),
+        signal: AbortSignal.timeout(this.timeoutMs),
+        body: JSON.stringify({
+          messages: request.messages,
+          sessionId: request.sessionId,
+          placements: [
+            { placement: request.placement, placement_id: request.placementId },
+          ],
+          user: { id: request.userId },
+          relevancy: request.relevancy,
+          excludedTopics: request.excludedTopics,
+          testAd: !this.production,
+          ...(request.device ? { device: request.device } : {}),
+        }),
       });
       if (!response.ok || response.status === 204) {
         return null;
@@ -132,12 +145,16 @@ export class GravityHttpClient implements AdNetworkClient {
   }
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+function asObject(value: unknown): object | null {
+  return typeof value === "object" && value !== null ? value : null;
 }
 
 function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function stringField(value: object, key: string): string | undefined {
+  return asString(Reflect.get(value, key));
 }
 
 /**
@@ -146,28 +163,35 @@ function asString(value: unknown): string | undefined {
  * must have to render a labeled card (title, brand, cta, click url).
  */
 export function parseGravityAd(body: unknown): SponsoredAd | null {
-  const record = asRecord(body);
-  if (!record) {
+  const first = Array.isArray(body) ? body[0] : body;
+  const record = asObject(first);
+  if (record === null) {
     return null;
   }
-  const ad = asRecord(record.ad) ?? record;
-  const id = asString(ad.id) ?? asString(ad.adId);
-  const brandName = asString(ad.brandName) ?? asString(ad.brand);
-  const title = asString(ad.title);
-  const cta = asString(ad.cta);
-  const clickUrl = asString(ad.clickUrl) ?? asString(ad.url);
-  if (!id || !brandName || !title || !cta || !clickUrl) {
+  const nestedAd = asObject(Reflect.get(record, "ad"));
+  const ad = nestedAd ?? record;
+  const id =
+    stringField(ad, "campaignId") ??
+    stringField(ad, "composition_id") ??
+    stringField(ad, "id") ??
+    stringField(ad, "adId");
+  const brandName = stringField(ad, "brandName") ?? stringField(ad, "brand");
+  const title = stringField(ad, "title");
+  const cta = stringField(ad, "cta");
+  const clickUrl = stringField(ad, "clickUrl") ?? stringField(ad, "url");
+  const impUrl = stringField(ad, "impUrl") ?? stringField(ad, "impressionUrl");
+  if (!brandName || !title || !cta || !clickUrl || !impUrl) {
     return null;
   }
   return {
-    id,
+    ...(id ? { id } : {}),
     brandName,
-    favicon: asString(ad.favicon),
+    favicon: stringField(ad, "favicon"),
     title,
-    adText: asString(ad.adText) ?? asString(ad.body) ?? "",
+    adText: stringField(ad, "adText") ?? stringField(ad, "body") ?? "",
     cta,
     clickUrl,
-    impUrl: asString(ad.impUrl) ?? asString(ad.impressionUrl),
+    impUrl,
   };
 }
 
@@ -180,7 +204,11 @@ export function gravityClientFromEnv(env: GravityEnv): AdNetworkClient | null {
   if (!env.GRAVITY_API_KEY) {
     return null;
   }
-  return new GravityHttpClient(env.GRAVITY_API_KEY, env.GRAVITY_API_URL ?? DEFAULT_GRAVITY_URL);
+  return new GravityHttpClient(
+    env.GRAVITY_API_KEY,
+    env.GRAVITY_API_URL ?? DEFAULT_GRAVITY_URL,
+    env.GRAVITY_PRODUCTION === "true",
+  );
 }
 
 /**

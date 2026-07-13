@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   type AdView,
   type ChatMessage,
+  activeComposerAd,
   buildChatRows,
 } from "../packages/expo/src/lib/chat-thread";
 
@@ -39,15 +40,15 @@ function userMessage(id: number): ChatMessage {
 describe("sponsored-card thread rows", () => {
   const now = new Date(2026, 6, 7, 12, 0);
 
-  it("keeps an ad message row (assistant-adjacent) and carries its render payload", () => {
+  it("pins the newest ad above the composer and removes it from transcript rows", () => {
     const rows = buildChatRows([adMessage(2), userMessage(1)], now);
     const messageRows = rows.filter((r) => r.type === "message");
-    const adRow = messageRows.find((r) => r.type === "message" && r.message.id === 2);
-    expect(adRow?.type).toBe("message");
-    if (adRow?.type === "message") {
-      expect(adRow.message.ad).toEqual(AD);
-      expect(adRow.message.adUnitId).toBe("ad-1");
-    }
+    expect(messageRows).toHaveLength(1);
+    expect(activeComposerAd([adMessage(2), userMessage(1)])).toEqual(AD);
+  });
+
+  it("expires the composer ad as soon as a newer message exists", () => {
+    expect(activeComposerAd([userMessage(3), adMessage(2), userMessage(1)])).toBeUndefined();
   });
 
   it("non-ad messages carry a null ad", () => {

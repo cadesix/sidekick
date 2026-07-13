@@ -484,7 +484,7 @@ export const adEvents = pgTable(
     type: text("type").notNull(),
     createdAt: now(),
   },
-  (t) => [index("ad_events_ad_id_type_idx").on(t.adId, t.type)],
+  (t) => [uniqueIndex("ad_events_ad_id_type_idx").on(t.adId, t.type)],
 );
 
 /**

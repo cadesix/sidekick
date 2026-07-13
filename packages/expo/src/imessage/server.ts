@@ -5,6 +5,7 @@ import {
   uploadAttachment,
 } from "~/lib/api";
 import { runDeviceToolCalls } from "~/features/chat/device-tools";
+import { activeComposerAd, type AdView } from "~/lib/chat-thread";
 import type { AudioAttachment, Message, ReactionType, Thread } from "./types";
 
 /**
@@ -75,12 +76,15 @@ export function mainConversation(): Promise<{ id: string }> {
 export async function fetchTranscript(
   conversationId: string,
   limit: number,
-): Promise<Message[]> {
+): Promise<{ messages: Message[]; composerAd: AdView | undefined }> {
   const rows = await trpc.chat.history.query({ conversationId, limit });
-  return rows
-    .filter((row) => row.role === "user" || row.role === "assistant")
-    .map(toMessage)
-    .reverse();
+  const visibleRows = rows.filter(
+    (row) => (row.role === "user" || row.role === "assistant") && row.adUnitId === null,
+  );
+  return {
+    messages: visibleRows.map(toMessage).reverse(),
+    composerAd: activeComposerAd(rows),
+  };
 }
 
 /**

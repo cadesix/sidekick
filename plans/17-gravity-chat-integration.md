@@ -27,8 +27,8 @@ Gravity recommends its SDK for web and Node apps, but the React renderer is not 
 Use one stable placement:
 
 ```text
-placement: below_response
-placement_id: expo-chat-main
+placement: bottom_page
+placement_id: expo-chat-composer
 ```
 
 Start with Gravity test ads. Paid inventory must require an explicit production flag in addition to the API key.
@@ -44,7 +44,7 @@ Start with Gravity test ads. Paid inventory must require an explicit production 
   "messages": [{ "role": "user", "content": "..." }],
   "sessionId": "conversation-id",
   "placements": [
-    { "placement": "below_response", "placement_id": "expo-chat-main" }
+    { "placement": "bottom_page", "placement_id": "expo-chat-composer" }
   ],
   "user": { "id": "pseudonymous-user-id" },
   "device": { "ua": "...", "ip": "...", "country": "US", "os": "iOS" },
@@ -212,7 +212,7 @@ These do not block test-mode implementation:
 
 1. Whether their required publisher pixel can be satisfied for a native-only Expo app whose ad landing pages open in `expo-web-browser`, and whether their documented in-app WebView pixel path applies to `SFSafariViewController`/Custom Tabs.
 2. Whether server-side fetching of `impUrl` is supported for native publishers, or whether it must originate from the device.
-3. Whether a placement-specific `renderer_spec` or experiment setup is desirable for `expo-chat-main`; Sidekick will ignore unknown renderer fields in v1.
+3. Whether a placement-specific `renderer_spec` or experiment setup is desirable for `expo-chat-composer`; Sidekick will ignore unknown renderer fields in v1.
 4. Their policy for mixed-age audiences and confirmation that Sidekick's under-18 exclusion is sufficient.
 5. Data deletion requirements for pseudonymous user IDs and any retention controls available to publishers.
 
