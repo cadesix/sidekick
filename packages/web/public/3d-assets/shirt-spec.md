@@ -14,7 +14,7 @@ add-on, out of scope here.)
 
 ## Inputs
 
-- **Base mesh:** `~/Desktop/char-pipeline/mesh/yellow_final_v8.glb` — the current
+- **Base mesh:** `yellow_final_v8.glb (char-pipeline archive)` — the current
   shipped character (body + FaceSprite, humanoid rig). Model the shirt onto
   *this* file and re-export the whole thing.
 - **Rig bones (must stay byte-for-byte identical in name):** `Head`, `Waist`,
@@ -83,7 +83,7 @@ The shirt must deform with the *same* bones as the body:
 - Export **glTF Binary (.glb)**, matching how `yellow_final_v8.glb` was produced:
   +Y up, apply modifiers, include the **armature + body + FaceSprite + Shirt**,
   export skinning/skin weights, keep bone names.
-- **Output:** `~/Desktop/char-pipeline/mesh/yellow_final_v9.glb` (next in the
+- **Output:** `yellow_final_v9.glb` (next in the
   sequence). Don't overwrite v8.
 
 ---

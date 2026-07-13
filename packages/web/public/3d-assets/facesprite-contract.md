@@ -1,7 +1,7 @@
 # FaceSprite — sprite-sheet mapping contract
 
 Hand-off for wiring the animated face onto the character's `FaceSprite` plane.
-Ships on **`~/Desktop/char-pipeline/mesh/yellow_final_v9.glb`** (the current
+Ships on **`public/sidekick-rigged.glb (yellow_final_v9; source blend: tools/char-pipeline/blender/yellow_final_v9.blend)`** (the current
 character). The asset side is frozen; this is the exact contract it guarantees and
 what you author + implement.
 
