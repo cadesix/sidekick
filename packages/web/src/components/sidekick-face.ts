@@ -12,7 +12,7 @@ import * as THREE from "three";
 // generated placeholder — replace with real artwork, same grid, no code
 // changes needed.
 
-export const FACE_SHEET_URL = "/face-sheet-v4.png?v=1";
+export const FACE_SHEET_URL = "/face-sheet-v6.png?v=1";
 const GRID = 4;
 
 // name → [col, row]; keep in sync with the sheet
@@ -45,6 +45,11 @@ export function loadFaceTexture(onReady: (t: THREE.Texture | null) => void): voi
 			t.flipY = false; // glTF UV convention (v=0 = top of image)
 			t.repeat.set(1 / GRID, 1 / GRID);
 			t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+			// no mipmaps (facesprite-contract.md): the disc's rim curves away from
+			// the camera, so mipped sampling there mixes neighboring cells into the
+			// visible face (stray eye slivers at the ear, hearts at the neck)
+			t.generateMipmaps = false;
+			t.minFilter = THREE.LinearFilter;
 			onReady(t);
 		},
 		undefined,
