@@ -1,7 +1,8 @@
-import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Dimensions, Pressable, View } from 'react-native';
+import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
 
+import { ChatScreen } from '~/imessage';
 import { HomeDock } from '../src/components/HomeDock';
 import { SceneFallback } from '../src/components/SceneFallback';
 import { SettingsSheet } from '../src/components/SettingsSheet';
@@ -14,10 +15,10 @@ import { hydrateSettings, loadSettings, type SidekickSettings } from '../src/thr
 import type { CosmeticsControls } from '../src/three/wardrobe';
 
 // RN port of sidekick/src/home4.tsx: full-viewport 3D mascot with an iOS-style
-// dock. Messages opens the full chat sheet (camera eases to CHAT_FRAMING, the
-// mascot holds its phone under the sheet's header art), Shop swaps the meadow
-// for a studio and opens the wardrobe sheet, Map rockets the camera up while
-// the world map circle-reveals over it.
+// dock. Messages slides the chat sheet up over the lower ~55% (camera eases to
+// CHAT_FRAMING, the mascot holds its phone in the band above), Shop swaps the
+// meadow for a studio and opens the wardrobe sheet, Map rockets the camera up
+// while the world map circle-reveals over it.
 
 const HERO_FRAMING: Framing = {
   pos: [0, 0.66, 4.2],
@@ -49,13 +50,14 @@ const SHOP_FRAMING: Framing = {
 };
 
 const { height: SCREEN_H } = Dimensions.get('window');
+const CHAT_SHEET_H = SCREEN_H * 0.55;
 
 export default function Home() {
-  const router = useRouter();
   // mapOpen drives the camera pull-back; mapShown drives the map's circle
   // reveal, a beat later, so the camera starts flying out before the map grows.
   const [mapOpen, setMapOpen] = useState(false);
   const [mapShown, setMapShown] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [shopOpen, setShopOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // imperative handle the canvas publishes once cosmetics are ready; the Shop
@@ -93,10 +95,11 @@ export default function Home() {
                 ? MAP_FRAMING
                 : shopOpen
                   ? SHOP_FRAMING
-                  : settingsOpen
+                  : chatOpen || settingsOpen
                     ? CHAT_FRAMING
                     : HERO_FRAMING
             }
+            holdingPhone={chatOpen}
             studio={shopOpen}
             onControls={setControls}
             onController={setController}
@@ -110,7 +113,7 @@ export default function Home() {
           full-screen map reveal hides it */}
       <HomeDock
         hidden={mapShown}
-        onMessages={() => router.push('/messages')}
+        onMessages={() => setChatOpen(true)}
         onShop={() => setShopOpen(true)}
         onMap={openMap}
         onSettings={() => setSettingsOpen(true)}
@@ -123,7 +126,7 @@ export default function Home() {
         onClose={closeMap}
         onChat={() => {
           closeMap();
-          router.push('/messages');
+          setChatOpen(true);
         }}
       />
 
@@ -157,6 +160,43 @@ export default function Home() {
         />
       ) : null}
 
+      {/* Chat sheet — covers the lower ~55%, leaving the mascot (holding its
+          phone) visible in the band above; tap that band to close */}
+      {chatOpen ? (
+        <Pressable
+          onPress={() => setChatOpen(false)}
+          accessibilityLabel="Close chat"
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: SCREEN_H - CHAT_SHEET_H, zIndex: 30 }}
+        />
+      ) : null}
+      {chatOpen ? (
+        <Animated.View
+          entering={SlideInDown.duration(450)}
+          exiting={SlideOutDown.duration(400)}
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: CHAT_SHEET_H,
+            zIndex: 40,
+            backgroundColor: '#fff',
+            borderTopLeftRadius: 28,
+            borderTopRightRadius: 28,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: -8 },
+            shadowOpacity: 0.22,
+            shadowRadius: 20,
+            elevation: 12,
+          }}
+        >
+          <View
+            style={{ flex: 1, borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' }}
+          >
+            <ChatScreen onClose={() => setChatOpen(false)} />
+          </View>
+        </Animated.View>
+      ) : null}
     </View>
   );
 }

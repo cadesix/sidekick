@@ -1,16 +1,12 @@
 import { BlurView } from "expo-blur";
 import * as Clipboard from "expo-clipboard";
+import { GlassView } from "expo-glass-effect";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
+import { SymbolView } from "expo-symbols";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-	FlatList,
-	Modal,
-	Pressable,
-	StyleSheet,
-	Text,
-	View,
-} from "react-native";
+import { FlatList, Pressable, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, {
@@ -27,8 +23,6 @@ import { buildTranscript, type TranscriptItem } from "../lib/transcript";
 import { useSidekickChat } from "../useSidekickChat";
 import { colors } from "../theme";
 import type { AudioAttachment, Message, ReactionType } from "../types";
-import { Avatar } from "../components/Avatar";
-import { CHAT_HEADER_CONTENT_HEIGHT, ChatHeader } from "../components/ChatHeader";
 import { ChatInputBar } from "../components/ChatInputBar";
 import { SponsoredCard } from "~/components/SponsoredCard";
 import {
@@ -46,14 +40,21 @@ const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
 
 const TYPING_ITEM = "typing";
 const ENTRY_ANIMATION_WINDOW = 1200;
+const SHEET_HEADER_HEIGHT = 54;
 
 interface OverlayState {
 	message: Message;
 	layout: BubbleLayout;
 }
 
-export function ChatScreen() {
+/**
+ * The chat, hosted inside the home screen's bottom sheet (the mascot above the
+ * sheet is the "contact", so there's no iMessage-style header — just a slim
+ * row of glass buttons: settings on the left, close on the right).
+ */
+export function ChatScreen({ onClose }: { onClose: () => void }) {
 	const insets = useSafeAreaInsets();
+	const router = useRouter();
 	const { thread, messages, composerAd, typing, send, addReaction, removeMessage } =
 		useSidekickChat();
 
@@ -61,8 +62,8 @@ export function ChatScreen() {
 	const [plusOpen, setPlusOpen] = useState(false);
 	const [recording, setRecording] = useState(false);
 	const [overlay, setOverlay] = useState<OverlayState | null>(null);
-	const [contactOpen, setContactOpen] = useState(false);
 	const mountedAt = useRef(Date.now());
+	const containerRef = useRef<View>(null);
 
 	const transcript = useMemo(
 		() => buildTranscript(messages, Date.now()),
@@ -161,9 +162,16 @@ export function ChatScreen() {
 		[send],
 	);
 
+	// Bubbles are measured in window coordinates, but the overlay fills this
+	// screen, which sits inside a sheet offset from the window's top.
 	const handleLongPress = useCallback((message: Message, layout: BubbleLayout) => {
 		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-		setOverlay({ message, layout });
+		containerRef.current?.measureInWindow((containerX, containerY) => {
+			setOverlay({
+				message,
+				layout: { ...layout, x: layout.x - containerX, y: layout.y - containerY },
+			});
+		});
 	}, []);
 
 	const handleOverlayAction = useCallback(
@@ -225,7 +233,7 @@ export function ChatScreen() {
 	}
 
 	return (
-		<View style={styles.container}>
+		<View ref={containerRef} style={styles.container}>
 			<GestureDetector gesture={timeRevealPan}>
 				<FlatList
 					inverted
@@ -238,9 +246,7 @@ export function ChatScreen() {
 						paddingTop: 8,
 					}}
 					ListHeaderComponent={<Animated.View style={bottomSpacerStyle} />}
-					ListFooterComponent={
-						<View style={{ height: insets.top + CHAT_HEADER_CONTENT_HEIGHT + 12 }} />
-					}
+					ListFooterComponent={<View style={{ height: SHEET_HEADER_HEIGHT + 16 }} />}
 					style={styles.list}
 				/>
 			</GestureDetector>
@@ -262,12 +268,40 @@ export function ChatScreen() {
 				/>
 			) : null}
 
-			<ChatHeader
-				thread={thread}
-				onPressContact={() => setContactOpen(true)}
-				replyActive={replyTo !== undefined}
-				onExitReply={() => setReplyTo(undefined)}
-			/>
+			<View style={styles.header} pointerEvents="box-none">
+				<LinearGradient
+					colors={["rgba(255,255,255,0.96)", "rgba(255,255,255,0.82)", "rgba(255,255,255,0)"]}
+					locations={[0, 0.55, 1]}
+					style={styles.headerFade}
+					pointerEvents="none"
+				/>
+				<View style={styles.headerRow} pointerEvents="box-none">
+					<GlassView isInteractive glassEffectStyle="regular" style={styles.glassButton}>
+						{replyTo ? (
+							<Pressable
+								hitSlop={12}
+								onPress={() => setReplyTo(undefined)}
+								style={styles.glassPressable}
+							>
+								<SymbolView name="xmark" size={18} weight="semibold" tintColor={colors.blue} />
+							</Pressable>
+						) : (
+							<Pressable
+								hitSlop={12}
+								onPress={() => router.push("/settings")}
+								style={styles.glassPressable}
+							>
+								<SymbolView name="ellipsis" size={20} weight="semibold" tintColor={colors.blue} />
+							</Pressable>
+						)}
+					</GlassView>
+					<GlassView isInteractive glassEffectStyle="regular" style={styles.glassButton}>
+						<Pressable hitSlop={12} onPress={onClose} style={styles.glassPressable}>
+							<SymbolView name="chevron.down" size={20} weight="semibold" tintColor={colors.blue} />
+						</Pressable>
+					</GlassView>
+				</View>
+			</View>
 
 			{plusOpen ? (
 				<Pressable
@@ -326,28 +360,6 @@ export function ChatScreen() {
 					onDismiss={() => setOverlay(null)}
 				/>
 			) : null}
-
-			<Modal
-				visible={contactOpen}
-				animationType="slide"
-				presentationStyle="formSheet"
-				onRequestClose={() => setContactOpen(false)}
-			>
-				<View style={styles.contactSheet}>
-					<Pressable
-						style={styles.contactDone}
-						onPress={() => setContactOpen(false)}
-					>
-						<Text style={styles.contactDoneText}>Done</Text>
-					</Pressable>
-					<Avatar
-						initials={thread.avatarInitials ?? thread.name.slice(0, 1)}
-						size={96}
-					/>
-					<Text style={styles.contactName}>{thread.name}</Text>
-					<Text style={styles.contactSubtitle}>{thread.systemPrompt}</Text>
-				</View>
-			</Modal>
 		</View>
 	);
 }
@@ -379,33 +391,35 @@ const styles = StyleSheet.create({
 	replyScrim: {
 		backgroundColor: "rgba(255,255,255,0.5)",
 	},
-	contactSheet: {
+	header: {
+		position: "absolute",
+		top: 0,
+		left: 0,
+		right: 0,
+		zIndex: 10,
+	},
+	headerFade: {
+		position: "absolute",
+		top: 0,
+		left: 0,
+		right: 0,
+		height: SHEET_HEADER_HEIGHT + 30,
+	},
+	headerRow: {
+		height: SHEET_HEADER_HEIGHT,
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		paddingHorizontal: 12,
+	},
+	glassButton: {
+		width: 42,
+		height: 42,
+		borderRadius: 21,
+	},
+	glassPressable: {
 		flex: 1,
 		alignItems: "center",
-		paddingTop: 32,
-		paddingHorizontal: 24,
-		backgroundColor: colors.gray6,
-	},
-	contactDone: {
-		alignSelf: "flex-end",
-		marginBottom: 12,
-	},
-	contactDoneText: {
-		color: colors.blue,
-		fontSize: 17,
-		fontWeight: "600",
-	},
-	contactName: {
-		fontSize: 24,
-		fontWeight: "600",
-		marginTop: 12,
-		color: colors.label,
-	},
-	contactSubtitle: {
-		fontSize: 14,
-		color: colors.secondaryLabel,
-		textAlign: "center",
-		marginTop: 10,
-		lineHeight: 19,
+		justifyContent: "center",
 	},
 });

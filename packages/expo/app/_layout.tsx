@@ -73,7 +73,6 @@ export default function RootLayout() {
               <StatusBar style="light" />
               <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#fff' } }}>
                 <Stack.Screen name="index" />
-                <Stack.Screen name="messages" />
                 <Stack.Screen name="settings" />
               </Stack>
             </AuthGate>

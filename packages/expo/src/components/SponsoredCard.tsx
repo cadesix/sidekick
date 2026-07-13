@@ -110,13 +110,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray6,
   },
   logo: {
-    borderRadius: 20,
     height: 40,
     width: 40,
   },
   logoFallback: {
     alignItems: "center",
     backgroundColor: colors.gray5,
+    borderRadius: 20,
     justifyContent: "center",
   },
   logoInitial: {
