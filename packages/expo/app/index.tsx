@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import type { TrueSheet } from '@lodev09/react-native-true-sheet';
+import { useEffect, useRef, useState } from 'react';
 import { Dimensions, Pressable, View } from 'react-native';
-import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
 
-import { ChatScreen } from '~/imessage';
+import { CHAT_SHEET_DETENT, ChatScreen } from '~/imessage';
 import { HomeDock } from '../src/components/HomeDock';
 import { SceneFallback } from '../src/components/SceneFallback';
 import { SettingsSheet } from '../src/components/SettingsSheet';
@@ -15,8 +15,9 @@ import { hydrateSettings, loadSettings, type SidekickSettings } from '../src/thr
 import type { CosmeticsControls } from '../src/three/wardrobe';
 
 // RN port of sidekick/src/home4.tsx: full-viewport 3D mascot with an iOS-style
-// dock. Messages slides the chat sheet up over the lower ~55% (camera eases to
-// CHAT_FRAMING, the mascot holds its phone in the band above), Shop swaps the
+// dock. Messages presents the chat as a native sheet over the lower ~75%
+// (camera eases to CHAT_FRAMING, the mascot holds its phone in the band
+// above), Shop swaps the
 // meadow for a studio and opens the wardrobe sheet, Map rockets the camera up
 // while the world map circle-reveals over it.
 
@@ -50,14 +51,16 @@ const SHOP_FRAMING: Framing = {
 };
 
 const { height: SCREEN_H } = Dimensions.get('window');
-const CHAT_SHEET_H = SCREEN_H * 0.55;
 
 export default function Home() {
   // mapOpen drives the camera pull-back; mapShown drives the map's circle
   // reveal, a beat later, so the camera starts flying out before the map grows.
   const [mapOpen, setMapOpen] = useState(false);
   const [mapShown, setMapShown] = useState(false);
+  // chatOpen drives the camera/holdingPhone; the sheet itself is presented
+  // imperatively (native), with onWillDismiss syncing state back for drag-downs
   const [chatOpen, setChatOpen] = useState(false);
+  const chatSheet = useRef<TrueSheet>(null);
   const [shopOpen, setShopOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // imperative handle the canvas publishes once cosmetics are ready; the Shop
@@ -78,6 +81,10 @@ export default function Home() {
   const closeMap = () => {
     setMapShown(false); // map scales back out…
     setMapOpen(false); // …while the camera flies back to the meadow
+  };
+  const openChat = () => {
+    setChatOpen(true); // camera starts easing while the sheet presents
+    void chatSheet.current?.present();
   };
 
   return (
@@ -113,7 +120,7 @@ export default function Home() {
           full-screen map reveal hides it */}
       <HomeDock
         hidden={mapShown}
-        onMessages={() => setChatOpen(true)}
+        onMessages={openChat}
         onShop={() => setShopOpen(true)}
         onMap={openMap}
         onSettings={() => setSettingsOpen(true)}
@@ -126,7 +133,7 @@ export default function Home() {
         onClose={closeMap}
         onChat={() => {
           closeMap();
-          setChatOpen(true);
+          openChat();
         }}
       />
 
@@ -160,43 +167,24 @@ export default function Home() {
         />
       ) : null}
 
-      {/* Chat sheet — covers the lower ~55%, leaving the mascot (holding its
-          phone) visible in the band above; tap that band to close */}
+      {/* Chat sheet — a native sheet covering the lower ~75%, undimmed so the
+          mascot (holding its phone) stays visible in the band above; tap that
+          band (or drag the sheet down) to close */}
       {chatOpen ? (
         <Pressable
-          onPress={() => setChatOpen(false)}
+          onPress={() => void chatSheet.current?.dismiss()}
           accessibilityLabel="Close chat"
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: SCREEN_H - CHAT_SHEET_H, zIndex: 30 }}
-        />
-      ) : null}
-      {chatOpen ? (
-        <Animated.View
-          entering={SlideInDown.duration(450)}
-          exiting={SlideOutDown.duration(400)}
           style={{
             position: 'absolute',
+            top: 0,
             left: 0,
             right: 0,
-            bottom: 0,
-            height: CHAT_SHEET_H,
-            zIndex: 40,
-            backgroundColor: '#fff',
-            borderTopLeftRadius: 28,
-            borderTopRightRadius: 28,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: -8 },
-            shadowOpacity: 0.22,
-            shadowRadius: 20,
-            elevation: 12,
+            height: SCREEN_H * (1 - CHAT_SHEET_DETENT),
+            zIndex: 30,
           }}
-        >
-          <View
-            style={{ flex: 1, borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' }}
-          >
-            <ChatScreen onClose={() => setChatOpen(false)} />
-          </View>
-        </Animated.View>
+        />
       ) : null}
+      <ChatScreen sheetRef={chatSheet} onWillDismiss={() => setChatOpen(false)} />
     </View>
   );
 }

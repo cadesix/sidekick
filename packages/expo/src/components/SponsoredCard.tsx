@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
-import * as WebBrowser from "expo-web-browser";
 import * as Haptics from "expo-haptics";
 import { SymbolView } from "expo-symbols";
 import type { AdView } from "~/lib/chat-thread";
 import { dismissAd, recordAdClick, recordAdImpression } from "~/lib/api";
 import { colors } from "~/imessage/theme";
+import { GravityBrowser } from "./GravityBrowser";
 
 /**
  * The one monetization surface (05 / 07 §8): a compact sponsored row rendered
@@ -16,6 +16,7 @@ import { colors } from "~/imessage/theme";
 export function SponsoredCard({ ad }: { ad: AdView }) {
   const [dismissed, setDismissed] = useState(false);
   const [impressionRecorded, setImpressionRecorded] = useState(false);
+  const [browserOpen, setBrowserOpen] = useState(false);
   // css-interop silently drops function-form Pressable styles, so pressed
   // feedback is tracked as state and styled with a plain array.
   const [pressed, setPressed] = useState(false);
@@ -27,7 +28,7 @@ export function SponsoredCard({ ad }: { ad: AdView }) {
   const open = () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     void recordAdClick(ad.adUnitId).catch(() => {});
-    void WebBrowser.openBrowserAsync(ad.clickUrl).catch(() => {});
+    setBrowserOpen(true);
   };
 
   const hide = () => {
@@ -53,7 +54,8 @@ export function SponsoredCard({ ad }: { ad: AdView }) {
   };
 
   return (
-    <View style={styles.container} onLayout={recordImpression}>
+    <>
+      <View style={styles.container} onLayout={recordImpression}>
       <Pressable
         accessibilityRole="link"
         accessibilityLabel={`${ad.brandName}, Ad, ${ad.title}`}
@@ -83,8 +85,14 @@ export function SponsoredCard({ ad }: { ad: AdView }) {
           </Text>
         </View>
         <SymbolView name="chevron.right" size={14} weight="semibold" tintColor={colors.gray3} />
-      </Pressable>
-    </View>
+        </Pressable>
+      </View>
+      <GravityBrowser
+        url={ad.clickUrl}
+        visible={browserOpen}
+        onClose={() => setBrowserOpen(false)}
+      />
+    </>
   );
 }
 

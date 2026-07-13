@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "vitest";
+import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { type Database, messages, users } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
@@ -41,7 +42,12 @@ async function eligibleUser(deviceId: string): Promise<string> {
   const { userId } = await registerDevice(db, { deviceId });
   await db
     .update(users)
-    .set({ ageBracket: "25-34", personalizedAdsConsent: true, timezone: "UTC" })
+    .set({
+      ageBracket: "25-34",
+      personalizedAdsConsent: true,
+      timezone: "UTC",
+      email: `${deviceId}@example.com`,
+    })
     .where(eq(users.id, userId));
   return userId;
 }
@@ -61,16 +67,23 @@ async function seedTurn(conversationId: string, count: number): Promise<number> 
 test("device signals are parsed from real request headers", () => {
   const signals = deviceSignalsFromHeaders(
     headers({
-      "user-agent": "Sidekick/1.0 (iPhone; iOS 19.2)",
+      "user-agent": "CFNetwork/1498 Darwin/23.5",
+      "x-sidekick-user-agent": "Sidekick/1.0 (ios; 19.2)",
+      "x-sidekick-device-id": "device-123",
+      "x-sidekick-timezone": "America/New_York",
+      "accept-language": "en-US,en;q=0.9",
       "x-forwarded-for": "203.0.113.9, 10.0.0.1",
       "x-vercel-ip-country": "US",
     }),
   );
   expect(signals).toEqual({
-    ua: "Sidekick/1.0 (iPhone; iOS 19.2)",
+    ua: "Sidekick/1.0 (ios; 19.2)",
     ip: "203.0.113.9",
     os: "ios",
     country: "US",
+    id: "device-123",
+    timezone: "America/New_York",
+    locale: "en-US",
   });
 
   const android = deviceSignalsFromHeaders(
@@ -85,7 +98,7 @@ test("device signals are parsed from real request headers", () => {
   expect(deviceSignalsFromHeaders(headers({}))).toBeUndefined();
 });
 
-test("captured device signals are forwarded verbatim on the ad request", async () => {
+test("authenticated identity and device signals are forwarded to Gravity", async () => {
   const userId = await eligibleUser("sig-direct");
   const conversationId = await createConversation(db, userId);
   const turnMessageId = await seedTurn(conversationId, 2);
@@ -98,7 +111,10 @@ test("captured device signals are forwarded verbatim on the ad request", async (
   );
 
   expect(result.status).toBe("served");
-  expect(network.requests[0]?.device).toEqual(device);
+  expect(network.requests[0]?.device).toEqual({ ...device, timezone: "UTC" });
+  expect(network.requests[0]?.emailHash).toBe(
+    createHash("sha256").update("sig-direct@example.com").digest("hex"),
+  );
 });
 
 test("the tRPC send path threads ctx.device into the ad request", async () => {
@@ -133,6 +149,7 @@ test("the tRPC send path threads ctx.device into the ad request", async () => {
     ip: "203.0.113.9",
     os: "ios",
     country: "US",
+    timezone: "UTC",
   });
 });
 

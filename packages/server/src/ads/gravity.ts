@@ -13,6 +13,9 @@ export type AdDeviceSignals = {
   ip?: string;
   os?: string;
   country?: string;
+  id?: string;
+  timezone?: string;
+  locale?: string;
 };
 
 /** The device OS as Gravity wants it, sniffed from a mobile user-agent. */
@@ -36,12 +39,15 @@ function osFromUserAgent(ua: string): string | undefined {
 export function deviceSignalsFromHeaders(
   header: (name: string) => string | null | undefined,
 ): AdDeviceSignals | undefined {
-  const ua = header("user-agent") ?? undefined;
+  const ua = header("x-sidekick-user-agent") ?? header("user-agent") ?? undefined;
   const forwarded = header("x-forwarded-for");
   const ip = forwarded ? forwarded.split(",")[0]?.trim() : (header("x-real-ip") ?? undefined);
   const country = header("x-vercel-ip-country") ?? undefined;
+  const id = header("x-sidekick-device-id") ?? undefined;
+  const timezone = header("x-sidekick-timezone") ?? undefined;
+  const locale = header("accept-language")?.split(",")[0]?.trim() || undefined;
   const os = ua ? osFromUserAgent(ua) : undefined;
-  if (!ua && !ip && !country) {
+  if (!ua && !ip && !country && !id) {
     return undefined;
   }
   return {
@@ -49,6 +55,9 @@ export function deviceSignalsFromHeaders(
     ...(ip ? { ip } : {}),
     ...(os ? { os } : {}),
     ...(country ? { country } : {}),
+    ...(id ? { id } : {}),
+    ...(timezone ? { timezone } : {}),
+    ...(locale ? { locale } : {}),
   };
 }
 
@@ -61,6 +70,7 @@ export type AdRequest = {
   messages: { role: string; content: string }[];
   sessionId: string;
   userId: string;
+  emailHash?: string;
   placement: string;
   placementId: string;
   relevancy: number;
@@ -127,7 +137,10 @@ export class GravityHttpClient implements AdNetworkClient {
           placements: [
             { placement: request.placement, placement_id: request.placementId },
           ],
-          user: { id: request.userId },
+          user: {
+            id: request.userId,
+            ...(request.emailHash ? { email_hash: request.emailHash } : {}),
+          },
           relevancy: request.relevancy,
           excludedTopics: request.excludedTopics,
           testAd: !this.production,

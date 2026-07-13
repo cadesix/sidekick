@@ -73,7 +73,10 @@ export default function RootLayout() {
               <StatusBar style="light" />
               <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#fff' } }}>
                 <Stack.Screen name="index" />
-                <Stack.Screen name="settings" />
+                {/* Settings opens from inside the natively-presented chat
+                    sheet — only modal presentations appear above it */}
+                <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
+                <Stack.Screen name="dev/ad-preview" options={{ presentation: 'modal' }} />
               </Stack>
             </AuthGate>
           </QueryClientProvider>

@@ -1,3 +1,4 @@
+import { TrueSheet } from "@lodev09/react-native-true-sheet";
 import { BlurView } from "expo-blur";
 import * as Clipboard from "expo-clipboard";
 import { GlassView } from "expo-glass-effect";
@@ -5,7 +6,7 @@ import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { SymbolView } from "expo-symbols";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { FlatList, Pressable, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
@@ -42,17 +43,30 @@ const TYPING_ITEM = "typing";
 const ENTRY_ANIMATION_WINDOW = 1200;
 const SHEET_HEADER_HEIGHT = 54;
 
+/** Fraction of the screen the chat sheet covers; the mascot lives in the band above. */
+export const CHAT_SHEET_DETENT = 0.75;
+
 interface OverlayState {
 	message: Message;
 	layout: BubbleLayout;
 }
 
 /**
- * The chat, hosted inside the home screen's bottom sheet (the mascot above the
- * sheet is the "contact", so there's no iMessage-style header — just a slim
- * row of glass buttons: settings on the left, close on the right).
+ * The chat, presented as a native bottom sheet over the home screen (the
+ * mascot above the sheet is the "contact", so there's no iMessage-style
+ * header — just a slim row of glass buttons: settings on the left, close on
+ * the right). The composer stack renders through the sheet's `footer` so it's
+ * natively pinned to the visible sheet bottom and rides the keyboard — RN-side
+ * layout can't reach the sheet bottom because the content is laid out at full
+ * screen height.
  */
-export function ChatScreen({ onClose }: { onClose: () => void }) {
+export function ChatScreen({
+	sheetRef,
+	onWillDismiss,
+}: {
+	sheetRef: RefObject<TrueSheet | null>;
+	onWillDismiss: () => void;
+}) {
 	const insets = useSafeAreaInsets();
 	const router = useRouter();
 	const { thread, messages, composerAd, typing, send, addReaction, removeMessage } =
@@ -117,9 +131,9 @@ export function ChatScreen({ onClose }: { onClose: () => void }) {
 		opacity: replyProgress.value,
 	}));
 
-	const inputBarStyle = useAnimatedStyle(() => ({
-		transform: [{ translateY: keyboard.height.value }],
-	}));
+	// The hosting native sheet rides the keyboard itself, so the input bar just
+	// stays pinned to the sheet bottom; only the home-indicator padding swaps
+	// out while the keyboard is up.
 	const inputBarPaddingStyle = useAnimatedStyle(() => ({
 		paddingBottom: interpolate(
 			keyboard.progress.value,
@@ -128,9 +142,9 @@ export function ChatScreen({ onClose }: { onClose: () => void }) {
 		),
 	}));
 	// In an inverted list the header renders at the visual bottom; it reserves
-	// room for the input bar and rides the keyboard.
+	// room for the input bar.
 	const bottomSpacerStyle = useAnimatedStyle(() => ({
-		height: inputBarHeight.value - keyboard.height.value,
+		height: inputBarHeight.value,
 	}));
 
 	const timeRevealPan = Gesture.Pan()
@@ -161,6 +175,13 @@ export function ChatScreen({ onClose }: { onClose: () => void }) {
 		},
 		[send],
 	);
+
+	// UIKit silently drops a modal presented while the sheet's own view
+	// controller is presenting, so the sheet has to come down first.
+	const openSettings = async () => {
+		await sheetRef.current?.dismiss();
+		router.push("/settings");
+	};
 
 	// Bubbles are measured in window coordinates, but the overlay fills this
 	// screen, which sits inside a sheet offset from the window's top.
@@ -228,146 +249,173 @@ export function ChatScreen({ onClose }: { onClose: () => void }) {
 		);
 	};
 
-	if (!thread) {
-		return <View style={styles.container} />;
-	}
+	// The footer is a native layer above the content view, so the tapback
+	// overlay (inside the content) can't cover it — hide it while focused.
+	const footer = (
+		<View
+			pointerEvents={overlay ? "none" : "box-none"}
+			style={overlay ? styles.footerHidden : null}
+		>
+			<LinearGradient
+				colors={["rgba(255,255,255,0)", colors.background]}
+				locations={[0, 1]}
+				style={styles.inputFade}
+				pointerEvents="none"
+			/>
+			{plusOpen ? (
+				<PlusDrawer
+					onSelectAudio={() => {
+						setPlusOpen(false);
+						setRecording(true);
+					}}
+					onClose={() => setPlusOpen(false)}
+				/>
+			) : null}
+			<Animated.View
+				style={inputBarPaddingStyle}
+				onLayout={(event) => {
+					inputBarHeight.value = withTiming(event.nativeEvent.layout.height, {
+						duration: 200,
+					});
+				}}
+			>
+				{replyTo ? <ReplyChain messages={replyChain} /> : null}
+				{composerAd ? <SponsoredCard ad={composerAd} /> : null}
+				<ChatInputBar
+					replyActive={replyTo !== undefined}
+					onSendText={handleSendText}
+					onSendAudio={handleSendAudio}
+					onTogglePlusMenu={() => setPlusOpen((open) => !open)}
+					plusMenuOpen={plusOpen}
+					recording={recording}
+					onRecordingChange={setRecording}
+				/>
+			</Animated.View>
+		</View>
+	);
 
 	return (
-		<View ref={containerRef} style={styles.container}>
-			<GestureDetector gesture={timeRevealPan}>
-				<FlatList
-					inverted
-					data={data}
-					keyExtractor={(item) => (item === TYPING_ITEM ? TYPING_ITEM : item.id)}
-					renderItem={renderItem}
-					keyboardDismissMode="interactive"
-					showsVerticalScrollIndicator
-					contentContainerStyle={{
-						paddingTop: 8,
-					}}
-					ListHeaderComponent={<Animated.View style={bottomSpacerStyle} />}
-					ListFooterComponent={<View style={{ height: SHEET_HEADER_HEIGHT + 16 }} />}
-					style={styles.list}
-				/>
-			</GestureDetector>
+		<TrueSheet
+			ref={sheetRef}
+			detents={[CHAT_SHEET_DETENT]}
+			dimmed={false}
+			cornerRadius={28}
+			backgroundColor={colors.background}
+			scrollable
+			scrollableOptions={{ topScrollEdgeEffect: "soft" }}
+			insetAdjustment="never"
+			onWillDismiss={onWillDismiss}
+			footer={thread ? footer : undefined}
+		>
+			{thread ? (
+				<View ref={containerRef} style={styles.container}>
+					<GestureDetector gesture={timeRevealPan}>
+						<FlatList
+							inverted
+							data={data}
+							keyExtractor={(item) => (item === TYPING_ITEM ? TYPING_ITEM : item.id)}
+							renderItem={renderItem}
+							keyboardDismissMode="interactive"
+							showsVerticalScrollIndicator
+							contentContainerStyle={{
+								paddingTop: 8,
+							}}
+							ListHeaderComponent={<Animated.View style={bottomSpacerStyle} />}
+							ListFooterComponent={<View style={{ height: SHEET_HEADER_HEIGHT + 16 }} />}
+							style={styles.list}
+						/>
+					</GestureDetector>
 
-			<AnimatedBlurView
-				tint="light"
-				pointerEvents="none"
-				animatedProps={scrimBlurProps}
-				style={StyleSheet.absoluteFill}
-			/>
-			<Animated.View
-				pointerEvents="none"
-				style={[StyleSheet.absoluteFill, styles.replyScrim, scrimTintStyle]}
-			/>
-			{replyTo ? (
-				<Pressable
-					style={StyleSheet.absoluteFill}
-					onPress={() => setReplyTo(undefined)}
-				/>
-			) : null}
+					<AnimatedBlurView
+						tint="light"
+						pointerEvents="none"
+						animatedProps={scrimBlurProps}
+						style={StyleSheet.absoluteFill}
+					/>
+					<Animated.View
+						pointerEvents="none"
+						style={[StyleSheet.absoluteFill, styles.replyScrim, scrimTintStyle]}
+					/>
+					{replyTo ? (
+						<Pressable
+							style={StyleSheet.absoluteFill}
+							onPress={() => setReplyTo(undefined)}
+						/>
+					) : null}
 
-			<View style={styles.header} pointerEvents="box-none">
-				<LinearGradient
-					colors={["rgba(255,255,255,0.96)", "rgba(255,255,255,0.82)", "rgba(255,255,255,0)"]}
-					locations={[0, 0.55, 1]}
-					style={styles.headerFade}
-					pointerEvents="none"
-				/>
-				<View style={styles.headerRow} pointerEvents="box-none">
-					<GlassView isInteractive glassEffectStyle="regular" style={styles.glassButton}>
-						{replyTo ? (
-							<Pressable
-								hitSlop={12}
-								onPress={() => setReplyTo(undefined)}
-								style={styles.glassPressable}
-							>
-								<SymbolView name="xmark" size={18} weight="semibold" tintColor={colors.blue} />
-							</Pressable>
-						) : (
-							<Pressable
-								hitSlop={12}
-								onPress={() => router.push("/settings")}
-								style={styles.glassPressable}
-							>
-								<SymbolView name="ellipsis" size={20} weight="semibold" tintColor={colors.blue} />
-							</Pressable>
-						)}
-					</GlassView>
-					<GlassView isInteractive glassEffectStyle="regular" style={styles.glassButton}>
-						<Pressable hitSlop={12} onPress={onClose} style={styles.glassPressable}>
-							<SymbolView name="chevron.down" size={20} weight="semibold" tintColor={colors.blue} />
-						</Pressable>
-					</GlassView>
+					<View style={styles.header} pointerEvents="box-none">
+						<LinearGradient
+							colors={["rgba(255,255,255,0.96)", "rgba(255,255,255,0.82)", "rgba(255,255,255,0)"]}
+							locations={[0, 0.55, 1]}
+							style={styles.headerFade}
+							pointerEvents="none"
+						/>
+						<View style={styles.headerRow} pointerEvents="box-none">
+							<GlassView isInteractive glassEffectStyle="regular" style={styles.glassButton}>
+								{replyTo ? (
+									<Pressable
+										hitSlop={12}
+										onPress={() => setReplyTo(undefined)}
+										style={styles.glassPressable}
+									>
+										<SymbolView name="xmark" size={18} weight="semibold" tintColor={colors.blue} />
+									</Pressable>
+								) : (
+									<Pressable
+										hitSlop={12}
+										onPress={() => void openSettings()}
+										style={styles.glassPressable}
+									>
+										<SymbolView name="ellipsis" size={20} weight="semibold" tintColor={colors.blue} />
+									</Pressable>
+								)}
+							</GlassView>
+							<GlassView isInteractive glassEffectStyle="regular" style={styles.glassButton}>
+								<Pressable
+									hitSlop={12}
+									onPress={() => void sheetRef.current?.dismiss()}
+									style={styles.glassPressable}
+								>
+									<SymbolView name="chevron.down" size={20} weight="semibold" tintColor={colors.blue} />
+								</Pressable>
+							</GlassView>
+						</View>
+					</View>
+
+					{plusOpen ? (
+						<Pressable
+							style={StyleSheet.absoluteFill}
+							onPress={() => setPlusOpen(false)}
+						/>
+					) : null}
+
+					{overlay ? (
+						<TapbackOverlay
+							message={
+								messages.find((candidate) => candidate.id === overlay.message.id) ??
+								overlay.message
+							}
+							layout={overlay.layout}
+							onSelectReaction={handleReaction}
+							onAction={handleOverlayAction}
+							onDismiss={() => setOverlay(null)}
+						/>
+					) : null}
 				</View>
-			</View>
-
-			{plusOpen ? (
-				<Pressable
-					style={StyleSheet.absoluteFill}
-					onPress={() => setPlusOpen(false)}
-				/>
 			) : null}
-
-			<Animated.View style={[styles.inputBarWrapper, inputBarStyle]}>
-				<LinearGradient
-					colors={["rgba(255,255,255,0)", colors.background]}
-					locations={[0, 1]}
-					style={styles.inputFade}
-					pointerEvents="none"
-				/>
-				{plusOpen ? (
-					<PlusDrawer
-						onSelectAudio={() => {
-							setPlusOpen(false);
-							setRecording(true);
-						}}
-						onClose={() => setPlusOpen(false)}
-					/>
-				) : null}
-				<Animated.View
-					style={inputBarPaddingStyle}
-					onLayout={(event) => {
-						inputBarHeight.value = withTiming(event.nativeEvent.layout.height, {
-							duration: 200,
-						});
-					}}
-				>
-					{replyTo ? <ReplyChain messages={replyChain} /> : null}
-					{composerAd ? <SponsoredCard ad={composerAd} /> : null}
-					<ChatInputBar
-						replyActive={replyTo !== undefined}
-						onSendText={handleSendText}
-						onSendAudio={handleSendAudio}
-						onTogglePlusMenu={() => setPlusOpen((open) => !open)}
-						plusMenuOpen={plusOpen}
-						recording={recording}
-						onRecordingChange={setRecording}
-					/>
-				</Animated.View>
-			</Animated.View>
-
-			{overlay ? (
-				<TapbackOverlay
-					message={
-						messages.find((candidate) => candidate.id === overlay.message.id) ??
-						overlay.message
-					}
-					layout={overlay.layout}
-					onSelectReaction={handleReaction}
-					onAction={handleOverlayAction}
-					onDismiss={() => setOverlay(null)}
-				/>
-			) : null}
-		</View>
+		</TrueSheet>
 	);
 }
 
 const styles = StyleSheet.create({
+	// Clipped to the sheet's rounded top so scrolled bubbles can't paint over
+	// the corner notches or the sheet's top edge.
 	container: {
 		flex: 1,
 		backgroundColor: colors.background,
+		borderTopLeftRadius: 28,
+		borderTopRightRadius: 28,
+		overflow: "hidden",
 	},
 	list: {
 		flex: 1,
@@ -387,6 +435,9 @@ const styles = StyleSheet.create({
 		right: 0,
 		bottom: 0,
 		height: 130,
+	},
+	footerHidden: {
+		opacity: 0,
 	},
 	replyScrim: {
 		backgroundColor: "rgba(255,255,255,0.5)",

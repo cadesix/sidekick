@@ -1,4 +1,5 @@
 import { fetch as streamingFetch } from "expo/fetch";
+import Constants from "expo-constants";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
 import type { AppRouter } from "@sidekick/server/router";
 import { DEEP_TALK_MARKER_ROLE, STREAM_META_DELIMITER } from "@sidekick/shared";
@@ -11,6 +12,7 @@ import type {
 } from "@sidekick/shared";
 import { drainStreamFrames } from "~/features/chat/stream-frames";
 import type { AdView, ChatMessage, MessageAttachment } from "./chat-thread";
+import { Platform } from "react-native";
 
 /**
  * THE server stitch. Everything the app asks of the backend goes through here so
@@ -27,17 +29,29 @@ const STREAM_URL = `${API_BASE}/chat/stream`;
 const CONTINUE_URL = `${API_BASE}/chat/continue`;
 
 let authToken: string | null = null;
+let authDeviceId: string | null = null;
 
 /** Set by the auth bootstrap once the device has a token (lib/auth.tsx). */
-export function setAuthToken(token: string | null): void {
+export function setAuthToken(token: string | null, deviceId?: string): void {
   authToken = token;
+  if (deviceId !== undefined) {
+    authDeviceId = deviceId;
+  }
 }
 
 function authHeaders(): Record<string, string> {
-  if (!authToken) {
-    return {};
+  const headers: Record<string, string> = {
+    "accept-language": Intl.DateTimeFormat().resolvedOptions().locale,
+    "x-sidekick-timezone": Intl.DateTimeFormat().resolvedOptions().timeZone,
+    "x-sidekick-user-agent": `Sidekick/${Constants.expoConfig?.version ?? "1"} (${Platform.OS}; ${String(Platform.Version)})`,
+  };
+  if (authDeviceId) {
+    headers["x-sidekick-device-id"] = authDeviceId;
   }
-  return { authorization: `Bearer ${authToken}` };
+  if (authToken) {
+    headers.authorization = `Bearer ${authToken}`;
+  }
+  return headers;
 }
 
 export const trpc = createTRPCClient<AppRouter>({
@@ -46,6 +60,25 @@ export const trpc = createTRPCClient<AppRouter>({
 
 export function registerDevice(deviceId: string): Promise<{ userId: string; token: string }> {
   return trpc.auth.register.mutate({ deviceId });
+}
+
+export function authStatus(): Promise<{ email: string | null }> {
+  return trpc.auth.status.query();
+}
+
+export function createEmailAccount(input: {
+  email: string;
+  password: string;
+}): Promise<{ email: string }> {
+  return trpc.auth.createEmailAccount.mutate(input);
+}
+
+export function signInWithEmail(input: {
+  deviceId: string;
+  email: string;
+  password: string;
+}): Promise<{ userId: string; token: string }> {
+  return trpc.auth.signIn.mutate(input);
 }
 
 export function mainConversationId(): Promise<{ id: string }> {

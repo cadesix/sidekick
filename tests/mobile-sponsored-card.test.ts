@@ -5,6 +5,11 @@ import {
   activeComposerAd,
   buildChatRows,
 } from "../packages/expo/src/lib/chat-thread";
+import {
+  GRAVITY_PIXEL_CONFIG,
+  GRAVITY_PIXEL_ID,
+  GRAVITY_PIXEL_LOADER,
+} from "../packages/expo/src/lib/gravity-pixel";
 
 const AD: AdView = {
   adUnitId: "ad-1",
@@ -57,5 +62,15 @@ describe("sponsored-card thread rows", () => {
     if (row?.type === "message") {
       expect(row.message.ad ?? null).toBeNull();
     }
+  });
+});
+
+describe("Gravity in-app browser pixel", () => {
+  it("configures the dashboard pixel for in-app attribution", () => {
+    expect(GRAVITY_PIXEL_ID).toMatch(/^[0-9a-f-]{36}$/);
+    expect(GRAVITY_PIXEL_CONFIG).toContain("inAppBrowser: true");
+    expect(GRAVITY_PIXEL_CONFIG).toContain(GRAVITY_PIXEL_ID);
+    expect(GRAVITY_PIXEL_LOADER).toContain("https://code.trygravity.ai/gr-pix.js");
+    expect(GRAVITY_PIXEL_LOADER).toContain(`gravity('init', '${GRAVITY_PIXEL_ID}')`);
   });
 });

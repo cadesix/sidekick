@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { type Database, adEvents, adProfiles, ads, users } from "@sidekick/db";
 import type { FeatureFlags } from "@sidekick/shared";
@@ -78,6 +79,7 @@ export async function runAdDecision(
       consent: users.personalizedAdsConsent,
       timezone: users.timezone,
       country: users.lastCountry,
+      email: users.email,
     })
     .from(users)
     .where(eq(users.id, input.userId))
@@ -119,11 +121,18 @@ export async function runAdDecision(
     messages: window.map((m) => ({ role: m.role, content: m.content })),
     sessionId: input.conversationId,
     userId: input.userId,
+    emailHash: user.email
+      ? createHash("sha256").update(user.email.trim().toLowerCase()).digest("hex")
+      : undefined,
     placement: GRAVITY_CHAT_PLACEMENT,
     placementId: GRAVITY_CHAT_PLACEMENT_ID,
     relevancy,
     excludedTopics: [...EXCLUDED_TOPICS, ...dismissedTopics],
-    device: input.device ?? (user.country ? { country: user.country } : undefined),
+    device: {
+      ...(user.country ? { country: user.country } : {}),
+      ...(user.timezone ? { timezone: user.timezone } : {}),
+      ...input.device,
+    },
   });
 
   if (!ad) {

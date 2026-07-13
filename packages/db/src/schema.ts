@@ -68,6 +68,8 @@ export const memoryKind = pgEnum("memory_kind", [
  */
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
+  email: text("email").unique(),
+  passwordHash: text("password_hash"),
   name: text("name"),
   ageBracket: text("age_bracket"),
   gender: text("gender"),
