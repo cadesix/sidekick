@@ -1,20 +1,24 @@
 import { useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import * as Haptics from "expo-haptics";
+import { SymbolView } from "expo-symbols";
 import type { AdView } from "~/lib/chat-thread";
 import { dismissAd, recordAdClick, recordAdImpression } from "~/lib/api";
 import { colors } from "~/imessage/theme";
 
 /**
- * The one monetization surface (05 / 07 §8): a sponsored suggestion card rendered
- * above the composer. Its neutral system styling keeps it distinct from message
- * bubbles while fitting the surrounding iOS chrome. The sponsored label is
- * always visible; taps use Gravity's tracked URL and the close button dismisses.
+ * The one monetization surface (05 / 07 §8): a compact sponsored row rendered
+ * below the composer — round brand logo, "Brand · Ad" line, one line of copy,
+ * disclosure chevron. Taps use Gravity's tracked URL and long-press offers the
+ * "hide ads like this" dismissal (05 §ad feedback loop).
  */
 export function SponsoredCard({ ad }: { ad: AdView }) {
   const [dismissed, setDismissed] = useState(false);
   const [impressionRecorded, setImpressionRecorded] = useState(false);
+  // css-interop silently drops function-form Pressable styles, so pressed
+  // feedback is tracked as state and styled with a plain array.
+  const [pressed, setPressed] = useState(false);
 
   if (dismissed) {
     return null;
@@ -32,6 +36,14 @@ export function SponsoredCard({ ad }: { ad: AdView }) {
     void dismissAd(ad.adUnitId).catch(() => {});
   };
 
+  const confirmHide = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Alert.alert("Hide ads like this?", `You'll see fewer ads about ${ad.brandName}.`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Hide", style: "destructive", onPress: hide },
+    ]);
+  };
+
   const recordImpression = () => {
     if (impressionRecorded) {
       return;
@@ -44,32 +56,33 @@ export function SponsoredCard({ ad }: { ad: AdView }) {
     <View style={styles.container} onLayout={recordImpression}>
       <Pressable
         accessibilityRole="link"
-        accessibilityLabel={`${ad.brandName}, Sponsored, ${ad.title}, ${ad.cta}`}
+        accessibilityLabel={`${ad.brandName}, Ad, ${ad.title}`}
+        accessibilityHint="Long press to hide ads like this"
         onPress={open}
-        style={({ pressed }) => [styles.card, pressed ? styles.cardPressed : null]}
+        onLongPress={confirmHide}
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
+        style={[styles.card, pressed ? styles.cardPressed : null]}
       >
-          <View style={styles.header}>
-            {ad.faviconUrl ? (
-              <Image source={{ uri: ad.faviconUrl }} style={styles.favicon} />
-            ) : null}
+        {ad.faviconUrl ? (
+          <Image source={{ uri: ad.faviconUrl }} style={styles.logo} />
+        ) : (
+          <View style={[styles.logo, styles.logoFallback]}>
+            <Text style={styles.logoInitial}>{ad.brandName.slice(0, 1)}</Text>
+          </View>
+        )}
+        <View style={styles.copy}>
+          <View style={styles.brandRow}>
             <Text style={styles.brand} numberOfLines={1}>
               {ad.brandName}
             </Text>
-            <Text style={styles.sponsored}>Sponsored</Text>
-            <Pressable
-              onPress={hide}
-              accessibilityLabel="Hide sponsored suggestion"
-              hitSlop={10}
-              style={styles.close}
-            >
-              <Text style={styles.closeText}>×</Text>
-            </Pressable>
+            <Text style={styles.adBadge}>· Ad</Text>
           </View>
-          <Text style={styles.title} numberOfLines={1}>{ad.title}</Text>
-          <Text style={styles.body} numberOfLines={1}>
-            {ad.body}
+          <Text style={styles.text} numberOfLines={1}>
+            {ad.body ? ad.body : ad.title}
           </Text>
-          <Text style={styles.cta}>{ad.cta} ›</Text>
+        </View>
+        <SymbolView name="chevron.right" size={14} weight="semibold" tintColor={colors.gray3} />
       </Pressable>
     </View>
   );
@@ -82,65 +95,56 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   card: {
-    backgroundColor: colors.gray6,
+    alignItems: "center",
+    backgroundColor: colors.background,
     borderColor: colors.gray5,
-    borderRadius: 14,
+    borderCurve: "continuous",
+    borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    flexDirection: "row",
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   cardPressed: {
-    opacity: 0.65,
+    backgroundColor: colors.gray6,
   },
-  header: {
+  logo: {
+    borderRadius: 20,
+    height: 40,
+    width: 40,
+  },
+  logoFallback: {
+    alignItems: "center",
+    backgroundColor: colors.gray5,
+    justifyContent: "center",
+  },
+  logoInitial: {
+    color: colors.secondaryLabel,
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  copy: {
+    flex: 1,
+    gap: 1,
+  },
+  brandRow: {
     alignItems: "center",
     flexDirection: "row",
-    gap: 5,
-  },
-  favicon: {
-    borderRadius: 3,
-    height: 14,
-    width: 14,
+    gap: 4,
   },
   brand: {
-    color: colors.secondaryLabel,
-    flexShrink: 1,
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  sponsored: {
-    color: colors.tertiaryLabel,
-    fontSize: 11,
-  },
-  close: {
-    alignItems: "center",
-    height: 20,
-    justifyContent: "center",
-    marginLeft: "auto",
-    width: 20,
-  },
-  closeText: {
-    color: colors.gray,
-    fontSize: 17,
-    lineHeight: 18,
-  },
-  title: {
     color: colors.label,
-    fontSize: 14,
+    flexShrink: 1,
+    fontSize: 15,
     fontWeight: "600",
-    lineHeight: 18,
-    marginTop: 3,
   },
-  body: {
+  adBadge: {
     color: colors.secondaryLabel,
-    fontSize: 13,
-    lineHeight: 17,
-    marginTop: 1,
+    fontSize: 14,
   },
-  cta: {
-    color: colors.blue,
-    fontSize: 13,
-    fontWeight: "600",
-    marginTop: 5,
+  text: {
+    color: colors.secondaryLabel,
+    fontSize: 15,
   },
 });

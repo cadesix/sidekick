@@ -47,6 +47,18 @@ function Field({
 	);
 }
 
+/** An iOS-style disclosure row that pushes another screen. */
+function LinkRow({ label, onPress }: { label: string; onPress: () => void }) {
+	return (
+		<Pressable style={styles.row} onPress={onPress}>
+			<Text style={styles.rowLabel}>{label}</Text>
+			<View style={styles.rowChevron}>
+				<SymbolView name="chevron.right" size={14} weight="semibold" tintColor={colors.gray3} />
+			</View>
+		</Pressable>
+	);
+}
+
 function Group({ title, children }: { title: string; children: ReactNode }) {
 	return (
 		<View style={styles.group}>
@@ -111,6 +123,11 @@ export function SettingsScreen() {
 							<Text style={styles.rowValue}>{me.data.timezone ?? "—"}</Text>
 						</View>
 					</Group>
+					{__DEV__ ? (
+						<Group title="Developer">
+							<LinkRow label="Ad preview" onPress={() => router.push("/dev/ad-preview")} />
+						</Group>
+					) : null}
 				</ScrollView>
 			) : null}
 		</View>
@@ -185,6 +202,10 @@ const styles = StyleSheet.create({
 		fontSize: 17,
 		color: colors.secondaryLabel,
 		textAlign: "right",
+	},
+	rowChevron: {
+		flex: 1,
+		alignItems: "flex-end",
 	},
 	divider: {
 		height: StyleSheet.hairlineWidth,
