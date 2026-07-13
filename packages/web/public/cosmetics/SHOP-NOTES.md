@@ -3,7 +3,7 @@
 All items follow the frozen authoring contract (canonical rig
 `character_master.blend`, raw ~0.20u scale, +X facing, one material per mesh,
 smart-UV locked per base). Build scripts live in
-`~/Desktop/char-pipeline/scripts/build_<item>.py` (shared lib `coslib.py`).
+`tools/char-pipeline/scripts/build_<item>.py` (shared lib `coslib.py`).
 
 ## Manifest schema addition: `slot`
 

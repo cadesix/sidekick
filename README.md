@@ -41,3 +41,5 @@ surface, expo = prod surface), the parity contract, asset flow, and roadmap.
 `docs/SYNC-PLAN.md` — the web ↔ expo parity/porting playbook (predates the
 monorepo; its shared-code endgame is what this structure implements).
 `packages/expo/README.md` — expo-gl porting rules and device/simulator gotchas.
+`tools/char-pipeline/` — Blender authoring pipeline for the character's
+cosmetics (+ `CHARACTER.md`, the character bible). Not a workspace package.
