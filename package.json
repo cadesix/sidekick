@@ -16,7 +16,8 @@
 		"typecheck": "pnpm -r run typecheck && tsc -p tests",
 		"test": "vitest run",
 		"test:watch": "vitest",
-		"db:generate": "pnpm --filter @sidekick/db generate"
+		"db:generate": "pnpm --filter @sidekick/db generate",
+		"db:migrate": "pnpm --filter @sidekick/db migrate"
 	},
 	"devDependencies": {
 		"@sidekick/db": "workspace:*",

@@ -1,6 +1,20 @@
-import { RRule } from "rrule";
+import * as rruleModule from "rrule";
 import { z } from "zod";
 import { localCalendarDate } from "../memory/dates";
+
+/**
+ * rrule ships no `exports` map, so each runtime reaches a different build and
+ * they disagree about where the exports live. Node's ESM loader reads the CJS
+ * bundle, whose named exports its lexer cannot see, but whose `default` is the
+ * whole `module.exports`. Metro reads that same bundle with `__esModule` set,
+ * so the named exports are there and `default` is undefined. Neither a named
+ * nor a default import works in both — this picks whichever shape it got.
+ */
+function interopNamespace<T extends object>(mod: T | { default: T }): T {
+  return "default" in mod ? mod.default : mod;
+}
+
+const { RRule } = interopNamespace(rruleModule);
 
 /**
  * The reminder schedule model (10-reminders.md §data model). Two shapes:

@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { Dimensions, Pressable, View } from 'react-native';
 
 import { HomeDock } from '../src/components/HomeDock';
+import { SceneFallback } from '../src/components/SceneFallback';
 import { SettingsSheet } from '../src/components/SettingsSheet';
 import { ShopSheet } from '../src/components/ShopSheet';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { WorldMap } from '../src/components/WorldMap';
 import { ChatSheet } from '../src/features/chat/ChatSheet';
-import { AuthGate } from '../src/lib/auth';
+import { SCENE_3D_ENABLED } from '../src/three/enabled';
 import type { Framing, SidekickController } from '../src/three/renderer';
 import { hydrateSettings, loadSettings, type SidekickSettings } from '../src/three/settings';
 import type { CosmeticsControls } from '../src/three/wardrobe';
@@ -81,25 +82,30 @@ export default function Home() {
     <View className="flex-1 bg-white">
       {/* Full-viewport 3D scene (mounted once saved look-dev state hydrates).
           Settings reuses the pulled-back chat framing so the meadow, sky and
-          character stay visible above the panel while tuning. */}
-      {settings ? (
-        <SidekickCanvas
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-          framing={
-            mapOpen
-              ? MAP_FRAMING
-              : shopOpen
-                ? SHOP_FRAMING
-                : chatOpen || settingsOpen
-                  ? CHAT_FRAMING
-                  : HERO_FRAMING
-          }
-          holdingPhone={chatOpen}
-          studio={shopOpen}
-          onControls={setControls}
-          onController={setController}
-        />
-      ) : null}
+          character stay visible above the panel while tuning. With
+          EXPO_PUBLIC_DISABLE_3D=1 a static backdrop stands in for it. */}
+      {SCENE_3D_ENABLED ? (
+        settings ? (
+          <SidekickCanvas
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+            framing={
+              mapOpen
+                ? MAP_FRAMING
+                : shopOpen
+                  ? SHOP_FRAMING
+                  : chatOpen || settingsOpen
+                    ? CHAT_FRAMING
+                    : HERO_FRAMING
+            }
+            holdingPhone={chatOpen}
+            studio={shopOpen}
+            onControls={setControls}
+            onController={setController}
+          />
+        ) : null
+      ) : (
+        <SceneFallback style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+      )}
 
       {/* iOS-style home dock — the sheets slide up OVER it; only the
           full-screen map reveal hides it */}
@@ -152,13 +158,11 @@ export default function Home() {
         />
       ) : null}
 
-      {/* Chat sheet — full-screen, self-animating; AuthGate owns the register/
-          retry states so an unreachable server never blocks the 3D home */}
+      {/* Chat sheet — full-screen, self-animating. The root AuthGate has already
+          established the anonymous session, so the sheet opens authed. */}
       {chatOpen ? (
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }}>
-          <AuthGate>
-            <ChatSheet onClose={() => setChatOpen(false)} />
-          </AuthGate>
+          <ChatSheet onClose={() => setChatOpen(false)} />
         </View>
       ) : null}
     </View>

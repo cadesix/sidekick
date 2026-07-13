@@ -15,7 +15,7 @@ const TOKEN_KEY = "sidekick.token";
  * same account. The returned token is stored and set as the tRPC/stream auth
  * header. Runs once via React Query — no useEffect.
  */
-export async function bootstrapAuth(): Promise<string> {
+async function bootstrapAuth(): Promise<string> {
   const storedDeviceId = await SecureStore.getItemAsync(DEVICE_KEY);
   const deviceId = storedDeviceId ?? Crypto.randomUUID();
   if (!storedDeviceId) {

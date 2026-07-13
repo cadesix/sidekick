@@ -11,21 +11,12 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import 'react-native-reanimated';
 
 import { syncHealth } from '~/lib/api';
-import { bootstrapAuth } from '~/lib/auth';
+import { AuthGate } from '~/lib/auth';
 import { maybeRefreshFocusShield } from '~/lib/focus';
 import { readHealthDays } from '~/lib/health';
 import { maybeUpdateLocation } from '~/lib/location';
 
 const queryClient = new QueryClient();
-
-// Warm the anonymous session as soon as the app boots so the chat sheet opens
-// authed. Failures are absorbed here — AuthGate (mounted around the chat)
-// owns retry UI, and the 3D home stays usable with the server unreachable.
-void queryClient.prefetchQuery({
-  queryKey: ['auth', 'bootstrap'],
-  queryFn: bootstrapAuth,
-  staleTime: Number.POSITIVE_INFINITY,
-});
 
 /**
  * On every foreground, push fresh HealthKit days and refresh coarse location
@@ -76,10 +67,12 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="index" />
-          </Stack>
-          <StatusBar style="light" />
+          <AuthGate>
+            <StatusBar style="light" />
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#fff' } }}>
+              <Stack.Screen name="index" />
+            </Stack>
+          </AuthGate>
         </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

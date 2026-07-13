@@ -13,6 +13,7 @@
 	},
 	"scripts": {
 		"generate": "drizzle-kit generate",
+		"migrate": "tsx src/migrate.ts",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
@@ -24,6 +25,7 @@
 		"@sidekick/tsconfig": "workspace:*",
 		"@types/node": "^22.20.0",
 		"drizzle-kit": "^0.31.6",
+		"tsx": "^4.19.2",
 		"typescript": "^5.7.2"
 	}
 }
