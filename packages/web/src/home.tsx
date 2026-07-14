@@ -6,7 +6,7 @@ import { PASTELS } from "./components/funnel/constants";
 import { STEPS } from "./components/funnel/manifest";
 
 // The goal options the user chose from in the funnel (single source of truth).
-const GOAL_OPTIONS = (() => {
+export const GOAL_OPTIONS = (() => {
 	const goalsStep = STEPS.find((s) => s.type === "goals");
 	return goalsStep && goalsStep.type === "goals" ? goalsStep.question.options : [];
 })();

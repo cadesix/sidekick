@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 // Painterly storybook lawn shared by /sidekick-3d and /home3/4: a domed hill,
 // sky-gradient background, and ART-DIRECTED instanced grass — dense tufts near
@@ -67,6 +68,12 @@ export type GrassEnv = {
 	// live re-layout: height = blade height multiplier; clumping 0..1 =
 	// evenly spread ↔ gathered into pockets of clusters
 	relayout: (height: number, clumping: number) => void;
+	// the cumulus subtree — callers that fade the meadow need to treat these
+	// separately (overlapping lobes compound per-material opacity)
+	clouds: THREE.Group;
+	// retint the cel clouds for the active scene: lit tone follows the key
+	// light, shade + distance haze follow the fog color
+	setClouds: (keyColor: string, fogColor: string) => void;
 };
 
 export function makeGrassEnvironment(blades = 20000, radius = 11): GrassEnv {
@@ -297,6 +304,8 @@ export function makeGrassEnvironment(blades = 20000, radius = 11): GrassEnv {
 			if (rock) rockMat.color.set(rock);
 		},
 		relayout,
+		clouds: cloudEnv.group,
+		setClouds: cloudEnv.setLook,
 	};
 }
 
@@ -327,39 +336,109 @@ const CLOUD_RECIPE: { x: number; y: number; s: [number, number, number] }[] = [
 	{ x: -2.1, y: 0.15, s: [1.0, 0.58, 0.85] },
 ];
 
-function makeClouds(): { group: THREE.Group; drift: (t: number) => void } {
+function makeClouds(): {
+	group: THREE.Group;
+	drift: (t: number) => void;
+	setLook: (keyColor: string, fogColor: string) => void;
+} {
 	const group = new THREE.Group();
-	const geo = new THREE.SphereGeometry(1, 8, 6); // low-poly per the spec
-	const mat = new THREE.MeshStandardMaterial({
-		color: "#fdfdfb", // bright white
-		roughness: 1,
-		metalness: 0,
-		emissive: "#c4d2e2", // cool lift so the flat undersides read soft blue-grey
-		emissiveIntensity: 0.16,
-		fog: false, // background sky element — don't let the lawn fog eat it
-	});
+	const geo = new THREE.SphereGeometry(1, 12, 8);
+	// Stylized cel clouds: unlit, two hand-picked tones split by one soft
+	// terminator, then hazed toward the fog color with distance. Colors derive
+	// from the active scene (key light + fog) via setLook, so evening clouds go
+	// peach and night clouds go steel-blue with no extra preset plumbing.
+	const uniforms = {
+		uLit: { value: new THREE.Color("#fff8ea") },
+		uShade: { value: new THREE.Color("#c3cde4") },
+		uHaze: { value: new THREE.Color("#dcecfb") },
+	};
+	const mat = new THREE.MeshBasicMaterial({ fog: false });
+	mat.onBeforeCompile = (shader) => {
+		Object.assign(shader.uniforms, uniforms);
+		shader.vertexShader =
+			`attribute float aHaze;
+			varying vec3 vCloudN;
+			varying float vHaze;
+			` +
+			shader.vertexShader.replace(
+				"#include <begin_vertex>",
+				`#include <begin_vertex>
+				vCloudN = normal; // cloud meshes never rotate, object dir == world dir
+				vHaze = aHaze;`,
+			);
+		shader.fragmentShader =
+			`uniform vec3 uLit;
+			uniform vec3 uShade;
+			uniform vec3 uHaze;
+			varying vec3 vCloudN;
+			varying float vHaze;
+			` +
+			shader.fragmentShader.replace(
+				"#include <color_fragment>",
+				`#include <color_fragment>
+				float dNL = dot( normalize( vCloudN ), normalize( vec3( 0.45, 0.75, 0.4 ) ) );
+				vec3 cel = mix( uShade, uLit, smoothstep( -0.06, 0.22, dNL ) );
+				diffuseColor.rgb = mix( cel, uHaze, vHaze );`,
+			);
+	};
+	mat.customProgramCacheKey = () => "sidekick-clouds";
+	const setLook = (keyColor: string, fogColor: string) => {
+		// lit tone leans toward the key light; the shadow tone is the fog color
+		// pulled cool+dark so the underside band stays visible against the sky
+		uniforms.uLit.value.set("#ffffff").lerp(new THREE.Color(keyColor), 0.4);
+		uniforms.uShade.value.set(fogColor).lerp(new THREE.Color("#6b79a8"), 0.3);
+		uniforms.uHaze.value.set(fogColor);
+	};
 	const rand = (n: number) => {
 		const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
 		return s - Math.floor(s);
 	};
-	const comet = (dir: number, seed: number): THREE.Group => {
-		const g = new THREE.Group();
+	// One merged geometry per cloud (not a pile of sphere meshes): intersecting
+	// lobes used to shade with hard creases at every overlap, which is most of
+	// why they read as "3D render". Normals are re-aimed away from a low
+	// center-line under the cloud (blended 70/30 over the lobe's own), so the
+	// whole mass shades as one soft dome; anything dipping below y=0 is clamped
+	// flat and given a straight-down normal → razor-flat base in the shade tone.
+	const comet = (dir: number, seed: number): THREE.BufferGeometry => {
+		const parts: THREE.BufferGeometry[] = [];
 		for (let k = 0; k < CLOUD_RECIPE.length; k++) {
 			const pf = CLOUD_RECIPE[k];
-			const [sx, sy, sz] = pf.s;
-			const mesh = new THREE.Mesh(geo, mat);
-			mesh.scale.set(sx * (0.9 + rand(seed + k) * 0.2), sy, sz);
+			const [sx0, sy, sz] = pf.s;
+			const sx = sx0 * (0.9 + rand(seed + k) * 0.2);
+			const px = (pf.x - 2.3) * dir;
 			// flat underside: centre each puff near its own half-height so bottoms
 			// align ~y=0; the recipe y adds the rising head → descending tail topline
-			mesh.position.set((pf.x - 2.3) * dir, sy * 0.85 + pf.y * 0.35, (rand(seed + k * 2) - 0.5) * 0.5);
-			g.add(mesh);
+			const py = sy * 0.85 + pf.y * 0.35;
+			const pz = (rand(seed + k * 2) - 0.5) * 0.5;
+			const g = geo.clone();
+			const pos = g.attributes.position as THREE.BufferAttribute;
+			const nor = g.attributes.normal as THREE.BufferAttribute;
+			for (let i = 0; i < pos.count; i++) {
+				const ux = pos.getX(i), uy = pos.getY(i), uz = pos.getZ(i);
+				const x = ux * sx + px;
+				let y = uy * sy + py;
+				const z = uz * sz + pz;
+				if (y <= 0) {
+					y = 0;
+					nor.setXYZ(i, 0, -1, 0);
+				} else {
+					// lobe normal under non-uniform scale (inverse-transpose)…
+					const n = new THREE.Vector3(ux / sx, uy / sy, uz / sz).normalize();
+					// …blended toward the envelope dir from the low center-line
+					const e = new THREE.Vector3(x * 0.45, y + 0.9, z * 0.6).normalize();
+					n.lerp(e, 0.7).normalize();
+					nor.setXYZ(i, n.x, n.y, n.z);
+				}
+				pos.setXYZ(i, x, y, z);
+			}
+			parts.push(g);
 		}
-		return g;
+		return mergeGeometries(parts);
 	};
 	// NUMEROUS background clouds across three depth tiers: a few big near clouds,
 	// more medium ones, and many small puffs banding along the horizon (like the
 	// end-goal vista). Placed procedurally + deterministically, some mirrored.
-	const drifters: { g: THREE.Group; baseX: number; speed: number; wrap: number }[] = [];
+	const drifters: { g: THREE.Object3D; baseX: number; speed: number; wrap: number }[] = [];
 	let idx = 0;
 	const place = (
 		n: number,
@@ -377,7 +456,13 @@ function makeClouds(): { group: THREE.Group; drift: (t: number) => void } {
 			const x = (rand(idx * 7 + 3) - 0.5) * xRange;
 			const y = yMin + rand(idx * 9 + 5) * (yMax - yMin);
 			const z = zMin + rand(idx * 11 + 7) * (zMax - zMin);
-			const c = comet(dir, idx * 13 + 1);
+			const cg = comet(dir, idx * 13 + 1);
+			// atmospheric perspective: farther tiers melt toward the fog color
+			// (same trick as the hills/mountains); baked per-cloud since drift
+			// only moves clouds along x
+			const haze = THREE.MathUtils.clamp((-z - 24) / 85, 0, 1) * 0.85;
+			cg.setAttribute("aHaze", new THREE.BufferAttribute(new Float32Array(cg.attributes.position.count).fill(haze), 1));
+			const c = new THREE.Mesh(cg, mat);
 			c.position.set(x, y, z);
 			c.scale.setScalar(sc);
 			group.add(c);
@@ -394,7 +479,7 @@ function makeClouds(): { group: THREE.Group; drift: (t: number) => void } {
 			d.g.position.x = ((((d.baseX + t * d.speed + span / 2) % span) + span) % span) - span / 2;
 		}
 	};
-	return { group, drift };
+	return { group, drift, setLook };
 }
 
 // small procedural daisy: white petals around a yellow center, transparent bg

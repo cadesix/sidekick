@@ -1,0 +1,39 @@
+{
+  "phone-hold-fixed": {
+    "phone": true,
+    "bodyYaw": 0.55,
+    "head": {
+      "pitch": 0.19,
+      "yaw": -0.13,
+      "roll": 0
+    },
+    "armL": {
+      "swingX": -1.41,
+      "swingZ": -1.56,
+      "twist": 0.51,
+      "foreX": -0.6,
+      "foreZ": -0.0600000000000001
+    },
+    "armR": {
+      "swingX": -0.1,
+      "swingZ": 2.12,
+      "twist": -1.06,
+      "foreX": -0.47,
+      "foreZ": -0.53
+    },
+    "waist": {
+      "x": 0,
+      "z": 0
+    },
+    "spine": {
+      "x": 0,
+      "z": 0
+    },
+    "legs": {
+      "thighL": 0,
+      "thighR": 0,
+      "calfL": 0,
+      "calfR": 0
+    }
+  }
+}

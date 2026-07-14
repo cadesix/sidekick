@@ -117,6 +117,36 @@ def offset_loosen(ob, offset, loops=2, edit=None):
     bm.to_mesh(me); bm.free(); me.update()
 
 
+def region_smooth(ob, filt, iters=15, factor=0.5, axes=(True, True, True), reinflate=0.0,
+                  reinflate_scale=None):
+    """Laplacian-smooth only the verts whose WORLD position passes filt — used to
+    erase body detail a duplicated surface inherits (e.g. toe bumps on footwear).
+    axes limits the smoothing directions ((x,y,False) rounds a plan outline while
+    keeping z, preserving a flattened sole). reinflate pushes the region back out
+    along normals afterwards to recover the clearance smoothing shrinks away;
+    reinflate_scale(world_co)->0..1 feathers it so the band edge leaves no ledge."""
+    mw = ob.matrix_world
+    me = ob.data
+    bm = bmesh.new(); bm.from_mesh(me)
+    vs = [v for v in bm.verts if filt(mw @ v.co)]
+    print(f"region_smooth[{ob.name}]: {len(vs)}/{len(bm.verts)} verts, "
+          f"iters={iters} factor={factor} axes={axes} reinflate={reinflate}")
+    for _ in range(iters):
+        bmesh.ops.smooth_vert(bm, verts=vs, factor=factor,
+                              use_axis_x=axes[0], use_axis_y=axes[1], use_axis_z=axes[2])
+    if reinflate:
+        bm.normal_update()
+        for v in vs:
+            n = Vector((v.normal.x if axes[0] else 0.0,
+                        v.normal.y if axes[1] else 0.0,
+                        v.normal.z if axes[2] else 0.0))
+            if n.length > 1e-6:
+                s = reinflate_scale(mw @ v.co) if reinflate_scale else 1.0
+                v.co += n.normalized() * (reinflate * max(0.0, min(1.0, s)))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(me); bm.free(); me.update()
+
+
 def decimate(ob, target_tris):
     me = ob.data
     dec = ob.modifiers.new("dec", "DECIMATE")

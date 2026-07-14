@@ -7,6 +7,7 @@ import { MeetStep } from "./meet-step";
 import { ColorStep } from "./color-step";
 import { NameSidekickStep } from "./name-sidekick-step";
 import { OnboardingChat } from "./onboarding-chat";
+import { setOnboardingPhase } from "../sidekick-profile";
 import { FactStep } from "./fact-step";
 import { NameStep } from "./name-step";
 import { ChoiceStep } from "./choice-step";
@@ -19,6 +20,19 @@ import { QuizIntroStep } from "./quiz-intro-step";
 import { TransitionStep } from "./transition-step";
 import { WelcomeStep } from "./welcome-step";
 import type { FunnelAnswers } from "./types";
+import { track } from "../sidekick-analytics";
+
+// Answers persist as they're given, so a reload resumes mid-quiz with nothing
+// lost (the step itself already lives in the URL as ?step=N).
+const ANSWERS_KEY = "sidekick_funnel_answers_v1";
+
+function loadAnswers(): FunnelAnswers {
+	try {
+		return JSON.parse(localStorage.getItem(ANSWERS_KEY) ?? "{}") ?? {};
+	} catch {
+		return {};
+	}
+}
 
 // The funnel step is mirrored in the URL (?step=N) so FunnelHog can preview any
 // step in isolation and browser back/forward navigates the flow.
@@ -50,11 +64,27 @@ function useStepParam() {
 
 export function Funnel() {
 	const [currentStepIndex, goToStep] = useStepParam();
-	const [answers, setAnswers] = useState<FunnelAnswers>({});
+	const [answers, setAnswers] = useState<FunnelAnswers>(loadAnswers);
 
 	const steps = STEPS;
 	const safeIndex = Math.min(Math.max(currentStepIndex, 0), steps.length - 1);
 	const currentStep = steps[safeIndex];
+
+	// answers persist as they change (resume) …
+	useEffect(() => {
+		try {
+			localStorage.setItem(ANSWERS_KEY, JSON.stringify(answers));
+		} catch {
+			// ignore storage failures
+		}
+	}, [answers]);
+	// …and every step the machine lands on emits its funnel event from ONE
+	// place — steps added to the manifest are instrumented automatically
+	useEffect(() => {
+		if (safeIndex === 0) track("flow_started", { flow: "quiz-funnel" });
+		track("step_viewed", { flow: "quiz-funnel", step_id: currentStep?.id, index: safeIndex });
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [safeIndex]);
 
 	const isWelcome = currentStep?.type === "welcome";
 	const isFullBleed =
@@ -153,6 +183,7 @@ export function Funnel() {
 							} catch {
 								// ignore storage failures
 							}
+							setOnboardingPhase("goals-set");
 							goNext();
 						}}
 					/>
@@ -194,13 +225,29 @@ export function Funnel() {
 			case "reveal":
 				return <RevealStep config={currentStep} onContinue={goNext} />;
 			case "meet":
-				return <MeetStep config={currentStep} onDone={goNext} />;
+				return (
+					<MeetStep
+						config={currentStep}
+						onDone={() => {
+							setOnboardingPhase("met-sidekick");
+							goNext();
+						}}
+					/>
+				);
 			case "choose-color":
 				return <ColorStep onContinue={goNext} />;
 			case "name-sidekick":
 				return <NameSidekickStep onContinue={goNext} />;
 			case "onboarding-chat":
-				return <OnboardingChat onDone={() => (window.location.href = "/home2")} />;
+				return (
+					<OnboardingChat
+						onDone={() => {
+							setOnboardingPhase("first-chat");
+							// land on the CURRENT home (dock, map, bond, streak, shop)
+							window.location.href = "/home4";
+						}}
+					/>
+				);
 			default:
 				return null;
 		}

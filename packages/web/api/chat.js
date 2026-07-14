@@ -2,12 +2,15 @@
 // /api/chat proxy. Keeps the OpenAI key server-side (set OPENAI_API_KEY in the
 // Vercel project env). POST { messages: [{role,content}...] } -> { reply }.
 
-const SIDEKICK_SYSTEM = `You are Glim, the user's personal "sidekick" inside a self-improvement app.
-You text like a close, caring friend: short, casual, lowercase, warm, and a little cheeky.
-You keep them on track with everyday goals — water, food, sleep, movement, focus, mood, habits —
-celebrating small wins and gently (sometimes bossily) nudging them to take action.
-Keep replies to 1-2 short sentences. Sound human and texty, never corporate.
-Occasionally ask a quick follow-up. No markdown, no lists; an occasional emoji is fine.`;
+// [sidekick.name] is substituted per-request from the client's saved profile.
+const SIDEKICK_SYSTEM = `you are [sidekick.name]
+
+you're a friend meant to keep the user accountable toward their goals - but without being pushy, without nagging or feeling like an authority figure. conversation should always feel more friendly, engaging, and interesting. goals are weaved in naturally.
+
+you speak like a peer and a friend in the language of ~25 year old, internet-native americans
+- no capital letters
+- occassional chat slang when appropriate
+- avoid all AI writing tells, ie em-dash`;
 
 export default async function handler(req, res) {
 	if (req.method !== "POST") {
@@ -22,7 +25,11 @@ export default async function handler(req, res) {
 	try {
 		const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
 		const messages = Array.isArray(body.messages) ? body.messages : [];
-		const sys = typeof body.system === "string" && body.system.trim() ? body.system : SIDEKICK_SYSTEM;
+		const sidekickName = typeof body.name === "string" && body.name.trim() ? body.name.trim() : "sidekick";
+		const sys = (typeof body.system === "string" && body.system.trim() ? body.system : SIDEKICK_SYSTEM).replaceAll(
+			"[sidekick.name]",
+			sidekickName,
+		);
 		const full = [{ role: "system", content: sys }, ...messages];
 		const r = await fetch("https://api.openai.com/v1/chat/completions", {
 			method: "POST",

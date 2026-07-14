@@ -1,0 +1,19 @@
+{
+  "shirt": {
+    "equipped": false,
+    "variantId": "coral"
+  },
+  "pants": {
+    "equipped": false,
+    "variantId": "denim",
+    "color": "#7a5a3c"
+  },
+  "hat": {
+    "equipped": false,
+    "variantId": "berry"
+  },
+  "shoes": {
+    "equipped": false,
+    "variantId": "red"
+  }
+}

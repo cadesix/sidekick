@@ -79,6 +79,21 @@ Authoring script: `scripts/face_patch_circ.py` (takes in/out paths via CLI).
   after solidify, with explicit bone weights assigned.
 - Layering: pants waist offset (0.0026) < shirt offset (0.0034) so shirts layer
   over waistbands without z-fighting.
+- **Footwear "de-toe"**: the duplicated foot surface inherits the character's
+  toe bumps; normal-looking shoes need `region_smooth` (coslib) — an xy-only
+  pass at sole level plus a hard full-axis pass over the foot band, then
+  **re-inflate past the foot's bump peaks** (~0.0038) or the toes poke through
+  at runtime (the shoe looks lumpy even though its mesh is smooth — render the
+  GLB in isolation to tell the two apart). Feather the re-inflate to zero at
+  the band top or it leaves a ledge.
+- **Cut open rims AFTER decimate** (sneakers/boots shaft tops): decimate re-jags
+  a pre-cut boundary into spikes that boundary_finish can't fully relax; a
+  bisect after decimate gives a clean straight edge loop.
+- **Glasses/eye alignment**: eye world positions depend on the face sheet AND
+  the preset's `faceZoom`/`faceHeight` (the prod preset renders features
+  higher/wider than the raw doc eye line). Measure from the served sheet under
+  the prod preset before placing anything relative to the eyes — see the
+  docstring in `scripts/build_glasses.py` for the measured numbers.
 - Render-verify from the app's viewing angles and **look at the images**; in
   side views the near ear occludes headwear — that's the ear, not clipping.
 - Variant = webp texture into the item's **locked** smart-UV layout (solid

@@ -42,7 +42,11 @@
     "model": "/cosmetics/hat/base-v1.glb",
     "attach": "bone:Head",
     "scale": 0.76,
-    "offset": [0, 0.028, 0],
+    "offset": [
+      0,
+      0.028,
+      0
+    ],
     "variants": [
       {
         "id": "khaki",
@@ -86,7 +90,11 @@
     "model": "/cosmetics/phone/base-v1.glb",
     "attach": "bone:R_Hand",
     "scale": 1.7,
-    "offset": [0, 0, 0],
+    "offset": [
+      0,
+      0,
+      0
+    ],
     "meshes": {
       "Phone": "R_Hand",
       "PhoneScreen": "R_Hand"
@@ -103,9 +111,24 @@
     "model": "/cosmetics/shirt/hoodie-v1.glb",
     "attach": "skinned",
     "variants": [
-      { "id": "heather", "name": "Heather", "tex": "/cosmetics/shirt/heather.webp", "roughness": 0.85 },
-      { "id": "navy", "name": "Navy", "tex": "/cosmetics/shirt/navy-h.webp", "roughness": 0.85 },
-      { "id": "crimson", "name": "Crimson", "tex": "/cosmetics/shirt/crimson.webp", "roughness": 0.85 }
+      {
+        "id": "heather",
+        "name": "Heather",
+        "tex": "/cosmetics/shirt/heather.webp",
+        "roughness": 0.85
+      },
+      {
+        "id": "navy",
+        "name": "Navy",
+        "tex": "/cosmetics/shirt/navy-h.webp",
+        "roughness": 0.85
+      },
+      {
+        "id": "crimson",
+        "name": "Crimson",
+        "tex": "/cosmetics/shirt/crimson.webp",
+        "roughness": 0.85
+      }
     ]
   },
   "shorts": {
@@ -113,9 +136,21 @@
     "model": "/cosmetics/pants/shorts-v1.glb",
     "attach": "skinned",
     "variants": [
-      { "id": "navy", "name": "Gym Navy", "tex": "/cosmetics/pants/gym-navy.webp" },
-      { "id": "red", "name": "Gym Red", "tex": "/cosmetics/pants/gym-red.webp" },
-      { "id": "black", "name": "Gym Black", "tex": "/cosmetics/pants/gym-black.webp" }
+      {
+        "id": "navy",
+        "name": "Gym Navy",
+        "tex": "/cosmetics/pants/gym-navy.webp"
+      },
+      {
+        "id": "red",
+        "name": "Gym Red",
+        "tex": "/cosmetics/pants/gym-red.webp"
+      },
+      {
+        "id": "black",
+        "name": "Gym Black",
+        "tex": "/cosmetics/pants/gym-black.webp"
+      }
     ]
   },
   "beanie": {
@@ -123,11 +158,30 @@
     "model": "/cosmetics/hat/beanie-v1.glb",
     "attach": "bone:Head",
     "scale": 0.76,
-    "offset": [0, 0.028, 0],
+    "offset": [
+      0,
+      0.028,
+      0
+    ],
     "variants": [
-      { "id": "charcoal", "name": "Charcoal", "tex": "/cosmetics/hat/charcoal.webp", "roughness": 0.9 },
-      { "id": "tangerine", "name": "Tangerine", "tex": "/cosmetics/hat/tangerine.webp", "roughness": 0.9 },
-      { "id": "teal", "name": "Teal", "tex": "/cosmetics/hat/teal.webp", "roughness": 0.9 }
+      {
+        "id": "charcoal",
+        "name": "Charcoal",
+        "tex": "/cosmetics/hat/charcoal.webp",
+        "roughness": 0.9
+      },
+      {
+        "id": "tangerine",
+        "name": "Tangerine",
+        "tex": "/cosmetics/hat/tangerine.webp",
+        "roughness": 0.9
+      },
+      {
+        "id": "teal",
+        "name": "Teal",
+        "tex": "/cosmetics/hat/teal.webp",
+        "roughness": 0.9
+      }
     ]
   },
   "bucket": {
@@ -135,10 +189,22 @@
     "model": "/cosmetics/hat/bucket-v1.glb",
     "attach": "bone:Head",
     "scale": 0.76,
-    "offset": [0, 0.028, 0],
+    "offset": [
+      0,
+      0.028,
+      0
+    ],
     "variants": [
-      { "id": "sand", "name": "Sand", "tex": "/cosmetics/hat/sand.webp" },
-      { "id": "night", "name": "Night", "tex": "/cosmetics/hat/night.webp" }
+      {
+        "id": "sand",
+        "name": "Sand",
+        "tex": "/cosmetics/hat/sand.webp"
+      },
+      {
+        "id": "night",
+        "name": "Night",
+        "tex": "/cosmetics/hat/night.webp"
+      }
     ]
   },
   "wizard": {
@@ -146,10 +212,22 @@
     "model": "/cosmetics/hat/wizard-v1.glb",
     "attach": "bone:Head",
     "scale": 0.76,
-    "offset": [0, 0.028, 0],
+    "offset": [
+      0,
+      0.028,
+      0
+    ],
     "variants": [
-      { "id": "purple", "name": "Arcane", "tex": "/cosmetics/hat/wiz-purple.webp" },
-      { "id": "night", "name": "Starry Night", "tex": "/cosmetics/hat/wiz-night.webp" }
+      {
+        "id": "purple",
+        "name": "Arcane",
+        "tex": "/cosmetics/hat/wiz-purple.webp"
+      },
+      {
+        "id": "night",
+        "name": "Starry Night",
+        "tex": "/cosmetics/hat/wiz-night.webp"
+      }
     ]
   },
   "crown": {
@@ -157,10 +235,24 @@
     "model": "/cosmetics/hat/crown-v1.glb",
     "attach": "bone:Head",
     "scale": 0.76,
-    "offset": [0, 0.028, 0],
+    "offset": [
+      0,
+      0.028,
+      0
+    ],
     "variants": [
-      { "id": "gold", "name": "Gold", "tex": "/cosmetics/hat/gold.webp", "roughness": 0.35 },
-      { "id": "silver", "name": "Silver", "tex": "/cosmetics/hat/silver.webp", "roughness": 0.3 }
+      {
+        "id": "gold",
+        "name": "Gold",
+        "tex": "/cosmetics/hat/gold.webp",
+        "roughness": 0.35
+      },
+      {
+        "id": "silver",
+        "name": "Silver",
+        "tex": "/cosmetics/hat/silver.webp",
+        "roughness": 0.3
+      }
     ]
   },
   "sneakers": {
@@ -172,9 +264,24 @@
       "Shoe_R": "R_Calf"
     },
     "variants": [
-      { "id": "white", "name": "Classic White", "tex": "/cosmetics/shoes/snk-white.webp", "roughness": 0.55 },
-      { "id": "black", "name": "Black", "tex": "/cosmetics/shoes/snk-black.webp", "roughness": 0.55 },
-      { "id": "red", "name": "Red", "tex": "/cosmetics/shoes/snk-red.webp", "roughness": 0.55 }
+      {
+        "id": "white",
+        "name": "Classic White",
+        "tex": "/cosmetics/shoes/snk-white.webp",
+        "roughness": 0.55
+      },
+      {
+        "id": "black",
+        "name": "Black",
+        "tex": "/cosmetics/shoes/snk-black.webp",
+        "roughness": 0.55
+      },
+      {
+        "id": "red",
+        "name": "Red",
+        "tex": "/cosmetics/shoes/snk-red.webp",
+        "roughness": 0.55
+      }
     ]
   },
   "boots": {
@@ -186,8 +293,18 @@
       "Shoe_R": "R_Calf"
     },
     "variants": [
-      { "id": "brown", "name": "Leather", "tex": "/cosmetics/shoes/boot-brown.webp", "roughness": 0.75 },
-      { "id": "black", "name": "Black", "tex": "/cosmetics/shoes/boot-black.webp", "roughness": 0.75 }
+      {
+        "id": "brown",
+        "name": "Leather",
+        "tex": "/cosmetics/shoes/boot-brown.webp",
+        "roughness": 0.75
+      },
+      {
+        "id": "black",
+        "name": "Black",
+        "tex": "/cosmetics/shoes/boot-black.webp",
+        "roughness": 0.75
+      }
     ]
   },
   "glasses": {
@@ -195,9 +312,24 @@
     "model": "/cosmetics/glasses/base-v1.glb",
     "attach": "bone:Head",
     "variants": [
-      { "id": "black", "name": "Black", "tex": "/cosmetics/glasses/black.webp", "roughness": 0.25 },
-      { "id": "white", "name": "White", "tex": "/cosmetics/glasses/white.webp", "roughness": 0.25 },
-      { "id": "pink", "name": "Pink", "tex": "/cosmetics/glasses/pink.webp", "roughness": 0.25 }
+      {
+        "id": "black",
+        "name": "Black",
+        "tex": "/cosmetics/glasses/black.webp",
+        "roughness": 0.25
+      },
+      {
+        "id": "white",
+        "name": "White",
+        "tex": "/cosmetics/glasses/white.webp",
+        "roughness": 0.25
+      },
+      {
+        "id": "pink",
+        "name": "Pink",
+        "tex": "/cosmetics/glasses/pink.webp",
+        "roughness": 0.25
+      }
     ]
   },
   "backpack": {
@@ -205,9 +337,351 @@
     "model": "/cosmetics/back/backpack-v1.glb",
     "attach": "bone:Spine01",
     "variants": [
-      { "id": "red", "name": "Red", "tex": "/cosmetics/back/bp-red.webp" },
-      { "id": "sky", "name": "Sky", "tex": "/cosmetics/back/bp-sky.webp" },
-      { "id": "forest", "name": "Forest", "tex": "/cosmetics/back/bp-forest.webp" }
+      {
+        "id": "red",
+        "name": "Red",
+        "tex": "/cosmetics/back/bp-red.webp"
+      },
+      {
+        "id": "sky",
+        "name": "Sky",
+        "tex": "/cosmetics/back/bp-sky.webp"
+      },
+      {
+        "id": "forest",
+        "name": "Forest",
+        "tex": "/cosmetics/back/bp-forest.webp"
+      }
+    ]
+  },
+  "headphones": {
+    "slot": "hat",
+    "model": "/cosmetics/hat/headphones-v1.glb",
+    "attach": "bone:Head",
+    "variants": [
+      {
+        "id": "charcoal",
+        "name": "Charcoal",
+        "color": "#34353b",
+        "roughness": 0.5
+      },
+      {
+        "id": "white",
+        "name": "White",
+        "color": "#eceff2",
+        "roughness": 0.5
+      },
+      {
+        "id": "pink",
+        "name": "Pink",
+        "color": "#e88bb4",
+        "roughness": 0.5
+      }
+    ]
+  },
+  "earmuffs": {
+    "slot": "hat",
+    "model": "/cosmetics/hat/earmuffs-v1.glb",
+    "attach": "bone:Head",
+    "variants": [
+      {
+        "id": "white",
+        "name": "Snow",
+        "color": "#f1f2f4",
+        "roughness": 0.85
+      },
+      {
+        "id": "pink",
+        "name": "Pink",
+        "color": "#f2b8cd",
+        "roughness": 0.85
+      },
+      {
+        "id": "lavender",
+        "name": "Lavender",
+        "color": "#b9a8e6",
+        "roughness": 0.85
+      }
+    ]
+  },
+  "sweatband": {
+    "slot": "hat",
+    "model": "/cosmetics/hat/sweatband-v1.glb",
+    "attach": "bone:Head",
+    "variants": [
+      {
+        "id": "red",
+        "name": "Red",
+        "color": "#e05548",
+        "roughness": 0.9
+      },
+      {
+        "id": "teal",
+        "name": "Teal",
+        "color": "#2f9e8f",
+        "roughness": 0.9
+      },
+      {
+        "id": "charcoal",
+        "name": "Charcoal",
+        "color": "#3a3f47",
+        "roughness": 0.9
+      }
+    ]
+  },
+  "laurel": {
+    "slot": "hat",
+    "model": "/cosmetics/hat/laurel-v1.glb",
+    "attach": "bone:Head",
+    "variants": [
+      {
+        "id": "gold",
+        "name": "Gold",
+        "color": "#d4af37",
+        "roughness": 0.3,
+        "metalness": 0.45
+      },
+      {
+        "id": "green",
+        "name": "Victory Green",
+        "color": "#5a9e4d",
+        "roughness": 0.7
+      }
+    ]
+  },
+  "propeller": {
+    "slot": "hat",
+    "model": "/cosmetics/hat/propeller-v1.glb",
+    "attach": "bone:Head",
+    "variants": [
+      {
+        "id": "red",
+        "name": "Cherry",
+        "color": "#e0554a",
+        "roughness": 0.5
+      },
+      {
+        "id": "blue",
+        "name": "Sky",
+        "color": "#4a8fe0",
+        "roughness": 0.5
+      }
+    ]
+  },
+  "catbeanie": {
+    "slot": "hat",
+    "model": "/cosmetics/hat/catbeanie-v1.glb",
+    "attach": "bone:Head",
+    "variants": [
+      {
+        "id": "black",
+        "name": "Black Cat",
+        "color": "#26252b",
+        "roughness": 0.9
+      },
+      {
+        "id": "pink",
+        "name": "Pink Cat",
+        "color": "#f0a3c0",
+        "roughness": 0.9
+      },
+      {
+        "id": "grey",
+        "name": "Grey Cat",
+        "color": "#9aa0a8",
+        "roughness": 0.9
+      }
+    ]
+  },
+  "cowboy": {
+    "slot": "hat",
+    "model": "/cosmetics/hat/cowboy-v1.glb",
+    "attach": "bone:Head",
+    "variants": [
+      {
+        "id": "tan",
+        "name": "Tan",
+        "color": "#c89a5e",
+        "roughness": 0.8
+      },
+      {
+        "id": "brown",
+        "name": "Brown",
+        "color": "#7a5a3c",
+        "roughness": 0.8
+      },
+      {
+        "id": "black",
+        "name": "Black",
+        "color": "#33343a",
+        "roughness": 0.8
+      }
+    ]
+  },
+  "stars": {
+    "slot": "glasses",
+    "model": "/cosmetics/glasses/stars-v1.glb",
+    "attach": "bone:Head",
+    "variants": [
+      {
+        "id": "gold",
+        "name": "Gold",
+        "color": "#ddab3d",
+        "roughness": 0.35,
+        "metalness": 0.15
+      },
+      {
+        "id": "pink",
+        "name": "Pink",
+        "color": "#ee9ab5",
+        "roughness": 0.35
+      },
+      {
+        "id": "blue",
+        "name": "Blue",
+        "color": "#7db3e8",
+        "roughness": 0.35
+      }
+    ]
+  },
+  "goggles": {
+    "slot": "glasses",
+    "model": "/cosmetics/glasses/goggles-v1.glb",
+    "attach": "bone:Head",
+    "variants": [
+      {
+        "id": "blue",
+        "name": "Alpine",
+        "color": "#4a73e0",
+        "roughness": 0.3
+      },
+      {
+        "id": "orange",
+        "name": "Sunset",
+        "color": "#eb7326",
+        "roughness": 0.3
+      },
+      {
+        "id": "teal",
+        "name": "Glacier",
+        "color": "#2f9e8f",
+        "roughness": 0.3
+      }
+    ]
+  },
+  "snorkel": {
+    "slot": "glasses",
+    "model": "/cosmetics/glasses/snorkel-v1.glb",
+    "attach": "bone:Head",
+    "variants": [
+      {
+        "id": "aqua",
+        "name": "Aqua",
+        "color": "#35a0a8",
+        "roughness": 0.35
+      },
+      {
+        "id": "pink",
+        "name": "Reef Pink",
+        "color": "#ee7fae",
+        "roughness": 0.35
+      }
+    ]
+  },
+  "earring": {
+    "slot": "ear",
+    "model": "/cosmetics/ear/earring-v1.glb",
+    "attach": "bone:Head",
+    "variants": [
+      {
+        "id": "gold",
+        "name": "Gold",
+        "color": "#ddab3d",
+        "roughness": 0.25,
+        "metalness": 0.85
+      },
+      {
+        "id": "silver",
+        "name": "Silver",
+        "color": "#c9ced6",
+        "roughness": 0.25,
+        "metalness": 0.85
+      }
+    ]
+  },
+  "flower": {
+    "slot": "ear",
+    "model": "/cosmetics/ear/flower-v1.glb",
+    "attach": "bone:Head",
+    "variants": [
+      {
+        "id": "white",
+        "name": "Daisy",
+        "color": "#f3f0e8",
+        "roughness": 0.6
+      },
+      {
+        "id": "pink",
+        "name": "Blossom",
+        "color": "#f0a3c0",
+        "roughness": 0.6
+      },
+      {
+        "id": "blue",
+        "name": "Forget-me-not",
+        "color": "#8fb7e8",
+        "roughness": 0.6
+      }
+    ]
+  },
+  "earbow": {
+    "slot": "ear",
+    "model": "/cosmetics/ear/earbow-v1.glb",
+    "attach": "bone:Head",
+    "variants": [
+      {
+        "id": "red",
+        "name": "Cherry",
+        "color": "#d94a5b",
+        "roughness": 0.6
+      },
+      {
+        "id": "pink",
+        "name": "Pink",
+        "color": "#ee9ab5",
+        "roughness": 0.6
+      },
+      {
+        "id": "black",
+        "name": "Black",
+        "color": "#33343a",
+        "roughness": 0.6
+      }
+    ]
+  },
+  "scarf": {
+    "slot": "neck",
+    "model": "/cosmetics/neck/scarf-v1.glb",
+    "attach": "bone:Spine01",
+    "variants": [
+      {
+        "id": "red",
+        "name": "Cranberry",
+        "color": "#b73a3f",
+        "roughness": 0.95
+      },
+      {
+        "id": "cream",
+        "name": "Cream",
+        "color": "#efe6d6",
+        "roughness": 0.95
+      },
+      {
+        "id": "forest",
+        "name": "Forest",
+        "color": "#3f7a4d",
+        "roughness": 0.95
+      }
     ]
   }
 }

@@ -1,50 +1,104 @@
 import { useEffect, useRef, useState } from "react";
-import { loadGoals } from "../../home";
+import { SidekickAvatar } from "../sidekick-avatar";
+import { GOAL_OPTIONS } from "../../home";
 import { BTN_PRIMARY } from "./constants";
+import { track } from "../sidekick-analytics";
 
-// Guided onboarding chat — the last onboarding step. The sidekick walks the user
-// through turning each chosen goal into a concrete action item + cadence, picks a
-// reminder cadence, and offers to turn on push notifications. Scripted (quick-reply
-// chips), not the free-form AI chat.
+// Guided onboarding chat — scripted (quick-reply chips anchored bottom-right),
+// not the free-form AI chat, but written as a CONVERSATION: the sidekick sets
+// the scene, reacts to every choice, reasons the user toward each conclusion
+// (pick one concrete action, make it sustainably frequent), and closes with a
+// recap of the plan they built together. Goal picks persist to
+// sidekick_goals_v1, plan answers to sidekick_plan_v1.
 
 type Msg = { role: "bot" | "user"; text: string };
 type Opt = { label: string; value?: string };
-type Prompt = { id: string; messages: string[]; options: Opt[] };
+type Prompt = { id: string; messages: string[]; options: Opt[]; ack?: (answer: string) => string[] };
 
-// Per-goal: the "how" question (action item) + a cadence / daily check-in criteria.
-const GOAL_PLANS: Record<string, { how: { q: string; options: string[] }; cadence: { q: string; options: string[] } }> = {
+const MAX_GOALS = 3;
+
+// Per-goal script: a scene-setting "why" that frames the question, the "how"
+// (action item), and a cadence ask that pushes for sustainable over ambitious.
+const GOAL_PLANS: Record<
+	string,
+	{ why: string[]; how: { q: string; options: string[] }; cadence: { q: string; options: string[] } }
+> = {
 	"get-fit": {
-		how: { q: "How do you want to get fit?", options: ["Go to the gym", "Run", "Play a sport", "Home workouts"] },
-		cadence: { q: "How many times a week?", options: ["2×", "3×", "5×", "Every day"] },
+		why: [
+			"the secret with fitness isn't motivation, it's picking ONE thing you'd actually do on a random tuesday.",
+			"so let's get specific.",
+		],
+		how: { q: "what's your thing gonna be?", options: ["Go to the gym", "Run", "Play a sport", "Home workouts"] },
+		cadence: { q: "how many times a week? be honest, not ambitious lol", options: ["2×", "3×", "5×", "Every day"] },
 	},
 	"sleep-better": {
-		how: { q: "What time do you want to be asleep by?", options: ["10:00 PM", "11:00 PM", "12:00 AM"] },
-		cadence: { q: "I'll check in on your sleep — how often?", options: ["Every day", "Weekdays"] },
+		why: [
+			"sleep is lowkey the cheat code. every other goal gets easier when you're not running on empty.",
+			"and the whole game is just a consistent bedtime.",
+		],
+		how: { q: "what time do you wanna be asleep by?", options: ["10:00 PM", "11:00 PM", "12:00 AM"] },
+		cadence: { q: "every night, or just when work's the next day?", options: ["Every day", "Weekdays"] },
 	},
 	"stop-procrastinating": {
-		how: { q: "How will you beat procrastination?", options: ["Time-block my day", "Pomodoro sessions", "One task at a time"] },
-		cadence: { q: "How many focus sessions a day?", options: ["1", "2", "3+"] },
+		why: [
+			"ok real talk about procrastination: willpower is fake, structure is real.",
+			"we just need a system that starts tasks for you before your brain can argue.",
+		],
+		how: { q: "which system sounds most like you?", options: ["Time-block my day", "Pomodoro sessions", "One task at a time"] },
+		cadence: { q: "how many focus sessions a day feels doable?", options: ["1", "2", "3+"] },
 	},
 	"stop-doomscrolling": {
-		how: { q: "What's your daily screen-time limit?", options: ["Under 1h", "Under 2h", "Under 3h"] },
-		cadence: { q: "I'll track your screen time — how often?", options: ["Every day", "Weekdays"] },
+		why: [
+			"the scroll hole is real and it's designed to be lol. you don't need to delete everything.",
+			"you just need a ceiling we can actually enforce together.",
+		],
+		how: { q: "what's a screen-time ceiling you could live with?", options: ["Under 1h", "Under 2h", "Under 3h"] },
+		cadence: { q: "want me to check in on it daily or just weekdays?", options: ["Every day", "Weekdays"] },
 	},
 	"social-skills": {
-		how: { q: "How do you want to build social skills?", options: ["Reach out to a friend", "Join a group", "Practice conversations"] },
-		cadence: { q: "How many times a week?", options: ["2×", "3×", "Every day"] },
+		why: [
+			"social skills are pure reps. nobody's born charming, they just practice more.",
+			"tiny consistent reps beat big scary leaps every time.",
+		],
+		how: { q: "what rep do you wanna practice?", options: ["Reach out to a friend", "Join a group", "Practice conversations"] },
+		cadence: { q: "how many times a week?", options: ["2×", "3×", "Every day"] },
 	},
 	"manage-stress": {
-		how: { q: "How do you want to manage stress?", options: ["Meditate", "Journal", "Breathing exercises", "Take walks"] },
-		cadence: { q: "How many times a week?", options: ["3×", "5×", "Every day"] },
+		why: [
+			"stress builds up when there's no release valve. the goal isn't becoming a monk lol.",
+			"it's one small daily reset that actually fits your life.",
+		],
+		how: { q: "what's your reset gonna be?", options: ["Meditate", "Journal", "Breathing exercises", "Take walks"] },
+		cadence: { q: "how often can you realistically do it?", options: ["3×", "5×", "Every day"] },
 	},
 	"read-more": {
-		how: { q: "How do you want to read more?", options: ["Set a page goal", "Read before bed", "Audiobooks"] },
-		cadence: { q: "How many days a week?", options: ["3", "5", "Every day"] },
+		why: [
+			"the secret to reading more is attaching it to a moment you already have.",
+			"'free time' is a myth, stolen minutes are real.",
+		],
+		how: { q: "where do the pages fit for you?", options: ["Set a page goal", "Read before bed", "Audiobooks"] },
+		cadence: { q: "how many days a week?", options: ["3", "5", "Every day"] },
 	},
 	"be-productive": {
-		how: { q: "How do you want to be more productive?", options: ["Daily top 3 tasks", "Time-blocking", "Deep work sessions"] },
-		cadence: { q: "How many times a week?", options: ["3×", "5×", "Every day"] },
+		why: [
+			"productivity isn't doing more, it's deciding what matters before the day starts eating you.",
+			"so we pick a system and protect it.",
+		],
+		how: { q: "which one fits how your brain works?", options: ["Daily top 3 tasks", "Time-blocking", "Deep work sessions"] },
+		cadence: { q: "how many days a week are we running it?", options: ["3×", "5×", "Every day"] },
 	},
+};
+
+// a reaction for every goal pick, so choosing feels heard rather than logged
+const GOAL_REACTIONS: Record<string, string> = {
+	"get-fit": "gym era incoming 💪 love it",
+	"sleep-better": "honestly? the highest-leverage one on the list",
+	"stop-procrastinating": "the classic. we've all been there lol",
+	"stop-doomscrolling": "respect for even admitting it, most people won't",
+	"social-skills": "love that. this one pays off literally everywhere",
+	"manage-stress": "big one. your brain's gonna thank you",
+	"read-more": "a reading arc!! here for it",
+	"be-productive": "ok let's get you locked in",
 };
 
 function loadSidekickName(): string {
@@ -57,40 +111,73 @@ function loadSidekickName(): string {
 	}
 }
 
-function buildIntro(name: string): string[] {
-	return [
-		name ? `i'm ${name} — and we're officially a team! 🎉` : "yay — we're officially a team! 🎉",
-		"let's turn your goals into a plan i can actually hold you to.",
-	];
+function loadUserName(): string {
+	try {
+		return (JSON.parse(localStorage.getItem("sidekick_profile_v1") ?? "{}") as { userName?: string }).userName ?? "";
+	} catch {
+		return "";
+	}
 }
 
-function buildPrompts(goals: { value: string; label: string }[]): Prompt[] {
+function buildPlanPrompts(goals: { value: string; label: string }[]): Prompt[] {
 	const prompts: Prompt[] = [];
-	for (const g of goals) {
+	goals.forEach((g, i) => {
 		const plan = GOAL_PLANS[g.value];
-		if (!plan) continue;
-		prompts.push({ id: `${g.value}-how`, messages: [`first up — ${g.label.toLowerCase()}.`, plan.how.q], options: plan.how.options.map((label) => ({ label })) });
-		prompts.push({ id: `${g.value}-cadence`, messages: [plan.cadence.q], options: plan.cadence.options.map((label) => ({ label })) });
-	}
-	prompts.push({ id: "reminder", messages: ["nice — that's a real plan now 💪", "when should i check in with you?"], options: [{ label: "Daily" }, { label: "Weekdays" }, { label: "Weekly" }] });
-	prompts.push({ id: "push", messages: ["last thing — can i send you a nudge so you don't forget? 🔔"], options: [{ label: "Turn on notifications", value: "enable" }, { label: "Maybe later", value: "later" }] });
+		if (!plan) return;
+		prompts.push({
+			id: `${g.value}-how`,
+			messages: [
+				i === 0 ? `ok, let's turn these into an actual plan. ${g.label.toLowerCase()} first.` : `alright, ${g.label.toLowerCase()}.`,
+				...plan.why,
+				plan.how.q,
+			],
+			options: plan.how.options.map((label) => ({ label })),
+			ack: (a) => [`${a.toLowerCase()}. that's concrete, i can work with that`],
+		});
+		prompts.push({
+			id: `${g.value}-cadence`,
+			messages: [plan.cadence.q],
+			options: plan.cadence.options.map((label) => ({ label })),
+			ack: (a) => [`${a.toLowerCase()} it is 🔒 small and consistent beats big and never, every time`],
+		});
+	});
+	prompts.push({
+		id: "reminder",
+		messages: [
+			"ok last bit of setup. here's how this actually works:",
+			"you live your life, i check in, you tell me how it went. no judgment either way.",
+			"when should i come knocking?",
+		],
+		options: [{ label: "Daily" }, { label: "Weekdays" }, { label: "Weekly" }],
+	});
+	prompts.push({
+		id: "push",
+		messages: [
+			"and real talk, the difference between this working and you forgetting i exist is one notification 🔔",
+			"can i ping your phone?",
+		],
+		options: [
+			{ label: "Turn on notifications", value: "enable" },
+			{ label: "Maybe later", value: "later" },
+		],
+	});
 	return prompts;
 }
 
 export function OnboardingChat({ onDone }: { onDone: () => void }) {
-	const promptsRef = useRef<Prompt[]>(buildPrompts(loadGoals()));
-	const prompts = promptsRef.current;
-
 	const [msgs, setMsgs] = useState<Msg[]>([]);
-	const [stepIdx, setStepIdx] = useState(0);
 	const [options, setOptions] = useState<Opt[] | null>(null);
 	const [typing, setTyping] = useState(false);
 	const [finished, setFinished] = useState(false);
 
 	const listRef = useRef<HTMLDivElement>(null);
+	// goal-picking stage state, then the plan prompt queue
+	const picking = useRef(true);
+	const chosen = useRef<{ value: string; label: string }[]>([]);
+	const prompts = useRef<Prompt[]>([]);
+	const stepRef = useRef(0);
 	const answers = useRef<Record<string, string>>({});
 	const timers = useRef<number[]>([]);
-	const stepRef = useRef(0);
 
 	// Auto-scroll the list (scoped — never the page).
 	useEffect(() => {
@@ -125,24 +212,96 @@ export function OnboardingChat({ onDone }: { onDone: () => void }) {
 		next();
 	};
 
-	const runStep = (idx: number) => {
-		stepRef.current = idx;
-		setStepIdx(idx);
-		setOptions(null);
-		showBotThen(prompts[idx].messages, () => setOptions(prompts[idx].options));
+	const goalOptions = (): Opt[] => {
+		const remaining = GOAL_OPTIONS.filter((o) => !chosen.current.some((c) => c.value === o.value)).map((o) => ({
+			label: o.label,
+			value: o.value,
+		}));
+		return chosen.current.length ? [...remaining, { label: "That's it for now", value: "done" }] : remaining;
 	};
 
-	// Kick off: intro, then the first prompt.
+	const runStep = (idx: number) => {
+		stepRef.current = idx;
+		setOptions(null);
+		showBotThen(prompts.current[idx].messages, () => setOptions(prompts.current[idx].options));
+	};
+
+	// goal picking complete → persist + build the plan queue
+	const finishPicking = () => {
+		picking.current = false;
+		try {
+			localStorage.setItem("sidekick_goals_v1", JSON.stringify(chosen.current.map((c) => c.value)));
+		} catch {
+			// ignore storage failures
+		}
+		prompts.current = buildPlanPrompts(chosen.current);
+		runStep(0);
+	};
+
+	// the closing recap: read the conclusions back as one plan
+	const finishFlow = () => {
+		const recap = chosen.current.map((g) => {
+			const how = answers.current[`${g.value}-how`] ?? "";
+			const cadence = answers.current[`${g.value}-cadence`] ?? "";
+			return `${g.label.toLowerCase()}: ${how.toLowerCase()}, ${cadence.toLowerCase()}`;
+		});
+		showBotThen(
+			[
+				"ok. recap time. here's the plan WE just built:",
+				...recap,
+				"that's not a wish list, that's a system. and honestly? it's a good one.",
+				"you handle the showing up, i'll handle the reminding. deal? 🤝",
+			],
+			() => setFinished(true),
+		);
+	};
+
+	// Kick off: scene-setting intro, then goal discovery.
 	useEffect(() => {
-		showBotThen(buildIntro(loadSidekickName()), () => runStep(0));
+		const name = loadSidekickName();
+		const user = loadUserName();
+		showBotThen(
+			[
+				name ? `i'm ${name} and we're officially a team 🎉` : "yay, we're officially a team 🎉",
+				`so here's the deal${user ? `, ${user}` : ""}. i'm basically the friend who actually remembers what you said you'd do.`,
+				"we're about to figure out what you wanna work on, and turn it into stuff you'd actually do on a normal tuesday. then i check in and keep you honest.",
+				"no pressure, no judgment. just us.",
+				"so, real talk. what's been on your mind? what do you wanna work on?",
+			],
+			() => setOptions(goalOptions()),
+		);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
 	const select = (opt: Opt) => {
-		const idx = stepRef.current;
-		const cur = prompts[idx];
 		setOptions(null);
 		setMsgs((m) => [...m, { role: "user", text: opt.label }]);
+		track("step_completed", {
+			flow: "onboarding-3d",
+			step_id: picking.current ? "chat-goal-pick" : `chat-${prompts.current[stepRef.current]?.id ?? "?"}`,
+			answer: opt.value ?? opt.label,
+		});
+
+		if (picking.current) {
+			if (opt.value === "done") {
+				showBotThen(["ok good list. i like it."], finishPicking);
+				return;
+			}
+			chosen.current.push({ value: opt.value ?? opt.label, label: opt.label });
+			const reaction = GOAL_REACTIONS[opt.value ?? ""] ?? `${opt.label.toLowerCase()}, love that`;
+			if (chosen.current.length >= MAX_GOALS) {
+				showBotThen([reaction, "and that's three. that's a strong list, more than that and we'd be lying to ourselves lol"], finishPicking);
+			} else {
+				showBotThen(
+					[reaction, chosen.current.length === 1 ? "anything else on your mind? or is that the one" : "anything else? one more slot if you want it"],
+					() => setOptions(goalOptions()),
+				);
+			}
+			return;
+		}
+
+		const idx = stepRef.current;
+		const cur = prompts.current[idx];
 		answers.current[cur.id] = opt.value ?? opt.label;
 		try {
 			localStorage.setItem("sidekick_plan_v1", JSON.stringify(answers.current));
@@ -156,11 +315,12 @@ export function OnboardingChat({ onDone }: { onDone: () => void }) {
 				// ignore
 			}
 		}
-		if (idx + 1 < prompts.length) {
-			later(() => runStep(idx + 1), 260);
-		} else {
-			later(() => showBotThen(["amazing — your plan's all set 🙌", "let's gooo!"], () => setFinished(true)), 260);
-		}
+		const proceed = () => {
+			if (idx + 1 < prompts.current.length) runStep(idx + 1);
+			else finishFlow();
+		};
+		if (cur.ack) showBotThen(cur.ack(opt.label), () => later(proceed, 200));
+		else later(proceed, 260);
 	};
 
 	return (
@@ -172,12 +332,7 @@ export function OnboardingChat({ onDone }: { onDone: () => void }) {
 				{msgs.map((m, i) =>
 					m.role === "bot" ? (
 						<div key={i} className="flex items-end gap-2 max-w-[85%]">
-							<img
-								src="/sidekick-pfp.webp"
-								alt="Sidekick"
-								className="w-8 h-8 object-contain shrink-0 select-none"
-								draggable={false}
-							/>
+							<SidekickAvatar className="w-8 h-8 object-contain shrink-0 select-none" alt="Sidekick" />
 							<div className="rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-2.5 text-[15px] leading-snug text-[#111]">
 								{m.text}
 							</div>
@@ -192,13 +347,7 @@ export function OnboardingChat({ onDone }: { onDone: () => void }) {
 				)}
 				{typing ? (
 					<div className="flex items-end gap-2">
-						<img
-							src="/sidekick-pfp.webp"
-							alt=""
-							aria-hidden="true"
-							className="w-8 h-8 object-contain shrink-0"
-							draggable={false}
-						/>
+						<SidekickAvatar className="w-8 h-8 object-contain shrink-0" />
 						{/* Sized exactly like a one-line message bubble so the swap to text doesn't shift the list. */}
 						<div className="rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-2.5 text-[15px] leading-snug">
 							<span className="ellipsis-dots inline-block w-7 text-[#111]/40">&#8203;</span>
@@ -213,7 +362,7 @@ export function OnboardingChat({ onDone }: { onDone: () => void }) {
 						Enter Sidekick
 					</button>
 				) : options ? (
-					<div className="flex flex-col items-end gap-2 animate-fade-up">
+					<div className="no-scrollbar flex max-h-[38vh] flex-col items-end gap-2 overflow-y-auto animate-fade-up">
 						<div className="text-[12px] font-medium text-[#111]/40 pr-1">Choose your reply</div>
 						{options.map((o) => (
 							<button

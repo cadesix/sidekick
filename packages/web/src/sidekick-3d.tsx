@@ -15,6 +15,7 @@ import {
 	SETTINGS_KEY,
 	loadSettings,
 	saveSettings,
+	type SidekickSettings,
 } from "./components/sidekick-settings";
 import {
 	MODEL_URL,
@@ -44,6 +45,15 @@ import {
 // the brand vinyl material/lighting. No runtime rigging or face painting.
 
 // Our clip logic → GLB bone names (Tripo/AccuRig-style humanoid rig)
+// Checked-in look-dev states (config-presets/README.md) — recovered saved
+// states from earlier dev-server origins. Any *.json dropped in that folder
+// appears in the panel's Config presets picker.
+const CONFIG_PRESETS = Object.fromEntries(
+	Object.entries(
+		import.meta.glob<Partial<SidekickSettings>>("./config-presets/*.json", { eager: true, import: "default" }),
+	).map(([path, cfg]) => [path.split("/").pop()!.replace(/\.json$/, ""), cfg]),
+);
+
 const BONE_MAP = {
 	waist: "Waist",
 	spine: "Spine01",
@@ -108,6 +118,7 @@ export default function Sidekick3D() {
 		scene.fog = new THREE.Fog(sc0.fog, sc0.fogNear, sc0.fogFar);
 		const grass = makeGrassEnvironment();
 		grass.setColors(sc0.grassHill, sc0.grassBase, sc0.grassTip, sc0.rock);
+		grass.setClouds(sc0.keyColor, sc0.fog);
 		grass.relayout(settings.grassHeight, settings.grassClumping);
 		scene.add(grass.group);
 
@@ -668,6 +679,7 @@ export default function Sidekick3D() {
 				fog.far = sc.fogFar;
 			}
 			grass.setColors(sc.grassHill, sc.grassBase, sc.grassTip, sc.rock);
+			grass.setClouds(sc.keyColor, sc.fog);
 			hemi.color.set(sc.hemiSky);
 			hemi.groundColor.set(sc.hemiGround);
 			hemi.intensity = sc.hemiIntensity;
@@ -767,48 +779,24 @@ export default function Sidekick3D() {
 		pose.add(settings, "poseArmForward", -0.8, 0.8, 0.01).name("arms forward");
 		pose.add(settings, "poseForeBend", -1, 1, 0.01).name("elbow bend");
 
-		const sh = gui.addFolder("Shading");
-		sh.add(settings, "shading", ["physical", "toon", "ramp", "gooch", "halftone", "sss", "matcap", "cel"]);
-		sh.addColor(settings, "celBodyColor").name("cel body color");
-		sh.addColor(settings, "celShadowColor").name("cel shadow");
-		sh.add(settings, "celSoftness", 0, 1).name("cel softness");
-		sh.add(settings, "celShadowAmt", 0, 1).name("cel shadow amt");
-		sh.add(settings, "toonBands", 2, 5, 1);
-		sh.add(settings, "toonSoftness", 0, 1);
-		sh.add(settings, "toonSpecStrength", 0, 1);
-		sh.add(settings, "toonSpecSize", 0, 1);
-		sh.add(settings, "toonRimStrength", 0, 1);
-		sh.addColor(settings, "toonShadowColor");
-		sh.add(settings, "toonShadowAmt", 0, 1);
-		sh.addColor(settings, "rampMid");
-		sh.addColor(settings, "rampLight");
-		sh.addColor(settings, "goochCool");
-		sh.addColor(settings, "goochWarm");
-		sh.add(settings, "halftoneScale", 4, 30);
-		sh.addColor(settings, "sssColor");
-		sh.add(settings, "sssStrength", 0, 1);
+		// Prod ships cel — only cel-specific inputs surface here. The other modes
+		// (toon/ramp/gooch/halftone/sss/matcap/physical) still exist in settings +
+		// presets, just without panel controls.
+		const sh = gui.addFolder("Cel Shading");
+		sh.addColor(settings, "celBodyColor").name("body color");
+		sh.addColor(settings, "celShadowColor").name("shadow color");
+		sh.add(settings, "celSoftness", 0, 1).name("softness");
+		sh.add(settings, "celShadowAmt", 0, 1).name("shadow amount");
+		sh.addColor(settings, "celRimColor").name("rim color");
+		sh.add(settings, "celRimStrength", 0, 1).name("rim strength");
+		sh.add(settings, "celRimWidth", 0.05, 0.9).name("rim width");
 		sh.add(settings, "outline").onChange((v: boolean) => {
 			if (outlineMesh) outlineMesh.visible = v;
 		});
-		sh.add(settings, "outlineWidth", 0, 0.02);
-		sh.addColor(settings, "outlineColor");
+		sh.add(settings, "outlineWidth", 0, 0.02).name("outline width");
+		sh.addColor(settings, "outlineColor").name("outline color");
 		// any settled change in this folder rebuilds the active materials
 		sh.onFinishChange(rebuildShading);
-		sh.add(
-			{ note: "matcap looks for /matcap.png (Cycles sphere render)" },
-			"note",
-		).disable();
-
-		const mat = gui.addFolder("Material (physical mode)");
-		mat.addColor(settings, "tint").onChange((v: string) => vinyl.color.set(v));
-		mat.add(settings, "roughness", 0, 1).onChange((v: number) => (vinyl.roughness = v));
-		mat.add(settings, "clearcoat", 0, 1).onChange((v: number) => (vinyl.clearcoat = v));
-		mat.add(settings, "clearcoatRoughness", 0, 1).onChange((v: number) => (vinyl.clearcoatRoughness = v));
-		mat.add(settings, "sheen", 0, 1).onChange((v: number) => (vinyl.sheen = v));
-		mat.add(settings, "sheenRoughness", 0, 1).onChange((v: number) => (vinyl.sheenRoughness = v));
-		mat.addColor(settings, "sheenColor").onChange((v: string) => vinyl.sheenColor.set(v));
-		mat.addColor(settings, "emissiveColor").onChange((v: string) => vinyl.emissive.set(v));
-		mat.add(settings, "emissiveIntensity", 0, 0.5).onChange((v: number) => (vinyl.emissiveIntensity = v));
 
 		// key / fill / rim / hemi / exposure now live in the Time of Day panel
 		// (per-scene); only the IBL intensity remains a global here
@@ -844,6 +832,22 @@ export default function Sidekick3D() {
 			if (skeletonHelper) skeletonHelper.visible = v;
 		});
 		scn.close();
+
+		// checked-in presets: apply = overwrite saved state + reload, same
+		// semantics as "load config (.json)" but sourced from the repo
+		const presetNames = Object.keys(CONFIG_PRESETS).sort();
+		if (presetNames.length) {
+			const presetCtl = {
+				preset: presetNames[0],
+				apply: () => {
+					saveSettings({ ...DEFAULT_SETTINGS, ...CONFIG_PRESETS[presetCtl.preset] });
+					window.location.reload();
+				},
+			};
+			const pf = gui.addFolder("Config presets");
+			pf.add(presetCtl, "preset", presetNames);
+			pf.add(presetCtl, "apply").name("apply preset (reloads)");
+		}
 
 		gui.add(settings, "saveConfig").name("💾 save config");
 		gui.add(settings, "copySettings").name("copy settings JSON");

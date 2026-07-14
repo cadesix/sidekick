@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { SidekickAvatar } from "./components/sidekick-avatar";
 import { LuArrowUp, LuHistory, LuRotateCcw, LuSettings2, LuTrash2, LuX } from "react-icons/lu";
 import { DEFAULT_SYSTEM_PROMPT } from "./sidekick-prompt";
 
@@ -161,12 +162,7 @@ export default function ChatLab() {
 				{messages.map((m, i) =>
 					m.role === "assistant" ? (
 						<div key={i} className="flex items-end gap-2 max-w-[85%]">
-							<img
-								src="/sidekick-pfp.webp"
-								alt="Sidekick"
-								className="w-8 h-8 object-contain shrink-0 select-none"
-								draggable={false}
-							/>
+							<SidekickAvatar className="w-8 h-8 object-contain shrink-0 select-none" alt="Sidekick" />
 							<div className="rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-2.5 text-[15px] leading-snug text-[#111] whitespace-pre-wrap">
 								{m.content}
 							</div>
@@ -181,7 +177,7 @@ export default function ChatLab() {
 				)}
 				{loading ? (
 					<div className="flex items-end gap-2">
-						<img src="/sidekick-pfp.webp" alt="" aria-hidden="true" className="w-8 h-8 object-contain shrink-0" draggable={false} />
+						<SidekickAvatar className="w-8 h-8 object-contain shrink-0" />
 						<div className="rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-2.5 text-[15px] leading-snug">
 							<span className="ellipsis-dots inline-block w-7 text-[#111]/40">&#8203;</span>
 						</div>

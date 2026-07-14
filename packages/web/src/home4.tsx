@@ -1,7 +1,16 @@
-import { useRef, useState } from "react";
-import { LuChevronDown } from "react-icons/lu";
+import { useEffect, useRef, useState } from "react";
+import { LuChevronDown, LuFlame } from "react-icons/lu";
+import { StreakModal } from "./components/streak-sheet";
+import { touchStreak } from "./components/sidekick-streak";
 import { Chat } from "./chat";
-import { SidekickCanvas, type CanvasFraming } from "./components/sidekick-canvas";
+import { AppearanceSheet } from "./components/appearance-sheet";
+import { BondBadge } from "./components/bond-badge";
+import { SidekickAvatar } from "./components/sidekick-avatar";
+import { SidekickCanvas, type CanvasFraming, type SidekickCanvasHandle } from "./components/sidekick-canvas";
+import type { EnvironmentId } from "./components/sidekick-biomes";
+import { DevPanel } from "./components/dev-panel";
+import { applyPersonaFromUrl } from "./components/sidekick-profile";
+import { GoalsSheet } from "./components/goals-sheet";
 import { HomeDock } from "./components/home-dock";
 import { WorldMap } from "./components/world-map";
 import { ShopSheet } from "./components/shop-sheet";
@@ -44,6 +53,9 @@ const SHOP_FRAMING: CanvasFraming = {
 	fov: 26,
 };
 
+// dev: /home4?persona=week2 boots straight into a canned user state
+if (import.meta.env.DEV) applyPersonaFromUrl();
+
 export default function Home4() {
 	const [chatOpen, setChatOpen] = useState(false);
 	// `mounted` keeps the drawer in the DOM through its slide-down exit
@@ -53,9 +65,35 @@ export default function Home4() {
 	const [mapOpen, setMapOpen] = useState(false);
 	const [mapShown, setMapShown] = useState(false);
 	const [shopOpen, setShopOpen] = useState(false);
+	const [goalsOpen, setGoalsOpen] = useState(false);
+	const [streakOpen, setStreakOpen] = useState(false);
+	// counts today on app open (idempotent per local day)
+	const [streak] = useState(() => touchStreak());
+	// which world the character stands in — map travel swaps it while the map
+	// still covers the screen, so the new biome is there when the reveal closes
+	const [environment, setEnvironment] = useState<EnvironmentId>("meadow");
+	// pause the 3D scene once the near-full-screen shop has covered it (after
+	// the slide-up + studio crossfade settle) — frees the GPU for the turntables
+	const [canvasPaused, setCanvasPaused] = useState(false);
+	useEffect(() => {
+		if (!shopOpen) {
+			setCanvasPaused(false);
+			return;
+		}
+		const t = window.setTimeout(() => setCanvasPaused(true), 450);
+		return () => window.clearTimeout(t);
+	}, [shopOpen]);
 	// imperative handle the canvas fills once cosmetics are ready; the Shop uses
 	// it to dress the live character
 	const controlsRef = useRef<CosmeticsControls | null>(null);
+	// the Bond badge element the canvas pins over the character's head
+	const bondRef = useRef<HTMLDivElement | null>(null);
+	// imperative canvas handle — the Appearance sheet recolors the live character
+	const canvasHandleRef = useRef<SidekickCanvasHandle | null>(null);
+	const [appearanceOpen, setAppearanceOpen] = useState(false);
+
+	// set when "Talk about it" opens a goal in chat — auto-sent once on mount
+	const [chatSeed, setChatSeed] = useState<string | undefined>(undefined);
 
 	const open = () => {
 		setMounted(true);
@@ -63,7 +101,10 @@ export default function Home4() {
 	};
 	const close = () => {
 		setChatOpen(false);
-		window.setTimeout(() => setMounted(false), 400);
+		window.setTimeout(() => {
+			setMounted(false);
+			setChatSeed(undefined);
+		}, 400);
 	};
 
 	const openMap = () => {
@@ -81,16 +122,55 @@ export default function Home4() {
 			    to CHAT_FRAMING (zoomed out) when the chat drawer opens. */}
 			<SidekickCanvas
 				className="absolute inset-0"
-				framing={mapOpen ? MAP_FRAMING : shopOpen ? SHOP_FRAMING : chatOpen ? CHAT_FRAMING : HERO_FRAMING}
+				framing={mapOpen ? MAP_FRAMING : shopOpen || appearanceOpen ? SHOP_FRAMING : chatOpen ? CHAT_FRAMING : HERO_FRAMING}
 				holdingPhone={chatOpen}
-				studio={shopOpen}
+				studio={shopOpen || appearanceOpen}
+				environment={environment}
 				controlsRef={controlsRef}
+				overheadRef={bondRef}
+				handleRef={canvasHandleRef}
+				paused={canvasPaused}
 			/>
+
+			{/* Bond score floating over the character's head (canvas positions it) */}
+			<BondBadge ref={bondRef} />
+
+			{/* dev-only user-state panel: personas + individual state dials */}
+			{import.meta.env.DEV ? <DevPanel /> : null}
+
+			{/* top right: appearance (avatar) + streak */}
+			<div
+				className={`absolute right-4 top-[max(env(safe-area-inset-top),16px)] z-30 flex items-center gap-2 transition-all duration-300 ${
+					mapShown ? "pointer-events-none opacity-0" : ""
+				}`}
+			>
+				<button
+					onClick={() => setAppearanceOpen(true)}
+					aria-label="Appearance"
+					className="grid h-10 w-10 place-items-center rounded-full bg-white/85 shadow-[0_3px_0_rgba(0,0,0,0.12)] backdrop-blur-sm transition-all duration-100 active:translate-y-[2px] active:shadow-[0_1px_0_rgba(0,0,0,0.12)]"
+				>
+					<SidekickAvatar className="h-10 w-10 scale-110 object-contain" alt="Appearance" />
+				</button>
+				<button
+					onClick={() => setStreakOpen(true)}
+					aria-label="Streak"
+					className="flex items-center gap-1.5 rounded-full bg-white/85 px-3.5 py-2 shadow-[0_3px_0_rgba(0,0,0,0.12)] backdrop-blur-sm transition-all duration-100 active:translate-y-[2px] active:shadow-[0_1px_0_rgba(0,0,0,0.12)]"
+				>
+					<LuFlame className="h-5 w-5 text-[#ff7a3d]" strokeWidth={2.5} />
+					<span className="text-[14px] font-extrabold tabular-nums text-[#111]">{streak}</span>
+				</button>
+			</div>
 
 			{/* iOS-style home dock — Messages opens the chat sheet. The sheets slide
 			    up OVER the dock (higher z-index), so it stays put rather than fading;
 			    only the full-screen map reveal hides it. */}
-			<HomeDock hidden={mapShown} onMessages={open} onMap={openMap} onShop={() => setShopOpen(true)} />
+			<HomeDock
+				hidden={mapShown}
+				onMessages={open}
+				onMap={openMap}
+				onShop={() => setShopOpen(true)}
+				onGoals={() => setGoalsOpen(true)}
+			/>
 
 			{/* Full-screen world map (Map dock icon) — scales in from centre while the
 			    camera pulls away behind it */}
@@ -101,6 +181,10 @@ export default function Home4() {
 					closeMap();
 					open();
 				}}
+				onTravel={(biome) => {
+					setEnvironment(biome);
+					closeMap();
+				}}
 			/>
 
 			{/* Shop sheet (Shop dock icon) — covers the lower half; the character is
@@ -109,10 +193,47 @@ export default function Home4() {
 				<button
 					onClick={() => setShopOpen(false)}
 					aria-label="Close shop"
-					className="absolute inset-x-0 top-0 bottom-[52%] z-20"
+					className="absolute inset-x-0 top-0 bottom-[92%] z-20"
 				/>
 			) : null}
 			<ShopSheet open={shopOpen} onClose={() => setShopOpen(false)} controlsRef={controlsRef} />
+
+			{/* Goals sheet (Goals dock icon) — the user's goals with this week's
+			    habit check-offs; tap the band above to dismiss */}
+			{goalsOpen ? (
+				<button
+					onClick={() => setGoalsOpen(false)}
+					aria-label="Close goals"
+					className="absolute inset-x-0 top-0 bottom-[62%] z-20"
+				/>
+			) : null}
+			{/* Streak modal — current streak + the next few milestone rewards */}
+			<StreakModal open={streakOpen} onClose={() => setStreakOpen(false)} streak={streak} />
+
+			{/* Appearance sheet (avatar button) — skin color + the closet */}
+			{appearanceOpen ? (
+				<button
+					onClick={() => setAppearanceOpen(false)}
+					aria-label="Close appearance"
+					className="absolute inset-x-0 top-0 bottom-[52%] z-20"
+				/>
+			) : null}
+			<AppearanceSheet
+				open={appearanceOpen}
+				onClose={() => setAppearanceOpen(false)}
+				controlsRef={controlsRef}
+				onSkin={(c) => canvasHandleRef.current?.setColors(c.body, c.shadow)}
+			/>
+
+			<GoalsSheet
+				open={goalsOpen}
+				onClose={() => setGoalsOpen(false)}
+				onTalk={(label) => {
+					setGoalsOpen(false);
+					setChatSeed(`I want to talk about my goal: ${label}`);
+					open();
+				}}
+			/>
 
 			{/* Chat drawer — covers the lower ~55%, leaving the character visible in
 			    the band above it. Mounted through the slide-down exit. */}
@@ -136,7 +257,7 @@ export default function Home4() {
 						>
 							<LuChevronDown className="w-5 h-5 text-[#111]/60" strokeWidth={2.5} />
 						</button>
-						<Chat transparentTop peekIn={false} />
+						<Chat transparentTop peekIn={false} seed={chatSeed} />
 					</div>
 				</>
 			) : null}
