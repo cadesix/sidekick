@@ -2,12 +2,15 @@
 to the character (daily box faucet, docs/token-economy.md). No rig, no skin.
 Output: packages/web/public/props/lootbox-v1.glb
 
-Three meshes, split by material so the web runtime can retint per box tier
-(base/silver/gold) by material name, then re-shade with the character's cel
-material family (makeItemMaterial + inverted-hull outline):
-  LootBody   / Chest_Body    the chest body + domed lid
-  LootTrim   / Chest_Trim    the strap over the lid + front strip
-  LootEmblem / Chest_Emblem  the latch disc the strap's star sits on
+Meshes split two ways: by material so the web runtime can retint per box tier
+(base/silver/gold) by material name, and lid-vs-body so the lid can hinge open
+at runtime. The two Lid* objects have their ORIGIN ON THE HINGE LINE (back
+seam), so the runtime opens the chest by rotating those nodes about local X:
+  LootBody     / Chest_Body    the chest body (tub)
+  LootLid      / Chest_Body    the domed lid — origin at the back-seam hinge
+  LootLidStrap / Chest_Trim    the strap arc over the dome — same hinge origin
+  LootTrim     / Chest_Trim    strap strips down the body front/back
+  LootEmblem   / Chest_Emblem  the latch disc on the body front
 
 Run:  /Applications/Blender.app/Contents/MacOS/Blender --background \
         --python tools/char-pipeline/scripts/build_lootbox.py
@@ -21,7 +24,7 @@ import sys
 
 import bmesh
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
 import coslib as C
@@ -114,29 +117,57 @@ def finish(ob, smooth):
         p.use_smooth = smooth
 
 
+# the lid hinge: back seam of the body, where the dome meets the tub
+HINGE = Vector((0, D / 2, BODY_Z1))
+
+
+def set_hinge_origin(ob):
+    """Move the object's origin to the hinge line so runtime rotation.x opens it."""
+    ob.data.transform(Matrix.Translation(-HINGE))
+    ob.location = HINGE
+
+
 # ---------------- build ----------------
 bpy.ops.wm.read_factory_settings(use_empty=True)
 
-# body + lid (one mesh, one material)
+# body tub (topless — the lid dome is its own hinged object)
 body = new_obj("LootBody")
 bm = bmesh.new()
 # body: rounded-rect slab, slightly narrower at the base (chest taper)
 C.add_slab(bm, Vector((0, 0, BODY_Z0)), Vector((1, 0, 0)), Vector((0, 1, 0)),
            Vector((0, 0, 1)), W, D, 0.10, BODY_Z1 - BODY_Z0, scales=(0.92, 1.0))
-half_barrel(bm, -W / 2, W / 2, LID_RY, LID_RZ, BODY_Z1)
-# close the lid's open underside strip (hidden seam, keeps it watertight)
-u0 = [bm.verts.new((-W / 2, -LID_RY, BODY_Z1)), bm.verts.new((W / 2, -LID_RY, BODY_Z1)),
-      bm.verts.new((W / 2, LID_RY, BODY_Z1)), bm.verts.new((-W / 2, LID_RY, BODY_Z1))]
-bm.faces.new(u0)
 bm.to_mesh(body.data)
 bm.free()
 finish(body, smooth=True)
 C.set_material(body, "Chest_Body", (1.0, 0.72, 0.23), 0.85)
 
-# strap over the dome + strips down the front/back of the body + underside
-trim = new_obj("LootTrim")
+# domed lid — separate object, origin on the hinge
+lid = new_obj("LootLid")
+bm = bmesh.new()
+half_barrel(bm, -W / 2, W / 2, LID_RY, LID_RZ, BODY_Z1)
+# close the lid's open underside (visible once the chest opens)
+u0 = [bm.verts.new((-W / 2, -LID_RY, BODY_Z1)), bm.verts.new((W / 2, -LID_RY, BODY_Z1)),
+      bm.verts.new((W / 2, LID_RY, BODY_Z1)), bm.verts.new((-W / 2, LID_RY, BODY_Z1))]
+bm.faces.new(u0)
+bm.to_mesh(lid.data)
+bm.free()
+finish(lid, smooth=True)
+C.set_material(lid, "Chest_Lid", (1.0, 0.72, 0.23), 0.85)
+set_hinge_origin(lid)
+
+# strap arc over the dome — rides the lid, same hinge origin
+lidstrap = new_obj("LootLidStrap")
 bm = bmesh.new()
 half_barrel(bm, -STRAP_W / 2, STRAP_W / 2, LID_RY + STRAP_T, LID_RZ + STRAP_T, BODY_Z1)
+bm.to_mesh(lidstrap.data)
+bm.free()
+finish(lidstrap, smooth=False)
+C.set_material(lidstrap, "Chest_Trim", (1.0, 0.28, 0.24), 0.8)
+set_hinge_origin(lidstrap)
+
+# strap strips down the body front/back (stay with the tub)
+trim = new_obj("LootTrim")
+bm = bmesh.new()
 box(bm, -STRAP_W / 2, STRAP_W / 2, -D / 2 - STRAP_T, -D / 2 + 0.02, 0.02, BODY_Z1)
 box(bm, -STRAP_W / 2, STRAP_W / 2, D / 2 - 0.02, D / 2 + STRAP_T, 0.02, BODY_Z1)
 bm.to_mesh(trim.data)
@@ -154,7 +185,7 @@ finish(emblem, smooth=True)
 C.set_material(emblem, "Chest_Emblem", (1.0, 0.95, 0.84), 0.6)
 
 # ---------------- export (props are rig-free; coslib.export wants a rig) ----------------
-objs = [body, trim, emblem]
+objs = [body, lid, lidstrap, trim, emblem]
 bpy.ops.object.select_all(action="DESELECT")
 for o in objs:
     o.select_set(True)

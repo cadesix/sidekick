@@ -167,7 +167,7 @@ export default function Home5() {
 				controlsRef={controlsRef}
 				overheadRef={bondRef}
 				groundRef={boxRef}
-				dailyBox={boxStage === "ground" ? todaysBox.tier : null}
+				dailyBox={boxStage === "ground" || boxStage === "rewards" ? todaysBox.tier : null}
 				handleRef={canvasHandleRef}
 				paused={canvasPaused}
 			/>

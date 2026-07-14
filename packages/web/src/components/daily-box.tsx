@@ -34,9 +34,9 @@ export const GroundBox = forwardRef<HTMLDivElement, { hidden?: boolean; onTap: (
 		const tap = () => {
 			if (burst) return;
 			setBurst(true);
-			onTap(); // canvas starts the wiggle → swell
-			// chest vanishes at ~0.82s; rewards land just after
-			timers.current.push(window.setTimeout(onOpened, 1100));
+			onTap(); // canvas starts rattle → lid swing → light
+			// light pours out at ~0.62s; the rewards modal rides the beam
+			timers.current.push(window.setTimeout(onOpened, 1200));
 		};
 
 		return (
@@ -65,7 +65,7 @@ export const GroundBox = forwardRef<HTMLDivElement, { hidden?: boolean; onTap: (
 					{burst ? (
 						<>
 							{/* flash ring, timed to the start of the 3D swell */}
-							<div className="animate-box-flash absolute inset-6 rounded-full bg-white [animation-delay:0.45s]" />
+							<div className="animate-box-flash absolute inset-6 rounded-full bg-white [animation-delay:0.62s]" />
 							{/* rays */}
 							{Array.from({ length: 8 }, (_, i) => (
 								<div
@@ -75,7 +75,7 @@ export const GroundBox = forwardRef<HTMLDivElement, { hidden?: boolean; onTap: (
 										{
 											"--ray-angle": `${i * 45}deg`,
 											background: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-											animationDelay: "0.5s",
+											animationDelay: "0.66s",
 										} as React.CSSProperties
 									}
 								/>
@@ -92,7 +92,7 @@ export const GroundBox = forwardRef<HTMLDivElement, { hidden?: boolean; onTap: (
 												"--cx": `${x.toFixed(0)}px`,
 												"--cy": `${y.toFixed(0)}px`,
 												background: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-												animationDelay: "0.52s",
+												animationDelay: "0.7s",
 											} as React.CSSProperties
 										}
 									/>

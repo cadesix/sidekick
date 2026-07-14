@@ -462,10 +462,16 @@ export function SidekickCanvas({
 		boxGroup.visible = false;
 		scene.add(boxGroup);
 		let boxMeshes: THREE.Mesh[] = [];
+		let boxLidNodes: THREE.Object3D[] = []; // hinge-origin lid meshes (rotate.x to open)
 		let boxTint: BoxTier | null = null;
 		let boxLoading = false;
 		let boxSpawn = -1; // clock time the chest appeared (scale-in spring)
 		let boxPop = -1; // clock time popDailyBox() fired
+		// the light that pours out when the lid opens: an additive beam cone +
+		// a radial glow sprite at the mouth, hidden until the open beat
+		let beamMat: THREE.MeshBasicMaterial | null = null;
+		let glowMat: THREE.SpriteMaterial | null = null;
+		let beam: THREE.Mesh | null = null;
 		const tintBox = (tier: BoxTier) => {
 			const pal = BOX_PALETTES[tier];
 			for (const m of boxMeshes) {
@@ -501,6 +507,40 @@ export function SidekickCanvas({
 					mesh.add(ink);
 				}
 				boxMeshes = meshes;
+				boxLidNodes = meshes.filter((m) => m.name.startsWith("LootLid"));
+				// beam: a widening additive cone rising from the chest mouth
+				beamMat = new THREE.MeshBasicMaterial({
+					color: 0xfff2b8,
+					transparent: true,
+					opacity: 0,
+					blending: THREE.AdditiveBlending,
+					side: THREE.DoubleSide,
+					depthWrite: false,
+				});
+				beam = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.18, 1.7, 24, 1, true), beamMat);
+				beam.position.y = 0.5 + 0.85; // mouth of the chest + half the beam height (raw GLB units)
+				boxGroup.add(beam);
+				// glow: a soft radial sprite sitting right in the mouth
+				const gc = document.createElement("canvas");
+				gc.width = gc.height = 128;
+				const gctx = gc.getContext("2d")!;
+				const grad = gctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+				grad.addColorStop(0, "rgba(255,250,225,1)");
+				grad.addColorStop(0.4, "rgba(255,238,170,0.75)");
+				grad.addColorStop(1, "rgba(255,238,170,0)");
+				gctx.fillStyle = grad;
+				gctx.fillRect(0, 0, 128, 128);
+				glowMat = new THREE.SpriteMaterial({
+					map: new THREE.CanvasTexture(gc),
+					transparent: true,
+					opacity: 0,
+					blending: THREE.AdditiveBlending,
+					depthWrite: false,
+				});
+				const glow = new THREE.Sprite(glowMat);
+				glow.position.y = 0.62;
+				glow.scale.setScalar(1.6);
+				boxGroup.add(glow);
 				boxGroup.add(g.scene);
 				boxSpawn = clock.getElapsedTime();
 			});
@@ -906,35 +946,47 @@ export function SidekickCanvas({
 			if (wantBox && !boxMeshes.length && !boxLoading) loadBox();
 			if (boxMeshes.length) {
 				if (wantBox && boxTint !== wantBox) tintBox(wantBox);
-				if (!wantBox && boxPop >= 0) boxPop = -1; // reset for the next day
+				if (!wantBox && boxPop >= 0) {
+					// reset for the next spawn: lid shut, light off
+					boxPop = -1;
+					for (const n of boxLidNodes) n.rotation.x = 0;
+					if (beamMat) beamMat.opacity = 0;
+					if (glowMat) glowMat.opacity = 0;
+				}
 				const popT = boxPop >= 0 ? now - boxPop : -1;
-				boxGroup.visible = !!wantBox && !inStudio && (popT < 0 || popT < 0.82);
+				boxGroup.visible = !!wantBox && !inStudio;
 				if (boxGroup.visible) {
 					// scale-in spring on spawn (slight overshoot)
 					const ts = Math.min(1, (now - boxSpawn) / 0.55);
 					const spring = 1 - Math.pow(1 - ts, 3) * Math.cos(ts * 9);
-					let scale = DAILY_BOX_SCALE * spring;
-					// idle: rattle in short bursts, like something inside wants out —
-					// a wiggle burst every ~1.7s with little hops on the beats
-					const cycle = (now - boxSpawn) % 1.7;
-					let rattle = 0;
-					if (cycle < 0.55) {
-						const env = Math.sin((cycle / 0.55) * Math.PI);
-						rattle = Math.sin(cycle * 50) * 0.09 * env;
-					}
-					boxGroup.rotation.z = rattle;
-					boxGroup.position.y = DAILY_BOX_POS.y + Math.abs(rattle) * 0.14;
-					if (popT >= 0) {
-						if (popT < 0.45) {
-							// tapped: the wiggle goes wild before the burst
-							boxGroup.rotation.z = Math.sin(popT * 42) * 0.12 * (0.4 + popT * 1.6);
-						} else {
-							// burst: swell up while the DOM flash/confetti covers the vanish
-							boxGroup.rotation.z = 0;
-							scale = DAILY_BOX_SCALE * (1 + ((popT - 0.45) / 0.37) * 0.9);
+					boxGroup.scale.setScalar(Math.max(0.0001, DAILY_BOX_SCALE * spring));
+					if (popT < 0) {
+						// idle: rattle in short bursts, like something inside wants out —
+						// a wiggle burst every ~1.7s with little hops on the beats
+						const cycle = (now - boxSpawn) % 1.7;
+						let rattle = 0;
+						if (cycle < 0.55) {
+							const env = Math.sin((cycle / 0.55) * Math.PI);
+							rattle = Math.sin(cycle * 50) * 0.09 * env;
 						}
+						boxGroup.rotation.z = rattle;
+						boxGroup.position.y = DAILY_BOX_POS.y + Math.abs(rattle) * 0.14;
+					} else {
+						// tapped: wild rattle (0–0.35s) → lid swings open with overshoot
+						// (0.35–0.75s) → light pours out (from 0.62s) and keeps pulsing
+						boxGroup.rotation.z = popT < 0.35 ? Math.sin(popT * 46) * 0.13 * (0.5 + popT * 2) : 0;
+						boxGroup.position.y = DAILY_BOX_POS.y;
+						const lt = Math.min(1, Math.max(0, (popT - 0.35) / 0.4));
+						const k = 1.9; // ease-out-back: swings past open, settles back
+						const swing = 1 + (k + 1) * Math.pow(lt - 1, 3) + k * Math.pow(lt - 1, 2);
+						for (const n of boxLidNodes) n.rotation.x = -1.75 * swing;
+						const lightT = Math.min(1, Math.max(0, (popT - 0.62) / 0.18));
+						if (beamMat && beam) {
+							beamMat.opacity = lightT * (0.5 + 0.08 * Math.sin(now * 6.5));
+							beam.scale.set(1, 0.35 + 0.65 * lightT, 1);
+						}
+						if (glowMat) glowMat.opacity = lightT * (0.85 + 0.12 * Math.sin(now * 5.2));
 					}
-					boxGroup.scale.setScalar(Math.max(0.0001, scale));
 				}
 			}
 			// pin the overhead overlay (Bond badge) above the head bone: world pos
