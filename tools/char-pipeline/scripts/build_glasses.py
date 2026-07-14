@@ -1,7 +1,14 @@
 """Sunglasses (rigid, NEW `glasses` slot -> Head bone) -> cosmetics/glasses/base-v1.glb.
-Two round lens slabs over the eye line of the face disc + bridge + temple arms
-curving around the head sides. One mesh `Glasses`, one material.
-Eye line measured: z~0.152, face front x~0.047.
+Two round lens slabs that fully cover the eyes of the face sprite + bridge +
+temple arms curving around the head sides. One mesh `Glasses`, one material.
+
+Eye placement is measured from the SERVED sheet (face-sheet-v6.png) under the
+prod look preset (cel-bloom-tilt-5173: faceZoom 0.9, faceHeight 0.185), which
+renders features higher/wider than the raw doc eye line: eye centers land at
+y=+-0.0222 (per-expression spread 0.020-0.025), z 0.147-0.154, eye ovals
+~0.009 x 0.015. Lenses r=0.014 at (+-0.0223, 0.1505) cover every measured
+expression's eyes with margin (measurement: scratchpad measure_eyes.py run
+2026-07-13; re-measure if the sheet or the preset's face fields change).
 """
 import bpy, bmesh, math, sys
 from mathutils import Vector
@@ -11,7 +18,7 @@ import coslib as C
 
 body, rig = C.load_master()
 HC = Vector((0.005, 0.0, 0.148))          # head center
-EYE_Z = 0.1515; LENS_R = 0.0125; LENS_Y = 0.0175
+EYE_Z = 0.1505; LENS_R = 0.0140; LENS_Y = 0.0223
 X0, X1 = 0.0475, 0.0505                    # lens slab depth (proud of face disc)
 
 ob = C.bm_new_obj("Glasses")
@@ -36,17 +43,20 @@ def lens(sy):
 
 lens(1); lens(-1)
 
-# bridge between the lenses
+# bridge between the lenses (spans the inter-lens gap with ~2mm overlap each side)
 X, Y, Z = Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))
-C.add_slab(bm, Vector((X0 + 0.0005, 0, EYE_Z + 0.002)), Y, Z, X, 0.013, 0.004, 0.0015, 0.0025)
+C.add_slab(bm, Vector((X0 + 0.0005, 0, EYE_Z + 0.002)), Y, Z, X,
+           2 * (LENS_Y - LENS_R) + 0.004, 0.004, 0.0015, 0.0025)
 
 # temple arms: strips sweeping around the head sides toward the ears
 for sy in (1, -1):
     a2, b2 = 0.0555, 0.053                 # head ellipse + clearance
     rows = []
     NSEG = 8
+    # start where the (now wider) lens rim sits: y = LENS_Y + LENS_R
+    th0 = math.degrees(math.asin(min(1.0, (LENS_Y + LENS_R) / b2)))
     for i in range(NSEG + 1):
-        th = math.radians(30 + (95 - 30) * i / NSEG)
+        th = math.radians(th0 + (95 - th0) * i / NSEG)
         p = Vector((HC.x + a2 * math.cos(th), sy * b2 * math.sin(th), EYE_Z))
         radial = Vector((math.cos(th), sy * math.sin(th), 0))
         rows.append((p, radial))

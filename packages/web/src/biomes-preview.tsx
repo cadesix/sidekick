@@ -23,7 +23,11 @@ const ENVS: { id: EnvironmentId; label: string }[] = [
 ];
 
 export default function BiomesPreview() {
-	const [env, setEnv] = useState<EnvironmentId>("snow");
+	// ?env=blossom preselects a biome (handy for scripted screenshots)
+	const [env, setEnv] = useState<EnvironmentId>(() => {
+		const q = new URLSearchParams(window.location.search).get("env") as EnvironmentId | null;
+		return q && ENVS.some((e) => e.id === q) ? q : "snow";
+	});
 	return (
 		<div className="relative h-[100svh] overflow-hidden bg-white">
 			<SidekickCanvas className="absolute inset-0" framing={FRAMING} environment={env} />

@@ -24,6 +24,14 @@ def build(side):
                 v.co.z = SOLE_Z
 
     C.offset_loosen(sh, OFFSET, edit=sole)
+    # de-toe (same as sneakers): smooth toe box instead of inherited toe bumps —
+    # plan-outline pass keeps the flat sole, front-cap pass + reinflate rounds
+    # the knuckles while keeping clearance over the foot.
+    xs = [(sh.matrix_world @ v.co).x for v in sh.data.vertices]
+    toe_x = min(xs) + 0.45 * (max(xs) - min(xs))
+    C.region_smooth(sh, lambda c: c.z < 0.0065, iters=25, axes=(True, True, False))
+    C.region_smooth(sh, lambda c: 0.004 < c.z < 0.015 and c.x > toe_x,
+                    iters=18, reinflate=0.0012)
     C.decimate(sh, 420)
     C.boundary_finish(sh, [("z", BOOT_TOP)], relax=10)
     C.solidify(sh, 0.0024)

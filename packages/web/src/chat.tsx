@@ -27,10 +27,14 @@ export function Chat({
 	peekIn = true,
 	transparentTop = false,
 	peekPop = false,
+	seed,
 }: {
 	peekIn?: boolean;
 	transparentTop?: boolean;
 	peekPop?: boolean;
+	// a message auto-sent from the user once on mount — e.g. the Goals sheet
+	// opening a goal in chat ("I want to talk about my goal: …")
+	seed?: string;
 }) {
 	const [messages, setMessages] = useState<Msg[]>(loadMessages);
 	const [input, setInput] = useState("");
@@ -58,8 +62,8 @@ export function Chat({
 		didInitScroll.current = true;
 	}, [messages, loading]);
 
-	const send = async () => {
-		const text = input.trim();
+	const sendText = async (raw: string) => {
+		const text = raw.trim();
 		if (!text || loading) return;
 		const next: Msg[] = [...messages, { role: "user", content: text }];
 		setMessages(next);
@@ -83,6 +87,17 @@ export function Chat({
 			setLoading(false);
 		}
 	};
+	const send = () => sendText(input);
+
+	// auto-send the seed once (ref-guarded against strict-mode re-runs)
+	const seeded = useRef(false);
+	useEffect(() => {
+		if (seed && !seeded.current) {
+			seeded.current = true;
+			sendText(seed);
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [seed]);
 
 	return (
 		<div className={`h-full flex flex-col ${transparentTop ? "" : "bg-[#FBEFC9]"}`}>

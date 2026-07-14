@@ -17,7 +17,15 @@ import { makeLandscape } from "./sidekick-landscape";
 import { createFaceController, loadFaceTexture, type FaceController } from "./sidekick-face";
 import { createInteraction, POKE_FACE } from "./sidekick-interact";
 import { createCosmetics, type CosmeticsHandle } from "./sidekick-equipment";
-import { loadWardrobe, saveWardrobe, WARDROBE_SLOTS, type CosmeticsControls, type Wardrobe } from "./sidekick-wardrobe";
+import {
+	loadWardrobe,
+	regionSiblings,
+	saveWardrobe,
+	WARDROBE_SLOTS,
+	type CosmeticsControls,
+	type Wardrobe,
+	type WardrobeSlot,
+} from "./sidekick-wardrobe";
 import { BIOMES, type BiomeId, type EnvironmentId } from "./sidekick-biomes";
 
 // Full 3D home-screen scene: sky gradient, domed lawn with wind-swept grass,
@@ -128,6 +136,8 @@ export function SidekickCanvas({
 	studio,
 	environment,
 	controlsRef,
+	overheadRef,
+	paused,
 }: {
 	className?: string;
 	framing?: CanvasFraming;
@@ -143,12 +153,20 @@ export function SidekickCanvas({
 	// populated once cosmetics are ready so a host (e.g. the Shop) can dress the
 	// live character; cleared on unmount
 	controlsRef?: MutableRefObject<CosmeticsControls | null>;
+	// an overlay element (e.g. the Bond badge) the canvas pins over the
+	// character's head every frame via 3D→screen projection
+	overheadRef?: MutableRefObject<HTMLDivElement | null>;
+	// skip all per-frame work while something fully covers the canvas (e.g. the
+	// near-full-screen Shop) — the RAF keeps ticking so resume is instant
+	paused?: boolean;
 }) {
 	const mountRef = useRef<HTMLDivElement>(null);
 	const raisedRef = useRef(raised);
 	raisedRef.current = raised;
 	const studioRef = useRef(studio);
 	studioRef.current = studio;
+	const pausedRef = useRef(paused);
+	pausedRef.current = paused;
 	const envRef = useRef<EnvironmentId>(environment ?? "meadow");
 	envRef.current = environment ?? "meadow";
 	// kept current so the render loop can ease the camera toward a new framing
@@ -195,13 +213,59 @@ export function SidekickCanvas({
 		const contactShadow = makeContactShadow();
 		contactShadow.visible = false;
 		scene.add(contactShadow);
-		// every meadow material, so we can fade the whole meadow out together
-		const meadowMats: THREE.Material[] = [];
-		grass.group.traverse((o) => {
-			const m = (o as THREE.Mesh).material;
-			if (Array.isArray(m)) meadowMats.push(...m);
-			else if (m) meadowMats.push(m as THREE.Material);
-		});
+		// every meadow material, so we can fade the whole meadow out together.
+		// Clouds get their own list: each cloud is a pile of overlapping opaque
+		// lobes sharing one material, so at opacity o the stack still covers
+		// ~1-(1-o)^lobes and would visibly outlast the single-surface grass/hill.
+		// baseAlphaTest remembers cutout thresholds (daisies) so the cutoff can
+		// scale with the fade instead of popping the mesh out at a fixed 0.5;
+		// baseOpacity/transparent/depthWrite restore authored state (e.g. the
+		// volcano smoke ships at opacity 0.7) when the fade unwinds. Cloud
+		// materials fade on a squared curve: each cloud is a pile of overlapping
+		// lobes sharing one material, so at opacity o the stack still covers
+		// ~1-(1-o)^lobes and would visibly outlast single-surface neighbors.
+		type FadeMat = {
+			m: THREE.Material;
+			baseOpacity: number;
+			baseTransparent: boolean;
+			baseDepthWrite: boolean;
+			baseAlphaTest: number;
+			squared: boolean;
+		};
+		// one registry per environment group (meadow now, each biome on first
+		// fade there), so shop crossfades dim EVERY world on one clock
+		const fadeCache = new Map<THREE.Object3D, FadeMat[]>();
+		const fadeMatsFor = (root: THREE.Object3D): FadeMat[] => {
+			let list = fadeCache.get(root);
+			if (!list) {
+				list = [];
+				const seen = new Set<THREE.Material>();
+				const cloudMats = new Set<THREE.Material>();
+				if (root === grass.group)
+					grass.clouds.traverse((o) => {
+						const m = (o as THREE.Mesh).material;
+						if (m) for (const mm of Array.isArray(m) ? m : [m]) cloudMats.add(mm);
+					});
+				root.traverse((o) => {
+					const m = (o as THREE.Mesh).material;
+					if (!m) return;
+					for (const mm of Array.isArray(m) ? m : [m]) {
+						if (seen.has(mm)) continue;
+						seen.add(mm);
+						list!.push({
+							m: mm,
+							baseOpacity: mm.opacity,
+							baseTransparent: mm.transparent,
+							baseDepthWrite: mm.depthWrite,
+							baseAlphaTest: mm.alphaTest,
+							squared: cloudMats.has(mm),
+						});
+					}
+				});
+				fadeCache.set(root, list);
+			}
+			return list;
+		};
 
 		const camera = new THREE.PerspectiveCamera(framing?.fov ?? s.fov, mount.clientWidth / mount.clientHeight, 0.1, 260);
 		const camBasePos = new THREE.Vector3().fromArray(framing?.pos ?? s.camPos ?? FALLBACK_CAM_POS);
@@ -306,6 +370,7 @@ export function SidekickCanvas({
 			hemi.groundColor.set(look.hemiGround);
 			hemi.intensity = look.hemiIntensity;
 			renderer.toneMappingExposure = look.exposure;
+			grass.setClouds(look.keyColor, look.fog);
 			// cinematic per-biome lighting: a dramatic raking key from `keyDir`, a
 			// colored backlight rim behind the character, and real cast shadows. The
 			// meadow keeps its saved rig.
@@ -430,15 +495,27 @@ export function SidekickCanvas({
 
 					// hand imperative dressing controls to React (Shop UI)
 					if (controlsRef) {
+						// one item per body region: dressing a slot strips its siblings
+						// (hoodie replaces shirt, crown replaces beanie, …)
+						const clearRegion = (slot: WardrobeSlot) => {
+							for (const sib of regionSiblings(slot)) {
+								if (wardrobe[sib].equipped) {
+									wardrobe[sib] = { ...wardrobe[sib], equipped: false };
+									cos?.unequip(sib);
+								}
+							}
+						};
 						controlsRef.current = {
 							manifest: () => cos!.slots(),
 							getState: () => structuredClone(wardrobe),
 							equipVariant: (slot, variantId) => {
+								clearRegion(slot);
 								wardrobe[slot] = { equipped: true, variantId, color: undefined };
 								saveWardrobe(wardrobe);
 								cos?.equip(slot, variantId);
 							},
 							setColor: (slot, color) => {
+								clearRegion(slot);
 								const wasOff = !wardrobe[slot].equipped;
 								const variantId = wardrobe[slot].variantId ?? cos!.slots()[slot]?.variants[0]?.id;
 								wardrobe[slot] = { equipped: true, variantId, color };
@@ -511,6 +588,7 @@ export function SidekickCanvas({
 		const clock = new THREE.Clock();
 		const camSph = new THREE.Spherical();
 		const camOff = new THREE.Vector3();
+		const overheadV = new THREE.Vector3();
 		const wantPos = new THREE.Vector3();
 		const wantTgt = new THREE.Vector3();
 		let phoneBlend = 0; // 0 idle → 1 holding the phone up
@@ -522,6 +600,7 @@ export function SidekickCanvas({
 		const lerp = THREE.MathUtils.lerp;
 		const animate = () => {
 			raf = requestAnimationFrame(animate);
+			if (pausedRef.current) return;
 			const now = clock.getElapsedTime();
 			const fr = interact.update(now);
 			// swap the whole world when `environment` changes (map travel). Instant —
@@ -542,12 +621,26 @@ export function SidekickCanvas({
 			activeGround.visible = studioT < 0.999;
 			// the meadow's grass fades material-by-material for a soft studio wipe;
 			// biome grounds just hide under the (fully opaque) studio sphere
-			if (curEnv === "meadow" && studioT < 0.999) {
+			// dim every material of the ACTIVE world (meadow or biome) on the same
+			// clock, so trees, clouds, rocks and ground reach zero together instead
+			// of popping one by one as the studio sphere saturates over them
+			if (studioT < 0.999) {
 				const o = 1 - studioT;
-				for (const m of meadowMats) {
-					m.transparent = inStudio;
-					m.depthWrite = !inStudio; // while fading, don't occlude the studio sphere
-					m.opacity = o;
+				for (const f of fadeMatsFor(activeGround)) {
+					if (inStudio) {
+						f.m.transparent = true;
+						f.m.depthWrite = false; // while fading, don't occlude the studio sphere
+						f.m.opacity = f.baseOpacity * (f.squared ? o * o : o);
+						// scale cutout thresholds (daisies) with the fade so the
+						// silhouette stays constant instead of popping at a fixed 0.5
+						if (f.baseAlphaTest) f.m.alphaTest = f.baseAlphaTest * o;
+					} else {
+						// fade fully unwound — restore the authored material state
+						f.m.transparent = f.baseTransparent;
+						f.m.depthWrite = f.baseDepthWrite;
+						f.m.opacity = f.baseOpacity;
+						if (f.baseAlphaTest) f.m.alphaTest = f.baseAlphaTest;
+					}
 				}
 			}
 			scene.fog = inStudio ? null : envFog;
@@ -627,6 +720,22 @@ export function SidekickCanvas({
 			camera.lookAt(camBaseTarget);
 			grass.update(now, pull.position);
 			faceCtl?.update(now);
+			// pin the overhead overlay (Bond badge) above the head bone: world pos
+			// → NDC → CSS px. Follows jumps, drags, and the shop lift for free.
+			const overhead = overheadRef?.current;
+			if (overhead) {
+				if (ready) {
+					bones.head.getWorldPosition(overheadV);
+					overheadV.y += 0.55;
+					overheadV.project(camera);
+					const sx = (overheadV.x * 0.5 + 0.5) * mount.clientWidth;
+					const sy = (-overheadV.y * 0.5 + 0.5) * mount.clientHeight;
+					overhead.style.transform = `translate(-50%, -100%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+					overhead.style.visibility = overheadV.z < 1 ? "visible" : "hidden";
+				} else {
+					overhead.style.visibility = "hidden";
+				}
+			}
 			renderer.render(scene, camera);
 		};
 		animate();

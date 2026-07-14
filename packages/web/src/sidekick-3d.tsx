@@ -118,6 +118,7 @@ export default function Sidekick3D() {
 		scene.fog = new THREE.Fog(sc0.fog, sc0.fogNear, sc0.fogFar);
 		const grass = makeGrassEnvironment();
 		grass.setColors(sc0.grassHill, sc0.grassBase, sc0.grassTip, sc0.rock);
+		grass.setClouds(sc0.keyColor, sc0.fog);
 		grass.relayout(settings.grassHeight, settings.grassClumping);
 		scene.add(grass.group);
 
@@ -678,6 +679,7 @@ export default function Sidekick3D() {
 				fog.far = sc.fogFar;
 			}
 			grass.setColors(sc.grassHill, sc.grassBase, sc.grassTip, sc.rock);
+			grass.setClouds(sc.keyColor, sc.fog);
 			hemi.color.set(sc.hemiSky);
 			hemi.groundColor.set(sc.hemiGround);
 			hemi.intensity = sc.hemiIntensity;

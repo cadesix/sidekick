@@ -594,7 +594,8 @@ function blossomTree(scale: number, seed: number): THREE.Group {
 
 function buildBlossom(): THREE.Group {
 	const group = new THREE.Group();
-	group.add(makeGround("#8fb85f", 0.9, 27));
+	// warm orange earth under the pink canopy (matches the world-map island art)
+	group.add(makeGround("#d99a5e", 0.9, 27));
 
 	// cherry trees of various sizes, some close so they frame the character
 	scatter(group, 24, 8, 48, 4, (i) => blossomTree(0.9 + rand(i) * 0.9, i));
@@ -664,7 +665,8 @@ const BLOSSOM_PRESET: BiomePreset = {
 
 function buildTropical(): THREE.Group {
 	const group = new THREE.Group();
-	group.add(makeGround("#ecd39a", 0.7, 31)); // pale beach sand
+	// lush lawn with sandy accents (matches the world-map island art)
+	group.add(makeGround("#7cbf52", 0.7, 31));
 
 	// ocean: a big glossy plane ringing the far distance
 	const water = new THREE.Mesh(

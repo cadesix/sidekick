@@ -32,6 +32,15 @@ def build(side):
                 v.co.z = SOLE_Z                                  # flat sole bottom
 
     C.offset_loosen(sh, OFFSET, edit=sole)
+    # de-toe: a normal sneaker has a smooth toe box, not the character's toe
+    # bumps the duplicated foot surface inherits. Round the plan outline near
+    # the sole (keep z so the sole stays flat), then smooth the front-cap
+    # knuckle bumps and re-inflate for foot clearance.
+    xs = [(sh.matrix_world @ v.co).x for v in sh.data.vertices]
+    toe_x = min(xs) + 0.45 * (max(xs) - min(xs))
+    C.region_smooth(sh, lambda c: c.z < 0.0065, iters=25, axes=(True, True, False))
+    C.region_smooth(sh, lambda c: 0.004 < c.z < 0.015 and c.x > toe_x,
+                    iters=18, reinflate=0.0012)
     C.decimate(sh, 380)
     C.boundary_finish(sh, [("z", SHOE_TOP)], relax=10)
     C.solidify(sh, 0.0022)

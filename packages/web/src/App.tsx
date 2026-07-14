@@ -9,6 +9,8 @@ import Sidekick3D from "./sidekick-3d";
 import SidekickStudio from "./sidekick-studio";
 import PoseStudio from "./pose-studio";
 import BiomesPreview from "./biomes-preview";
+import ItemRender from "./item-render";
+import AssetManager from "./asset-manager";
 
 // Minimal path routing: /home and /home2 show post-funnel home variants, /sidekick is the
 // character-iteration studio, /admin is the dev-only admin hub (Chat Lab + Studio),
@@ -18,6 +20,14 @@ export default function App() {
 	// Dev-only: admin tools hub. Never shipped to production.
 	if (import.meta.env.DEV && path.startsWith("/admin")) {
 		return <Admin />;
+	}
+	// Dev-only: renders every shop product to public/shop-renders (see file docs)
+	if (import.meta.env.DEV && path === "/item-render") {
+		return <ItemRender />;
+	}
+	// Dev-only: cosmetics asset catalog + 3D workbench (see file docs)
+	if (import.meta.env.DEV && path === "/asset-manager") {
+		return <AssetManager />;
 	}
 	if (path === "/sidekick-3d") {
 		return <Sidekick3D />;

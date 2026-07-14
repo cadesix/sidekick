@@ -117,6 +117,27 @@ def offset_loosen(ob, offset, loops=2, edit=None):
     bm.to_mesh(me); bm.free(); me.update()
 
 
+def region_smooth(ob, filt, iters=15, factor=0.5, axes=(True, True, True), reinflate=0.0):
+    """Laplacian-smooth only the verts whose WORLD position passes filt — used to
+    erase body detail a duplicated surface inherits (e.g. toe bumps on footwear).
+    axes limits the smoothing directions ((x,y,False) rounds a plan outline while
+    keeping z, preserving a flattened sole). reinflate pushes the region back out
+    along normals afterwards to recover the clearance smoothing shrinks away."""
+    mw = ob.matrix_world
+    me = ob.data
+    bm = bmesh.new(); bm.from_mesh(me)
+    vs = [v for v in bm.verts if filt(mw @ v.co)]
+    for _ in range(iters):
+        bmesh.ops.smooth_vert(bm, verts=vs, factor=factor,
+                              use_axis_x=axes[0], use_axis_y=axes[1], use_axis_z=axes[2])
+    if reinflate:
+        bm.normal_update()
+        for v in vs:
+            v.co += v.normal * reinflate
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(me); bm.free(); me.update()
+
+
 def decimate(ob, target_tris):
     me = ob.data
     dec = ob.modifiers.new("dec", "DECIMATE")

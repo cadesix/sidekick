@@ -1,14 +1,14 @@
 // iOS-home-screen-style dock: a frosted, rounded glass panel pinned to the bottom
 // with four app-icon "squircles". Messages opens the chat sheet; Shop / Map /
-// Settings are wired to callbacks (placeholders for now). The whole dock fades
-// down out of the way while the chat sheet is up, like the app covering the dock.
+// Goals are wired to callbacks. The whole dock fades down out of the way while
+// the chat sheet is up, like the app covering the dock.
 
 type DockProps = {
 	hidden?: boolean;
 	onMessages: () => void;
 	onShop?: () => void;
 	onMap?: () => void;
-	onSettings?: () => void;
+	onGoals?: () => void;
 };
 
 // one dock app: a rounded-squircle tile with a soft drop shadow and press-in
@@ -35,14 +35,14 @@ function AppTile({
 	);
 }
 
-export function HomeDock({ hidden, onMessages, onShop, onMap, onSettings }: DockProps) {
+export function HomeDock({ hidden, onMessages, onShop, onMap, onGoals }: DockProps) {
 	return (
 		<div
 			className={`pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center pb-[max(env(safe-area-inset-bottom),16px)] transition-all duration-300 ${
 				hidden ? "translate-y-6 opacity-0" : "translate-y-0 opacity-100"
 			}`}
 		>
-			<div className="pointer-events-auto flex items-center gap-[18px] rounded-[32px] border border-white/40 bg-white/25 px-[18px] py-[14px] shadow-[0_8px_30px_rgba(0,0,0,0.18)] backdrop-blur-2xl">
+			<div className="pointer-events-auto flex items-center gap-[18px] rounded-[32px] border border-white/40 bg-white/25 px-[18px] py-[14px] backdrop-blur-2xl">
 				{/* Messages — opens the chat sheet */}
 				<AppTile label="Messages" onClick={onMessages} className="bg-gradient-to-b from-[#5BF76B] to-[#12C93E]">
 					<svg viewBox="0 0 24 24" className="absolute left-1/2 top-1/2 h-[62%] w-[62%] -translate-x-1/2 -translate-y-1/2">
@@ -79,13 +79,12 @@ export function HomeDock({ hidden, onMessages, onShop, onMap, onSettings }: Dock
 					</svg>
 				</AppTile>
 
-				{/* Settings — grey gears */}
-				<AppTile label="Settings" onClick={onSettings} className="bg-gradient-to-b from-[#d9d9de] to-[#a3a3aa]">
-					<svg viewBox="0 0 24 24" className="absolute left-1/2 top-1/2 h-[64%] w-[64%] -translate-x-1/2 -translate-y-1/2">
-						<path
-							fill="#fff"
-							d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.61l-1.92-3.32a.5.5 0 0 0-.59-.22l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.57.24-1.12.56-1.62.94l-2.39-.96a.5.5 0 0 0-.59.22L2.74 8.87a.5.5 0 0 0 .12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.61l1.92 3.32c.13.22.39.3.59.22l2.39-.96c.5.38 1.05.7 1.62.94l.36 2.54c.05.24.25.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54c.57-.24 1.12-.56 1.62-.94l2.39.96c.2.08.46 0 .59-.22l1.92-3.32a.5.5 0 0 0-.12-.61l-2.03-1.58zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"
-						/>
+				{/* Goals — bullseye target over a blue gradient */}
+				<AppTile label="Goals" onClick={onGoals} className="bg-gradient-to-b from-[#6BB6FF] to-[#3D7BFF]">
+					<svg viewBox="0 0 24 24" className="absolute left-1/2 top-1/2 h-[62%] w-[62%] -translate-x-1/2 -translate-y-1/2">
+						<circle cx="12" cy="12" r="8.5" fill="none" stroke="#fff" strokeWidth="2" />
+						<circle cx="12" cy="12" r="4.75" fill="none" stroke="#fff" strokeWidth="2" />
+						<circle cx="12" cy="12" r="1.6" fill="#fff" />
 					</svg>
 				</AppTile>
 			</div>

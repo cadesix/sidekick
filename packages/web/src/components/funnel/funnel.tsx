@@ -7,6 +7,7 @@ import { MeetStep } from "./meet-step";
 import { ColorStep } from "./color-step";
 import { NameSidekickStep } from "./name-sidekick-step";
 import { OnboardingChat } from "./onboarding-chat";
+import { setOnboardingPhase } from "../sidekick-profile";
 import { FactStep } from "./fact-step";
 import { NameStep } from "./name-step";
 import { ChoiceStep } from "./choice-step";
@@ -153,6 +154,7 @@ export function Funnel() {
 							} catch {
 								// ignore storage failures
 							}
+							setOnboardingPhase("goals-set");
 							goNext();
 						}}
 					/>
@@ -194,13 +196,29 @@ export function Funnel() {
 			case "reveal":
 				return <RevealStep config={currentStep} onContinue={goNext} />;
 			case "meet":
-				return <MeetStep config={currentStep} onDone={goNext} />;
+				return (
+					<MeetStep
+						config={currentStep}
+						onDone={() => {
+							setOnboardingPhase("met-sidekick");
+							goNext();
+						}}
+					/>
+				);
 			case "choose-color":
 				return <ColorStep onContinue={goNext} />;
 			case "name-sidekick":
 				return <NameSidekickStep onContinue={goNext} />;
 			case "onboarding-chat":
-				return <OnboardingChat onDone={() => (window.location.href = "/home2")} />;
+				return (
+					<OnboardingChat
+						onDone={() => {
+							setOnboardingPhase("first-chat");
+							// land on the CURRENT home (dock, map, bond, streak, shop)
+							window.location.href = "/home4";
+						}}
+					/>
+				);
 			default:
 				return null;
 		}

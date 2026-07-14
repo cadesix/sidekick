@@ -6,15 +6,67 @@ import type { Manifest } from "./sidekick-equipment";
 // outfit across reloads; the canvas applies it on mount and the Shop drives it live.
 
 // slots the Shop lets you dress (phone is a prop, handled separately)
-export const WARDROBE_SLOTS = ["shirt", "pants", "hat", "shoes"] as const;
+export const WARDROBE_SLOTS = [
+	"shirt",
+	"hoodie",
+	"pants",
+	"shorts",
+	"hat",
+	"beanie",
+	"bucket",
+	"wizard",
+	"crown",
+	"shoes",
+	"sneakers",
+	"boots",
+	"glasses",
+	"backpack",
+] as const;
 export type WardrobeSlot = (typeof WARDROBE_SLOTS)[number];
 
 export const SLOT_LABEL: Record<WardrobeSlot, string> = {
 	shirt: "Shirt",
+	hoodie: "Hoodie",
 	pants: "Pants",
-	hat: "Hat",
+	shorts: "Shorts",
+	hat: "Cap",
+	beanie: "Beanie",
+	bucket: "Bucket Hat",
+	wizard: "Wizard Hat",
+	crown: "Crown",
 	shoes: "Shoes",
+	sneakers: "Sneakers",
+	boots: "Boots",
+	glasses: "Glasses",
+	backpack: "Backpack",
 };
+
+// One worn item per body region — equipping a hoodie takes the shirt off, a
+// crown replaces a beanie, etc. Glasses and backpack are their own regions so
+// they layer freely with everything else.
+const REGIONS: readonly (readonly WardrobeSlot[])[] = [
+	["shirt", "hoodie"],
+	["pants", "shorts"],
+	["hat", "beanie", "bucket", "wizard", "crown"],
+	["shoes", "sneakers", "boots"],
+	["glasses"],
+	["backpack"],
+];
+
+export function regionSiblings(slot: WardrobeSlot): WardrobeSlot[] {
+	const region = REGIONS.find((r) => r.includes(slot)) ?? [slot];
+	return region.filter((s) => s !== slot);
+}
+
+// How the wardrobe reads as Shop tabs: body regions top-to-toe, independent
+// regions (glasses/backpack) merged into one Extras tab.
+export const SHOP_CATEGORIES: { id: string; label: string; slots: WardrobeSlot[] }[] = [
+	{ id: "tops", label: "Tops", slots: ["shirt", "hoodie"] },
+	{ id: "bottoms", label: "Bottoms", slots: ["pants", "shorts"] },
+	{ id: "head", label: "Head", slots: ["hat", "beanie", "bucket", "wizard", "crown"] },
+	{ id: "feet", label: "Feet", slots: ["shoes", "sneakers", "boots"] },
+	{ id: "extras", label: "Extras", slots: ["glasses", "backpack"] },
+];
 
 export type SlotState = {
 	equipped: boolean;
@@ -26,12 +78,9 @@ export type Wardrobe = Record<WardrobeSlot, SlotState>;
 const KEY = "sidekick-wardrobe-v1";
 
 // starts dressed in just the default shirt, like the current hero
-export const DEFAULT_WARDROBE: Wardrobe = {
-	shirt: { equipped: true, variantId: "sky" },
-	pants: { equipped: false },
-	hat: { equipped: false },
-	shoes: { equipped: false },
-};
+export const DEFAULT_WARDROBE: Wardrobe = Object.fromEntries(
+	WARDROBE_SLOTS.map((s) => [s, s === "shirt" ? { equipped: true, variantId: "sky" } : { equipped: false }]),
+) as Wardrobe;
 
 export function loadWardrobe(): Wardrobe {
 	try {
