@@ -243,25 +243,38 @@ export function SessionChat({
 	const progress = Math.min(beatIdx.current + 1, def.beats.length);
 
 	return (
-		<div className="flex h-full flex-col bg-white">
-			{/* header: session title + progress + dive-out */}
-			<div className="flex shrink-0 items-center justify-between border-b border-[#111]/10 px-4 py-2.5">
-				<div>
-					<div className="text-[15px] font-extrabold text-neutral-900">{def.title}</div>
-					<div className="text-[12px] font-medium text-neutral-400">
-						{phase === "done" ? "complete!" : `${progress} of ${def.beats.length}`}
-					</div>
-				</div>
+		<div className="flex h-full flex-col bg-gradient-to-b from-[#E7E0FF] via-[#F3F0FF] to-white">
+			{/* header: a distinct "guided chat" badge (not the regular chat surface),
+			    the session title, progress, and dive-out */}
+			<div className="relative flex shrink-0 flex-col items-center px-4 pb-2.5 pt-3">
 				<button
 					onClick={onClose}
 					aria-label="Leave session"
-					className="grid h-9 w-9 place-items-center rounded-full bg-neutral-100 text-neutral-500 active:bg-neutral-200"
+					className="absolute right-3 top-2.5 grid h-9 w-9 place-items-center rounded-full bg-white/70 text-neutral-500 shadow-sm active:bg-white"
 				>
 					<LuChevronDown className="h-5 w-5" strokeWidth={2.5} />
 				</button>
+				<span className="rounded-full bg-[#7A5AF8] px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.08em] text-white shadow-[0_3px_10px_rgba(122,90,248,0.4)]">
+					✦ a guided chat
+				</span>
+				<div className="mt-1.5 text-[14px] font-extrabold text-neutral-900">{def.title}</div>
+				<div className="text-[11px] font-semibold text-[#7A5AF8]/80">
+					{phase === "done" ? "complete!" : `${progress} of ${def.beats.length}`}
+				</div>
 			</div>
 
 			<div ref={listRef} className="no-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-3 pt-4">
+				{/* the first message: what a guided chat is and why it's worth doing */}
+				<div className="w-full rounded-[22px] border border-[#7A5AF8]/15 bg-white/75 p-4 shadow-[0_4px_16px_rgba(122,90,248,0.10)] backdrop-blur-sm">
+					<div className="mb-1.5 flex items-center gap-1.5">
+						<span className="text-[15px]">💬</span>
+						<span className="text-[13px] font-extrabold text-[#7A5AF8]">what's a guided chat?</span>
+					</div>
+					<p className="text-[13.5px] font-medium leading-snug text-neutral-600">
+						a quick back-and-forth where i actually get to know you. the more i get what makes you tick, the more
+						useful i can be. plus every one opens up a new place in the world for us to explore together.
+					</p>
+				</div>
 				{msgs.map((m, i) =>
 					m.role === "bot" ? (
 						<div key={i} className="flex max-w-[85%] items-end gap-2">
@@ -272,7 +285,7 @@ export function SessionChat({
 						</div>
 					) : (
 						<div key={i} className="max-w-[80%] animate-fade-up self-end">
-							<div className="rounded-3xl rounded-br-md bg-[#E9E9EC] px-4 py-2.5 text-[15px] leading-snug text-[#111]">
+							<div className="rounded-3xl rounded-br-md bg-[#7A5AF8] px-4 py-2.5 text-[15px] leading-snug text-white">
 								{m.text}
 							</div>
 						</div>
@@ -288,7 +301,7 @@ export function SessionChat({
 				) : null}
 			</div>
 
-			<div className="shrink-0 border-t border-[#111]/10 px-3 pb-7 pt-2">
+			<div className="shrink-0 border-t border-[#7A5AF8]/10 bg-white/40 px-3 pb-7 pt-2">
 				{phase === "done" ? (
 					<button
 						onClick={onDone}
@@ -320,7 +333,7 @@ export function SessionChat({
 						<button
 							type="submit"
 							disabled={!input.trim() || typing || phase === "asking" || phase === "extracting"}
-							className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#F2C94C] transition disabled:opacity-40"
+							className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#7A5AF8] transition disabled:opacity-40"
 						>
 							<LuArrowUp className="h-5 w-5 text-white" strokeWidth={3} />
 						</button>
