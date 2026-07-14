@@ -140,7 +140,6 @@ export function WorldMap({
 						const unlocked = isUnlocked(a);
 						const session = sessionFor(a.id);
 						const startable = isSessionStartable(a.id);
-						const started = session ? sessionState(session.id).answers.some(Boolean) : false;
 						const isNextChallenge = nextSession()?.id === a.id;
 						// low-map islands hang their card ABOVE the pin so nothing clips
 						// at the bottom edge on tall (9:16) screens
@@ -160,38 +159,43 @@ export function WorldMap({
 									cardAbove ? "flex-col-reverse" : "flex-col"
 								}`}
 							>
-								<span className="relative">
-									{isNextChallenge ? (
-										<span className="absolute -inset-1.5 animate-ping rounded-full bg-[#7A5AF8]/45" />
-									) : null}
-									<span
-										className={`relative grid h-9 w-9 place-items-center rounded-full text-[17px] shadow-[0_2px_7px_rgba(0,0,0,0.4)] ring-2 ${
-											unlocked ? "ring-white" : startable ? "ring-[#7A5AF8]" : "ring-white/50 opacity-70 grayscale"
-										}`}
-										style={{ background: a.color }}
-									>
-										{a.emoji}
-									</span>
-								</span>
 								{unlocked ? (
-									<span className="whitespace-nowrap rounded-full bg-white/95 px-2 py-0.5 text-[11px] font-bold text-neutral-800 shadow-[0_1px_4px_rgba(0,0,0,0.3)]">
-										{a.name}
-									</span>
-								) : session ? (
-									// the topic card: island + lock, and the chat that opens it
-									<span
-										className={`block w-[132px] rounded-2xl px-2.5 py-2 text-center leading-tight ${
-											startable
-												? "bg-[#7A5AF8] text-white shadow-[0_3px_0_#5638c6]"
-												: "bg-black/45 text-white/80 shadow-[0_1px_4px_rgba(0,0,0,0.3)] backdrop-blur-sm"
-										}`}
-									>
-										<span className="flex items-center justify-center gap-1 text-[12px] font-extrabold">
-											<LuLock className="h-3 w-3 shrink-0" strokeWidth={3} />
+									<>
+										<span
+											className="relative grid h-9 w-9 place-items-center rounded-full text-[17px] shadow-[0_2px_7px_rgba(0,0,0,0.4)] ring-2 ring-white"
+											style={{ background: a.color }}
+										>
+											{a.emoji}
+										</span>
+										<span className="whitespace-nowrap rounded-full bg-white/95 px-2 py-0.5 text-[11px] font-bold text-neutral-800 shadow-[0_1px_4px_rgba(0,0,0,0.3)]">
 											{a.name}
 										</span>
-										<span className={`mt-1 block text-[10px] font-semibold leading-snug ${startable ? "text-white/85" : "text-white/60"}`}>
-											{started ? `Continue “${session.title}” chat to unlock` : `Complete “${session.title}” chat to unlock`}
+									</>
+								) : session ? (
+									// locked: the lock icon IS the marker (no emoji circle) —
+									// "Chat to unlock" primary, the island name secondary
+									<span className="relative">
+										{isNextChallenge ? (
+											<span className="absolute -inset-1.5 animate-ping rounded-2xl bg-[#7A5AF8]/45" />
+										) : null}
+										<span
+											className={`relative flex items-center gap-2 rounded-2xl px-3 py-2 text-left ${
+												startable
+													? "bg-[#7A5AF8] text-white shadow-[0_3px_0_#5638c6]"
+													: "bg-black/45 text-white shadow-[0_1px_4px_rgba(0,0,0,0.3)] backdrop-blur-sm"
+											}`}
+										>
+											<LuLock className="h-4 w-4 shrink-0" strokeWidth={3} />
+											<span className="leading-tight">
+												<span className="block whitespace-nowrap text-[12px] font-extrabold">Chat to unlock</span>
+												<span
+													className={`block whitespace-nowrap text-[10px] font-semibold ${
+														startable ? "text-white/75" : "text-white/60"
+													}`}
+												>
+													{a.name}
+												</span>
+											</span>
 										</span>
 									</span>
 								) : null}
