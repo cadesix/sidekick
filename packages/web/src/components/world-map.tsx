@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { LuLock, LuX } from "react-icons/lu";
 import { SidekickAvatar } from "./sidekick-avatar";
 import { BOND_MAX, loadBond, subscribeBond } from "./sidekick-bond";
-import { isSessionDone, isSessionStartable, nextSession, sessionFor, sessionState, CONTEXT_EVENT } from "./sidekick-sessions";
+import { isSessionDone, isSessionStartable, nextSession, sessionFor, CONTEXT_EVENT } from "./sidekick-sessions";
 import type { EnvironmentId } from "./sidekick-biomes";
 
 // A single static map for the world page. The art is a tall ~9:16 island chain —
@@ -274,24 +274,34 @@ export function WorldMap({
 								const session = sessionFor(shown.id);
 								const startable = isSessionStartable(shown.id);
 								const target = startable ? session : nextSession();
-								const started = target ? sessionState(target.id).answers.some(Boolean) : false;
 								if (!session || !target) return null;
 								return (
 									<>
 										<SidekickAvatar className="mx-auto h-24 w-24 object-contain" alt="" />
 										<div className="mt-1 text-center text-[20px] font-extrabold leading-snug text-neutral-900">
-											Chat with me about {session.topic} to unlock this world
+											I need to get to know you better before we can travel that far
 										</div>
-										{!startable ? (
-											<div className="mt-2 text-center text-[13px] font-medium text-neutral-400">
-												first things first though, we still have “{target.title}” to finish
+										{/* current bond score toward reaching this place */}
+										<div className="mt-5">
+											<div className="mb-1.5 flex items-center gap-1.5">
+												<img src="/icons/bond.png" alt="" draggable={false} className="h-5 w-5 object-contain" />
+												<span className="font-mono text-[12px] font-bold lowercase tracking-tight text-neutral-500">
+													bond score
+												</span>
+												<span className="ml-auto font-mono text-[13px] font-bold tabular-nums text-neutral-800">{bond}%</span>
 											</div>
-										) : null}
+											<div className="h-2.5 w-full overflow-hidden rounded-full bg-black/10">
+												<div
+													className="h-full rounded-full bg-gradient-to-r from-[#ffb454] to-[#ff7a3d] transition-[width] duration-500 ease-out"
+													style={{ width: `${(bond / BOND_MAX) * 100}%` }}
+												/>
+											</div>
+										</div>
 										<button
 											onClick={() => onStartSession?.(target.id)}
 											className="mt-5 flex w-full items-center justify-center rounded-full bg-[#7A5AF8] py-3.5 text-[16px] font-bold text-white shadow-[0_4px_0_#5638c6] transition-all duration-100 active:translate-y-[3px] active:shadow-[0_1px_0_#5638c6]"
 										>
-											{startable ? (started ? "Continue the chat" : "Start the chat") : `Chat about ${target.topic}`}
+											Chat
 										</button>
 									</>
 								);
