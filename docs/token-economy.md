@@ -43,8 +43,11 @@ So this spec defines faucets against already-fixed prices, which is the right or
 3. **The curve stretches via prices, not earn decay.** Daily earn stays roughly flat
    (slightly growing with streak); the rarity ladder does the stretching. Early
    items are same-day gratification; legendaries are week-long goals.
-4. **Deterministic + idempotent**, like everything else in the app: all grants keyed
-   by local `YYYY-MM-DD`, replays are no-ops, works offline.
+4. **Seeded + idempotent**, like everything else in the app: all grants keyed
+   by local `YYYY-MM-DD`, replays are no-ops, works offline. Where a reward has
+   variance (box coin rolls, bonus slot), the roll is seeded by
+   `(date, faucetId)` — same trick as the shop rotation — so reloading or
+   re-opening never rerolls. Randomness is presentation; expected value is fixed.
 
 ## Currency model
 
@@ -59,19 +62,43 @@ but keeps rares as day-2 goals and legendaries aspirational.
 
 Two layers with different lifetimes:
 
-**Steady-state faucets (launch, run forever).** Both login-shaped, both
-idempotent per local day. Daily earn: **20–30/day**, fully deterministic —
-which is a feature: every price maps to an exact number of days, so items
-become clear savings goals ("come back 3 more days and the boots are yours").
+**Steady-state faucet (launch, runs forever): the daily box.** One box per
+local day, spawned as a physical gift box in the 3D scene next to the
+character (not a button — tap it, it wobbles, bursts, coins fountain out).
+The ritual is the retention mechanic; the box is how *all* recurring coins
+arrive.
 
-| Faucet | Amount | Trigger | Wire point |
+Contents = **guaranteed coin roll + a bonus slot**:
+
+| Box tier | Coin roll | Expected/day | Expected/week |
 |---|---|---|---|
-| Daily check-in | 20 base; 25 at streak ≥7; 30 at ≥30 | Tap-to-claim on the streak sheet (claim, not auto-grant — the tap is the ritual) | `touchStreak()` result + new claim state in `sidekick-streak.ts` |
-| Streak milestones | Existing table (D1 10c … D365 crown-gold) | Auto-claim alongside daily check-in | `streak-sheet.tsx` table → `addCoins`/`addToInventory` |
+| Base (streak 1–6) | 18–22 | 20 | 140 |
+| Silver (streak ≥7) | 22–28 | 25 | 175 |
+| Gold (streak ≥30) | 27–33 | 30 | 210 |
 
-The milestone table's item drops (D3 beanie, D6 glasses, D7 sneakers, D14 backpack)
-are already well-placed: a free, visible outfit transformation across week 1.
-Keep them exactly as designed — they're the "exciting beginning."
+The roll is uniform across the band and seeded by `(date, "daily-box")`, so
+the day's amount is fixed before the box is opened and never rerolls. Bands
+are deliberately tight (±10%): wide enough that opening feels alive, narrow
+enough that weekly income converges on the curve's numbers and items stay
+plannable savings goals ("~3 more boxes and the boots are yours").
+
+**Bonus slot** (same seeded roll): usually empty; ~1-in-7 days double coins;
+rare cosmetic drop, always dupe-protected (dupes convert to coins). The bonus
+is garnish on top of the guaranteed floor — the floor never betrays the user
+for showing up.
+
+**Rarity is earned, not rolled.** Box tier upgrades come from the streak, and
+the streak sheet shows **tomorrow's box** — your streak visibly makes the next
+box shinier. The existing milestone table (D1 10c … D365 crown-gold) becomes
+**milestone box upgrades**: on milestone days the box is visually special and
+its contents are the table's reward on top of the daily roll (D3 = the beanie
+in the box, D30 = the wizard hat, etc.). The week-1 item drops (D3 beanie,
+D6 glasses, D7 sneakers) stay exactly where they are — a free, visible outfit
+transformation across week 1, now delivered through the box moment.
+
+Wire points: box state + seeded roll in `sidekick-streak.ts`-adjacent module
+(keyed off `touchStreak()`), grants through `grantCoins`, milestone table from
+`streak-sheet.tsx`.
 
 **Onboarding-arc faucets (ship with guided sessions; a finite, one-time pool).**
 Context about the user is the foundation of the whole product, so sessions get
@@ -91,11 +118,13 @@ scenery), they preview that the world contains things the shop doesn't sell,
 and they don't dilute coin scarcity. Session rewards are per-session, not
 per-day — the ~2/day cadence cap in the sessions spec is what paces them.
 
-**Loot boxes** (the chest is already a fixed-content one): a variable-content
-version is a v2 option for session/island rewards if the fixed pool tests flat.
-If ever added, earned-only and cosmetic-only — never purchasable with money
-(gambling adjacency, app-store policy risk, and it would poison the trust the
-sessions depend on).
+**One box system, three spawn sources.** The daily box, the island arrival
+chest, and (with sessions) a recap-beat box are the same interaction — build
+the open moment once (wobble → burst → coin fountain → item card) and every
+reward in the game flows through it. Hard line, forever: **boxes are
+earned-only and their contents cosmetic-only** — never purchasable with money
+(gambling adjacency, app-store odds-disclosure rules, and it would poison the
+trust the sessions depend on).
 
 Deliberately **not** faucets, ever or for now:
 
@@ -103,7 +132,7 @@ Deliberately **not** faucets, ever or for now:
   anything.
 - **Goal completion coins — hold.** Self-reported binary checks are trivially
   gameable and goals may not need extrinsic juice. Revisit only if goal
-  engagement lags check-in rate. Same for a weekly quest (5-of-7 goal days →
+  engagement lags the box-open rate. Same for a weekly quest (5-of-7 goal days →
   50 coins; `sidekick_habit_checks_v1` already supports computing it).
 
 ## The curve
@@ -113,10 +142,10 @@ runs) that tapers into a calm, predictable **steady state**.
 
 | Phase | Earn state | Feel |
 |---|---|---|
-| Day 0 | 150 start + first check-in + first session (S1 is available immediately) | 2–3 commons in the first minutes, and the session→reward loop demonstrated on day one |
-| Onboarding arc (~weeks 1–3) | 50–90 on session days: check-in + 1–2 sessions + chest coins + week-1 milestones | Something new almost every day — a purchase, an exclusive, a new island. This is the front-loaded excitement window, and it's also when the product is extracting its foundation (context) |
-| Graduation (syllabus done) | Drops to 25/day | The pivot from "earning fast" to "saving deliberately": rares every ~3 days, epics a ~5-day save, crown (250) a ~8-day save |
-| Steady state | 25–30/day + big streak milestones (D30 wizard, D45 100c, D90 200c) | Calm and deterministic; all variance/excitement comes from the shop side — daily rotation, deal slot, mystery milestone cards, eventual seasonals |
+| Day 0 | 150 start + first daily box + first session (S1 is available immediately) | 2–3 commons in the first minutes, and the box→reward ritual demonstrated on day one |
+| Onboarding arc (~weeks 1–3) | 50–90 on session days: daily box + 1–2 sessions + chest coins + week-1 milestone boxes | Something new almost every day — a purchase, an exclusive, a new island. This is the front-loaded excitement window, and it's also when the product is extracting its foundation (context) |
+| Graduation (syllabus done) | Drops to ~25/day (silver box) | The pivot from "earning fast" to "saving deliberately": rares every ~3 days, epics a ~5-day save, crown (250) a ~8-day save |
+| Steady state | ~25–30/day expected + milestone box upgrades (D30 wizard, D45 100c, D90 200c) | Calm and dependable; the small box-roll band + bonus slot keep the open moment alive, while the big variance stays on the shop side — daily rotation, deal slot, eventual seasonals |
 
 **Keeping the carrot hung:** front-loading must never mean satiation. The rule:
 at every point in the curve the user can see **at least two desirable items
@@ -206,10 +235,12 @@ Ranked by fit, all preserving the earn curve:
 
 ## Build order
 
-1. **Grant plumbing** — `grantCoins(faucetId, date)` choke point + idempotency
-   ledger in localStorage; wire daily check-in claim + streak milestone table
-   (table already exists, this is the highest-leverage single change).
-   `START_COINS` → 150 in the same change.
+1. **Grant plumbing + the daily box** — `grantCoins(faucetId, date)` choke
+   point + idempotency ledger in localStorage, the seeded coin roll, and the
+   box-open interaction in the 3D scene (wobble → burst → coin fountain).
+   Milestone days upgrade the box from the existing `streak-sheet.tsx` table.
+   `START_COINS` → 150 in the same change. This is the highest-leverage single
+   change, and the box interaction gets reused by chests and session rewards.
 2. **Streak freeze** item + `touchStreak()` consumption logic.
 3. **Deal slot** in `todaysShop()`.
 4. **Onboarding-arc rewards** — session coins, island arrival chests, and the
@@ -225,8 +256,8 @@ Levers, in order of safety: faucet amounts (safe to tune anytime) → milestone
 table (safe) → prices (avoid after launch; visible and feels like a rug-pull) →
 `START_COINS` (day-0 only, invisible to existing users).
 
-Watch: D1/D7/D30 retention against check-in claim rate (the claim rate IS the
+Watch: D1/D7/D30 retention against daily box-open rate (the open rate IS the
 habit metric now); median coins held (persistent hoarding > ~300 means the
-catalog isn't desirable, since the faucet can't be "too rich" at 20–30/day);
+catalog isn't desirable, since the faucet can't be "too rich" at ~20–30/day);
 time-to-first-purchase (should be session 1); % of days the shop sheet gets opened
 (the deal slot's job); streak-reset → churn correlation (the freeze's job).
