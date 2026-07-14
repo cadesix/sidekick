@@ -15,10 +15,13 @@ import { HomeDock } from "./components/home-dock";
 import { WorldMap } from "./components/world-map";
 import { ShopSheet } from "./components/shop-sheet";
 import type { CosmeticsControls } from "./components/sidekick-wardrobe";
+import { SpeechBubble, speak } from "./components/speech-bubble";
+import { loadUnread, pushSidekickMessage, subscribeUnread } from "./components/sidekick-inbox";
 
-// Home4: a stripped-back hero. The Three.js scene fills the whole viewport with
-// the character centered, and the only UI is the floating chat entrypoint plus
-// the chat drawer that slides up over the scene. No header, no goals sheet.
+// Home5: home4 with a full-sheet iMessage chat. Tapping Messages slides a
+// full-screen conversation up while the 3D scene shrinks into a FaceTime-style
+// PiP circle at the top-center (the onboarding chat pattern) — the UI surface
+// we're iterating on for the main chat experience.
 
 // Front-on framing that centers the full character in a tall phone viewport.
 // fov 41.1° ≈ 32 mm full-frame equiv (a touch wider than before), pulled back.
@@ -30,10 +33,12 @@ const HERO_FRAMING: CanvasFraming = {
 
 // When the chat drawer is up it covers the lower ~55%, so the camera pulls back
 // and lifts the character up so it sits fully in the sky band ABOVE the box.
+// chat: the sheet covers ~86%, so the camera pulls way back and aims low —
+// the whole standing character composes into the top sliver of the screen
 const CHAT_FRAMING: CanvasFraming = {
-	pos: [0, 1.0, 7.7],
-	target: [0, -0.55, 0],
-	fov: 31,
+	pos: [0, 1.6, 13],
+	target: [0, -2.0, 0],
+	fov: 30,
 };
 
 // Opening the map: the camera rapidly rockets up + back (pull away from the
@@ -53,10 +58,22 @@ const SHOP_FRAMING: CanvasFraming = {
 	fov: 26,
 };
 
+// The sidekick's arrival reaction per destination — popped in the overhead
+// speech bubble and sent as a text push (which badges the Messages tile).
+const TRAVEL_LINES: Record<EnvironmentId, string> = {
+	meadow: "ahh home sweet meadow 🌼",
+	snow: "brrr it's FREEZING up here ❄️ worth it for the view though",
+	forest: "ooh it smells so good here 🌲 pine trees hit different",
+	blossom: "petals everywhere!! 🌸 this might be my favorite spot",
+	desert: "oh it's HOT here 🥵 like, really hot",
+	tropical: "beach day!!! 🌴 you can literally hear the waves",
+	volcano: "uhh is that lava?? 🌋 this is fine. we're fine.",
+};
+
 // dev: /home4?persona=week2 boots straight into a canned user state
 if (import.meta.env.DEV) applyPersonaFromUrl();
 
-export default function Home4() {
+export default function Home5() {
 	const [chatOpen, setChatOpen] = useState(false);
 	// `mounted` keeps the drawer in the DOM through its slide-down exit
 	const [mounted, setMounted] = useState(false);
@@ -69,6 +86,10 @@ export default function Home4() {
 	const [streakOpen, setStreakOpen] = useState(false);
 	// counts today on app open (idempotent per local day)
 	const [streak] = useState(() => touchStreak());
+	// unread sidekick pushes — badge on the dock's Messages tile; the Chat
+	// component clears the count when it mounts
+	const [unread, setUnread] = useState(loadUnread);
+	useEffect(() => subscribeUnread(setUnread), []);
 	// which world the character stands in — map travel swaps it while the map
 	// still covers the screen, so the new biome is there when the reveal closes
 	const [environment, setEnvironment] = useState<EnvironmentId>("meadow");
@@ -132,8 +153,11 @@ export default function Home4() {
 				paused={canvasPaused}
 			/>
 
-			{/* Bond score floating over the character's head (canvas positions it) */}
-			<BondBadge ref={bondRef} />
+			{/* Overhead stack floating over the character's head (canvas positions
+			    it): speech bubble on top, Bond score pill under it */}
+			<BondBadge ref={bondRef}>
+				<SpeechBubble />
+			</BondBadge>
 
 			{/* dev-only user-state panel: personas + individual state dials */}
 			{import.meta.env.DEV ? <DevPanel /> : null}
@@ -166,6 +190,7 @@ export default function Home4() {
 			    only the full-screen map reveal hides it. */}
 			<HomeDock
 				hidden={mapShown}
+				unread={unread}
 				onMessages={open}
 				onMap={openMap}
 				onShop={() => setShopOpen(true)}
@@ -184,6 +209,11 @@ export default function Home4() {
 				onTravel={(biome) => {
 					setEnvironment(biome);
 					closeMap();
+					const line = TRAVEL_LINES[biome];
+					// the push (and its badge) lands right away; the bubble waits for
+					// the map reveal to shrink so the line pops over a visible character
+					pushSidekickMessage(line);
+					window.setTimeout(() => speak(line), 650);
 				}}
 			/>
 
@@ -239,14 +269,10 @@ export default function Home4() {
 			    the band above it. Mounted through the slide-down exit. */}
 			{mounted ? (
 				<>
-					{/* Tap the character band above the drawer to close */}
-					<button
-						onClick={close}
-						aria-label="Close chat"
-						className="absolute inset-x-0 top-0 h-[45%] z-30"
-					/>
+					{/* tap the scene sliver to close */}
+					<button onClick={close} aria-label="Close chat" className="absolute inset-x-0 top-0 z-30 h-[20%]" />
 					<div
-						className={`absolute inset-x-0 bottom-0 top-[45%] z-40 ${
+						className={`absolute inset-x-0 bottom-0 top-[20%] z-40 overflow-hidden rounded-t-[28px] bg-[#FBEFC9] shadow-[0_-8px_40px_rgba(0,0,0,0.22)] ${
 							chatOpen ? "animate-sheet-up" : "animate-sheet-down"
 						}`}
 					>

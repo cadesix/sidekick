@@ -4,6 +4,7 @@ import Home from "./home";
 import Home2 from "./home2";
 import Home3 from "./home3";
 import Home4 from "./home4";
+import Home5 from "./home5";
 import Onboarding from "./onboarding";
 import Vista from "./vista";
 import Sidekick3D from "./sidekick-3d";
@@ -11,6 +12,7 @@ import SidekickStudio from "./sidekick-studio";
 import PoseStudio from "./pose-studio";
 import BiomesPreview from "./biomes-preview";
 import ItemRender from "./item-render";
+import ActionComposer from "./action-composer";
 import AssetManager from "./asset-manager";
 
 // Minimal path routing: /home and /home2 show post-funnel home variants, /sidekick is the
@@ -25,6 +27,10 @@ export default function App() {
 	// Dev-only: renders every shop product to public/shop-renders (see file docs)
 	if (import.meta.env.DEV && path === "/item-render") {
 		return <ItemRender />;
+	}
+	// Dev-only: armature clips + face-band inspector
+	if (import.meta.env.DEV && path === "/action-composer") {
+		return <ActionComposer />;
 	}
 	// Dev-only: cosmetics asset catalog + 3D workbench (see file docs)
 	if (import.meta.env.DEV && path === "/asset-manager") {
@@ -47,6 +53,9 @@ export default function App() {
 	}
 	if (path === "/onboarding") {
 		return <Onboarding />;
+	}
+	if (path === "/home5") {
+		return <Home5 />;
 	}
 	if (path === "/home4") {
 		return <Home4 />;
