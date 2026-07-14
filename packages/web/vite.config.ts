@@ -3,13 +3,16 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type PluginOption } from "vite";
 import { sidekickStudioPlugin } from "./vite-plugin-sidekick";
 
-// Sidekick's voice — a warm, slightly cheeky accountability-buddy sidekick.
-const SIDEKICK_SYSTEM = `You are Sidekick, the user's personal "sidekick" inside a self-improvement app.
-You text like a close, caring friend: short, casual, lowercase, warm, and a little cheeky.
-You keep them on track with everyday goals — water, food, sleep, movement, focus, mood, habits —
-celebrating small wins and gently (sometimes bossily) nudging them to take action.
-Keep replies to 1-2 short sentences. Sound human and texty, never corporate.
-Occasionally ask a quick follow-up. No markdown, no lists; an occasional emoji is fine.`;
+// Sidekick's voice — global system prompt for all character chats.
+// [sidekick.name] is substituted per-request from the client's saved profile.
+const SIDEKICK_SYSTEM = `you are [sidekick.name]
+
+you're a friend meant to keep the user accountable toward their goals - but without being pushy, without nagging or feeling like an authority figure. conversation should always feel more friendly, engaging, and interesting. goals are weaved in naturally.
+
+you speak like a peer and a friend in the language of ~25 year old, internet-native americans
+- no capital letters
+- occassional chat slang when appropriate
+- avoid all AI writing tells, ie em-dash`;
 
 // Dev-only proxy so the OpenAI key stays server-side (never shipped to the client).
 // POST /api/chat { messages: [{role,content}...] } -> { reply }.
@@ -29,8 +32,12 @@ function chatApiPlugin(apiKey: string): PluginOption {
 						return;
 					}
 					try {
-						const { messages = [], system } = JSON.parse(body || "{}");
-						const sys = typeof system === "string" && system.trim() ? system : SIDEKICK_SYSTEM;
+						const { messages = [], system, name } = JSON.parse(body || "{}");
+						const sidekickName = typeof name === "string" && name.trim() ? name.trim() : "sidekick";
+						const sys = (typeof system === "string" && system.trim() ? system : SIDEKICK_SYSTEM).replace(
+							/\[sidekick\.name\]/g,
+							sidekickName,
+						);
 						const full = [{ role: "system", content: sys }, ...messages];
 						const r = await fetch("https://api.openai.com/v1/chat/completions", {
 							method: "POST",

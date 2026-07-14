@@ -16,8 +16,8 @@ import { SHOP_COLORS } from "./components/sidekick-wardrobe";
 // asset at a time: equip any item/variant/color on the live rig (rendered
 // through the exact in-game material pipeline), orbit-inspect it, hide the
 // body to see the item's worn shape, and live-tune a rigid item's manifest
-// `scale`/`offset` with a copy button that emits the JSON to paste back into
-// cosmetics/manifest.json.
+// `scale`/`offset`/`rotate` with copy/save buttons that emit the JSON patch or
+// write it straight into cosmetics/manifest.json.
 
 export type ItemDef = SlotDef & { slot?: string };
 export type ItemManifest = Record<string, ItemDef>;
@@ -34,6 +34,63 @@ export const effSlot = (key: string, def: ItemDef) => def.slot ?? key;
 
 export const base = (path?: string) => path?.split("/").pop() ?? "";
 
+// one tuning dimension: slider + exact number input + reset-to-default
+function TuneRow({
+	label,
+	value,
+	fallback,
+	min,
+	max,
+	step,
+	onChange,
+}: {
+	label: string;
+	value: number;
+	fallback: number; // the neutral default the reset button restores
+	min: number;
+	max: number;
+	step: number;
+	onChange: (v: number) => void;
+}) {
+	return (
+		<label className="mb-2 block text-xs text-neutral-400">
+			<span className="flex items-center gap-1.5">
+				<span className="flex-1">{label}</span>
+				<input
+					type="number"
+					min={min}
+					max={max}
+					step={step}
+					value={value}
+					className="w-16 rounded border border-white/15 bg-neutral-900 px-1 py-0.5 text-right text-[11px] text-neutral-200 [appearance:textfield]"
+					onChange={(e) => {
+						const v = Number(e.target.value);
+						if (Number.isFinite(v)) onChange(v);
+					}}
+				/>
+				<button
+					type="button"
+					title={`reset to ${fallback}`}
+					disabled={value === fallback}
+					className="rounded border border-white/15 px-1.5 py-0.5 text-[10px] text-neutral-300 hover:bg-white/5 disabled:opacity-30"
+					onClick={() => onChange(fallback)}
+				>
+					↺
+				</button>
+			</span>
+			<input
+				type="range"
+				min={min}
+				max={max}
+				step={step}
+				value={value}
+				className="mt-1 w-full"
+				onChange={(e) => onChange(Number(e.target.value))}
+			/>
+		</label>
+	);
+}
+
 export function AssetWorkbench({ item, onBack }: { item: string | null; onBack: () => void }) {
 	const mountRef = useRef<HTMLDivElement>(null);
 	// serializes equip/unequip/re-tune against the async cosmetics API
@@ -46,6 +103,7 @@ export function AssetWorkbench({ item, onBack }: { item: string | null; onBack: 
 	const [bodyOn, setBodyOn] = useState(true);
 	const [status, setStatus] = useState("loading character…");
 	const [copied, setCopied] = useState(false);
+	const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
 	const run = (fn: () => Promise<void> | void) => {
 		opRef.current = opRef.current.then(fn).catch((e) => console.error("[asset-manager]", e));
@@ -200,12 +258,16 @@ export function AssetWorkbench({ item, onBack }: { item: string | null; onBack: 
 		run(() => rig.cos.setColor(itemKey, color));
 	};
 
-	// mutate the live manifest def and re-attach so the new scale/offset applies
-	const retune = (itemKey: string, patch: { scale?: number; offset?: [number, number, number] }) => {
+	// mutate the live manifest def and re-attach so the new scale/offset/rotate applies
+	const retune = (
+		itemKey: string,
+		patch: { scale?: number; offset?: [number, number, number]; rotate?: [number, number, number] },
+	) => {
 		if (!rig) return;
 		const def = rig.cos.slots()[itemKey] as ItemDef;
 		if (patch.scale !== undefined) def.scale = patch.scale;
 		if (patch.offset) def.offset = patch.offset;
+		if (patch.rotate) def.rotate = patch.rotate;
 		setManifest({ ...(rig.cos.slots() as ItemManifest) });
 		const w = worn[itemKey];
 		if (w) {
@@ -218,11 +280,37 @@ export function AssetWorkbench({ item, onBack }: { item: string | null; onBack: 
 	};
 
 	const copyTuning = (def: ItemDef) => {
-		const patch = { scale: def.scale ?? 1, offset: def.offset ?? [0, 0, 0] };
+		const patch = {
+			scale: def.scale ?? 1,
+			offset: def.offset ?? [0, 0, 0],
+			rotate: def.rotate ?? [0, 0, 0],
+		};
 		navigator.clipboard.writeText(JSON.stringify(patch)).then(() => {
 			setCopied(true);
 			setTimeout(() => setCopied(false), 1200);
 		});
+	};
+
+	// write the current tuning into public/cosmetics/manifest.json via the dev API
+	const saveTuning = async (itemKey: string, def: ItemDef) => {
+		setSaveState("saving");
+		try {
+			const r = await fetch("/api/sidekick/manifest-tune", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					item: itemKey,
+					scale: def.scale ?? 1,
+					offset: def.offset ?? [0, 0, 0],
+					rotate: def.rotate ?? [0, 0, 0],
+				}),
+			});
+			if (!r.ok) throw new Error(await r.text());
+			setSaveState("saved");
+		} catch {
+			setSaveState("error");
+		}
+		setTimeout(() => setSaveState("idle"), 1600);
 	};
 
 	const groups = manifest
@@ -407,49 +495,75 @@ export function AssetWorkbench({ item, onBack }: { item: string | null; onBack: 
 								<div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
 									Rigid attach tuning
 								</div>
-								<label className="mb-2 block text-xs text-neutral-400">
-									scale <span className="text-neutral-200">{(sel.scale ?? 1).toFixed(2)}</span>
-									<input
-										type="range"
-										min={0.2}
-										max={3}
-										step={0.01}
-										value={sel.scale ?? 1}
-										className="mt-1 w-full"
-										onChange={(e) => retune(selected, { scale: Number(e.target.value) })}
-									/>
-								</label>
+								<TuneRow
+									label="scale"
+									value={sel.scale ?? 1}
+									fallback={1}
+									min={0.2}
+									max={3}
+									step={0.01}
+									onChange={(v) => retune(selected, { scale: v })}
+								/>
 								{(["x", "y", "z"] as const).map((axis, i) => (
-									<label key={axis} className="mb-2 block text-xs text-neutral-400">
-										offset {axis}{" "}
-										<span className="text-neutral-200">
-											{(sel.offset?.[i] ?? 0).toFixed(3)}
-										</span>
-										<input
-											type="range"
-											min={-0.1}
-											max={0.1}
-											step={0.001}
-											value={sel.offset?.[i] ?? 0}
-											className="mt-1 w-full"
-											onChange={(e) => {
-												const offset = [...(sel.offset ?? [0, 0, 0])] as [number, number, number];
-												offset[i] = Number(e.target.value);
-												retune(selected, { offset });
-											}}
-										/>
-									</label>
+									<TuneRow
+										key={`off-${axis}`}
+										label={`offset ${axis}`}
+										value={sel.offset?.[i] ?? 0}
+										fallback={0}
+										min={-0.1}
+										max={0.1}
+										step={0.001}
+										onChange={(v) => {
+											const offset = [...(sel.offset ?? [0, 0, 0])] as [number, number, number];
+											offset[i] = v;
+											retune(selected, { offset });
+										}}
+									/>
 								))}
-								<button
-									type="button"
-									className="mt-1 rounded-md border border-white/15 px-2.5 py-1 text-xs hover:bg-white/5"
-									onClick={() => copyTuning(sel)}
-								>
-									{copied ? "copied ✓" : "copy manifest patch"}
-								</button>
+								{(["x", "y", "z"] as const).map((axis, i) => (
+									<TuneRow
+										key={`rot-${axis}`}
+										label={`rotate ${axis}°`}
+										value={sel.rotate?.[i] ?? 0}
+										fallback={0}
+										min={-180}
+										max={180}
+										step={1}
+										onChange={(v) => {
+											const rotate = [...(sel.rotate ?? [0, 0, 0])] as [number, number, number];
+											rotate[i] = v;
+											retune(selected, { rotate });
+										}}
+									/>
+								))}
+								<div className="mt-1 flex gap-2">
+									<button
+										type="button"
+										className="rounded-md border border-white/15 px-2.5 py-1 text-xs hover:bg-white/5"
+										onClick={() => copyTuning(sel)}
+									>
+										{copied ? "copied ✓" : "copy manifest patch"}
+									</button>
+									<button
+										type="button"
+										disabled={saveState === "saving"}
+										className="rounded-md border border-emerald-400/40 px-2.5 py-1 text-xs text-emerald-300 hover:bg-emerald-400/10 disabled:opacity-50"
+										onClick={() => selected && saveTuning(selected, sel)}
+									>
+										{saveState === "saving"
+											? "saving…"
+											: saveState === "saved"
+												? "saved ✓"
+												: saveState === "error"
+													? "save failed ✗"
+													: "save to manifest"}
+									</button>
+								</div>
 								<p className="mt-2 text-[10px] leading-4 text-neutral-500">
-									Tuning is session-only — paste the patch into{" "}
-									<code>public/cosmetics/manifest.json</code> to keep it.
+									Save writes <code>scale</code>/<code>offset</code>/<code>rotate</code> into{" "}
+									<code>public/cosmetics/manifest.json</code> (neutral values are removed);
+									copy just puts the patch on the clipboard. Rotate is bone-local degrees,
+									pivoting on the attach bone.
 								</p>
 							</div>
 						)}
