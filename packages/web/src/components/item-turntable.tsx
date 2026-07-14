@@ -13,7 +13,8 @@ import { MODEL_URL } from "./sidekick-shading";
 // Runs at ~30fps only while mounted — the Shop mounts these only while open.
 
 let charPromise: Promise<GLTF> | null = null;
-const loadChar = () => (charPromise ??= new GLTFLoader().loadAsync(MODEL_URL));
+// module-cached rigged-character load, shared with the avatar snapshot service
+export const loadChar = () => (charPromise ??= new GLTFLoader().loadAsync(MODEL_URL));
 
 // present products in neutral daylight (matches the static shop renders): the
 // active preset may live in evening, whose warm tint distorts item colors

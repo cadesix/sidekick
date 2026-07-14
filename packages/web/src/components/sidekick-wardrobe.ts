@@ -16,10 +16,24 @@ export const WARDROBE_SLOTS = [
 	"bucket",
 	"wizard",
 	"crown",
+	"headphones",
+	"earmuffs",
+	"sweatband",
+	"laurel",
+	"propeller",
+	"catbeanie",
+	"cowboy",
 	"shoes",
 	"sneakers",
 	"boots",
 	"glasses",
+	"stars",
+	"goggles",
+	"snorkel",
+	"earring",
+	"flower",
+	"earbow",
+	"scarf",
 	"backpack",
 ] as const;
 export type WardrobeSlot = (typeof WARDROBE_SLOTS)[number];
@@ -34,10 +48,24 @@ export const SLOT_LABEL: Record<WardrobeSlot, string> = {
 	bucket: "Bucket Hat",
 	wizard: "Wizard Hat",
 	crown: "Crown",
+	headphones: "Headphones",
+	earmuffs: "Earmuffs",
+	sweatband: "Sweatband",
+	laurel: "Laurel Wreath",
+	propeller: "Propeller Cap",
+	catbeanie: "Cat Beanie",
+	cowboy: "Cowboy Hat",
 	shoes: "Shoes",
 	sneakers: "Sneakers",
 	boots: "Boots",
 	glasses: "Glasses",
+	stars: "Star Glasses",
+	goggles: "Ski Goggles",
+	snorkel: "Snorkel",
+	earring: "Earring",
+	flower: "Flower",
+	earbow: "Ear Bow",
+	scarf: "Scarf",
 	backpack: "Backpack",
 };
 
@@ -47,9 +75,11 @@ export const SLOT_LABEL: Record<WardrobeSlot, string> = {
 const REGIONS: readonly (readonly WardrobeSlot[])[] = [
 	["shirt", "hoodie"],
 	["pants", "shorts"],
-	["hat", "beanie", "bucket", "wizard", "crown"],
+	["hat", "beanie", "bucket", "wizard", "crown", "headphones", "earmuffs", "sweatband", "laurel", "propeller", "catbeanie", "cowboy"],
 	["shoes", "sneakers", "boots"],
-	["glasses"],
+	["glasses", "stars", "goggles", "snorkel"],
+	["earring", "flower", "earbow"],
+	["scarf"],
 	["backpack"],
 ];
 
@@ -63,9 +93,17 @@ export function regionSiblings(slot: WardrobeSlot): WardrobeSlot[] {
 export const SHOP_CATEGORIES: { id: string; label: string; slots: WardrobeSlot[] }[] = [
 	{ id: "tops", label: "Tops", slots: ["shirt", "hoodie"] },
 	{ id: "bottoms", label: "Bottoms", slots: ["pants", "shorts"] },
-	{ id: "head", label: "Head", slots: ["hat", "beanie", "bucket", "wizard", "crown"] },
+	{
+		id: "head",
+		label: "Head",
+		slots: ["hat", "beanie", "bucket", "wizard", "crown", "headphones", "earmuffs", "sweatband", "laurel", "propeller", "catbeanie", "cowboy"],
+	},
 	{ id: "feet", label: "Feet", slots: ["shoes", "sneakers", "boots"] },
-	{ id: "extras", label: "Extras", slots: ["glasses", "backpack"] },
+	{
+		id: "extras",
+		label: "Extras",
+		slots: ["glasses", "stars", "goggles", "snorkel", "earring", "flower", "earbow", "scarf", "backpack"],
+	},
 ];
 
 export type SlotState = {
@@ -97,12 +135,16 @@ export function loadWardrobe(): Wardrobe {
 	}
 }
 
+export const WARDROBE_EVENT = "sidekick:wardrobe";
+
 export function saveWardrobe(w: Wardrobe): void {
 	try {
 		localStorage.setItem(KEY, JSON.stringify(w));
 	} catch {
 		// ignore quota / private-mode failures
 	}
+	// avatars and other outfit-derived surfaces regenerate off this
+	window.dispatchEvent(new CustomEvent(WARDROBE_EVENT));
 }
 
 // Imperative handle the canvas hands to React so the Shop can dress the live

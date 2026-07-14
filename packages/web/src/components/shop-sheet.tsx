@@ -20,8 +20,8 @@ import {
 // UI). Rotation is novelty-framed, not loss-framed ("new stock in…"), per the
 // wholesome references. Tapping a
 // product opens a detail modal (big turntable, price, Buy) — purchases deplete
-// the coin balance and land in the inventory, and the Closet tab is where
-// owned items get equipped / taken off.
+// the coin balance and land in the inventory; equipping owned items lives in
+// the Appearance sheet (avatar button, top right).
 
 // per-item base price; variant editions step up from it, color editions sell flat
 const PRICE: Record<WardrobeSlot, number> = {
@@ -38,6 +38,20 @@ const PRICE: Record<WardrobeSlot, number> = {
 	sneakers: 70,
 	boots: 80,
 	glasses: 50,
+	headphones: 85,
+	earmuffs: 55,
+	sweatband: 30,
+	laurel: 150,
+	propeller: 65,
+	catbeanie: 60,
+	cowboy: 75,
+	stars: 65,
+	goggles: 70,
+	snorkel: 60,
+	earring: 40,
+	flower: 30,
+	earbow: 30,
+	scarf: 45,
 	backpack: 90,
 };
 
@@ -67,7 +81,7 @@ const RARITIES = [
 const rarityOf = (cost: number) => RARITIES.find((r) => cost >= r.min) ?? RARITIES[3];
 
 // one concrete purchasable: a textured variant or a solid-color edition
-type Product = {
+export type Product = {
 	slot: WardrobeSlot;
 	variantId?: string;
 	color?: string;
@@ -78,7 +92,7 @@ type Product = {
 	tint?: string;
 };
 
-function buildProducts(manifest: Manifest): Product[] {
+export function buildProducts(manifest: Manifest): Product[] {
 	const out: Product[] = [];
 	for (const slot of WARDROBE_SLOTS) {
 		const def = manifest[slot];
@@ -145,7 +159,7 @@ function todaysShop(products: Product[]): { featured: Product[]; daily: Product[
 
 // Product art: prefer the real render from /item-render (public/shop-renders),
 // fall back to the raw fabric texture (tinted for color editions).
-function ProductImage({ p, className }: { p: Product; className?: string }) {
+export function ProductImage({ p, className }: { p: Product; className?: string }) {
 	const [hasRender, setHasRender] = useState(true);
 	if (hasRender) {
 		return (
@@ -194,7 +208,6 @@ export function ShopSheet({
 	onClose: () => void;
 	controlsRef: MutableRefObject<CosmeticsControls | null>;
 }) {
-	const [view, setView] = useState<"shop" | "closet">("shop");
 	const [detail, setDetail] = useState<Product | null>(null);
 	const [wardrobe, setWardrobe] = useState<Wardrobe | null>(null);
 	const [manifest, setManifest] = useState<Manifest | null>(null);
@@ -294,7 +307,6 @@ export function ShopSheet({
 		);
 	};
 
-	const ownedProducts = products.filter((p) => owns(p));
 	const detailWorn = detail ? isWorn(detail) : false;
 	const detailOwned = detail ? owns(detail) : false;
 	const canAfford = detail ? coins >= detail.cost : false;
@@ -306,23 +318,11 @@ export function ShopSheet({
 			}`}
 		>
 			<div className="relative flex h-full flex-col overflow-hidden rounded-t-[28px] bg-white shadow-[0_-8px_40px_rgba(0,0,0,0.22)]">
-				{/* grabber + header: Shop | Closet toggle and the live coin balance */}
+				{/* grabber + header with the live coin balance */}
 				<div className="relative shrink-0 px-5 pt-3">
 					<div className="mx-auto h-1.5 w-10 rounded-full bg-neutral-200" />
 					<div className="mt-2 flex items-center justify-between">
-						<div className="flex items-center gap-1 rounded-full bg-neutral-100 p-1">
-							{(["shop", "closet"] as const).map((v) => (
-								<button
-									key={v}
-									onClick={() => setView(v)}
-									className={`rounded-full px-3.5 py-1.5 text-[14px] font-extrabold capitalize transition ${
-										view === v ? "bg-white text-neutral-900 shadow-[0_2px_0_rgba(0,0,0,0.08)]" : "text-neutral-500"
-									}`}
-								>
-									{v}
-								</button>
-							))}
-						</div>
+						<div className="text-[22px] font-extrabold text-neutral-900">Shop</div>
 						<div className="flex items-center gap-3">
 							<div className="flex items-center gap-1.5 rounded-full bg-neutral-100 px-3 py-1.5 shadow-[0_2px_0_rgba(0,0,0,0.08)]">
 								<Coin className="h-4 w-4" />
@@ -340,8 +340,6 @@ export function ShopSheet({
 				</div>
 
 				<div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-6 pb-[max(env(safe-area-inset-bottom),20px)]">
-					{view === "shop" ? (
-						<>
 							{/* ---- Today's Shop: featured + daily rotation ---- */}
 							<div className="mt-3 flex items-center justify-between">
 								<div className="text-[16px] font-extrabold text-neutral-900">Today's Shop</div>
@@ -408,22 +406,9 @@ export function ShopSheet({
 								})}
 							</div>
 
-							{/* ---- full catalog: one shelf per item, all on one screen ---- */}
-							<div className="mt-9 text-[20px] font-extrabold text-neutral-900">Browse all</div>
-							{WARDROBE_SLOTS.map((slot) => shelf(slot, products))}
-						</>
-					) : (
-						<>
-							<div className="mt-3 text-[20px] font-extrabold text-neutral-900">Your closet</div>
-							{ownedProducts.length ? (
-								WARDROBE_SLOTS.map((slot) => shelf(slot, ownedProducts))
-							) : (
-								<div className="mt-10 text-center text-[14px] font-medium text-neutral-400">
-									Nothing here yet — buy your first item in the Shop!
-								</div>
-							)}
-						</>
-					)}
+					{/* ---- full catalog: one shelf per item, all on one screen ---- */}
+					<div className="mt-9 text-[20px] font-extrabold text-neutral-900">Browse all</div>
+					{WARDROBE_SLOTS.map((slot) => shelf(slot, products))}
 				</div>
 
 				{/* ---- item detail: big turntable, price, buy → equip ---- */}

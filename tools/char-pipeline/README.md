@@ -68,6 +68,18 @@ $B --background --python tools/char-pipeline/scripts/pose_verify.py -- \
 3. Register it in `packages/web/public/cosmetics/manifest.json` (see
    `SHOP-NOTES.md` there for the `slot` field semantics) and add variant
    textures via `gen_shop_textures.py`.
+4. Refresh the Shop's static product PNGs (`public/shop-renders/`) by running
+   the app's `/item-render` route. With the web dev server on :3100 this works
+   headlessly (real GPU; do NOT pass --disable-gpu or --virtual-time-budget —
+   both stall WebGL; macOS has no `timeout`, hence the perl alarm):
+
+   ```bash
+   perl -e 'alarm shift; exec @ARGV' 120 \
+     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+     --headless=new --no-first-run --enable-unsafe-swiftshader \
+     --user-data-dir=/tmp/chrome-itemrender \
+     "http://localhost:3100/item-render?slots=<item1>,<item2>"
+   ```
 
 Runtime/app-side contracts live next to the assets:
 `packages/web/public/cosmetics/{CANONICAL-SKELETON.md, IMPLEMENTATION-CONTRACT.md, SHOP-NOTES.md}`.

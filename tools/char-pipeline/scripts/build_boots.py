@@ -16,7 +16,6 @@ def build(side):
     sgn = 1 if side == "L" else -1
     sh = C.dup_geo(body, f"Shoe_{side}",
                    lambda c: c.z < BOOT_TOP + 0.006 and c.y * sgn > 0.004)
-    C.cut(sh, (0, 0, BOOT_TOP), (0, 0, 1), clear_outer=True)
 
     def sole(bm):
         for v in bm.verts:
@@ -27,13 +26,21 @@ def build(side):
     # de-toe (same as sneakers): smooth toe box instead of inherited toe bumps —
     # plan-outline pass keeps the flat sole, front-cap pass + reinflate rounds
     # the knuckles while keeping clearance over the foot.
-    xs = [(sh.matrix_world @ v.co).x for v in sh.data.vertices]
-    toe_x = min(xs) + 0.45 * (max(xs) - min(xs))
-    C.region_smooth(sh, lambda c: c.z < 0.0065, iters=25, axes=(True, True, False))
-    C.region_smooth(sh, lambda c: 0.004 < c.z < 0.015 and c.x > toe_x,
-                    iters=18, reinflate=0.0012)
+    C.region_smooth(sh, lambda c: c.z < 0.0065, iters=35, axes=(True, True, False),
+                    reinflate=0.0025)
+    # smooth the whole foot band hard (toe knuckles + instep creases; stop below
+    # the shaft so the boot leg keeps its cut), then re-inflate PAST the foot's
+    # bump peaks so the toes can't poke through — feathered to zero at the band
+    # top so it leaves no ledge on the shaft
+    ZT = 0.024
+    C.region_smooth(sh, lambda c: 0.0018 < c.z < ZT, iters=30, factor=0.8,
+                    reinflate=0.0038,
+                    reinflate_scale=lambda c: (ZT - c.z) / 0.010)
     C.decimate(sh, 420)
-    C.boundary_finish(sh, [("z", BOOT_TOP)], relax=10)
+    # exact rim LAST: bisect after decimate gives a clean straight edge loop
+    # (cutting first leaves decimate free to re-jag the boundary into spikes)
+    C.cut(sh, (0, 0, BOOT_TOP), (0, 0, 1), clear_outer=True)
+    C.boundary_finish(sh, [("z", BOOT_TOP)], relax=8)
     C.solidify(sh, 0.0024)
     C.strip_skin(sh)
     C.set_material(sh, "ShoeMat", (0.35, 0.20, 0.10), 0.75)   # leather brown default

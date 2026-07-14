@@ -31,6 +31,7 @@ export type SlotDef = {
 	defaultColor?: string;
 	scale?: number; // rigid-attach only: multiply the authored local scale
 	offset?: [number, number, number]; // rigid-attach only: nudge in bone-local space
+	rotate?: [number, number, number]; // rigid-attach only: euler degrees, bone-local, pivoting on the bone origin
 	variants: Variant[];
 };
 export type Manifest = Record<string, SlotDef>;
@@ -201,6 +202,15 @@ export function createCosmetics(
 			const pos = mesh.position.clone();
 			const quat = mesh.quaternion.clone();
 			const scl = mesh.scale.clone().multiplyScalar(def.scale ?? 1);
+			if (def.rotate) {
+				// rotate in bone space about the bone origin (head center for head
+				// items), not the mesh origin — so a tilted hat pivots on the head
+				const r = new THREE.Quaternion().setFromEuler(
+					new THREE.Euler(...(def.rotate.map(THREE.MathUtils.degToRad) as [number, number, number])),
+				);
+				pos.applyQuaternion(r);
+				quat.premultiply(r);
+			}
 			if (def.offset) pos.add(new THREE.Vector3().fromArray(def.offset));
 			target.add(mesh);
 			mesh.position.copy(pos);
