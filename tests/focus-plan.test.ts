@@ -8,10 +8,10 @@ import {
   budgetLabel,
   clampUnlockMinutes,
   dailyMonitorPlan,
-  focusChipState,
-  focusMirrorPatch,
+  focusSessionPlan,
   isFocusGoalSlug,
   reblockMonitorPlan,
+  scheduledMonitorPlan,
   selectionCount,
   setupReady,
   warnThresholdMinutes,
@@ -73,8 +73,20 @@ test("re-block plan: one-off window from now to now+N, blocks on intervalDidEnd"
   const plan = reblockMonitorPlan({ now, minutes: 45 });
   expect(plan.activityName).toBe(FOCUS_REBLOCK_ACTIVITY);
   expect(plan.schedule.repeats).toBe(false);
-  expect(plan.schedule.intervalStart).toEqual({ hour: 10, minute: 30 });
-  expect(plan.schedule.intervalEnd).toEqual({ hour: 11, minute: 15 });
+  expect(plan.schedule.intervalStart).toEqual({
+    year: 2026,
+    month: 7,
+    day: 7,
+    hour: 10,
+    minute: 30,
+  });
+  expect(plan.schedule.intervalEnd).toEqual({
+    year: 2026,
+    month: 7,
+    day: 7,
+    hour: 11,
+    minute: 15,
+  });
   expect(plan.events).toEqual([]);
 
   const end = plan.actions.find((a) => a.callbackName === "intervalDidEnd");
@@ -88,13 +100,18 @@ test("re-block plan: one-off window from now to now+N, blocks on intervalDidEnd"
 test("re-block plan clamps its own window", () => {
   const now = new Date(2026, 6, 7, 10, 0, 0);
   const plan = reblockMonitorPlan({ now, minutes: 1000 });
-  // clamped to 60 min → ends at 11:00
-  expect(plan.schedule.intervalEnd).toEqual({ hour: 11, minute: 0 });
+  expect(plan.schedule.intervalEnd).toEqual({
+    year: 2026,
+    month: 7,
+    day: 7,
+    hour: 11,
+    minute: 0,
+  });
 });
 
-test("monitor capacity guard holds the 3-monitor ceiling", () => {
+test("monitor capacity guard leaves room for a seven-day schedule and temporary controls", () => {
   expect(() => assertMonitorCapacity(["a", "b"], "c")).not.toThrow();
-  expect(() => assertMonitorCapacity(["a", "b", "c"], "d")).toThrow();
+  expect(() => assertMonitorCapacity(Array.from({ length: 10 }, (_, index) => String(index)), "new")).toThrow();
   // re-registering an already-active monitor doesn't count as a new one
   expect(() => assertMonitorCapacity([FOCUS_DAILY_ACTIVITY, "b", "c"], FOCUS_DAILY_ACTIVITY)).not.toThrow();
 });
@@ -104,21 +121,28 @@ test("selection count sums apps + categories + web domains", () => {
   expect(selectionCount({ applicationCount: 0, categoryCount: 0, webDomainCount: 0 })).toBe(0);
 });
 
-test("home shield chip state", () => {
-  expect(focusChipState({ enabled: false, blocked: false })).toBeNull();
-  expect(focusChipState({ enabled: true, blocked: false })).toBe("under");
-  expect(focusChipState({ enabled: true, blocked: true })).toBe("blocked");
-});
-
-test("mirror patches carry only app-identity-free fields", () => {
-  expect(focusMirrorPatch.setBudget(30)).toEqual({ enabled: true, budgetMinutes: 30 });
-  expect(focusMirrorPatch.blockNow()).toEqual({ enabled: true });
-  expect(focusMirrorPatch.disable()).toEqual({ enabled: false });
-  expect(focusMirrorPatch.startGuarding({ selectionCount: 7, budgetMinutes: 45 })).toEqual({
-    enabled: true,
-    selectionCount: 7,
-    budgetMinutes: 45,
+test("scheduled and timed session plans enforce and release entirely on-device", () => {
+  const scheduled = scheduledMonitorPlan({
+    weekday: 2,
+    startHour: 9,
+    startMinute: 0,
+    endHour: 17,
+    endMinute: 0,
   });
+  expect(scheduled.schedule.intervalStart).toEqual({ weekday: 2, hour: 9, minute: 0 });
+  expect(scheduled.actions[0]?.actions[0]?.type).toBe("blockSelection");
+  expect(scheduled.actions[1]?.actions[0]?.type).toBe("unblockSelection");
+
+  const session = focusSessionPlan({ now: new Date(2026, 6, 7, 10, 0), minutes: 45 });
+  expect(session.schedule.intervalEnd).toEqual({
+    year: 2026,
+    month: 7,
+    day: 7,
+    hour: 10,
+    minute: 45,
+  });
+  expect(session.actions[0]?.actions[0]?.type).toBe("unblockSelection");
+  expect(session.actions[0]?.actions[1]?.type).toBe("sendNotification");
 });
 
 test("setup readiness + labels + focus-goal detection", () => {

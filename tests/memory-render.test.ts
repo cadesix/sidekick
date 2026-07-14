@@ -33,6 +33,9 @@ test("renderMemoryBlock composes the profile sections from the DB with relative 
       gender: "female",
       ageBracket: "25-34",
       personality: { archetype: "The Spark", tagline: "playful and social" },
+      lastCity: "Chicago",
+      lastRegion: "Illinois",
+      lastCountry: "United States",
     })
     .where(eq(users.id, userId));
 
@@ -76,6 +79,8 @@ test("renderMemoryBlock composes the profile sections from the DB with relative 
   expect(block).toMatch(/today is \w+day, july 6/);
   expect(block).toContain("lives in chicago with roommate priya");
   expect(block).toContain("personality: The Spark — playful and social");
+  expect(block).toContain("CURRENT CONTEXT");
+  expect(block).toContain("current location: Chicago, Illinois, United States (city-level, shared from their device)");
   expect(block).toContain("HER PEOPLE");
   expect(block).toContain("dating alex, ~8 months");
   expect(block).toContain("into matcha and thrifting");

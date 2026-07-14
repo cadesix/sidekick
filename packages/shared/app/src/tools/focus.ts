@@ -1,13 +1,17 @@
 import { z } from "zod";
-import { focusSetBudgetInput, focusUnblockInput } from "../focus/schema";
+import {
+  focusSetBudgetInput,
+  focusStartSessionInput,
+  focusUnblockInput,
+} from "../focus/schema";
 import { defineTool, type SidekickTool } from "./types";
 
 /**
  * Focus mode capability (13-focus-mode.md). Every tool is a *device* tool
  * (`execution:'client'`, the pattern from 12): the DeviceActivity/ManagedSettings
  * calls must run on-device, and the user is mid-chat so the app is alive. The app
- * runs the native op, mirrors the app-identity-free state to `focus.update`, and
- * the model continues the turn. If focus isn't available (no entitlement / older
+ * runs the native operation and returns only whether that requested command
+ * succeeded. If focus isn't available (no entitlement / older
  * iOS), the app returns `{ error: 'device_unavailable' }` and the model says so.
  */
 export const focusTools: SidekickTool[] = [
@@ -33,18 +37,18 @@ export const focusTools: SidekickTool[] = [
     parameters: z.object({}),
   }),
   defineTool({
+    name: "focus_start_session",
+    description:
+      "Start a timed Focus session for 5–180 minutes after the user explicitly asks. The device blocks the user's private selection and releases it automatically; you only receive command success.",
+    execution: "client",
+    parameters: focusStartSessionInput,
+  }),
+  defineTool({
     name: "focus_unblock",
     description:
       "Temporarily unlock the guarded apps for N minutes (5–60; out-of-range is clamped). The apps re-block automatically when the time is up. Grant freely on the first ask of the day; after that get playfully skeptical ('third time today… is the group chat that good?') but never lecture and never flat-out refuse more than once. Follow up in-voice when the re-block lands.",
     execution: "client",
     parameters: focusUnblockInput,
-  }),
-  defineTool({
-    name: "focus_status",
-    description:
-      "Check how focus is going today — whether it's on, the daily budget, roughly how many apps are guarded, and whether the user has hit their 80% warning or the block yet. Use for 'how am i doing today?' style questions.",
-    execution: "client",
-    parameters: z.object({}),
   }),
   defineTool({
     name: "focus_disable",
@@ -61,7 +65,7 @@ export const focusTools: SidekickTool[] = [
  */
 export const FOCUS_CHAT_GUIDANCE = `Focus mode (app blocking the user set up on themselves):
 - You are the face of the shield — friction with personality, never a nag. The apps are the user's own commitment; the OS enforces it, you mediate it.
-- You never see which apps they chose or what they browse — only whether focus is on, the budget, and today's warn/block flags. Don't pretend to know more.
-- Unlocks (focus_unblock): grant the first request of the day without fuss. After that, be playfully skeptical, but relent — one push-back at most, then comply. Never a bypass button; the negotiation is the point.
-- focus_disable: one honest "sure?" then comply fully and immediately. Refusing to let someone turn it off is an uninstall.
-- Progress logging stays silent (03) — the home shield chip and streaks reflect it; don't announce tool calls.` as const;
+- You never see which apps they chose, how much they use them, whether a threshold fired, or whether a shield is currently visible. Never imply otherwise.
+- You may change a limit, block, start a timed session, temporarily unlock, disable, or open setup only after the user asks.
+- Unlocks and disabling are immediate user controls. Do not bargain, shame, or refuse.
+- A successful result confirms only that requested device command; it is not Screen Time status or usage data.` as const;

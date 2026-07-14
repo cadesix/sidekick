@@ -1,25 +1,23 @@
 import { router } from "expo-router";
 import {
-  focusMirrorPatch,
   focusSetBudgetInput,
+  focusStartSessionInput,
   focusUnblockInput,
 } from "@sidekick/shared";
-import { fetchMe, getFocusSettings } from "~/lib/api";
+import { fetchMe } from "~/lib/api";
 import {
   disableFocus,
   focusAvailable,
-  focusBlocked,
   forceBlock,
-  mirrorFocus,
+  patchLocalFocusSettings,
   startDailyMonitor,
+  startFocusSession,
   temporaryUnlock,
-  todayFocusFlags,
 } from "~/lib/focus";
 
 /**
- * The six focus device-tools (13-focus-mode.md §chat tools), run on-device when the
- * model calls one mid-chat. Each executes the native op, mirrors the app-identity-
- * free state to the server, and returns a small JSON result the model reads in-voice.
+ * Focus commands run entirely on-device and return only the requested command's
+ * success. No Screen Time state or usage is sent back to the model.
  * `null` means "not a focus tool" so the dispatcher falls through; `device_unavailable`
  * means focus isn't set up on this device and the model should say so gently.
  */
@@ -30,8 +28,8 @@ const FOCUS_TOOL_NAMES = new Set([
   "focus_open_setup",
   "focus_set_budget",
   "focus_block_now",
+  "focus_start_session",
   "focus_unblock",
-  "focus_status",
   "focus_disable",
 ]);
 
@@ -65,14 +63,32 @@ export async function runFocusDeviceTool(
     if (!started) {
       return { error: "no_selection" };
     }
-    await mirrorFocus(focusMirrorPatch.setBudget(parsed.data.minutes));
-    return { ok: true, budgetMinutes: parsed.data.minutes };
+    patchLocalFocusSettings({
+      enabled: true,
+      mode: "daily",
+      budgetMinutes: parsed.data.minutes,
+      sessionEndsAt: null,
+    });
+    return { ok: true };
   }
 
   if (toolName === "focus_block_now") {
-    forceBlock();
-    await mirrorFocus(focusMirrorPatch.blockNow());
-    return { ok: true, blocked: true };
+    if (!forceBlock()) {
+      return { error: "no_selection" };
+    }
+    return { ok: true };
+  }
+
+  if (toolName === "focus_start_session") {
+    const parsed = focusStartSessionInput.safeParse(input);
+    if (!parsed.success) {
+      return DEVICE_UNAVAILABLE;
+    }
+    const started = await startFocusSession(parsed.data.minutes);
+    if (!started) {
+      return { error: "no_selection" };
+    }
+    return { ok: true };
   }
 
   if (toolName === "focus_unblock") {
@@ -84,22 +100,9 @@ export async function runFocusDeviceTool(
     return { ok: true, minutes };
   }
 
-  if (toolName === "focus_status") {
-    const settings = await getFocusSettings();
-    const flags = todayFocusFlags();
-    return {
-      enabled: settings.enabled,
-      budgetMinutes: settings.budgetMinutes,
-      appsGuarded: settings.selectionCount,
-      warned: flags.warn,
-      blocked: flags.limit || focusBlocked(),
-    };
-  }
-
   if (toolName === "focus_disable") {
     disableFocus();
-    await mirrorFocus(focusMirrorPatch.disable());
-    return { ok: true, enabled: false };
+    return { ok: true };
   }
 
   return null;

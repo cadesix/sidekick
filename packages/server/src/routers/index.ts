@@ -5,7 +5,6 @@ import { chatRouter } from "./chat";
 import { cosmeticsRouter } from "./cosmetics";
 import { deepTalksRouter } from "./deep-talks";
 import { documentsRouter } from "./documents";
-import { focusRouter } from "./focus";
 import { goalsRouter } from "./goals";
 import { healthRouter } from "./health";
 import { locationRouter } from "./location";
@@ -22,7 +21,6 @@ export const appRouter = router({
   cosmetics: cosmeticsRouter,
   deepTalks: deepTalksRouter,
   documents: documentsRouter,
-  focus: focusRouter,
   goals: goalsRouter,
   health: healthRouter,
   location: locationRouter,

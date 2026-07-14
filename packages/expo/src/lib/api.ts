@@ -389,22 +389,6 @@ export function submitDeviceToolResult(input: {
   return trpc.chat.deviceToolResult.mutate(input);
 }
 
-/** The server mirror of on-device focus state (13-focus-mode.md). No app identity. */
-export type FocusSettings = Awaited<ReturnType<typeof trpc.focus.get.query>>;
-
-export function getFocusSettings(): Promise<FocusSettings> {
-  return trpc.focus.get.query();
-}
-
-/** Mirror the app-identity-free focus state after a native op (13 §chat tools). */
-export function updateFocusSettings(patch: {
-  enabled?: boolean;
-  budgetMinutes?: number | null;
-  selectionCount?: number;
-}): Promise<FocusSettings> {
-  return trpc.focus.update.mutate(patch);
-}
-
 /** A folder chip on the documents home (15). */
 export type DocumentFolder = { id: string; name: string; emoji: string | null };
 

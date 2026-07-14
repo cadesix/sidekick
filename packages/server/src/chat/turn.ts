@@ -51,6 +51,9 @@ const HEALTH_TOOL_NAMES = new Set(
   capabilities.find((c) => c.name === "health")?.tools.map((t) => t.name) ?? [],
 );
 
+const HEALTH_CONTEXT_MARKER = "connected Apple Health summary:";
+const HEALTH_TEXT_PATTERN = /\b(health|sleep|steps?|workout|exercise|active energy|calories)\b/i;
+
 /** Anthropic-executed tool names (11) — persisted as `tool` rows so their result blocks round-trip. */
 const PROVIDER_TOOL_NAMES = new Set([WEB_SEARCH_TOOL, "web_fetch"]);
 
@@ -467,6 +470,9 @@ async function driveTurn(
     storageUrl: (key) => storage.publicUrl(key),
     flags,
   });
+  const healthContextUsed = view.system.some(
+    (block) => block.id === "memory" && block.text.includes(HEALTH_CONTEXT_MARKER),
+  );
 
   /**
    * Onboarding conversations run against the restricted onboarding tool set only
@@ -523,7 +529,11 @@ async function driveTurn(
     if (!message) {
       throw new Error("failed to persist assistant message");
     }
-    if (acc.calls.some((call) => HEALTH_TOOL_NAMES.has(call.toolName))) {
+    if (
+      healthContextUsed ||
+      HEALTH_TEXT_PATTERN.test(input.text) ||
+      acc.calls.some((call) => HEALTH_TOOL_NAMES.has(call.toolName))
+    ) {
       await markMessagesSensitive(db, [message.id]);
     }
 

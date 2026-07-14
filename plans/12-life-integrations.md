@@ -1,5 +1,7 @@
 # 12 — Life Integrations: Apple Health, Location, Apple Music
 
+> **2026-07-14 privacy update:** Use [screen-time-health-integration.md](screen-time-health-integration.md) as the current Apple Health source of truth. Cloud-agent health use requires explicit AI-sharing consent, accurate purpose copy, minimized aggregates, retention/deletion controls, and turn-level separation from advertising. The older “never share” permission language below is incompatible with server/model use.
+
 Three iOS integrations that turn the sidekick from "app you talk to" into "friend who's actually in your life": it *saw* your run, knows what city you woke up in, and makes you playlists. All three are read-mostly, permissioned contextually (never a wall of prompts at onboarding), and surfaced in one **Connected** section in Settings.
 
 A shared architectural fact drives all of this: **chat tools execute server-side, but these effects live on-device.** So this plan introduces the **device-tool pattern** used here and in [13-focus-mode.md](13-focus-mode.md): a tool marked `execution:'client'` streams to the app mid-turn, the client runs the native call (the user is chatting, so the app is alive), posts the result to `chat.deviceToolResult`, and the model continues the same turn. Timeout 10s → the tool returns `{ error: 'device_unavailable' }` and the model says so in-voice. Build this once in the tool registry (01); health/music/focus tools all declare it.

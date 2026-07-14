@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /**
  * On-device HealthKit shapes (12-life-integrations.md). Reads only: steps, sleep,
- * workouts, heart rate, active energy. The client aggregates a day locally (merging
+ * workouts and active energy. The client aggregates a day locally (merging
  * sources, Watch preferred) and posts these; the server stores them verbatim into
  * `health_days`. `date` is the user-local calendar day ("YYYY-MM-DD"); timestamps
  * are ISO strings so they cross tRPC unchanged.
@@ -21,7 +21,6 @@ export const healthDayInputSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   steps: nullableInt,
   activeCalories: nullableInt,
-  restingHr: nullableInt,
   sleepMinutes: nullableInt,
   sleepStart: z.string().nullable().optional(),
   sleepEnd: z.string().nullable().optional(),
@@ -35,18 +34,17 @@ export const healthSyncInputSchema = z.object({
 });
 export type HealthSyncInput = z.infer<typeof healthSyncInputSchema>;
 
-/** `read_health` device-tool metrics (12 §read_health). */
-export const readHealthMetricSchema = z.enum([
+/** Metrics available to the server-side summary tool. */
+export const healthSummaryMetricSchema = z.enum([
   "steps",
   "sleep",
   "workouts",
-  "heart_rate",
   "calories",
 ]);
-export type ReadHealthMetric = z.infer<typeof readHealthMetricSchema>;
+export type HealthSummaryMetric = z.infer<typeof healthSummaryMetricSchema>;
 
-export const readHealthInputSchema = z.object({
+export const healthSummaryInputSchema = z.object({
   range_days: z.number().int().min(1).max(30),
-  metric: readHealthMetricSchema,
+  metric: healthSummaryMetricSchema,
 });
-export type ReadHealthInput = z.infer<typeof readHealthInputSchema>;
+export type HealthSummaryInput = z.infer<typeof healthSummaryInputSchema>;

@@ -6,7 +6,8 @@ import {
   queryWorkoutSamples,
   requestAuthorization,
 } from "@kingstinct/react-native-healthkit";
-import type { HealthDayInput, HealthWorkout, ReadHealthInput } from "@sidekick/shared";
+import * as SecureStore from "expo-secure-store";
+import type { HealthDayInput, HealthWorkout } from "@sidekick/shared";
 
 /**
  * The single seam onto Apple HealthKit (12-life-integrations.md). Every native
@@ -19,19 +20,31 @@ import type { HealthDayInput, HealthWorkout, ReadHealthInput } from "@sidekick/s
 const READ_TYPES = [
   "HKQuantityTypeIdentifierStepCount",
   "HKQuantityTypeIdentifierActiveEnergyBurned",
-  "HKQuantityTypeIdentifierRestingHeartRate",
-  "HKQuantityTypeIdentifierHeartRate",
   "HKCategoryTypeIdentifierSleepAnalysis",
   "HKWorkoutTypeIdentifier",
 ] as const;
+
+const HEALTH_SHARING_KEY = "health-agent-sharing-enabled";
 
 export function healthAvailable(): boolean {
   return isHealthDataAvailable();
 }
 
+export async function healthAgentSharingEnabled(): Promise<boolean> {
+  return (await SecureStore.getItemAsync(HEALTH_SHARING_KEY)) === "true";
+}
+
+export async function setHealthAgentSharingEnabled(enabled: boolean): Promise<void> {
+  if (enabled) {
+    await SecureStore.setItemAsync(HEALTH_SHARING_KEY, "true");
+    return;
+  }
+  await SecureStore.deleteItemAsync(HEALTH_SHARING_KEY);
+}
+
 /** Contextual permission request (12 §permission UX). Returns whether it resolved. */
 export async function requestHealthAuthorization(): Promise<boolean> {
-  if (!isHealthDataAvailable()) {
+  if (!isHealthDataAvailable() || !(await healthAgentSharingEnabled())) {
     return false;
   }
   return requestAuthorization({ toRead: [...READ_TYPES] });
@@ -59,16 +72,6 @@ async function sumFor(
     filter: { date: { startDate: range.startDate, endDate: range.endDate } },
   });
   const value = stats.sumQuantity?.quantity;
-  return value === undefined ? null : Math.round(value);
-}
-
-async function restingHeartRate(range: DayRange): Promise<number | null> {
-  const stats = await queryStatisticsForQuantity(
-    "HKQuantityTypeIdentifierRestingHeartRate",
-    ["discreteAverage"],
-    { filter: { date: { startDate: range.startDate, endDate: range.endDate } } },
-  );
-  const value = stats.averageQuantity?.quantity;
   return value === undefined ? null : Math.round(value);
 }
 
@@ -148,17 +151,16 @@ async function workoutsFor(range: DayRange): Promise<HealthWorkout[]> {
  * Returns `[]` when Health is unavailable so the caller simply skips syncing.
  */
 export async function readHealthDays(days: number): Promise<HealthDayInput[]> {
-  if (!isHealthDataAvailable()) {
+  if (!isHealthDataAvailable() || !(await healthAgentSharingEnabled())) {
     return [];
   }
   const now = new Date();
   const result: HealthDayInput[] = [];
   for (let offset = 0; offset < days; offset += 1) {
     const range = dayRange(now, offset);
-    const [steps, activeCalories, restingHr, sleep, workouts] = await Promise.all([
+    const [steps, activeCalories, sleep, workouts] = await Promise.all([
       sumFor("HKQuantityTypeIdentifierStepCount", range),
       sumFor("HKQuantityTypeIdentifierActiveEnergyBurned", range),
-      restingHeartRate(range),
       sleepFor(range),
       workoutsFor(range),
     ]);
@@ -166,7 +168,6 @@ export async function readHealthDays(days: number): Promise<HealthDayInput[]> {
       date: range.date,
       steps,
       activeCalories,
-      restingHr,
       sleepMinutes: sleep?.minutes ?? null,
       sleepStart: sleep ? sleep.start.toISOString() : null,
       sleepEnd: sleep ? sleep.end.toISOString() : null,
@@ -174,44 +175,4 @@ export async function readHealthDays(days: number): Promise<HealthDayInput[]> {
     });
   }
   return result;
-}
-
-export type ReadHealthResult =
-  | { error: "device_unavailable" }
-  | { metric: string; days: { date: string; value: number | null }[] };
-
-/**
- * Fulfil the `read_health` device tool (12 §read_health): one metric over a
- * range. Denied/unavailable → `{ error: 'device_unavailable' }`, which the model
- * acknowledges in-voice.
- */
-export async function readHealthMetric(input: ReadHealthInput): Promise<ReadHealthResult> {
-  if (!isHealthDataAvailable()) {
-    return { error: "device_unavailable" };
-  }
-  const now = new Date();
-  const days: { date: string; value: number | null }[] = [];
-  for (let offset = 0; offset < input.range_days; offset += 1) {
-    const range = dayRange(now, offset);
-    days.push({ date: range.date, value: await metricValue(input.metric, range) });
-  }
-  return { metric: input.metric, days };
-}
-
-async function metricValue(metric: ReadHealthInput["metric"], range: DayRange): Promise<number | null> {
-  if (metric === "steps") {
-    return sumFor("HKQuantityTypeIdentifierStepCount", range);
-  }
-  if (metric === "calories") {
-    return sumFor("HKQuantityTypeIdentifierActiveEnergyBurned", range);
-  }
-  if (metric === "heart_rate") {
-    return restingHeartRate(range);
-  }
-  if (metric === "sleep") {
-    const sleep = await sleepFor(range);
-    return sleep?.minutes ?? null;
-  }
-  const workouts = await workoutsFor(range);
-  return workouts.length;
 }

@@ -1,6 +1,6 @@
 import * as Location from "expo-location";
 import * as SecureStore from "expo-secure-store";
-import { updateLocation } from "./api";
+import { disconnectLocation, updateLocation } from "./api";
 
 /**
  * The single seam onto Core Location (12-life-integrations.md). `whenInUse` only —
@@ -10,6 +10,25 @@ import { updateLocation } from "./api";
  */
 const THROTTLE_MS = 60 * 60 * 1000;
 const LAST_LOCATED_KEY = "sidekick.lastLocatedMs";
+const LOCATION_ENABLED_KEY = "sidekick.locationEnabled";
+
+export type LocationAccess = {
+  enabled: boolean;
+  granted: boolean;
+  canAskAgain: boolean;
+};
+
+export async function locationAccess(): Promise<LocationAccess> {
+  const [preference, permission] = await Promise.all([
+    SecureStore.getItemAsync(LOCATION_ENABLED_KEY),
+    Location.getForegroundPermissionsAsync(),
+  ]);
+  return {
+    enabled: preference === "true",
+    granted: permission.granted,
+    canAskAgain: permission.canAskAgain,
+  };
+}
 
 export async function locationGranted(): Promise<boolean> {
   const { granted } = await Location.getForegroundPermissionsAsync();
@@ -41,12 +60,13 @@ async function throttled(now: number): Promise<boolean> {
  * Silent no-op when permission is absent — permission is asked contextually via
  * the pre-permission sheet, never here.
  */
-export async function maybeUpdateLocation(): Promise<void> {
-  if (!(await locationGranted())) {
+export async function maybeUpdateLocation(force = false): Promise<void> {
+  const access = await locationAccess();
+  if (!access.enabled || !access.granted) {
     return;
   }
   const now = Date.now();
-  if (await throttled(now)) {
+  if (!force && (await throttled(now))) {
     return;
   }
 
@@ -67,4 +87,25 @@ export async function maybeUpdateLocation(): Promise<void> {
     timezone: deviceTimezone(),
   });
   await SecureStore.setItemAsync(LAST_LOCATED_KEY, String(now));
+}
+
+export async function enableLocationAccess(): Promise<LocationAccess> {
+  let permission = await Location.getForegroundPermissionsAsync();
+  if (!permission.granted && permission.canAskAgain) {
+    permission = await Location.requestForegroundPermissionsAsync();
+  }
+  if (!permission.granted) {
+    return { enabled: false, granted: false, canAskAgain: permission.canAskAgain };
+  }
+
+  await SecureStore.setItemAsync(LOCATION_ENABLED_KEY, "true");
+  await SecureStore.deleteItemAsync(LAST_LOCATED_KEY);
+  await maybeUpdateLocation(true);
+  return { enabled: true, granted: true, canAskAgain: permission.canAskAgain };
+}
+
+export async function disableLocationAccess(): Promise<void> {
+  await SecureStore.setItemAsync(LOCATION_ENABLED_KEY, "false");
+  await SecureStore.deleteItemAsync(LAST_LOCATED_KEY);
+  await disconnectLocation();
 }

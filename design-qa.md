@@ -1,27 +1,26 @@
 **Source Visual Truth**
 
-- `/Users/cj/Desktop/IMG_2452.png`, with the selected variation replacing the generic monogram with Sidekick and intentionally omitting a header typing badge.
-- Native layout/material reference: `/Users/cj/Downloads/imessage-llm/src/imessage/components/ChatHeader.tsx`.
-- Avatar asset: `/Users/cj/Code/sidekick/packages/expo/assets/images/sidekick-contact-avatar.png`.
+- `/Users/cj/Downloads/Screenshot 2026-07-14 at 09.43.27.png`.
+- The source is a competitor reference, so the target is its clear location capability and switch—not a direct copy of its profile/skills screen.
+- The existing Sidekick grouped Settings screen remains the product-specific layout and visual system.
 
 **Implementation Evidence**
 
-- Screenshot: `/Users/cj/Code/sidekick/plans/sidekick-chat-profile-header-final.png`.
-- Full-view comparison: `/Users/cj/Code/sidekick/plans/sidekick-chat-profile-header-comparison.png`.
-- Focused header comparison: `/Users/cj/Code/sidekick/plans/sidekick-chat-profile-header-focused-comparison.png`.
-- Viewport: iPhone 17 Pro Simulator in portrait; screenshot captured at 942 × 2048 physical pixels.
-- State: authenticated chat sheet, sponsored composer card visible, message composer focused, iOS software keyboard open.
+- Screenshot: `/Users/cj/Code/sidekick/plans/location-settings-implementation.png`.
+- Full-view comparison: `/Users/cj/Code/sidekick/plans/location-settings-comparison.png`.
+- Viewport: iPhone 17 Pro Simulator in portrait; screenshot captured at 1206 × 2622 physical pixels.
+- State: authenticated fresh install, foreground location enabled, synthetic New York simulator coordinate shared through a local ephemeral backend, developer controls visible in the development build.
 
 **Findings**
 
 - No actionable P0, P1, or P2 differences remain.
-- Fonts and typography: the implementation uses the app's existing iOS system typography. `Sidekick` and `Always here` preserve the selected hierarchy and remain readable over the transcript fade.
-- Spacing and layout rhythm: the contact identity is the middle flex child between equal 42-point glass controls, matching the reference implementation's centering strategy. It clears the sheet grabber, reserves transcript space, and remains visible with the keyboard open. The real device aspect ratio is taller than the source mock, so more keyboard and transcript content is visible without changing hierarchy.
-- Colors and visual tokens: the existing iMessage blue, white sheet, gray bubbles, and secondary-label opacity are preserved. The identity chip is a native regular `GlassView`, matching the liquid-glass material used by the reference app.
-- Image quality and asset fidelity: the initial 64-pixel profile source looked soft at Retina density. It was replaced with a dedicated 1024-pixel Sidekick contact avatar; the final capture has a clean circular crop with no typing badge or masking halo.
-- Copy and content: the header reads `Sidekick` and `Always here`. Existing dynamic messages and sponsored content remain untouched.
-- Icons and interaction: existing More, dismiss, add, send, and keyboard controls retain their native hit areas and behavior. The contact identity is a button with the accessibility label `Sidekick, Always here` and opens Sidekick settings.
-- Responsive and keyboard state: the ad, composer, header, and transcript remain reachable with the software keyboard open. No horizontal overflow, clipped primary action, or duplicate typing state is present.
+- Fonts and typography: the implementation uses Sidekick's established iOS system typography. The 17-point Location label and 13-point supporting copy preserve a clear two-level hierarchy without clipping or awkward wrapping.
+- Spacing and layout rhythm: the 76-point integration row, 40-point icon tile, native switch, continuous 14-point card radius, and 12-point internal gaps align with the existing grouped settings screen. The privacy explanation sits directly below the capability it describes.
+- Colors and visual tokens: the screen preserves Sidekick's grouped gray background, white cards, blue accent, secondary-label gray, and native green enabled state. Contrast and grouping remain clear.
+- Image quality and asset fidelity: location uses the native SF Symbol through Expo Symbols, which is the appropriate code-native asset for a standard platform icon. It renders sharply at device density with no placeholder or custom-drawn substitute.
+- Copy and content: the row explains the user benefit, while the footer states foreground-only use, on-device coordinate disposal, and the exact city-level fields retained. The language is materially clearer about privacy than the reference.
+- Interaction and states: the real native switch requested iOS “Allow While Using App” permission, reverse-geocoded the synthetic coordinate, and rendered `Sharing New York with your Sidekick`. Switching it off removed location from the live server context; switching it on again reused the saved foreground permission and restored New York. A denied permanent permission offers a route to system Settings.
+- Responsiveness and accessibility: the primary row, switch, privacy copy, and navigation fit the phone viewport with no horizontal overflow or clipped action. The native switch and Symbol retain platform behavior.
 
 **Open Questions**
 
@@ -29,23 +28,21 @@
 
 **Implementation Checklist**
 
-- [x] Add the centered Sidekick contact identity.
-- [x] Keep the transcript typing indicator as the only typing state.
-- [x] Preserve the live phone-holding mascot above the sheet.
-- [x] Verify the composer and sponsored card with the software keyboard open.
-- [x] Replace the low-resolution profile source and repeat visual comparison.
+- [x] Add the location capability to Sidekick's existing Settings screen.
+- [x] Make foreground permission and app-level opt-in separate states.
+- [x] Upload only reverse-geocoded city/region/country and discard coordinates on-device.
+- [x] Delete the server copy and stop refreshes when switched off.
+- [x] Add coarse location to the agent's dynamic context.
+- [x] Verify the native layout in the iPhone simulator.
+- [x] Exercise enable, native permission, city display, agent context, disable, and re-enable against an authenticated local test backend.
 
 **Comparison History**
 
-- Pass 1: found a P2 image-quality issue because the existing 64-pixel avatar rendered softly at Retina density.
-- Fix: generated and installed a dedicated 1024 × 1024 Sidekick contact avatar.
-- Pass 2: the final simulator capture shows a sharp, centered avatar; header copy, messages, sponsored card, composer, and keyboard remain intact. No actionable P0/P1/P2 findings remain.
-- Pass 3: user review identified a P1 material and alignment mismatch: the label was a plain translucent view and the identity used absolute positioning instead of the reference app's centered three-child layout.
-- Fix: ported the reference `ChatHeader` structure—equal 42-point side controls, contact identity as the middle flex child, and a regular native `GlassView` chip with continuous corners.
-- Pass 4: the revised keyboard-open simulator capture shows the avatar and chip aligned to the device centerline, with visible liquid-glass refraction and both side controls balanced. No actionable P0/P1/P2 findings remain.
+- Pass 1: the native simulator capture preserves the reference's clear icon/title/description/switch relationship while intentionally using Sidekick's grouped settings language. No actionable P0/P1/P2 mismatch was found.
+- Pass 2: a clean authenticated install used a synthetic New York coordinate. The native permission prompt, on-device reverse geocode, server update, agent context, disconnect deletion, and permission-preserving re-enable all completed successfully. The run exposed a switch loading-state issue after disconnect; invalidation was made non-blocking and the full off→on cycle then passed.
 
 **Focused Region Rationale**
 
-- A focused header comparison was required because avatar sharpness, label hierarchy, glass-button clearance, and the intentionally absent typing badge are too small to judge reliably in the full-screen comparison.
+- A separate focused crop was not needed because the location row, native switch, and privacy footer are fully legible in the 1178-pixel-wide full-view comparison.
 
 final result: passed

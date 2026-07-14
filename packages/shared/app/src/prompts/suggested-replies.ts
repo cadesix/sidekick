@@ -24,7 +24,7 @@ export function encodeStreamMeta(meta: StreamMeta): string {
 
 /**
  * Mid-stream device-tool frame (12-life-integrations.md). When the model emits
- * client tool-calls (focus_*, read_health) the server writes this frame into the
+ * client Focus tool-calls the server writes this frame into the
  * chat stream — same ``-delimited scheme as the search + meta frames — so
  * the app can run the native op and post results back. The payload is the JSON
  * array of `{ toolCallId, toolName, input }` calls.

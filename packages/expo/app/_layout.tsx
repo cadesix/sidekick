@@ -29,7 +29,7 @@ function useForegroundSync(): void {
   useEffect(() => {
     async function sync(): Promise<void> {
       try {
-        const days = await readHealthDays(7);
+        const days = await readHealthDays(30);
         if (days.length > 0) {
           await syncHealth(days);
         }
@@ -76,6 +76,8 @@ export default function RootLayout() {
                 {/* Settings opens from inside the natively-presented chat
                     sheet — only modal presentations appear above it */}
                 <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
+                <Stack.Screen name="focus-setup" options={{ presentation: 'modal' }} />
+                <Stack.Screen name="health-setup" options={{ presentation: 'modal' }} />
                 <Stack.Screen name="dev/ad-preview" options={{ presentation: 'modal' }} />
               </Stack>
             </AuthGate>

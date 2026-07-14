@@ -9,6 +9,8 @@ import {
 } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
 import { registerDevice, syncHealthDays } from "@sidekick/server";
+import { allTools, dispatchTool } from "@sidekick/shared";
+import { createConversation } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -63,6 +65,44 @@ test("sync upserts a day and re-sync updates in place (merge, no dup)", async ()
   expect(rows[0]?.steps).toBe(11204);
   expect(rows[0]?.sleepMinutes).toBe(401);
   expect(Array.isArray(rows[0]?.workouts)).toBe(true);
+});
+
+test("sync retains only the newest 30 local calendar days", async () => {
+  const { userId } = await registerDevice(db, { deviceId: "health-retention" });
+  const days = Array.from({ length: 31 }, (_, offset) => {
+    const date = new Date(Date.UTC(2026, 6, 31 - offset));
+    return { date: date.toISOString().slice(0, 10), steps: 5000 + offset, workouts: [] };
+  });
+  await syncHealthDays(db, userId, days);
+
+  const rows = await db.select().from(healthDays).where(eq(healthDays.userId, userId));
+  expect(rows).toHaveLength(30);
+  expect(rows.some((row) => row.date === "2026-07-01")).toBe(false);
+});
+
+test("health_summary reads only the consented server aggregate window", async () => {
+  const { userId } = await registerDevice(db, { deviceId: "health-summary" });
+  await syncHealthDays(db, userId, [
+    { date: new Date().toISOString().slice(0, 10), steps: 8200, workouts: [] },
+  ]);
+  const tool = allTools.find((candidate) => candidate.name === "health_summary");
+  expect(tool).toBeDefined();
+  if (!tool) {
+    return;
+  }
+  const conversationId = await createConversation(db, userId);
+  const result = await dispatchTool(
+    tool,
+    { metric: "steps", range_days: 7 },
+    { db, userId, conversationId },
+  );
+  expect(result).toEqual({
+    status: "done",
+    result: {
+      metric: "steps",
+      days: [{ date: new Date().toISOString().slice(0, 10), value: 8200 }],
+    },
+  });
 });
 
 test("a matching workout auto-logs a device-verified hit", async () => {

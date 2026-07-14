@@ -17,9 +17,11 @@ export const FOCUS_SHIELD_ID = "sidekick";
 export const FOCUS_DAILY_ACTIVITY = "focus-daily";
 /** The one-off monitor that re-blocks when a temporary unlock elapses. */
 export const FOCUS_REBLOCK_ACTIVITY = "focus-reblock";
+export const FOCUS_SESSION_ACTIVITY = "focus-session";
+export const FOCUS_SCHEDULE_ACTIVITY_PREFIX = "focus-schedule";
 
 /** Platform allows 20; we use at most 3 (daily, re-block, 03's passive threshold). */
-export const MAX_FOCUS_MONITORS = 3;
+export const MAX_FOCUS_MONITORS = 10;
 
 export const MIN_UNLOCK_MINUTES = 5;
 export const MAX_UNLOCK_MINUTES = 60;
@@ -34,7 +36,15 @@ export function isFocusGoalSlug(slug: string): boolean {
 }
 
 /** Foundation DateComponents subset — a wall-clock point or an accumulated duration. */
-export type FocusDateComponents = { hour?: number; minute?: number; second?: number };
+export type FocusDateComponents = {
+  hour?: number;
+  minute?: number;
+  second?: number;
+  weekday?: number;
+  year?: number;
+  month?: number;
+  day?: number;
+};
 
 export type FocusSchedule = {
   intervalStart: FocusDateComponents;
@@ -179,8 +189,8 @@ export function reblockMonitorPlan(input: { now: Date; minutes: number }): Focus
   return {
     activityName: FOCUS_REBLOCK_ACTIVITY,
     schedule: {
-      intervalStart: { hour: input.now.getHours(), minute: input.now.getMinutes() },
-      intervalEnd: { hour: end.getHours(), minute: end.getMinutes() },
+      intervalStart: dateComponents(input.now),
+      intervalEnd: dateComponents(end),
       repeats: false,
     },
     events: [],
@@ -194,6 +204,87 @@ export function reblockMonitorPlan(input: { now: Date; minutes: number }): Focus
             shieldId: FOCUS_SHIELD_ID,
           },
         ],
+      },
+    ],
+  };
+}
+
+export function focusSessionPlan(input: { now: Date; minutes: number }): FocusMonitorPlan {
+  const end = new Date(input.now.getTime() + input.minutes * 60_000);
+  return {
+    activityName: FOCUS_SESSION_ACTIVITY,
+    schedule: {
+      intervalStart: dateComponents(input.now),
+      intervalEnd: dateComponents(end),
+      repeats: false,
+    },
+    events: [],
+    actions: [
+      {
+        callbackName: "intervalDidEnd",
+        actions: [
+          { type: "unblockSelection", familyActivitySelectionId: FOCUS_SELECTION_ID },
+          {
+            type: "sendNotification",
+            payload: {
+              title: "Your Focus session is complete.",
+              body: "Your guarded apps are available again.",
+              userInfo: { type: "focus_session_complete" },
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function dateComponents(date: Date): FocusDateComponents {
+  return {
+    year: date.getFullYear(),
+    month: date.getMonth() + 1,
+    day: date.getDate(),
+    hour: date.getHours(),
+    minute: date.getMinutes(),
+  };
+}
+
+export function scheduledMonitorPlan(input: {
+  weekday: number;
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
+}): FocusMonitorPlan {
+  return {
+    activityName: `${FOCUS_SCHEDULE_ACTIVITY_PREFIX}-${input.weekday}`,
+    schedule: {
+      intervalStart: {
+        weekday: input.weekday,
+        hour: input.startHour,
+        minute: input.startMinute,
+      },
+      intervalEnd: {
+        weekday: input.weekday,
+        hour: input.endHour,
+        minute: input.endMinute,
+      },
+      repeats: true,
+    },
+    events: [],
+    actions: [
+      {
+        callbackName: "intervalDidStart",
+        actions: [
+          {
+            type: "blockSelection",
+            familyActivitySelectionId: FOCUS_SELECTION_ID,
+            shieldId: FOCUS_SHIELD_ID,
+          },
+        ],
+      },
+      {
+        callbackName: "intervalDidEnd",
+        actions: [{ type: "unblockSelection", familyActivitySelectionId: FOCUS_SELECTION_ID }],
       },
     ],
   };
@@ -215,36 +306,6 @@ export function assertMonitorCapacity(activeActivityNames: string[], adding: str
   }
 }
 
-/** The server mirror never holds app identity — just enough for the sidekick's context. */
-export type FocusMirrorPatch = {
-  enabled?: boolean;
-  budgetMinutes?: number | null;
-  selectionCount?: number;
-};
-
-export const focusMirrorPatch = {
-  /** `focus_set_budget` / setup with a budget: on, and the new daily budget. */
-  setBudget(minutes: number): FocusMirrorPatch {
-    return { enabled: true, budgetMinutes: minutes };
-  },
-  /** `focus_block_now`: on (block-on-demand needs no budget). */
-  blockNow(): FocusMirrorPatch {
-    return { enabled: true };
-  },
-  /** `focus_disable`: off. Budget/selection are left as-is for a later re-enable. */
-  disable(): FocusMirrorPatch {
-    return { enabled: false };
-  },
-  /** "start guarding" on the setup screen: on, with the chosen budget + app count. */
-  startGuarding(input: { selectionCount: number; budgetMinutes: number | null }): FocusMirrorPatch {
-    return {
-      enabled: true,
-      selectionCount: input.selectionCount,
-      budgetMinutes: input.budgetMinutes,
-    };
-  },
-} as const;
-
 export const BUDGET_CHOICES = [15, 30, 45, 60] as const;
 
 /** "15m" / "30m" / "45m" / "1h" — the budget ReplyChip labels. */
@@ -258,17 +319,4 @@ export function budgetLabel(minutes: number): string {
 /** Setup's "start guarding" is live only once at least one app is chosen (13 §UI). */
 export function setupReady(input: { selectionCount: number }): boolean {
   return input.selectionCount > 0;
-}
-
-export type FocusChipState = "under" | "blocked" | null;
-
-/** Home goal-row shield chip (13 §home): nothing when off, else under/blocked. */
-export function focusChipState(input: { enabled: boolean; blocked: boolean }): FocusChipState {
-  if (!input.enabled) {
-    return null;
-  }
-  if (input.blocked) {
-    return "blocked";
-  }
-  return "under";
 }

@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import {
   type Action,
   type CallbackName,
@@ -10,68 +11,123 @@ import {
   configureActions,
   getActivities,
   getAuthorizationStatus,
-  getEvents,
   getFamilyActivitySelectionId,
   isAvailable,
-  isShieldActive,
   requestAuthorization,
   resetBlocks,
   startMonitoring,
   stopMonitoring,
   unblockSelection,
   updateShieldWithId,
+  userDefaultsGet,
+  userDefaultsSet,
 } from "react-native-device-activity";
 import {
   FOCUS_DAILY_ACTIVITY,
   FOCUS_REBLOCK_ACTIVITY,
+  FOCUS_SCHEDULE_ACTIVITY_PREFIX,
   FOCUS_SELECTION_ID,
+  FOCUS_SESSION_ACTIVITY,
   FOCUS_SHIELD_ID,
+  type FocusMode,
   type FocusMonitorPlan,
+  type FocusScheduleConfig,
+  type LocalFocusSettings,
   SHIELD_KNOCK_BODY,
   SHIELD_KNOCK_TITLE,
   SHIELD_PRIMARY_LABEL,
   assertMonitorCapacity,
   clampUnlockMinutes,
   dailyMonitorPlan,
+  focusSessionPlan,
+  localFocusSettingsSchema,
   pickShieldSubtitle,
   reblockMonitorPlan,
+  scheduledMonitorPlan,
   shieldSecondaryLabel,
   shieldTitle,
 } from "@sidekick/shared";
-import { fetchHome, fetchMe, getFocusSettings, updateFocusSettings } from "./api";
-
-/**
- * The single seam onto Apple's Family Controls / DeviceActivity / ManagedSettings
- * (13-focus-mode.md), wrapping `react-native-device-activity`. Every native call
- * lives here, guarded by `isAvailable()` — the entitlement may be missing, or iOS
- * may be < 15.1, in which case each function no-ops or reports unavailable and the
- * self-report tier keeps the goal alive. The shape of every schedule/event/action
- * is built by the pure helpers in `@sidekick/shared`; this file only maps them onto
- * the module and executes. It NEVER learns which apps the user picked — tokens are
- * opaque and stay on-device.
- */
+import { fetchHome, fetchMe } from "./api";
 
 const APPROVED = 2;
+const LOCAL_SETTINGS_KEY = "sidekickFocusSettings";
+const SCHEDULE_ACTIVITY_NAMES = Array.from(
+  { length: 7 },
+  (_, index) => `${FOCUS_SCHEDULE_ACTIVITY_PREFIX}-${index + 1}`,
+);
+const ALL_MONITORS = [
+  FOCUS_DAILY_ACTIVITY,
+  FOCUS_REBLOCK_ACTIVITY,
+  FOCUS_SESSION_ACTIVITY,
+  ...SCHEDULE_ACTIVITY_NAMES,
+];
+
+export const DEFAULT_FOCUS_SCHEDULE: FocusScheduleConfig = {
+  days: [2, 3, 4, 5, 6],
+  startHour: 9,
+  startMinute: 0,
+  endHour: 17,
+  endMinute: 0,
+  label: "Work",
+};
+
+export const DEFAULT_FOCUS_SETTINGS: LocalFocusSettings = {
+  enabled: false,
+  mode: "daily",
+  budgetMinutes: 30,
+  selectionCount: 0,
+  schedule: null,
+  sessionEndsAt: null,
+};
 
 export function focusAvailable(): boolean {
-  return isAvailable();
+  return Platform.OS === "ios" && Number.parseInt(String(Platform.Version), 10) >= 16 && isAvailable();
 }
 
-/** Contextual Family Controls authorization (13 / 03). Resolves to whether granted. */
+export function focusAuthorizationStatus(): number {
+  if (!focusAvailable()) {
+    return 0;
+  }
+  return getAuthorizationStatus();
+}
+
 export async function requestFocusAuthorization(): Promise<boolean> {
-  if (!isAvailable()) {
+  if (!focusAvailable()) {
     return false;
   }
-  await requestAuthorization();
+  await requestAuthorization("individual");
   return getAuthorizationStatus() === APPROVED;
 }
 
-/** The persisted selection token, or undefined if the user hasn't picked apps yet. */
 export function focusSelectionToken(): string | undefined {
   return getFamilyActivitySelectionId(FOCUS_SELECTION_ID);
 }
 
-/** Register one monitor from a pure plan: its schedule/events plus its actions. */
+export function getLocalFocusSettings(): LocalFocusSettings {
+  if (!focusAvailable()) {
+    return DEFAULT_FOCUS_SETTINGS;
+  }
+  const parsed = localFocusSettingsSchema.safeParse(userDefaultsGet<unknown>(LOCAL_SETTINGS_KEY));
+  if (!parsed.success) {
+    return DEFAULT_FOCUS_SETTINGS;
+  }
+  return parsed.data;
+}
+
+export function saveLocalFocusSettings(settings: LocalFocusSettings): LocalFocusSettings {
+  const parsed = localFocusSettingsSchema.parse(settings);
+  if (focusAvailable()) {
+    userDefaultsSet(LOCAL_SETTINGS_KEY, parsed);
+  }
+  return parsed;
+}
+
+export function patchLocalFocusSettings(
+  patch: Partial<LocalFocusSettings>,
+): LocalFocusSettings {
+  return saveLocalFocusSettings({ ...getLocalFocusSettings(), ...patch });
+}
+
 function applyMonitorPlan(plan: FocusMonitorPlan): Promise<void> {
   for (const config of plan.actions) {
     const actions: Action[] = config.actions;
@@ -88,16 +144,11 @@ function applyMonitorPlan(plan: FocusMonitorPlan): Promise<void> {
   return startMonitoring(plan.activityName, schedule, events);
 }
 
-/**
- * (Re)configure the repeating daily-budget monitor (13 §mechanics): warn at 80%,
- * block at the limit behind the sidekick shield, unblock at midnight. Requires a
- * persisted selection — returns false if the user hasn't picked apps.
- */
 export async function startDailyMonitor(input: {
   budgetMinutes: number;
   sidekickName: string;
 }): Promise<boolean> {
-  if (!isAvailable()) {
+  if (!focusAvailable()) {
     return false;
   }
   const token = focusSelectionToken();
@@ -106,35 +157,105 @@ export async function startDailyMonitor(input: {
   }
   assertMonitorCapacity(getActivities(), FOCUS_DAILY_ACTIVITY);
   await applyMonitorPlan(
-    dailyMonitorPlan({ budgetMinutes: input.budgetMinutes, selectionToken: token, sidekickName: input.sidekickName }),
+    dailyMonitorPlan({
+      budgetMinutes: input.budgetMinutes,
+      selectionToken: token,
+      sidekickName: input.sidekickName,
+    }),
   );
   return true;
 }
 
-/** Force block now ("lock me out, i'm studying"). */
-export function forceBlock(): void {
-  if (!isAvailable()) {
-    return;
+async function startScheduledMonitors(schedule: FocusScheduleConfig): Promise<boolean> {
+  if (!focusSelectionToken()) {
+    return false;
+  }
+  for (const weekday of schedule.days) {
+    const plan = scheduledMonitorPlan({
+      weekday,
+      startHour: schedule.startHour,
+      startMinute: schedule.startMinute,
+      endHour: schedule.endHour,
+      endMinute: schedule.endMinute,
+    });
+    assertMonitorCapacity(getActivities(), plan.activityName);
+    await applyMonitorPlan(plan);
+  }
+  return true;
+}
+
+export async function activateFocus(input: {
+  mode: FocusMode;
+  budgetMinutes: number | null;
+  schedule: FocusScheduleConfig | null;
+  selectionCount: number;
+  sidekickName: string;
+}): Promise<boolean> {
+  if (!focusAvailable() || !focusSelectionToken() || input.selectionCount < 1) {
+    return false;
+  }
+  stopMonitoring(ALL_MONITORS);
+  let started = true;
+  if (input.mode === "daily" && input.budgetMinutes !== null) {
+    started = await startDailyMonitor({
+      budgetMinutes: input.budgetMinutes,
+      sidekickName: input.sidekickName,
+    });
+  } else if (input.mode === "scheduled" && input.schedule !== null) {
+    started = await startScheduledMonitors(input.schedule);
+  }
+  if (!started) {
+    return false;
+  }
+  saveLocalFocusSettings({
+    enabled: true,
+    mode: input.mode,
+    budgetMinutes: input.budgetMinutes,
+    selectionCount: input.selectionCount,
+    schedule: input.schedule,
+    sessionEndsAt: null,
+  });
+  refreshShield({
+    date: new Date(),
+    budgetMinutes: input.budgetMinutes,
+    streak: 0,
+    sidekickName: input.sidekickName,
+  });
+  return true;
+}
+
+export function forceBlock(): boolean {
+  if (!focusAvailable() || !focusSelectionToken()) {
+    return false;
   }
   blockSelection({ activitySelectionId: FOCUS_SELECTION_ID }, "focus_block_now");
+  return true;
 }
 
-/** Lift the block immediately (no re-block scheduled — used by disable). */
-export function unblock(): void {
-  if (!isAvailable()) {
-    return;
+export async function startFocusSession(minutes: number): Promise<boolean> {
+  if (!focusAvailable() || !focusSelectionToken()) {
+    return false;
   }
-  unblockSelection({ activitySelectionId: FOCUS_SELECTION_ID }, "focus_unblock");
+  const now = new Date();
+  assertMonitorCapacity(getActivities(), FOCUS_SESSION_ACTIVITY);
+  forceBlock();
+  await applyMonitorPlan(focusSessionPlan({ now, minutes }));
+  patchLocalFocusSettings({
+    enabled: true,
+    sessionEndsAt: new Date(now.getTime() + minutes * 60_000).toISOString(),
+  });
+  return true;
 }
 
-/**
- * Temporary unlock (13 §mechanics): lift the block now and start a one-off monitor
- * that natively re-blocks when the window elapses — even if the user never reopens
- * the app. Returns the actually-applied minutes (clamped 5–60).
- */
+export function unblock(): void {
+  if (focusAvailable()) {
+    unblockSelection({ activitySelectionId: FOCUS_SELECTION_ID }, "focus_unblock");
+  }
+}
+
 export async function temporaryUnlock(minutes: number): Promise<number> {
   const applied = clampUnlockMinutes(minutes);
-  if (!isAvailable()) {
+  if (!focusAvailable() || !focusSelectionToken()) {
     return applied;
   }
   assertMonitorCapacity(getActivities(), FOCUS_REBLOCK_ACTIVITY);
@@ -143,56 +264,28 @@ export async function temporaryUnlock(minutes: number): Promise<number> {
   return applied;
 }
 
-/** Turn focus fully off (13 §disable): stop every focus monitor and drop all blocks. */
 export function disableFocus(): void {
-  if (!isAvailable()) {
+  if (!focusAvailable()) {
     return;
   }
-  stopMonitoring([FOCUS_DAILY_ACTIVITY, FOCUS_REBLOCK_ACTIVITY]);
+  stopMonitoring(ALL_MONITORS);
   unblock();
   resetBlocks("focus_disable");
+  patchLocalFocusSettings({ enabled: false, sessionEndsAt: null });
 }
 
-/** Whether the shield is currently up (drives the home "blocked" chip). */
-export function focusBlocked(): boolean {
-  if (!isAvailable()) {
-    return false;
-  }
-  return isShieldActive();
-}
+const WHITE = { red: 255, green: 255, blue: 255 };
+const WHITE_60 = { red: 255, green: 255, blue: 255, alpha: 0.6 };
+const SUN = { red: 242, green: 201, blue: 76 };
+const INK = { red: 17, green: 17, blue: 17 };
 
-/** Today's warn/limit flags for `focus_status`, read from the monitor's event log. */
-export function todayFocusFlags(): { warn: boolean; limit: boolean } {
-  if (!isAvailable()) {
-    return { warn: false, limit: false };
-  }
-  const events = getEvents(FOCUS_DAILY_ACTIVITY);
-  return {
-    warn: events.some((event) => event.eventName === "warn"),
-    limit: events.some((event) => event.eventName === "limit"),
-  };
-}
-
-const WHITE = { red: 255, green: 255, blue: 255 } as const;
-const WHITE_60 = { red: 255, green: 255, blue: 255, alpha: 0.6 } as const;
-const SUN = { red: 242, green: 201, blue: 76 } as const;
-const INK = { red: 17, green: 17, blue: 17 } as const;
-
-/**
- * Push the shield's static config to the App Group so the ShieldConfiguration
- * extension can render it (13 §shield). Refreshed once daily on foreground — the
- * subtitle rotates by day so the shield never feels canned. Registered under
- * `sidekick` (the id the block actions raise), title/subtitle in the sidekick's
- * voice, systemThickMaterialDark blur, sun primary button, moon.stars.fill icon.
- * Secondary "let me ask {name}" fires a local notification that deep-links to chat.
- */
 export function refreshShield(input: {
   date: Date;
   budgetMinutes: number | null;
   streak: number;
   sidekickName: string;
 }): void {
-  if (!isAvailable()) {
+  if (!focusAvailable()) {
     return;
   }
   const config: ShieldConfiguration = {
@@ -201,7 +294,7 @@ export function refreshShield(input: {
     titleColor: WHITE,
     subtitleColor: WHITE_60,
     backgroundBlurStyle: UIBlurEffectStyle.systemThickMaterialDark,
-    iconSystemName: "moon.stars.fill",
+    iconSystemName: "shield.lefthalf.filled",
     iconTint: SUN,
     primaryButtonLabel: SHIELD_PRIMARY_LABEL,
     primaryButtonBackgroundColor: SUN,
@@ -228,17 +321,9 @@ export function refreshShield(input: {
   updateShieldWithId(config, actions, FOCUS_SHIELD_ID);
 }
 
-/**
- * On foreground: if focus is on, refresh the daily shield line. Reads the mirror +
- * profile + streak the shield needs. Silent no-op when focus is unavailable or off.
- * Called from the existing foreground sync in app/_layout.tsx.
- */
 export async function maybeRefreshFocusShield(): Promise<void> {
-  if (!isAvailable()) {
-    return;
-  }
-  const settings = await getFocusSettings();
-  if (!settings.enabled) {
+  const settings = getLocalFocusSettings();
+  if (!focusAvailable() || !settings.enabled) {
     return;
   }
   const [me, home] = await Promise.all([fetchMe(), fetchHome()]);
@@ -248,13 +333,4 @@ export async function maybeRefreshFocusShield(): Promise<void> {
     streak: home.streak,
     sidekickName: me.sidekickName ?? "your sidekick",
   });
-}
-
-/** Mirror the app-identity-free focus state to the server after a native op (13). */
-export function mirrorFocus(patch: {
-  enabled?: boolean;
-  budgetMinutes?: number | null;
-  selectionCount?: number;
-}): Promise<unknown> {
-  return updateFocusSettings(patch);
 }

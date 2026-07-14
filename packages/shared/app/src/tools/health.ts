@@ -1,20 +1,48 @@
-import { readHealthInputSchema } from "../health/types";
+import { and, asc, eq, gte } from "drizzle-orm";
+import { healthDays } from "@sidekick/db";
+import { healthSummaryInputSchema } from "../health/types";
 import { defineTool, type SidekickTool } from "./types";
 
 /**
- * Health capability (12-life-integrations.md). Day-to-day health context reaches
- * the model through the memory block's RECENT section (rendered from `health_days`,
- * no round-trip). This single *device* tool exists for depth — "how's my sleep been
- * this month?" — running the native HealthKit query on the app and returning via
- * `chat.deviceToolResult`. If health isn't shared, the app returns
- * `{ error: 'device_unavailable' }` and the model says so in-voice.
+ * Health is summarized only from the consented, minimized 30-day server window.
  */
 export const healthTools: SidekickTool[] = [
   defineTool({
-    name: "read_health",
+    name: "health_summary",
     description:
-      "Look at the user's Apple Health history over the last N days (max 30) for one metric: steps, sleep, workouts, heart_rate, or calories. Use for reflective questions like 'how's my sleep been this month'. Day-to-day numbers are already in your context — only reach for this when you need a longer range. If health isn't shared, the app returns { error: 'device_unavailable' }; acknowledge it gently and move on.",
-    execution: "client",
-    parameters: readHealthInputSchema,
+      "Summarize the user's explicitly shared Apple Health daily aggregates over the last N days (max 30) for steps, sleep, workouts, or active calories. Use for reflective questions, avoid diagnosis, and describe missing days as unavailable data.",
+    execution: "server",
+    parameters: healthSummaryInputSchema,
+    execute: async ({ range_days, metric }, { db, userId }) => {
+      const start = new Date();
+      start.setUTCDate(start.getUTCDate() - range_days + 1);
+      const startDate = start.toISOString().slice(0, 10);
+      const rows = await db
+        .select({
+          date: healthDays.date,
+          steps: healthDays.steps,
+          sleepMinutes: healthDays.sleepMinutes,
+          activeCalories: healthDays.activeCalories,
+          workouts: healthDays.workouts,
+        })
+        .from(healthDays)
+        .where(and(eq(healthDays.userId, userId), gte(healthDays.date, startDate)))
+        .orderBy(asc(healthDays.date));
+
+      const days = rows.map((row) => {
+        let value: number | null = null;
+        if (metric === "steps") {
+          value = row.steps;
+        } else if (metric === "sleep") {
+          value = row.sleepMinutes;
+        } else if (metric === "calories") {
+          value = row.activeCalories;
+        } else if (Array.isArray(row.workouts)) {
+          value = row.workouts.length;
+        }
+        return { date: row.date, value };
+      });
+      return { metric, days };
+    },
   }),
 ];

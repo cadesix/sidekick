@@ -380,7 +380,6 @@ export const healthDays = pgTable(
     date: date("date").notNull(),
     steps: integer("steps"),
     activeCalories: integer("active_calories"),
-    restingHr: integer("resting_hr"),
     sleepMinutes: integer("sleep_minutes"),
     sleepStart: timestamp("sleep_start", { withTimezone: true, mode: "date" }),
     sleepEnd: timestamp("sleep_end", { withTimezone: true, mode: "date" }),
@@ -389,17 +388,6 @@ export const healthDays = pgTable(
   },
   (t) => [uniqueIndex("health_days_user_id_date_idx").on(t.userId, t.date)],
 );
-
-/** Server mirror of on-device focus state — never holds app identity (13). */
-export const focusSettings = pgTable("focus_settings", {
-  userId: uuid("user_id")
-    .primaryKey()
-    .references(() => users.id),
-  enabled: boolean("enabled").notNull().default(false),
-  budgetMinutes: integer("budget_minutes"),
-  selectionCount: integer("selection_count").notNull().default(0),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
-});
 
 /** Encrypted Apple Music user token store (12). */
 export const musicAuth = pgTable("music_auth", {

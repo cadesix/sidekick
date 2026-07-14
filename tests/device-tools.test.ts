@@ -112,7 +112,7 @@ test("device-tool round-trip: frame surfaced, result drives continuation, valid 
     conversationId,
     toolCallId: "d1",
     toolName: "focus_block_now",
-    result: { ok: true, blocked: true },
+    result: { ok: true },
   });
   const cont = await continueTurn(services(userId, model), { conversationId });
   const contText = await drain(cont.textStream);
@@ -123,7 +123,7 @@ test("device-tool round-trip: frame surfaced, result drives continuation, valid 
   const rows = await conversationMessages(conversationId);
   expect(rows.map((r) => r.role)).toEqual(["user", "assistant", "tool", "assistant"]);
   expect(JSON.stringify(rows[1]!.toolCalls)).toContain("focus_block_now");
-  expect(JSON.parse(rows[2]!.content)).toEqual({ ok: true, blocked: true });
+  expect(JSON.parse(rows[2]!.content)).toEqual({ ok: true });
   expect(rows[3]!.content).toContain("locked in");
 
   // buildContextView reconstructs the pair into paired ModelMessages
@@ -144,7 +144,7 @@ test("no client result → continuation carries device_unavailable so the model 
   const userId = await makeUser("dt-unavailable");
   const conversationId = await createConversation(db, userId);
   const model = scriptedStreamModel([
-    [deviceCall("u1", "focus_status"), finish("tool-calls")],
+    [deviceCall("u1", "focus_start_session", { minutes: 45 }), finish("tool-calls")],
     [...textParts("hmm, i can't peek at that right now"), finish("stop")],
   ]);
 
@@ -156,7 +156,7 @@ test("no client result → continuation carries device_unavailable so the model 
   await recordDeviceToolResult(db, userId, {
     conversationId,
     toolCallId: "u1",
-    toolName: "focus_status",
+    toolName: "focus_start_session",
     result: { error: "device_unavailable" },
   });
 

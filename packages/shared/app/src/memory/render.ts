@@ -91,6 +91,9 @@ export async function renderMemoryBlock(
       ageBracket: users.ageBracket,
       timezone: users.timezone,
       personality: users.personality,
+      lastCity: users.lastCity,
+      lastRegion: users.lastRegion,
+      lastCountry: users.lastCountry,
     })
     .from(users)
     .where(eq(users.id, userId))
@@ -150,7 +153,16 @@ export async function renderMemoryBlock(
 
   const tasteLines = bulletsFor(memoryRows, ["interest", "preference"]);
 
+  const location = [user.lastCity, user.lastRegion, user.lastCountry]
+    .filter((value): value is string => Boolean(value))
+    .join(", ");
+  const currentContextLines: string[] = [];
+  if (location.length > 0) {
+    currentContextLines.push(`- current location: ${location} (city-level, shared from their device)`);
+  }
+
   const blocks = [
+    section("CURRENT CONTEXT", currentContextLines),
     section(`ABOUT ${pronouns.object.toUpperCase()}`, aboutLines),
     section(`${pronouns.possessive.toUpperCase()} PEOPLE`, peopleLines),
     section("GOALS (ids for log_checkin)", goalLines),
@@ -161,9 +173,9 @@ export async function renderMemoryBlock(
   ].filter((b): b is string => b !== null);
 
   const header = `=== WHAT YOU KNOW ABOUT ${name} ===
-today is ${formatToday(today)}. all of this came from past conversations — use it the way a
-friend would: naturally, one thing at a time, never as a list, never quoting this
-section. don't force references; if nothing fits, mention nothing.`;
+today is ${formatToday(today)}. this context comes from past conversations and connected
+sources — use it the way a friend would: naturally, one thing at a time, never as a
+list, never quoting this section. don't force references; if nothing fits, mention nothing.`;
 
   return `${header}\n\n${blocks.join("\n\n")}\n=== END ===`;
 }

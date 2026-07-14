@@ -7,7 +7,6 @@ type HealthRow = {
   date: string;
   steps: number | null;
   activeCalories: number | null;
-  restingHr: number | null;
   sleepMinutes: number | null;
   sleepStart: Date | null;
   sleepEnd: Date | null;
@@ -70,13 +69,10 @@ function renderRow(row: HealthRow, label: string, timezone: string): string | nu
     parts.push(`${sleepDuration(row.sleepMinutes)} sleep${window}`);
   }
   parts.push(...workoutPhrases(row.workouts));
-  if (row.restingHr !== null && row.restingHr > 0) {
-    parts.push(`resting hr ${row.restingHr}`);
-  }
   if (parts.length === 0) {
     return null;
   }
-  return `- ${label}: ${parts.join(", ")}`;
+  return `- connected Apple Health summary: ${label}: ${parts.join(", ")}`;
 }
 
 /**
@@ -109,7 +105,6 @@ export async function renderHealthLines(
       date: healthDays.date,
       steps: healthDays.steps,
       activeCalories: healthDays.activeCalories,
-      restingHr: healthDays.restingHr,
       sleepMinutes: healthDays.sleepMinutes,
       sleepStart: healthDays.sleepStart,
       sleepEnd: healthDays.sleepEnd,

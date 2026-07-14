@@ -50,7 +50,7 @@ describe("drainStreamFrames — device-tool frame", () => {
 
   it("reassembles a frame split across two reads", () => {
     const frame = encodeDeviceToolCalls([
-      { toolCallId: "d2", toolName: "read_health", input: { metric: "steps", range_days: 7 } },
+      { toolCallId: "d2", toolName: "focus_start_session", input: { minutes: 45 } },
     ]);
     const full = `hi${frame}`;
     const mid = Math.floor(full.length / 2);
@@ -58,19 +58,19 @@ describe("drainStreamFrames — device-tool frame", () => {
     expect(text).toBe("hi");
     expect(pending).toBe("");
     expect(calls).toEqual([
-      { toolCallId: "d2", toolName: "read_health", input: { metric: "steps", range_days: 7 } },
+      { toolCallId: "d2", toolName: "focus_start_session", input: { minutes: 45 } },
     ]);
   });
 
   it("coexists with search + meta frames in one stream", () => {
-    const frame = encodeDeviceToolCalls([{ toolCallId: "d3", toolName: "focus_status", input: {} }]);
+    const frame = encodeDeviceToolCalls([{ toolCallId: "d3", toolName: "focus_disable", input: {} }]);
     const meta = encodeStreamMeta({ replies: ["yeah", "nah"] });
     const { calls, searches, metas, text } = consume([
       `${SEARCH_STREAM_START}looking${frame}done${meta}`,
     ]);
     expect(text).toBe("lookingdone");
     expect(searches).toEqual([true]);
-    expect(calls).toEqual([{ toolCallId: "d3", toolName: "focus_status", input: {} }]);
+    expect(calls).toEqual([{ toolCallId: "d3", toolName: "focus_disable", input: {} }]);
     expect(metas).toEqual([{ replies: ["yeah", "nah"] }]);
   });
 });
@@ -100,13 +100,13 @@ describe("runDeviceTools — dispatch → post path", () => {
   it("posts the device_unavailable sentinel a failing dispatch returns", async () => {
     const post = vi.fn(async () => {});
     await runDeviceTools(
-      [{ toolCallId: "x", toolName: "read_health", input: {} }],
+      [{ toolCallId: "x", toolName: "focus_block_now", input: {} }],
       async () => ({ error: "device_unavailable" }),
       post,
     );
     expect(post).toHaveBeenCalledWith({
       toolCallId: "x",
-      toolName: "read_health",
+      toolName: "focus_block_now",
       result: { error: "device_unavailable" },
     });
   });

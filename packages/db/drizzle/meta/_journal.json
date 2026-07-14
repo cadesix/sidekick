@@ -57,6 +57,13 @@
       "when": 1783970881890,
       "tag": "0007_smart_tigra",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784041954138,
+      "tag": "0008_supreme_marvel_boy",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
-import { and, desc, eq } from "drizzle-orm";
-import { type Database, healthDays } from "@sidekick/db";
+import { and, desc, eq, inArray, lt } from "drizzle-orm";
+import { type Database, actionItems, goals, healthDays, progressEvents } from "@sidekick/db";
 import type { HealthDayInput } from "@sidekick/shared";
 import { bumpMemoryVersion } from "../memory/store";
 import { autoLogHealthDay } from "./auto-log";
@@ -37,7 +37,6 @@ export async function syncHealthDays(
       date: day.date,
       steps: day.steps ?? null,
       activeCalories: day.activeCalories ?? null,
-      restingHr: day.restingHr ?? null,
       sleepMinutes: day.sleepMinutes ?? null,
       sleepStart,
       sleepEnd: toDate(day.sleepEnd),
@@ -55,6 +54,20 @@ export async function syncHealthDays(
       workouts: day.workouts,
     });
     logged += result.logged;
+  }
+
+  const newestDate = [...days].sort((a, b) => b.date.localeCompare(a.date))[0]?.date;
+  if (newestDate) {
+    const cutoff = new Date(`${newestDate}T00:00:00.000Z`);
+    cutoff.setUTCDate(cutoff.getUTCDate() - 29);
+    await db
+      .delete(healthDays)
+      .where(
+        and(
+          eq(healthDays.userId, userId),
+          lt(healthDays.date, cutoff.toISOString().slice(0, 10)),
+        ),
+      );
   }
 
   await bumpMemoryVersion(db, userId);
@@ -82,5 +95,21 @@ export async function disconnectHealth(db: Database, userId: string): Promise<{ 
     .delete(healthDays)
     .where(and(eq(healthDays.userId, userId)))
     .returning({ id: healthDays.id });
+  const items = await db
+    .select({ id: actionItems.id })
+    .from(actionItems)
+    .innerJoin(goals, eq(actionItems.goalId, goals.id))
+    .where(eq(goals.userId, userId));
+  if (items.length > 0) {
+    await db
+      .delete(progressEvents)
+      .where(
+        and(
+          inArray(progressEvents.actionItemId, items.map((item) => item.id)),
+          eq(progressEvents.source, "device"),
+        ),
+      );
+  }
+  await bumpMemoryVersion(db, userId);
   return { deleted: deleted.length };
 }

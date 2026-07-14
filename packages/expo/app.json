@@ -11,11 +11,11 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.sanssoftware.sidekick",
-      "appleTeamId": "DNCJ9P24DP",
+      "bundleIdentifier": "com.cadesix.sidekick-mobile",
+      "appleTeamId": "7EZKSK82YK",
       "infoPlist": {
-        "NSHealthShareUsageDescription": "Sidekick reads your steps, sleep, and workouts so it can cheer you on without you having to report anything. It only reads — never writes or shares.",
-        "NSLocationWhenInUseUsageDescription": "Sidekick uses your city — only while you're using the app — to know your weather and what's nearby.",
+        "NSHealthShareUsageDescription": "Sidekick reads daily steps, active energy, sleep, and workout summaries for personalized goal support. If you choose to connect, Sidekick stores up to 30 days of summaries and processes them with its AI provider.",
+        "NSLocationWhenInUseUsageDescription": "Sidekick uses only your city while the app is open, so it can understand what’s nearby and keep local suggestions relevant.",
         "NSLocalNetworkUsageDescription": "Sidekick connects to your local development server while you test the app on this iPhone.",
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -57,7 +57,12 @@
       "expo-asset",
       "expo-secure-store",
       "expo-web-browser",
-      "expo-location",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Sidekick uses only your city while the app is open, so it can understand what’s nearby and keep local suggestions relevant."
+        }
+      ],
       "@react-native-community/datetimepicker",
       [
         "expo-audio",
@@ -74,8 +79,8 @@
       [
         "react-native-device-activity",
         {
-          "appleTeamId": "DNCJ9P24DP",
-          "appGroup": "group.com.sanssoftware.sidekick"
+          "appleTeamId": "7EZKSK82YK",
+          "appGroup": "group.com.cadesix.sidekick-mobile"
         }
       ]
     ],
@@ -91,32 +96,32 @@
             "ios": {
               "appExtensions": [
                 {
-                  "bundleIdentifier": "com.sanssoftware.sidekick.ShieldConfiguration",
+                  "bundleIdentifier": "com.cadesix.sidekick-mobile.ShieldConfiguration",
                   "targetName": "ShieldConfiguration",
                   "entitlements": {
                     "com.apple.developer.family-controls": true,
                     "com.apple.security.application-groups": [
-                      "group.com.sanssoftware.sidekick"
+                      "group.com.cadesix.sidekick-mobile"
                     ]
                   }
                 },
                 {
-                  "bundleIdentifier": "com.sanssoftware.sidekick.ShieldAction",
+                  "bundleIdentifier": "com.cadesix.sidekick-mobile.ShieldAction",
                   "targetName": "ShieldAction",
                   "entitlements": {
                     "com.apple.developer.family-controls": true,
                     "com.apple.security.application-groups": [
-                      "group.com.sanssoftware.sidekick"
+                      "group.com.cadesix.sidekick-mobile"
                     ]
                   }
                 },
                 {
-                  "bundleIdentifier": "com.sanssoftware.sidekick.ActivityMonitorExtension",
+                  "bundleIdentifier": "com.cadesix.sidekick-mobile.ActivityMonitorExtension",
                   "targetName": "ActivityMonitorExtension",
                   "entitlements": {
                     "com.apple.developer.family-controls": true,
                     "com.apple.security.application-groups": [
-                      "group.com.sanssoftware.sidekick"
+                      "group.com.cadesix.sidekick-mobile"
                     ]
                   }
                 }

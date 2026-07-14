@@ -1,5 +1,7 @@
 # 13 — Focus Mode: App Blocking, Budgets & Negotiated Unlocks
 
+> **2026-07-14 compliance update:** The server mirror, selection count, threshold flags, and agent-visible usage assumptions below are not safe to ship under the current Apple Developer Program License Agreement. Use [screen-time-health-integration.md](screen-time-health-integration.md) as the current source of truth. Focus control stays on-device; the cloud agent receives no Screen Time-derived data.
+
 03's screen-time section built the *passive* tier: threshold events telling the sidekick whether you kept your budget. Focus mode is the *active* tier — Daimon parity: **setup, edit blocked apps, set a daily budget, force block, temporary unlock, disable** — where the OS actually shields the apps and, crucially, **your sidekick is the face of the shield**. The product frame stays the one from 03: this is the user's own commitment that the OS enforces and the sidekick mediates — we never see which apps they picked (opaque tokens) or what they browse.
 
 Same foundation as 03: `react-native-device-activity`, Family Controls (Distribution) entitlement — **4 approval forms** (main app + the 3 generated extension targets: ActivityMonitorExtension, ShieldConfiguration, ShieldAction), filed day one; config plugin with `appleTeamId` + `appGroup` (the App Group's shared UserDefaults is the JS↔extension bridge); iOS deployment target 15.1+; dev-client builds. Android deferred (`UsageStatsManager` has no shield equivalent worth faking).

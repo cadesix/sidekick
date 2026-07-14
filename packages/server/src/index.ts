@@ -109,7 +109,6 @@ export {
 } from "./rewards/service";
 export { buildApp } from "./app";
 export { syncHealthDays, healthStatus, disconnectHealth } from "./health/sync";
-export { getFocusSettings, updateFocusSettings, type FocusSettingsView } from "./focus/mirror";
 export { autoLogHealthDay } from "./health/auto-log";
 export { adForwardMessages, markMessagesSensitive, type AdWindowMessage } from "./memory/ad-window";
 export {
