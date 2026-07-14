@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from "react-native";
 import * as Crypto from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -150,5 +150,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
     );
   }
 
-  return <View className="flex-1 bg-white" />;
+  return (
+    <View className="flex-1 bg-white items-center justify-center gap-4">
+      <ActivityIndicator color="#111111" />
+      <Text className="text-[15px] text-ink/55">Waking up your Sidekick…</Text>
+    </View>
+  );
 }

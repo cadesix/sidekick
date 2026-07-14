@@ -3,11 +3,12 @@ import { BlurView } from "expo-blur";
 import * as Clipboard from "expo-clipboard";
 import { GlassView } from "expo-glass-effect";
 import * as Haptics from "expo-haptics";
+import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { SymbolView } from "expo-symbols";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { FlatList, Pressable, StyleSheet, View } from "react-native";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, {
@@ -41,7 +42,7 @@ const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
 
 const TYPING_ITEM = "typing";
 const ENTRY_ANIMATION_WINDOW = 1200;
-const SHEET_HEADER_HEIGHT = 54;
+const SHEET_HEADER_HEIGHT = 126;
 
 /** Fraction of the screen the chat sheet covers; the mascot lives in the band above. */
 export const CHAT_SHEET_DETENT = 0.75;
@@ -53,9 +54,9 @@ interface OverlayState {
 
 /**
  * The chat, presented as a native bottom sheet over the home screen (the
- * mascot above the sheet is the "contact", so there's no iMessage-style
- * header — just a slim row of glass buttons: settings on the left, close on
- * the right). The composer stack renders through the sheet's `footer` so it's
+ * mascot above the sheet stays visible while a compact Sidekick identity sits
+ * between the sheet's glass settings and close buttons. The composer stack
+ * renders through the sheet's `footer` so it's
  * natively pinned to the visible sheet bottom and rides the keyboard — RN-side
  * layout can't reach the sheet bottom because the content is laid out at full
  * screen height.
@@ -370,6 +371,35 @@ export function ChatScreen({
 									</Pressable>
 								)}
 							</GlassView>
+							<Pressable
+								accessibilityRole="button"
+								accessibilityLabel={`${thread.name}, ${thread.subtitle}`}
+								hitSlop={8}
+								onPress={() => void openSettings()}
+								style={styles.contactIdentity}
+							>
+								<Image
+									source={require("../../../assets/images/sidekick-contact-avatar.png")}
+									contentFit="cover"
+									style={styles.contactAvatar}
+								/>
+								<GlassView glassEffectStyle="regular" style={styles.contactCard}>
+									<View style={styles.contactNameRow}>
+										<Text numberOfLines={1} style={styles.contactName}>
+											{thread.name}
+										</Text>
+										<SymbolView
+											name="chevron.right"
+											size={10}
+											weight="bold"
+											tintColor={colors.gray}
+										/>
+									</View>
+									<Text numberOfLines={1} style={styles.contactSubtitle}>
+										{thread.subtitle}
+									</Text>
+								</GlassView>
+							</Pressable>
 							<GlassView isInteractive glassEffectStyle="regular" style={styles.glassButton}>
 								<Pressable
 									hitSlop={12}
@@ -459,14 +489,52 @@ const styles = StyleSheet.create({
 	headerRow: {
 		height: SHEET_HEADER_HEIGHT,
 		flexDirection: "row",
-		alignItems: "center",
+		alignItems: "flex-start",
 		justifyContent: "space-between",
 		paddingHorizontal: 12,
+		paddingTop: 18,
+	},
+	contactIdentity: {
+		alignItems: "center",
+		gap: 5,
+	},
+	contactAvatar: {
+		width: 54,
+		height: 54,
+		borderRadius: 27,
+		backgroundColor: colors.background,
+		borderWidth: 2,
+		borderColor: colors.background,
+	},
+	contactCard: {
+		maxWidth: 210,
+		paddingHorizontal: 14,
+		paddingVertical: 6,
+		alignItems: "center",
+		borderRadius: 16,
+		borderCurve: "continuous",
+	},
+	contactNameRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 3,
+	},
+	contactName: {
+		fontSize: 16,
+		lineHeight: 18,
+		fontWeight: "700",
+		color: colors.label,
+	},
+	contactSubtitle: {
+		fontSize: 13,
+		lineHeight: 15,
+		color: colors.secondaryLabel,
 	},
 	glassButton: {
 		width: 42,
 		height: 42,
 		borderRadius: 21,
+		marginTop: 2,
 	},
 	glassPressable: {
 		flex: 1,
