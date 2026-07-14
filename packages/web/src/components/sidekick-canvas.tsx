@@ -447,7 +447,8 @@ export function SidekickCanvas({
 		});
 		// ---- daily loot chest: a world prop at the ground anchor (daily-box.tsx
 		// owns the DOM tap target + burst FX; home5 orchestrates the flow) ----
-		const DAILY_BOX_POS = new THREE.Vector3(0.55, 0, 0.55);
+		// directly in front of the character, near-centered to the hero camera
+		const DAILY_BOX_POS = new THREE.Vector3(0.1, 0, 0.75);
 		const DAILY_BOX_SCALE = 0.34;
 		// per-tier tints keyed by the GLB's authored material names
 		const BOX_PALETTES: Record<BoxTier, Record<string, string>> = {
@@ -909,18 +910,27 @@ export function SidekickCanvas({
 				const popT = boxPop >= 0 ? now - boxPop : -1;
 				boxGroup.visible = !!wantBox && !inStudio && (popT < 0 || popT < 0.82);
 				if (boxGroup.visible) {
-					// scale-in spring on spawn (slight overshoot), then gentle bob
+					// scale-in spring on spawn (slight overshoot)
 					const ts = Math.min(1, (now - boxSpawn) / 0.55);
 					const spring = 1 - Math.pow(1 - ts, 3) * Math.cos(ts * 9);
 					let scale = DAILY_BOX_SCALE * spring;
-					boxGroup.position.y = DAILY_BOX_POS.y + (0.5 + 0.5 * Math.sin(now * 2.1)) * 0.022;
-					boxGroup.rotation.z = 0;
+					// idle: rattle in short bursts, like something inside wants out —
+					// a wiggle burst every ~1.7s with little hops on the beats
+					const cycle = (now - boxSpawn) % 1.7;
+					let rattle = 0;
+					if (cycle < 0.55) {
+						const env = Math.sin((cycle / 0.55) * Math.PI);
+						rattle = Math.sin(cycle * 50) * 0.09 * env;
+					}
+					boxGroup.rotation.z = rattle;
+					boxGroup.position.y = DAILY_BOX_POS.y + Math.abs(rattle) * 0.14;
 					if (popT >= 0) {
 						if (popT < 0.45) {
-							// excited wiggle, growing in amplitude
+							// tapped: the wiggle goes wild before the burst
 							boxGroup.rotation.z = Math.sin(popT * 42) * 0.12 * (0.4 + popT * 1.6);
 						} else {
 							// burst: swell up while the DOM flash/confetti covers the vanish
+							boxGroup.rotation.z = 0;
 							scale = DAILY_BOX_SCALE * (1 + ((popT - 0.45) / 0.37) * 0.9);
 						}
 					}

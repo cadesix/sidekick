@@ -48,11 +48,17 @@ export const GroundBox = forwardRef<HTMLDivElement, { hidden?: boolean; onTap: (
 				style={{ visibility: "hidden" }}
 			>
 				<div className="relative h-[150px] w-[150px]">
+					{/* badge floating above the chest */}
+					{!burst ? (
+						<div className="absolute -top-4 left-1/2 -translate-x-1/2 animate-bounce whitespace-nowrap rounded-full bg-white/90 px-3.5 py-1.5 text-[14px] font-extrabold text-[#111] shadow-[0_3px_0_rgba(0,0,0,0.12)] backdrop-blur-sm">
+							Daily Chest!
+						</div>
+					) : null}
 					{/* sparkles teasing "tap me" */}
 					{!burst ? (
 						<>
-							<span className="absolute left-1 top-4 animate-pulse text-[18px]">✨</span>
-							<span className="absolute right-2 top-14 animate-pulse text-[15px] [animation-delay:0.6s]">✨</span>
+							<span className="absolute left-1 top-9 animate-pulse text-[18px]">✨</span>
+							<span className="absolute right-2 top-16 animate-pulse text-[15px] [animation-delay:0.6s]">✨</span>
 						</>
 					) : null}
 
