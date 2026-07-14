@@ -64,22 +64,8 @@ export const GroundBox = forwardRef<HTMLDivElement, { hidden?: boolean; onTap: (
 
 					{burst ? (
 						<>
-							{/* flash ring, timed to the start of the 3D swell */}
+							{/* flash ring, timed to the moment the light bursts out */}
 							<div className="animate-box-flash absolute inset-6 rounded-full bg-white [animation-delay:0.62s]" />
-							{/* rays */}
-							{Array.from({ length: 8 }, (_, i) => (
-								<div
-									key={`r${i}`}
-									className="animate-box-ray absolute bottom-1/2 left-1/2 h-24 w-2 -translate-x-1/2 rounded-full"
-									style={
-										{
-											"--ray-angle": `${i * 45}deg`,
-											background: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-											animationDelay: "0.66s",
-										} as React.CSSProperties
-									}
-								/>
-							))}
 							{/* confetti chips */}
 							{Array.from({ length: 14 }, (_, i) => {
 								const { x, y } = scatter(i, 14, 118);

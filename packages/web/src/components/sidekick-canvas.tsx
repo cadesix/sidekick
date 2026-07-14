@@ -472,6 +472,7 @@ export function SidekickCanvas({
 		let beamMat: THREE.MeshBasicMaterial | null = null;
 		let glowMat: THREE.SpriteMaterial | null = null;
 		let beam: THREE.Mesh | null = null;
+		let boxLight: THREE.PointLight | null = null; // real light: spills onto character + ground
 		const tintBox = (tier: BoxTier) => {
 			const pal = BOX_PALETTES[tier];
 			for (const m of boxMeshes) {
@@ -539,8 +540,13 @@ export function SidekickCanvas({
 				});
 				const glow = new THREE.Sprite(glowMat);
 				glow.position.y = 0.62;
-				glow.scale.setScalar(1.6);
+				glow.scale.setScalar(2.1);
 				boxGroup.add(glow);
+				// an actual point light in the mouth so the glow reads as a real
+				// source — it lights the character's front and the grass around
+				boxLight = new THREE.PointLight(0xffe9b0, 0, 5, 1.6);
+				boxLight.position.y = 0.7;
+				boxGroup.add(boxLight);
 				boxGroup.add(g.scene);
 				boxSpawn = clock.getElapsedTime();
 			});
@@ -952,6 +958,7 @@ export function SidekickCanvas({
 					for (const n of boxLidNodes) n.rotation.x = 0;
 					if (beamMat) beamMat.opacity = 0;
 					if (glowMat) glowMat.opacity = 0;
+					if (boxLight) boxLight.intensity = 0;
 				}
 				const popT = boxPop >= 0 ? now - boxPop : -1;
 				boxGroup.visible = !!wantBox && !inStudio;
@@ -982,10 +989,11 @@ export function SidekickCanvas({
 						for (const n of boxLidNodes) n.rotation.x = -1.75 * swing;
 						const lightT = Math.min(1, Math.max(0, (popT - 0.62) / 0.18));
 						if (beamMat && beam) {
-							beamMat.opacity = lightT * (0.5 + 0.08 * Math.sin(now * 6.5));
+							beamMat.opacity = lightT * (0.78 + 0.08 * Math.sin(now * 6.5));
 							beam.scale.set(1, 0.35 + 0.65 * lightT, 1);
 						}
-						if (glowMat) glowMat.opacity = lightT * (0.85 + 0.12 * Math.sin(now * 5.2));
+						if (glowMat) glowMat.opacity = lightT * (0.95 + 0.05 * Math.sin(now * 5.2));
+						if (boxLight) boxLight.intensity = lightT * (6 + 0.9 * Math.sin(now * 5.7));
 					}
 				}
 			}

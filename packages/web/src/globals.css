@@ -333,22 +333,6 @@ input[type="number"] {
 	animation: box-flash 0.5s ease-out both;
 }
 
-/* colored rays shooting out of the burst (rotated per-ray via --ray-angle) */
-@keyframes box-ray {
-	0% {
-		transform: rotate(var(--ray-angle)) translateY(0) scaleY(0.4);
-		opacity: 1;
-	}
-	100% {
-		transform: rotate(var(--ray-angle)) translateY(-112px) scaleY(1);
-		opacity: 0;
-	}
-}
-.animate-box-ray {
-	animation: box-ray 0.55s ease-out both;
-	transform-origin: center bottom;
-}
-
 /* confetti chips: fly outward (per-chip --cx/--cy) with spin + fade */
 @keyframes box-confetti {
 	0% {
