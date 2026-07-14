@@ -90,6 +90,17 @@ export function WorldMap({
 	}, [open]);
 	const isUnlocked = (a: Area) => a.id === "frostpeak" || isSessionDone(a.id);
 
+	// the sidekick's chosen name, for the notification banner title
+	const sidekickName = (() => {
+		try {
+			return JSON.parse(localStorage.getItem("sidekick_profile_v1") ?? "{}")?.name || "Sidekick";
+		} catch {
+			return "Sidekick";
+		}
+	})();
+	// the top notification rides in with the locked-island modal
+	const notifShown = !!selected && !isUnlocked(selected);
+
 	// the cover-scaled map is wider than the screen; center the horizontal scroll
 	// so both edge islands (Palm Cove / Sandy Dunes) are an easy swipe away
 	const scrollRef = useRef<HTMLDivElement>(null);
@@ -292,17 +303,9 @@ export function WorldMap({
 											/>
 										</div>
 
-										{/* the sidekick with a speech bubble off the side of its head */}
-										<div className="mt-6 flex items-center gap-2">
-											<SidekickAvatar className="h-20 w-20 shrink-0 object-contain" alt="" />
-											<div className="relative flex-1 rounded-2xl bg-[#FBEFC9] px-3.5 py-2.5 text-left text-[13px] font-semibold leading-snug text-neutral-800">
-												<span className="absolute -left-1 top-1/2 h-3 w-3 -translate-y-1/2 rotate-45 rounded-[2px] bg-[#FBEFC9]" />
-												<span className="relative">I need to get to know you better before we can travel that far</span>
-											</div>
-										</div>
-
-										{/* primary CTA copy */}
-										<div className="mt-5 text-center text-[19px] font-extrabold leading-snug text-neutral-900">
+										{/* primary CTA copy (the "get to know you" line is the top
+										    notification that drops in with this modal) */}
+										<div className="mt-7 text-center text-[19px] font-extrabold leading-snug text-neutral-900">
 											Start a Guided Chat to Unlock
 										</div>
 
@@ -333,6 +336,25 @@ export function WorldMap({
 							null
 						)
 					) : null}
+				</div>
+			</div>
+
+			{/* Notification banner — drops in from the top in sync with the locked
+			    island modal, like a push from the sidekick. */}
+			<div
+				className={`pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center px-3 pt-[max(env(safe-area-inset-top),12px)] transition-transform duration-[350ms] ${
+					notifShown ? "translate-y-0" : "-translate-y-[140%]"
+				}`}
+				style={{ transitionTimingFunction: "cubic-bezier(0.34,1.4,0.64,1)" }}
+			>
+				<div className="flex w-full max-w-sm items-center gap-3 rounded-[22px] bg-white/90 px-3.5 py-3 shadow-[0_12px_34px_rgba(0,0,0,0.28)] backdrop-blur-xl">
+					<SidekickAvatar className="h-10 w-10 shrink-0 object-contain" alt="" />
+					<div className="min-w-0 flex-1">
+						<div className="text-[13px] font-extrabold text-neutral-900">{sidekickName}</div>
+						<div className="text-[13px] font-medium leading-snug text-neutral-600">
+							I need to get to know you better before we can travel that far
+						</div>
+					</div>
 				</div>
 			</div>
 		</div>
