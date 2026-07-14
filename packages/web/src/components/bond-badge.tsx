@@ -4,8 +4,9 @@ import { BOND_MAX, loadBond, subscribeBond } from "./sidekick-bond";
 // Floating "Bond" score pinned over the character's head. The canvas positions
 // the outer div every frame (overheadRef → 3D head-bone projection), so this
 // component only owns the pill's look: value, progress fill, and a springy pop
-// whenever the score goes up.
-export const BondBadge = forwardRef<HTMLDivElement>(function BondBadge(_props, ref) {
+// whenever the score goes up. Children render stacked ABOVE the pill in the
+// same head-tracked container (e.g. the speech bubble).
+export const BondBadge = forwardRef<HTMLDivElement, { children?: React.ReactNode }>(function BondBadge({ children }, ref) {
 	const [bond, setBond] = useState(loadBond);
 	const [pop, setPop] = useState(false);
 	const popTimer = useRef(0);
@@ -23,7 +24,12 @@ export const BondBadge = forwardRef<HTMLDivElement>(function BondBadge(_props, r
 	}, []);
 
 	return (
-		<div ref={ref} className="pointer-events-none absolute left-0 top-0 z-10" style={{ visibility: "hidden" }}>
+		<div
+			ref={ref}
+			className="pointer-events-none absolute left-0 top-0 z-10 flex flex-col items-center gap-1.5"
+			style={{ visibility: "hidden" }}
+		>
+			{children}
 			<div
 				className="flex flex-col items-center gap-1 transition-transform duration-300"
 				style={{ transform: pop ? "scale(1.18)" : "scale(1)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}

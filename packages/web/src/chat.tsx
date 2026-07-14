@@ -1,16 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import { SidekickAvatar } from "./components/sidekick-avatar";
+import { clearUnread, GREETING, subscribeInbox, type ChatMsg } from "./components/sidekick-inbox";
 import { LuArrowUp } from "react-icons/lu";
 
-type Msg = { role: "user" | "assistant"; content: string };
-
-const GREETING: Msg = {
-	role: "assistant",
-	content: "hey! how's your day going so far — have you had any water yet? 👀",
-};
+type Msg = ChatMsg;
 
 const STORAGE_KEY = "sidekick_chat_v1";
 
-function loadMessages(): Msg[] {
+function loadMessages(greeting: Msg): Msg[] {
 	try {
 		const raw = localStorage.getItem(STORAGE_KEY);
 		if (raw) {
@@ -20,7 +17,16 @@ function loadMessages(): Msg[] {
 	} catch {
 		// ignore corrupt storage
 	}
-	return [GREETING];
+	return [greeting];
+}
+
+// the character's chosen name, for [sidekick.name] in the global system prompt
+function sidekickName(): string {
+	try {
+		return JSON.parse(localStorage.getItem("sidekick_profile_v1") ?? "{}")?.name || "sidekick";
+	} catch {
+		return "sidekick";
+	}
 }
 
 export function Chat({
@@ -28,6 +34,7 @@ export function Chat({
 	transparentTop = false,
 	peekPop = false,
 	seed,
+	greeting,
 }: {
 	peekIn?: boolean;
 	transparentTop?: boolean;
@@ -35,14 +42,30 @@ export function Chat({
 	// a message auto-sent from the user once on mount — e.g. the Goals sheet
 	// opening a goal in chat ("I want to talk about my goal: …")
 	seed?: string;
+	// overrides the sidekick's opening line when there's no saved history
+	// (e.g. onboarding starts by asking about goals)
+	greeting?: string;
 }) {
-	const [messages, setMessages] = useState<Msg[]>(loadMessages);
+	const [messages, setMessages] = useState<Msg[]>(() =>
+		loadMessages(greeting ? { role: "assistant", content: greeting } : GREETING),
+	);
 	const [input, setInput] = useState("");
 	const [loading, setLoading] = useState(false);
 	const listRef = useRef<HTMLDivElement>(null);
 	// first layout jumps to the bottom instantly (open already at the bottom of the
 	// chat); later message additions animate smoothly
 	const didInitScroll = useRef(false);
+
+	// Sidekick-initiated pushes (sidekick-inbox): with the chat on screen they
+	// append live and count as read immediately; while unmounted they land in
+	// localStorage and get picked up by loadMessages on the next open.
+	useEffect(() => {
+		clearUnread();
+		return subscribeInbox((text) => {
+			setMessages((m) => [...m, { role: "assistant", content: text }]);
+			clearUnread();
+		});
+	}, []);
 
 	// Persist the conversation across reloads / tab switches.
 	useEffect(() => {
@@ -73,7 +96,7 @@ export function Chat({
 			const r = await fetch("/api/chat", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ messages: next }),
+				body: JSON.stringify({ messages: next, name: sidekickName() }),
 			});
 			const data = await r.json();
 			const reply =
@@ -122,12 +145,7 @@ export function Chat({
 				{messages.map((m, i) =>
 					m.role === "assistant" ? (
 						<div key={i} className="flex items-end gap-2 max-w-[85%]">
-							<img
-								src="/sidekick-pfp.webp"
-								alt="Sidekick"
-								className="w-8 h-8 object-contain shrink-0 select-none"
-								draggable={false}
-							/>
+							<SidekickAvatar className="w-8 h-8 object-contain shrink-0 select-none" alt="Sidekick" />
 							<div className="rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-2.5 text-[15px] leading-snug text-[#111]">
 								{m.content}
 							</div>
@@ -142,13 +160,7 @@ export function Chat({
 				)}
 				{loading ? (
 					<div className="flex items-end gap-2">
-						<img
-							src="/sidekick-pfp.webp"
-							alt=""
-							aria-hidden="true"
-							className="w-8 h-8 object-contain shrink-0"
-							draggable={false}
-						/>
+						<SidekickAvatar className="w-8 h-8 object-contain shrink-0" />
 						{/* Sized exactly like a one-line message bubble so the swap to text doesn't shift the list. */}
 						<div className="rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-2.5 text-[15px] leading-snug">
 							<span className="ellipsis-dots inline-block w-7 text-[#111]/40">&#8203;</span>

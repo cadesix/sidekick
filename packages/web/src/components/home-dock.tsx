@@ -5,6 +5,8 @@
 
 type DockProps = {
 	hidden?: boolean;
+	// unread sidekick messages — shown as an iOS-style red badge on Messages
+	unread?: number;
 	onMessages: () => void;
 	onShop?: () => void;
 	onMap?: () => void;
@@ -35,7 +37,7 @@ function AppTile({
 	);
 }
 
-export function HomeDock({ hidden, onMessages, onShop, onMap, onGoals }: DockProps) {
+export function HomeDock({ hidden, unread = 0, onMessages, onShop, onMap, onGoals }: DockProps) {
 	return (
 		<div
 			className={`pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center pb-[max(env(safe-area-inset-bottom),16px)] transition-all duration-300 ${
@@ -43,15 +45,23 @@ export function HomeDock({ hidden, onMessages, onShop, onMap, onGoals }: DockPro
 			}`}
 		>
 			<div className="pointer-events-auto flex items-center gap-[18px] rounded-[32px] border border-white/40 bg-white/25 px-[18px] py-[14px] backdrop-blur-2xl">
-				{/* Messages — opens the chat sheet */}
-				<AppTile label="Messages" onClick={onMessages} className="bg-gradient-to-b from-[#5BF76B] to-[#12C93E]">
-					<svg viewBox="0 0 24 24" className="absolute left-1/2 top-1/2 h-[62%] w-[62%] -translate-x-1/2 -translate-y-1/2">
-						<path
-							fill="#fff"
-							d="M12 4.2C6.9 4.2 3 7.3 3 11.2c0 2.2 1.3 4.2 3.3 5.5-.2 1.1-.8 2.1-1.5 2.9 1.5-.1 3.1-.6 4.3-1.5.9.3 1.9.4 2.9.4 5.1 0 9-3.1 9-7S17.1 4.2 12 4.2z"
-						/>
-					</svg>
-				</AppTile>
+				{/* Messages — opens the chat sheet. The badge sits on a wrapper because
+				    the tile itself clips (overflow-hidden rounded squircle). */}
+				<div className="relative">
+					<AppTile label="Messages" onClick={onMessages} className="bg-gradient-to-b from-[#5BF76B] to-[#12C93E]">
+						<svg viewBox="0 0 24 24" className="absolute left-1/2 top-1/2 h-[62%] w-[62%] -translate-x-1/2 -translate-y-1/2">
+							<path
+								fill="#fff"
+								d="M12 4.2C6.9 4.2 3 7.3 3 11.2c0 2.2 1.3 4.2 3.3 5.5-.2 1.1-.8 2.1-1.5 2.9 1.5-.1 3.1-.6 4.3-1.5.9.3 1.9.4 2.9.4 5.1 0 9-3.1 9-7S17.1 4.2 12 4.2z"
+							/>
+						</svg>
+					</AppTile>
+					{unread > 0 ? (
+						<span className="pointer-events-none absolute -right-1.5 -top-1.5 z-10 grid h-[21px] min-w-[21px] place-items-center rounded-full bg-[#FF3B30] px-1.5 text-[11px] font-bold tabular-nums text-white shadow-[0_1px_4px_rgba(0,0,0,0.25)]">
+							{unread > 9 ? "9+" : unread}
+						</span>
+					) : null}
+				</div>
 
 				{/* Shop — shopping bag */}
 				<AppTile label="Shop" onClick={onShop} className="bg-gradient-to-b from-[#FF9E5A] to-[#FF5E3A]">

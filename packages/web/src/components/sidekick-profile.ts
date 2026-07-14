@@ -46,8 +46,11 @@ export const PROFILE_KEYS = [
 	"sidekick_habit_checks_v1",
 	"sidekick_profile_v1",
 	"sidekick_chat_v1",
+	"sidekick_unread_v1",
 	"sidekick-wardrobe-v1",
 	"funnel_session",
+	"sidekick_funnel_answers_v1",
+	"sidekick_onboarding_step_v1",
 ];
 
 function localDay(offsetDays = 0): string {
