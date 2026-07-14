@@ -17,6 +17,11 @@ const execFileP = promisify(execFile);
 
 const ROOT = process.cwd();
 const ILLUSTRATE = resolve(ROOT, ".illustrate");
+// Shop product renders posted by the dev-only /item-render route land here,
+// where the Shop's product cards pick them up as static assets.
+const SHOP_RENDERS_DIR = resolve(ROOT, "public", "shop-renders");
+// The live cosmetics catalog the Asset Manager's workbench can write tuning into.
+const COSMETICS_MANIFEST = resolve(ROOT, "public", "cosmetics", "manifest.json");
 const REFS_DIR = join(ILLUSTRATE, "refs");
 const STUDIO_DIR = join(ILLUSTRATE, "studio");
 const SHEETS_DIR = join(STUDIO_DIR, "sheets");
@@ -503,6 +508,57 @@ async function handlePromote(req: IncomingMessage, res: ServerResponse) {
 	json(res, 200, { ok: true, current: { name: basename(CANONICAL_SHEET) } });
 }
 
+// Save a product render posted by /item-render: { name, dataUrl } → a PNG in
+// public/shop-renders. Names are sanitized to slot-variant / slot-cHEX slugs.
+async function handleShopRender(req: IncomingMessage, res: ServerResponse) {
+	const { name, dataUrl } = JSON.parse((await readBody(req)) || "{}") as { name?: string; dataUrl?: string };
+	const m = /^data:image\/png;base64,(.+)$/.exec(dataUrl ?? "");
+	if (!name || !m) return json(res, 400, { error: "expected { name, dataUrl: data:image/png;base64,… }" });
+	const safe = name.replace(/[^a-z0-9-]/gi, "");
+	await mkdir(SHOP_RENDERS_DIR, { recursive: true });
+	await writeFile(join(SHOP_RENDERS_DIR, `${safe}.png`), Buffer.from(m[1], "base64"));
+	json(res, 200, { ok: true, file: `/shop-renders/${safe}.png` });
+}
+
+// Persist workbench tuning into public/cosmetics/manifest.json: { item, scale,
+// offset }. Neutral values (scale 1, offset 0,0,0) delete the keys so untuned
+// items stay clean, matching the true-size authoring convention.
+async function handleManifestTune(req: IncomingMessage, res: ServerResponse) {
+	const { item, scale, offset, rotate } = JSON.parse((await readBody(req)) || "{}") as {
+		item?: string;
+		scale?: number;
+		offset?: [number, number, number];
+		rotate?: [number, number, number];
+	};
+	if (!item) return json(res, 400, { error: "expected { item, scale?, offset?, rotate? }" });
+	const manifest = JSON.parse(await readFile(COSMETICS_MANIFEST, "utf8")) as Record<
+		string,
+		Record<string, unknown>
+	>;
+	const def = manifest[item];
+	if (!def) return json(res, 404, { error: `no such item: ${item}` });
+	if (typeof scale === "number" && Number.isFinite(scale)) {
+		if (scale === 1) delete def.scale;
+		else def.scale = scale;
+	}
+	if (Array.isArray(offset) && offset.length === 3 && offset.every((n) => Number.isFinite(n))) {
+		if (offset.every((n) => n === 0)) delete def.offset;
+		else def.offset = offset;
+	}
+	if (Array.isArray(rotate) && rotate.length === 3 && rotate.every((n) => Number.isFinite(n))) {
+		if (rotate.every((n) => n === 0)) delete def.rotate;
+		else def.rotate = rotate;
+	}
+	await writeFile(COSMETICS_MANIFEST, `${JSON.stringify(manifest, null, 2)}\n`);
+	json(res, 200, {
+		ok: true,
+		item,
+		scale: def.scale ?? 1,
+		offset: def.offset ?? [0, 0, 0],
+		rotate: def.rotate ?? [0, 0, 0],
+	});
+}
+
 export function sidekickStudioPlugin(apiKey: string): PluginOption {
 	return {
 		name: "sidekick-studio-api",
@@ -537,6 +593,10 @@ export function sidekickStudioPlugin(apiKey: string): PluginOption {
 						return await handleGenerate(req, res, apiKey);
 					if (req.method === "POST" && url === "/promote")
 						return await handlePromote(req, res);
+					if (req.method === "POST" && url === "/shop-render")
+						return await handleShopRender(req, res);
+					if (req.method === "POST" && url === "/manifest-tune")
+						return await handleManifestTune(req, res);
 					return next();
 				} catch (e) {
 					json(res, 500, { error: e instanceof Error ? e.message : String(e) });

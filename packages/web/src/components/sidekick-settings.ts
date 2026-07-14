@@ -29,6 +29,10 @@ export type SidekickSettings = {
 	celShadowColor: string;
 	celSoftness: number;
 	celShadowAmt: number;
+	// cel rim light: a fresnel edge band added on top of the two tones
+	celRimColor: string;
+	celRimStrength: number; // 0 = off (ships off; a look-dev dial)
+	celRimWidth: number;
 	goochCool: string;
 	goochWarm: string;
 	halftoneScale: number;
@@ -107,31 +111,36 @@ export type SidekickSettings = {
 	camTarget: [number, number, number] | null;
 };
 
-// baked from the look-dev session of 2026-07-08 (copied out of the tuned
-// localStorage state on :3103) so prod ships the approved look without any
-// saved state — includes the editor camera, which /home3 also adopts
+// baked from the cel-bloom-tilt-5173 checked-in preset (the prod look) so a
+// FRESH user — e.g. straight out of the onboarding funnel — sees the approved
+// look with no saved state. Face placement uses the corrected face-sheet-v6
+// values (the preset predates the sheet fix), and the camera keeps the neutral
+// default rather than the preset's pulled-back editor framing.
 export const DEFAULT_SETTINGS: SidekickSettings = {
 	shading: "cel",
-	toonBands: 3,
-	toonSoftness: 0.173,
+	toonBands: 2,
+	toonSoftness: 0.323,
 	toonSpecStrength: 0,
-	toonSpecSize: 0.275,
+	toonSpecSize: 0.132,
 	toonRimStrength: 0.348,
-	toonShadowColor: "#99670f",
-	toonShadowAmt: 0.504,
+	toonShadowColor: "#cc8d05",
+	toonShadowAmt: 0.506,
 	rampMid: "#ffb061",
 	rampLight: "#ffedc4",
-	celBodyColor: "#f2b13c",
+	celBodyColor: "#ffbb29",
 	celShadowColor: "#c98f52",
-	celSoftness: 0.12,
-	celShadowAmt: 0.85,
+	celSoftness: 0,
+	celShadowAmt: 0.501,
+	celRimColor: "#fff2dc",
+	celRimStrength: 0,
+	celRimWidth: 0.35,
 	goochCool: "#7a86b8",
 	goochWarm: "#fff1d6",
-	halftoneScale: 10,
+	halftoneScale: 7.432,
 	sssColor: "#ce7036",
 	sssStrength: 0.552,
-	outline: true,
-	outlineWidth: 0.0139,
+	outline: false,
+	outlineWidth: 0.00722,
 	outlineColor: "#b77d1a",
 	faceZoom: 1.0,
 	faceHeight: 0.015,
@@ -142,15 +151,15 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
 	poseRollSplit: 0.08,
 	poseArmForward: 0.25,
 	poseForeBend: -0.13,
-	timeOfDay: "day",
+	timeOfDay: "evening",
 	scenes: SCENE_DEFAULTS,
-	skyTop: "#3f86cc",
-	skyHorizon: "#dcecfb",
-	grassHill: "#5aa838",
-	grassBase: "#519d2d",
-	grassTip: "#93cf4f",
-	grassHeight: 0.62,
-	grassClumping: 0.55,
+	skyTop: "#8aceff",
+	skyHorizon: "#47d1ff",
+	grassHill: "#fcffe5",
+	grassBase: "#68bd00",
+	grassTip: "#80db00",
+	grassHeight: 1.18,
+	grassClumping: 1,
 	tint: "#ffffff",
 	roughness: 1,
 	clearcoat: 0,
@@ -160,29 +169,29 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
 	sheenColor: "#ffb36b",
 	emissiveColor: "#767323",
 	emissiveIntensity: 0.08,
-	exposure: 0.7896,
-	envIntensity: 0.786,
-	keyIntensity: 1.5,
-	keyColor: "#fff4dc",
+	exposure: 0.6757,
+	envIntensity: 0.891,
+	keyIntensity: 2.156,
+	keyColor: "#336970",
 	fillIntensity: 0.5,
-	fillColor: "#a9c9ff",
-	rimIntensity: 1.0,
-	rimColor: "#ffffff",
-	hemiIntensity: 0.55,
-	bloomEnabled: false,
-	bloomStrength: 0.15,
-	bloomRadius: 0.5,
-	bloomThreshold: 0.92,
-	shadowOpacity: 0,
+	fillColor: "#baebf2",
+	rimIntensity: 1.4,
+	rimColor: "#fff8ec",
+	hemiIntensity: 0.3,
+	bloomEnabled: true,
+	bloomStrength: 0.158,
+	bloomRadius: 0.3885,
+	bloomThreshold: 0.615,
+	shadowOpacity: 0.2316,
 	autoRotate: false,
 	dofEnabled: false,
 	dofFocus: 5.4,
 	dofAperture: 2,
 	dofMaxBlur: 0.01,
-	tiltEnabled: false,
-	tiltFocusY: 0.42,
-	tiltBand: 0.16,
-	tiltBlur: 3,
+	tiltEnabled: true,
+	tiltFocusY: 0.44,
+	tiltBand: 0.12,
+	tiltBlur: 7.2,
 	fov: 19.455,
 	camPos: [-0.8622328104178634, 0.8720766906255945, 5.542186848594252],
 	camTarget: [0, 0.7, 0],

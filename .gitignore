@@ -25,3 +25,8 @@ packages/web/.illustrate/studio/
 
 # Worktree dev-server logs
 .logs/
+
+# char-pipeline local outputs (renders + wip blends)
+tools/char-pipeline/renders/
+tools/char-pipeline/.wip/
+__pycache__/

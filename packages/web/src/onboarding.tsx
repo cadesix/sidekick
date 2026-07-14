@@ -1,6 +1,9 @@
-import { useRef, useState } from "react";
-import { Chat } from "./chat";
+import { useEffect, useRef, useState } from "react";
 import { OnboardingChat } from "./components/funnel/onboarding-chat";
+import { SidekickAvatar } from "./components/sidekick-avatar";
+import { SKIN_COLORS, applySkin } from "./components/sidekick-skin";
+import { setOnboardingPhase } from "./components/sidekick-profile";
+import { track } from "./components/sidekick-analytics";
 import {
 	SidekickCanvas,
 	type CanvasFraming,
@@ -29,23 +32,70 @@ const HERO_FRAMING: CanvasFraming = { pos: [0, 0.66, 4.2], target: [0, 0.56, 0],
 // Chat: pulled back + low so he sits high in the sky above the chat sheet,
 // holding the phone (matches /home4's chat framing).
 const CHAT_FRAMING: CanvasFraming = { pos: [0, 1.0, 7.7], target: [0, -0.55, 0], fov: 31 };
+// Chat: the sheet covers ~80%, so the camera pulls way back and aims low —
+// the whole standing character composes into the top sliver (home5 pattern).
+const SLIVER_FRAMING: CanvasFraming = { pos: [0, 1.6, 13], target: [0, -2.0, 0], fov: 30 };
 
 type Phase = "welcome" | "askName" | "reveal" | "customize" | "nameSidekick" | "notif" | "chat";
 
-// Selectable sidekick colors (cel body + a darker shadow tint).
-const COLORS: { id: string; body: string; shadow: string }[] = [
-	{ id: "sunny", body: "#f2b13c", shadow: "#c98f52" },
-	{ id: "coral", body: "#f57e63", shadow: "#c85f4a" },
-	{ id: "sky", body: "#5fa8e0", shadow: "#3f7db0" },
-	{ id: "mint", body: "#6cc98f", shadow: "#4a9b6b" },
-	{ id: "grape", body: "#a988e0", shadow: "#7d63b0" },
-	{ id: "bubblegum", body: "#f28cc0", shadow: "#c86a99" },
-];
+// Declarative entry state per phase: what the scene must look like when you
+// land on a phase COLD (deep link / reload-resume), independent of whatever
+// cinematic normally plays on the way in. goTo() applies it, persists the
+// step, and emits the funnel event — transitions are just the fancy path.
+const PHASE_ORDER: Phase[] = ["welcome", "askName", "reveal", "customize", "nameSidekick", "notif", "chat"];
+const PHASES: Record<Phase, { framing: CanvasFraming; characterVisible: boolean }> = {
+	welcome: { framing: WIDE_FRAMING, characterVisible: false },
+	askName: { framing: NAME_FRAMING, characterVisible: false },
+	reveal: { framing: HERO_FRAMING, characterVisible: true },
+	customize: { framing: HERO_FRAMING, characterVisible: true },
+	nameSidekick: { framing: HERO_FRAMING, characterVisible: true },
+	notif: { framing: HERO_FRAMING, characterVisible: true },
+	chat: { framing: SLIVER_FRAMING, characterVisible: true },
+};
+
+// reload-resume: the saved step is honored for a few hours; after that the
+// user gets the welcome moment again (and analytics counts a fresh attempt)
+const RESUME_KEY = "sidekick_onboarding_step_v1";
+const RESUME_TTL_MS = 6 * 60 * 60 * 1000;
+
+function loadResume(): Phase | null {
+	try {
+		const raw = JSON.parse(localStorage.getItem(RESUME_KEY) ?? "null") as { phase: Phase; ts: number } | null;
+		if (!raw || !PHASE_ORDER.includes(raw.phase)) return null;
+		return Date.now() - raw.ts < RESUME_TTL_MS ? raw.phase : null;
+	} catch {
+		return null;
+	}
+}
+
+function loadProfileField(field: string): string {
+	try {
+		return (JSON.parse(localStorage.getItem("sidekick_profile_v1") ?? "{}") as Record<string, string>)[field] ?? "";
+	} catch {
+		return "";
+	}
+}
+
+// Selectable sidekick colors — the shared skin palette (also used by the
+// Appearance sheet at home).
+const COLORS = SKIN_COLORS;
 
 const BTN =
 	"w-full max-w-md mx-auto block py-4 rounded-full bg-[#4F46F0] text-white text-[17px] font-bold shadow-[0_5px_0_0_#372FC9] transition active:translate-y-[3px] active:shadow-[0_2px_0_0_#372FC9] disabled:opacity-60 disabled:active:translate-y-0 disabled:active:shadow-[0_5px_0_0_#372FC9]";
 const FIELD =
 	"w-full px-5 py-4 rounded-2xl bg-white/90 backdrop-blur text-[17px] font-medium text-[#111] placeholder:text-[#111]/35 focus:outline-none focus:ring-2 focus:ring-[#4F46F0]/40 shadow-sm";
+
+// Persist a profile field as soon as its step produces it, so a resumed
+// session has everything earlier steps collected.
+function saveProfileField(field: string, value: string) {
+	try {
+		const raw = localStorage.getItem("sidekick_profile_v1");
+		const prev = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+		localStorage.setItem("sidekick_profile_v1", JSON.stringify({ ...prev, [field]: value }));
+	} catch {
+		// ignore storage errors
+	}
+}
 
 // Persist the sidekick's name where the onboarding chat reads it from.
 function saveSidekickName(name: string) {
@@ -116,12 +166,7 @@ function NotificationBanner({
 					show ? "translate-y-0 opacity-100" : "-translate-y-[160%] opacity-0"
 				}`}
 			>
-				<img
-					src="/chat-tab.webp"
-					alt=""
-					className="w-10 h-10 rounded-[10px] object-contain shrink-0"
-					draggable={false}
-				/>
+				<SidekickAvatar className="w-10 h-10 rounded-[10px] object-contain shrink-0" />
 				<div className="min-w-0 flex-1">
 					<div className="flex items-baseline justify-between gap-2">
 						<span className="text-[14px] font-semibold text-[#111] truncate">{sender}</span>
@@ -138,16 +183,38 @@ function NotificationBanner({
 
 export default function Onboarding() {
 	const canvasRef = useRef<SidekickCanvasHandle | null>(null);
-	const [phase, setPhase] = useState<Phase>("welcome");
-	const [framing, setFraming] = useState<CanvasFraming>(WIDE_FRAMING);
+	// resume a fresh-enough session at its saved step, with its saved outputs
+	const initialPhase = useRef<Phase>(loadResume() ?? "welcome").current;
+	const [phase, setPhase] = useState<Phase>(initialPhase);
+	const [framing, setFraming] = useState<CanvasFraming>(PHASES[initialPhase].framing);
 	// Locks CTAs / hides overlays while a camera move / jump cinematic is playing.
 	const [animating, setAnimating] = useState(false);
-	const [userName, setUserName] = useState("");
-	const [sidekickName, setSidekickName] = useState("");
+	const [userName, setUserName] = useState(() => loadProfileField("userName"));
+	const [sidekickName, setSidekickName] = useState(() => loadProfileField("name"));
 	const [color, setColor] = useState(COLORS[0].id);
-	const [notifIn, setNotifIn] = useState(false);
-	const [chatMounted, setChatMounted] = useState(false);
-	const [chatDone, setChatDone] = useState(false);
+	const [notifIn, setNotifIn] = useState(initialPhase === "notif");
+	const [chatMounted, setChatMounted] = useState(initialPhase === "chat");
+
+	// every phase change lands here: persist the step, apply its entry framing,
+	// and emit the funnel event — one choke point, no per-handler tracking
+	const goTo = (next: Phase, opts?: { keepFraming?: boolean }) => {
+		setPhase(next);
+		if (!opts?.keepFraming) setFraming(PHASES[next].framing);
+		try {
+			localStorage.setItem(RESUME_KEY, JSON.stringify({ phase: next, ts: Date.now() }));
+		} catch {
+			// ignore storage failures
+		}
+		track("step_viewed", { flow: "onboarding-3d", step_id: next, index: PHASE_ORDER.indexOf(next) });
+	};
+
+	// flow start / resume events (once per mount)
+	useEffect(() => {
+		if (initialPhase === "welcome") track("flow_started", { flow: "onboarding-3d" });
+		else track("flow_resumed", { flow: "onboarding-3d", step_id: initialPhase });
+		track("step_viewed", { flow: "onboarding-3d", step_id: initialPhase, index: PHASE_ORDER.indexOf(initialPhase) });
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
 
 	// 1 → 2: zoom the empty shot in toward where the sidekick will appear.
 	const startNaming = () => {
@@ -155,7 +222,7 @@ export default function Onboarding() {
 		setAnimating(true);
 		setFraming(NAME_FRAMING);
 		window.setTimeout(() => {
-			setPhase("askName");
+			goTo("askName");
 			setAnimating(false);
 		}, 700);
 	};
@@ -164,29 +231,34 @@ export default function Onboarding() {
 	const submitUserName = (name: string) => {
 		if (animating) return;
 		setUserName(name);
+		saveProfileField("userName", name);
+		track("step_completed", { flow: "onboarding-3d", step_id: "askName", answer: "name-entered" });
 		setAnimating(true);
-		setPhase("reveal"); // clears the input now; reveal copy waits for !animating
-		setFraming(HERO_FRAMING);
+		goTo("reveal"); // clears the input now; reveal copy waits for !animating
 		canvasRef.current?.shake({ amp: 0.06, duration: 1.4, mode: "build" });
 		window.setTimeout(() => canvasRef.current?.jumpIn({ duration: 800 }), 1100);
 		window.setTimeout(() => setAnimating(false), 2100);
+		setOnboardingPhase("met-sidekick");
 	};
 
 	// 4 → 4b: customize his color (camera stays on the hero framing).
-	const toCustomize = () => setPhase("customize");
+	const toCustomize = () => goTo("customize");
 	const pickColor = (c: (typeof COLORS)[number]) => {
 		setColor(c.id);
-		canvasRef.current?.setColors(c.body, c.shadow);
+		canvasRef.current?.setColors(c.body, c.shadow); // live recolor
+		applySkin(c); // persist + regenerate avatars
+		track("step_completed", { flow: "onboarding-3d", step_id: "customize", answer: c.id });
 	};
 
 	// 4b → 5: name him (hero framing, centered input).
-	const toNameSidekick = () => setPhase("nameSidekick");
+	const toNameSidekick = () => goTo("nameSidekick");
 
 	// 5 → 6: drop the notification banner in.
 	const submitSidekickName = (name: string) => {
 		setSidekickName(name);
 		saveSidekickName(name);
-		setPhase("notif");
+		track("step_completed", { flow: "onboarding-3d", step_id: "nameSidekick", answer: "name-entered" });
+		goTo("notif");
 		// NOTE: slot for the real push-notification permission prompt.
 		window.setTimeout(() => setNotifIn(true), 300);
 	};
@@ -194,8 +266,8 @@ export default function Onboarding() {
 	// 6 → 7: tap the banner → he lifts the phone (holdingPhone) + chat opens.
 	const openChat = () => {
 		setChatMounted(true);
-		setPhase("chat");
-		setFraming(CHAT_FRAMING);
+		track("step_completed", { flow: "onboarding-3d", step_id: "notif", answer: "banner-tapped" });
+		goTo("chat");
 	};
 
 	const sender = sidekickName.trim() || "Sidekick";
@@ -210,7 +282,7 @@ export default function Onboarding() {
 				framing={framing}
 				timeOfDay="evening"
 				cameraDrag={false}
-				hidden
+				hidden={!PHASES[initialPhase].characterVisible}
 				holdingPhone={phase === "chat"}
 			/>
 
@@ -314,10 +386,18 @@ export default function Onboarding() {
 				<NotificationBanner show={notifIn} sender={sender} onTap={openChat} />
 			) : null}
 
-			{/* 7. Chat — scripted onboarding Q&A first, then the free chat */}
+			{/* 7. Chat — the real conversational chat (home5's sliver layout): the
+			    sidekick opens by asking what the user wants to work on, so goal
+			    discovery happens naturally in conversation instead of a form */}
 			{chatMounted ? (
-				<div className="absolute inset-x-0 bottom-0 top-[45%] z-40 animate-sheet-up">
-					{chatDone ? <Chat transparentTop peekIn={false} /> : <OnboardingChat onDone={() => setChatDone(true)} />}
+				<div className="absolute inset-x-0 bottom-0 top-[20%] z-40 animate-sheet-up overflow-hidden rounded-t-[28px] bg-white shadow-[0_-8px_40px_rgba(0,0,0,0.22)]">
+					<OnboardingChat
+						onDone={() => {
+							setOnboardingPhase("first-chat");
+							track("flow_completed", { flow: "onboarding-3d" });
+							window.location.href = "/home4";
+						}}
+					/>
 				</div>
 			) : null}
 		</div>

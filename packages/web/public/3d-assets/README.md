@@ -22,7 +22,7 @@ files.
 - **Face sprite sheet:** `public/face-sheet.png` — 2048², a 4×4 grid of facial
   expressions, RGBA with a transparent background.
 - **Source / working meshes (outside this repo):**
-  `~/Desktop/char-pipeline/mesh/` — the Blender + Tripo pipeline output
+  `the char-pipeline archive (generation lab, outside this repo); authoring tools now live in tools/char-pipeline/` — the Blender + Tripo pipeline output
   (`yellow_final_v*.glb`, plus raw/retopo/rig intermediates). Nothing here is
   served directly; the chosen final gets copied to `public/sidekick-rigged.glb`.
 
