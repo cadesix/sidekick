@@ -538,7 +538,7 @@ export function SidekickCanvas({
 					side: THREE.DoubleSide,
 					depthWrite: false,
 				});
-				beam = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.18, 1.7, 24, 1, true), beamMat);
+				beam = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.3, 1.7, 24, 1, true), beamMat);
 				beam.position.y = 0.5 + 0.85; // mouth of the chest + half the beam height (raw GLB units)
 				boxGroup.add(beam);
 				// glow: a soft radial sprite sitting right in the mouth
