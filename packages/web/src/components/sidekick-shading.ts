@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { SidekickSettings } from "./sidekick-settings";
+import { faceUniformsFor } from "./sidekick-face";
 
 // Shared shading system for the 3D Sidekick. Both routes (/sidekick-3d editor,
 // /home3 canvas) build their character materials and environment light through
@@ -254,6 +255,9 @@ export function makeCelMaterial(
 		uCelSoft: { value: 0.015 + 0.6 * THREE.MathUtils.clamp(s.celSoftness, 0, 1) },
 		uCelShadow: { value: new THREE.Color(scene.shadeColor).multiply(envTint) },
 		uCelAmt: { value: s.celShadowAmt },
+		uRimColor: { value: new THREE.Color(s.celRimColor).multiply(envTint) },
+		uRimStrength: { value: s.celRimStrength },
+		uRimWidth: { value: s.celRimWidth },
 	};
 	mat.onBeforeCompile = (shader) => {
 		Object.assign(shader.uniforms, u);
@@ -262,6 +266,9 @@ export function makeCelMaterial(
 			uniform float uCelSoft;
 			uniform vec3 uCelShadow;
 			uniform float uCelAmt;
+			uniform vec3 uRimColor;
+			uniform float uRimStrength;
+			uniform float uRimWidth;
 			` +
 			shader.fragmentShader.replace(
 				"#include <opaque_fragment>",
@@ -271,6 +278,11 @@ export function makeCelMaterial(
 					float t = smoothstep( -uCelSoft, uCelSoft, ndl );
 					vec3 tint = mix( vec3( 1.0 ), uCelShadow, uCelAmt );
 					outgoingLight = diffuseColor.rgb * mix( tint, vec3( 1.0 ), t );
+					// cel rim: a crisp fresnel edge band, brighter on the lit side so
+					// it reads as backlight rather than a uniform glow
+					float rimF = 1.0 - saturate( dot( normalize( vViewPosition ), normalize( normal ) ) );
+					float rimBand = smoothstep( 1.0 - uRimWidth, min( 1.0, 1.0 - uRimWidth + 0.14 ), rimF );
+					outgoingLight += uRimColor * ( uRimStrength * rimBand * ( 0.35 + 0.65 * t ) );
 				}
 				#include <opaque_fragment>`,
 			);
@@ -337,6 +349,36 @@ export function makeOutlineMaterial(s: SidekickSettings): THREE.MeshLambertMater
 // sheet is available the face plane samples it (same material family as the
 // body, so the face reads as printed on the vinyl); otherwise it gets a
 // flat-albedo fill so the head hole is covered.
+// Split-band face sampling: the disc's map lookup reads the EYE band and the
+// MOUTH band from independent cell windows (shared per-texture uniforms from
+// faceUniformsFor — the face controller writes them). Chained onto whatever
+// onBeforeCompile the material mode already has.
+function patchFaceSplit(mat: THREE.Material, faceTex: THREE.Texture): THREE.Material {
+	const u = faceUniformsFor(faceTex);
+	const prev = mat.onBeforeCompile;
+	mat.onBeforeCompile = (shader, renderer) => {
+		prev?.call(mat, shader, renderer);
+		Object.assign(shader.uniforms, u);
+		shader.fragmentShader =
+			`uniform vec2 uFaceEyesOff;
+			uniform vec2 uFaceMouthOff;
+			uniform vec2 uFaceRepeat;
+			uniform float uFaceSplit;
+			` +
+			shader.fragmentShader.replace(
+				"#include <map_fragment>",
+				`#ifdef USE_MAP
+					vec2 fWin = vMapUv.y < uFaceSplit ? uFaceEyesOff : uFaceMouthOff;
+					vec4 sampledDiffuseColor = texture2D( map, fWin + vMapUv * uFaceRepeat );
+					diffuseColor *= sampledDiffuseColor;
+				#endif`,
+			);
+	};
+	const prevKey = mat.customProgramCacheKey ? mat.customProgramCacheKey.bind(mat) : null;
+	mat.customProgramCacheKey = () => `${prevKey ? prevKey() : ""}-face-split`;
+	return mat;
+}
+
 export function makeCharacterMaterials(
 	s: SidekickSettings,
 	tex: TexSet,
@@ -348,11 +390,14 @@ export function makeCharacterMaterials(
 		: null;
 	// the sheet carries alpha (only the features are opaque) — the head is
 	// sealed under the plane, so transparency lets its own shading show
-	// through instead of a flat color disc that can't match the albedo
+	// through instead of a flat color disc that can't match the albedo.
+	// This is also the choke point where every textured face material picks up
+	// the split-band eye/mouth sampling.
 	const withAlpha = (m: THREE.Material): THREE.Material => {
-		if (faceSet) {
+		if (faceSet && faceTex) {
 			m.transparent = true;
 			m.alphaTest = 0.02;
+			patchFaceSplit(m, faceTex);
 		}
 		return m;
 	};

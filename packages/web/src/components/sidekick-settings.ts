@@ -29,6 +29,10 @@ export type SidekickSettings = {
 	celShadowColor: string;
 	celSoftness: number;
 	celShadowAmt: number;
+	// cel rim light: a fresnel edge band added on top of the two tones
+	celRimColor: string;
+	celRimStrength: number; // 0 = off (ships off; a look-dev dial)
+	celRimWidth: number;
 	goochCool: string;
 	goochWarm: string;
 	halftoneScale: number;
@@ -127,6 +131,9 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
 	celShadowColor: "#c98f52",
 	celSoftness: 0,
 	celShadowAmt: 0.501,
+	celRimColor: "#fff2dc",
+	celRimStrength: 0,
+	celRimWidth: 0.35,
 	goochCool: "#7a86b8",
 	goochWarm: "#fff1d6",
 	halftoneScale: 7.432,

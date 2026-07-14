@@ -1,19 +1,21 @@
 import * as THREE from "three";
 
-// Face sprite system: the GLB's "FaceSprite" plane (a curved shell over the
-// face hole, skinned to Head) samples one cell of a 4×4 expression sheet.
-// Cells are FILLED with the flat body-albedo yellow (the plane covers a real
-// hole in the head, so transparency would show the head interior) and the
-// plane is lit with the same material family as the body, so the face reads
-// as printed-on-vinyl.
+// Face sprite system: the GLB's "FaceSprite" plane (a curved disc over the
+// face hole, skinned to Head) samples a 4×4 expression sheet. The EYES and
+// MOUTH sample independently: the face shader splits the disc at EYES_SPLIT
+// (v: 0 = chin, 1 = forehead) and reads each band from its own cell window, so
+// a blink only swaps the eye band while the mouth keeps talking, and vice
+// versa. The per-texture uniform bundle (faceUniformsFor) is shared by every
+// material built for that sheet — the controller writes it, materials read it.
 //
-// Sheet: public/face-sheet.png, 2048×2048, 4×4 grid of 512px cells, drawn in
-// glTF orientation (row 0 = top of image = top of face). Currently a
-// generated placeholder — replace with real artwork, same grid, no code
-// changes needed.
+// Sheet: public/face-sheet-v6.png, 2048×2048, 4×4 grid of 512px cells, drawn
+// in glTF orientation (row 0 = top of image = top of face).
 
 export const FACE_SHEET_URL = "/face-sheet-v6.png?v=1";
-const GRID = 4;
+export const GRID = 4;
+// the eyes/mouth boundary, measured from the TOP of the cell (the mesh's v
+// runs downward like the image): eyes live above it, mouth below
+export const EYES_SPLIT = 0.46;
 
 // name → [col, row]; keep in sync with the sheet
 export const FACE_CELLS = {
@@ -35,6 +37,27 @@ export const FACE_CELLS = {
 export type FaceExpression = keyof typeof FACE_CELLS;
 export const FACE_EXPRESSIONS = Object.keys(FACE_CELLS) as FaceExpression[];
 
+// the shared shader uniforms for one loaded sheet: eye-band window, mouth-band
+// window, window size, and the split line. Attached to the texture so every
+// material built from it (body modes × routes) reads the same live values.
+export type FaceUniforms = {
+	uFaceEyesOff: { value: THREE.Vector2 };
+	uFaceMouthOff: { value: THREE.Vector2 };
+	uFaceRepeat: { value: THREE.Vector2 };
+	uFaceSplit: { value: number };
+};
+
+export function faceUniformsFor(t: THREE.Texture): FaceUniforms {
+	const ud = t.userData as { faceUniforms?: FaceUniforms };
+	ud.faceUniforms ??= {
+		uFaceEyesOff: { value: new THREE.Vector2(0, 0) },
+		uFaceMouthOff: { value: new THREE.Vector2(0, 0) },
+		uFaceRepeat: { value: new THREE.Vector2(1 / GRID, 1 / GRID) },
+		uFaceSplit: { value: EYES_SPLIT },
+	};
+	return ud.faceUniforms;
+}
+
 // loads the sheet pre-configured for cell sampling; calls back exactly once
 // (null if the sheet is missing — callers keep the flat-color face)
 export function loadFaceTexture(onReady: (t: THREE.Texture | null) => void): void {
@@ -43,13 +66,16 @@ export function loadFaceTexture(onReady: (t: THREE.Texture | null) => void): voi
 		(t) => {
 			t.colorSpace = THREE.SRGBColorSpace;
 			t.flipY = false; // glTF UV convention (v=0 = top of image)
-			t.repeat.set(1 / GRID, 1 / GRID);
+			// cell windows are computed in the face shader (split sampling), so the
+			// texture's own transform stays identity
+			t.repeat.set(1, 1);
+			t.offset.set(0, 0);
 			t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
-			// no mipmaps (facesprite-contract.md): the disc's rim curves away from
-			// the camera, so mipped sampling there mixes neighboring cells into the
-			// visible face (stray eye slivers at the ear, hearts at the neck)
+			// no mipmaps (facesprite-contract.md): the disc's curved rim otherwise
+			// samples deep mip levels where neighboring cells blur together
 			t.generateMipmaps = false;
 			t.minFilter = THREE.LinearFilter;
+			faceUniformsFor(t);
 			onReady(t);
 		},
 		undefined,
@@ -64,58 +90,59 @@ export type FaceController = {
 	pulse: (e: FaceExpression, seconds: number) => void;
 	setTalking: (on: boolean) => void;
 	setBlinking: (on: boolean) => void;
+	// manual per-band overrides (the /action-composer drives these); null follows the base
+	setEyesOverride: (e: FaceExpression | null) => void;
+	setMouthOverride: (e: FaceExpression | null) => void;
 	// artwork size relative to the head: >1 samples a smaller centered window
-	// of the cell, so the features render bigger on the face plane
 	setScale: (sc: number) => void;
-	// vertical placement on the head, in cell fractions: positive samples a
-	// lower window of the cell, which renders the features HIGHER on the head
+	// vertical placement on the head, in cell fractions
 	setOffsetY: (dy: number) => void;
+	// what each band is currently showing (for inspector UIs)
+	getState: () => { eyes: FaceExpression; mouth: FaceExpression };
 	// drive from the render loop
 	update: (t: number) => void;
 };
 
 export function createFaceController(tex: THREE.Texture, scale = 1, offsetY = 0): FaceController {
+	const u = faceUniformsFor(tex);
 	let base: FaceExpression = "neutral";
 	let pulseExpr: FaceExpression | null = null;
 	let pulseUntil = 0;
 	let pulseSeconds = 0;
 	let talking = false;
 	let blinking = true;
+	let eyesOverride: FaceExpression | null = null;
+	let mouthOverride: FaceExpression | null = null;
 	let nextBlink = 2 + Math.random() * 3;
 	let blinkUntil = -1;
-	let current: FaceExpression | null = null;
+	let curEyes: FaceExpression = "neutral";
+	let curMouth: FaceExpression = "neutral";
+	let dirty = true;
 
-	// below ~0.9 the sample window spills past the cell's feathered edge into
-	// neighboring expressions, so clamp there
+	// below ~0.9 the sample window spills past the cell into neighboring
+	// expressions, so clamp there
 	const applyScale = (sc: number) => {
 		scale = Math.max(0.9, sc);
-		tex.repeat.setScalar(1 / (GRID * scale));
+		u.uFaceRepeat.value.setScalar(1 / (GRID * scale));
+		dirty = true;
 	};
 	applyScale(scale);
 
-	const show = (e: FaceExpression) => {
-		if (e === current) return;
-		current = e;
+	const writeOffset = (e: FaceExpression, out: THREE.Vector2) => {
 		const [c, r] = FACE_CELLS[e];
 		const cell = 1 / GRID;
-		const win = tex.repeat.y; // 1/(GRID*zoom); < cell when zoomed in
+		const win = u.uFaceRepeat.value.y; // 1/(GRID*zoom); < cell when zoomed in
 		const inset = (cell - win) / 2; // center the zoomed window in the cell
-		// v9 disc plane (facesprite-contract.md): UV [0,1] inscribes the disc.
-		// The contract's (GRID-1-row) row term samples the sheet vertically
-		// flipped for our sheet (row 0 = top, flipY=false) — verified in-engine
-		// (it showed row 1's art for a row-2 request) — so per the contract's own
-		// "if vertically flipped, swap the row term" note we use row*cell, which
-		// selects the right cell and renders upright. The disc clips the cell
-		// corners and the sheet has transparent gutters, so no bleed clamp.
-		const u = c * cell + inset;
-		const v = r * cell + inset + offsetY * cell;
-		tex.offset.set(u, v);
+		out.set(c * cell + inset, r * cell + inset + offsetY * cell);
 	};
-	const reshow = () => {
-		const e = current;
-		current = null; // force show() to re-apply the offset
-		if (e) show(e);
+	const apply = (eyes: FaceExpression, mouth: FaceExpression) => {
+		if (eyes !== curEyes || dirty) writeOffset(eyes, u.uFaceEyesOff.value);
+		if (mouth !== curMouth || dirty) writeOffset(mouth, u.uFaceMouthOff.value);
+		curEyes = eyes;
+		curMouth = mouth;
+		dirty = false;
 	};
+	apply("neutral", "neutral");
 
 	return {
 		set: (e) => {
@@ -132,31 +159,36 @@ export function createFaceController(tex: THREE.Texture, scale = 1, offsetY = 0)
 		setBlinking: (on) => {
 			blinking = on;
 		},
+		setEyesOverride: (e) => {
+			eyesOverride = e;
+		},
+		setMouthOverride: (e) => {
+			mouthOverride = e;
+		},
 		setScale: (sc) => {
 			applyScale(sc);
-			reshow();
 		},
 		setOffsetY: (dy) => {
 			offsetY = dy;
-			reshow();
+			dirty = true;
 		},
+		getState: () => ({ eyes: curEyes, mouth: curMouth }),
 		update: (t) => {
 			if (pulseExpr && pulseUntil === -1) pulseUntil = t + pulseSeconds;
 			if (pulseExpr && t > pulseUntil) pulseExpr = null;
-			// blink scheduling (skipped while talking so the mouth flap reads)
-			if (blinking && !talking && t >= nextBlink) {
+			// blink scheduling — eyes-only now, so it runs even while talking
+			if (blinking && t >= nextBlink) {
 				blinkUntil = t + 0.13;
 				nextBlink = t + 2.5 + Math.random() * 3.5;
 				// occasional double blink
 				if (Math.random() < 0.25) nextBlink = t + 0.35;
 			}
-			if (talking) {
-				show(Math.floor(t * 8) % 2 === 0 ? "talkOpen" : "talkClosed");
-			} else if (t < blinkUntil) {
-				show("blink");
-			} else {
-				show(pulseExpr ?? base);
-			}
+			const expr = pulseExpr ?? base;
+			// mouth: manual override > talk flaps > expression
+			const mouth = mouthOverride ?? (talking ? (Math.floor(t * 8) % 2 === 0 ? "talkOpen" : "talkClosed") : expr);
+			// eyes: manual override > blink window > expression
+			const eyes = eyesOverride ?? (blinking && t < blinkUntil ? "blink" : expr);
+			apply(eyes, mouth);
 		},
 	};
 }
