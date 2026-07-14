@@ -1,8 +1,12 @@
 import { and, asc, eq } from "drizzle-orm";
 import { type LanguageModel, generateObject, generateText } from "ai";
 import { type Database, memories, memorySuppressions, messages, users } from "@sidekick/db";
-import { type MemoryKind, estimateTokens, memoryOpsSchema } from "@sidekick/shared";
-import { bumpMemoryVersion } from "../memory/store";
+import {
+  type MemoryKind,
+  bumpMemoryVersion,
+  estimateTokens,
+  memoryOpsSchema,
+} from "@sidekick/shared";
 import { ensureMainConversation } from "../chat/turn";
 import { recomputeContextScore } from "./score";
 

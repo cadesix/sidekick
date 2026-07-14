@@ -3,7 +3,13 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { reminders, users } from "@sidekick/db";
 import type { Database } from "@sidekick/db";
-import { computeNextFireAt, localDate, parseSchedule, scheduleSchema } from "@sidekick/shared";
+import {
+  computeNextFireAt,
+  localDate,
+  parseSchedule,
+  scheduleSchema,
+  userTimezone,
+} from "@sidekick/shared";
 import { protectedProcedure, router } from "../trpc";
 
 type ReminderRow = typeof reminders.$inferSelect;
@@ -23,15 +29,6 @@ async function ownedReminder(
     throw new TRPCError({ code: "NOT_FOUND", message: "reminder not found" });
   }
   return row;
-}
-
-async function userTimezone(db: Database, userId: string): Promise<string> {
-  const rows = await db
-    .select({ timezone: users.timezone })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  return rows[0]?.timezone ?? "America/New_York";
 }
 
 function toItem(row: ReminderRow) {

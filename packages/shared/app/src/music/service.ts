@@ -15,17 +15,20 @@ async function resolveQueries(
   client: AppleMusicClient,
   queries: string[],
 ): Promise<{ songs: MusicSong[]; missing: string[] }> {
+  const results = await Promise.all(queries.map((query) => client.searchSongs(query, 1)));
   const songs: MusicSong[] = [];
   const missing: string[] = [];
-  for (const query of queries) {
-    const hits = await client.searchSongs(query, 1);
+  results.forEach((hits, i) => {
     const top = hits[0];
     if (top) {
       songs.push(top);
-    } else {
+      return;
+    }
+    const query = queries[i];
+    if (query !== undefined) {
       missing.push(query);
     }
-  }
+  });
   return { songs, missing };
 }
 

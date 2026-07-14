@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   deleteMessage,
@@ -136,9 +136,17 @@ export function useSidekickChat(): SidekickChat {
     onSettled: () => queryClient.invalidateQueries({ queryKey: transcriptKey }),
   });
 
+  const fetched = transcript.data?.messages;
+  /**
+   * Stable identity: ChatScreen memoizes the transcript, the reply chain and the
+   * FlatList data on this array, so rebuilding it every render would re-run all
+   * three (and re-render every visible row) on any unrelated state change.
+   */
+  const messages = useMemo(() => [...(fetched ?? []), ...outgoing], [fetched, outgoing]);
+
   return {
     thread: conversationId === undefined ? undefined : sidekickThread(conversationId),
-    messages: [...(transcript.data?.messages ?? []), ...outgoing],
+    messages,
     composerAd: turn.isPending ? undefined : transcript.data?.composerAd,
     typing: turn.isPending,
     send: turn.mutate,

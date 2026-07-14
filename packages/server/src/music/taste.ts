@@ -1,7 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { type Database, memories } from "@sidekick/db";
-import type { AppleMusicClient } from "@sidekick/shared";
-import { bumpMemoryVersion } from "../memory/store";
+import { type AppleMusicClient, bumpMemoryVersion } from "@sidekick/shared";
 
 /** Cap on taste memories written per ingestion pass, so a big library stays bounded. */
 const MAX_TASTE_MEMORIES = 15;

@@ -43,6 +43,29 @@ export const healthSummaryMetricSchema = z.enum([
 ]);
 export type HealthSummaryMetric = z.infer<typeof healthSummaryMetricSchema>;
 
+/** The columns `health_summary` reads a metric out of. */
+export type HealthMetricRow = {
+  steps: number | null;
+  sleepMinutes: number | null;
+  activeCalories: number | null;
+  workouts: unknown;
+};
+
+/**
+ * How each metric is read off a stored day. Keyed by the enum, so a new metric
+ * cannot be added without giving it a value — the previous if/else chain silently
+ * treated any unhandled metric as `workouts`.
+ */
+export const HEALTH_METRIC_VALUE: Record<
+  HealthSummaryMetric,
+  (row: HealthMetricRow) => number | null
+> = {
+  steps: (row) => row.steps,
+  sleep: (row) => row.sleepMinutes,
+  calories: (row) => row.activeCalories,
+  workouts: (row) => (Array.isArray(row.workouts) ? row.workouts.length : null),
+};
+
 export const healthSummaryInputSchema = z.object({
   range_days: z.number().int().min(1).max(30),
   metric: healthSummaryMetricSchema,

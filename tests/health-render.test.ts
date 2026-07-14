@@ -32,7 +32,12 @@ test("renders yesterday's health into a friend-shaped RECENT line", async () => 
     workouts: [{ type: "run", minutes: 34, startedAt: "2026-07-05T13:00:00.000Z" }],
   });
 
-  const lines = await renderHealthLines(db, userId, new Date("2026-07-06T18:00:00.000Z"));
+  const lines = await renderHealthLines(
+    db,
+    userId,
+    new Date("2026-07-06T18:00:00.000Z"),
+    "America/New_York",
+  );
   expect(lines).toHaveLength(1);
   const line = lines[0]!;
   expect(line.startsWith("- connected Apple Health summary: yesterday:")).toBe(true);
@@ -44,7 +49,12 @@ test("renders yesterday's health into a friend-shaped RECENT line", async () => 
 
 test("no synced days renders nothing (empty section)", async () => {
   const { userId } = await registerDevice(db, { deviceId: "render-2" });
-  const lines = await renderHealthLines(db, userId, new Date("2026-07-06T18:00:00.000Z"));
+  const lines = await renderHealthLines(
+    db,
+    userId,
+    new Date("2026-07-06T18:00:00.000Z"),
+    "America/New_York",
+  );
   expect(lines).toEqual([]);
 });
 

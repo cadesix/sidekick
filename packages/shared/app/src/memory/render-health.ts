@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { type Database, healthDays, users } from "@sidekick/db";
+import { type Database, healthDays } from "@sidekick/db";
+import { addDays, localDate } from "../goals/dates";
 import { healthWorkoutSchema } from "../health/types";
-import { localCalendarDate } from "./dates";
 
 type HealthRow = {
   date: string;
@@ -12,13 +12,6 @@ type HealthRow = {
   sleepEnd: Date | null;
   workouts: unknown;
 };
-
-function localDateString(now: Date, timezone: string, offsetDays: number): string {
-  const shifted = new Date(now.getTime() + offsetDays * 86_400_000);
-  const { year, month, day } = localCalendarDate(shifted, timezone);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${year}-${pad(month)}-${pad(day)}`;
-}
 
 /** "12:48" — local wall-clock hour:minute, no am/pm (12 §render). */
 function clockTime(at: Date, timezone: string): string {
@@ -89,19 +82,10 @@ export async function renderHealthLines(
   db: Database,
   userId: string,
   now: Date,
+  timezone: string,
 ): Promise<string[]> {
-  const userRows = await db
-    .select({ timezone: users.timezone })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  const timezone = userRows[0]?.timezone;
-  if (!timezone) {
-    return [];
-  }
-
-  const today = localDateString(now, timezone, 0);
-  const yesterday = localDateString(now, timezone, -1);
+  const today = localDate(timezone, now);
+  const yesterday = addDays(today, -1);
 
   const rows = await db
     .select({

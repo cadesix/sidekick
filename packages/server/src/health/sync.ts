@@ -1,7 +1,6 @@
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { type Database, actionItems, goals, healthDays, progressEvents } from "@sidekick/db";
-import type { HealthDayInput } from "@sidekick/shared";
-import { bumpMemoryVersion } from "../memory/store";
+import { type HealthDayInput, bumpMemoryVersion } from "@sidekick/shared";
 import { autoLogHealthDay } from "./auto-log";
 
 function toDate(value: string | null | undefined): Date | null {

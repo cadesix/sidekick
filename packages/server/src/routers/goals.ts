@@ -6,24 +6,17 @@ import type { Database } from "@sidekick/db";
 import {
   cadenceSchema,
   currentStreak,
-  defaultActionItem,
   getActionItemTemplate,
   getGoalDefinition,
   localDate,
   addDays,
+  mondayOf,
+  userTimezone,
   weekStart,
-  CUSTOM_ACTION_SLUG,
 } from "@sidekick/shared";
+import { adoptGoal } from "../onboarding/adopt";
+import { userStreak } from "../rewards/service";
 import { protectedProcedure, router } from "../trpc";
-
-async function userTimezone(db: Database, userId: string): Promise<string> {
-  const rows = await db
-    .select({ timezone: users.timezone })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  return rows[0]?.timezone ?? "America/New_York";
-}
 
 async function assertGoalOwned(db: Database, goalId: string, userId: string): Promise<void> {
   const rows = await db
@@ -46,40 +39,7 @@ const adoptInput = z.object({
 export const goalsRouter = router({
   /** Adopt a goal from the catalog with a chosen (or default) action item. */
   adopt: protectedProcedure.input(adoptInput).mutation(async ({ ctx, input }) => {
-    const { db, userId } = ctx;
-    const definition = getGoalDefinition(input.slug);
-    const label = input.label ?? definition?.label ?? input.slug;
-
-    const insertedGoal = await db
-      .insert(goals)
-      .values({ userId, slug: input.slug, label, status: "active" })
-      .returning();
-    const goal = insertedGoal[0];
-    if (!goal) {
-      throw new Error("failed to create goal");
-    }
-
-    const template =
-      input.actionSlug && definition
-        ? getActionItemTemplate(input.slug, input.actionSlug)
-        : defaultActionItem(input.slug);
-
-    const actionSlug = template?.slug ?? input.actionSlug ?? CUSTOM_ACTION_SLUG;
-    const actionLabel = template?.label ?? input.label ?? "Custom action";
-    const cadence = input.cadence ?? template?.defaultCadence;
-    if (!cadence) {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: "a cadence is required for a custom action item",
-      });
-    }
-
-    const insertedItem = await db
-      .insert(actionItems)
-      .values({ goalId: goal.id, slug: actionSlug, label: actionLabel, cadence, status: "active" })
-      .returning();
-    const actionItem = insertedItem[0];
-
+    const { goal, actionItem } = await adoptGoal(ctx.db, ctx.userId, input);
     return { goal, actionItem };
   }),
 
@@ -134,16 +94,7 @@ export const goalsRouter = router({
       .where(and(eq(checkIns.userId, userId), eq(checkIns.date, today)))
       .limit(1);
 
-    const hitRows = await db
-      .select({ date: progressEvents.date })
-      .from(progressEvents)
-      .innerJoin(actionItems, eq(progressEvents.actionItemId, actionItems.id))
-      .innerJoin(goals, eq(actionItems.goalId, goals.id))
-      .where(and(eq(goals.userId, userId), inArray(progressEvents.outcome, ["hit", "partial"])));
-    const streak = currentStreak(
-      hitRows.map((r) => r.date),
-      today,
-    );
+    const streak = await userStreak(db, userId, today);
 
     const goalStates = goalRows.map((goal) => {
       const item = itemByGoal.get(goal.id);
@@ -227,9 +178,7 @@ export const goalsRouter = router({
       const parsedCadence = item ? cadenceSchema.safeParse(item.cadence) : null;
       const cadence = parsedCadence?.success ? parsedCadence.data : null;
 
-      const parts = today.split("-").map(Number);
-      const dow = new Date(Date.UTC(parts[0]!, parts[1]! - 1, parts[2]!)).getUTCDay();
-      const monday = addDays(today, -((dow + 6) % 7));
+      const monday = mondayOf(today);
       const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
       const week = labels.map((weekday, i) => {
         const date = addDays(monday, i);

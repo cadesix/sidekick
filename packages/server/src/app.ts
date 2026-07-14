@@ -1,4 +1,5 @@
 import { trpcServer } from "@hono/trpc-server";
+import { createMiddleware } from "hono/factory";
 import { attachments } from "@sidekick/db";
 import { chatContinueInput, chatSendInput } from "@sidekick/shared";
 import { eq } from "drizzle-orm";
@@ -17,14 +18,18 @@ import { runAdProfileSweep } from "./memory/projection";
 import { appleMusicEnvFromProcess, mintDeveloperToken } from "./music/dev-token";
 import { appRouter } from "./routers";
 
-/** Vercel-cron auth: a matching `Authorization: Bearer $CRON_SECRET` header. */
-function authorizeCron(authorization: string | null): boolean {
+/**
+ * Vercel-cron auth: every `/cron/*` route requires a matching
+ * `Authorization: Bearer $CRON_SECRET`. Fails closed — an unset secret locks the
+ * routes rather than exposing jobs that mutate data and send pushes.
+ */
+const cronAuth = createMiddleware(async (c, next) => {
   const secret = readEnv().CRON_SECRET;
-  if (!secret) {
-    return false;
+  if (!secret || c.req.header("authorization") !== `Bearer ${secret}`) {
+    return c.json({ error: "unauthorized" }, 401);
   }
-  return authorization === `Bearer ${secret}`;
-}
+  return next();
+});
 
 /** A single `bytes=` range, clamped to the object; null when absent or unsatisfiable. */
 function parseByteRange(
@@ -245,10 +250,9 @@ export function buildApp(services: Services) {
    * Session-idle sweep (01 §scheduled work): find idle conversations and run
    * extraction → compaction for each. Vercel Cron hits this on a schedule.
    */
+  app.use("/cron/*", cronAuth);
+
   app.get("/cron/idle", async (c) => {
-    if (!authorizeCron(c.req.header("authorization") ?? null)) {
-      return c.json({ error: "unauthorized" }, 401);
-    }
     const result = await runIdleSweep(services.db, services.model, new Date());
     return c.json(result);
   });
@@ -259,9 +263,6 @@ export function buildApp(services: Services) {
    * interest sentences; otherwise the deterministic goal-slug map is the fallback.
    */
   app.get("/cron/ad-profiles", async (c) => {
-    if (!authorizeCron(c.req.header("authorization") ?? null)) {
-      return c.json({ error: "unauthorized" }, 401);
-    }
     const classify = process.env.SIDEKICK_AD_IAB_CLASSIFY === "1";
     const result = await runAdProfileSweep(services.db, classify ? { model: services.model } : {});
     return c.json(result);

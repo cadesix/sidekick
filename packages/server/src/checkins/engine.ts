@@ -15,10 +15,10 @@ import {
   DEFAULT_REMINDER_TIME,
   WEB_SEARCH_TOOL,
   addDays,
+  bumpMemoryVersion,
   estimateTokens,
   localDate,
   localHour,
-  currentStreak,
   pickTone,
   renderOpenerSystem,
   renderOpenerUser,
@@ -26,6 +26,7 @@ import {
   type OpenerSignal,
 } from "@sidekick/shared";
 import { ensureMainConversation, userLocationFrom, webSearchSources } from "../chat/turn";
+import { userStreak } from "../rewards/service";
 
 /** Opener proactivity budget (11 §current-events proactivity): at most 2 searched openers/user/week. */
 const OPENER_SEARCH_WEEKLY_CAP = 2;
@@ -116,39 +117,32 @@ async function gatherOpenerSignals(
   const { db } = deps;
   const yesterday = addDays(today, -1);
 
-  const yesterdayCheckIn = await db
-    .select({ status: checkIns.status })
-    .from(checkIns)
-    .where(and(eq(checkIns.userId, user.id), eq(checkIns.date, yesterday)))
-    .limit(1);
+  const [yesterdayCheckIn, yesterdayProgress, streak, highlights, weather] = await Promise.all([
+    db
+      .select({ status: checkIns.status })
+      .from(checkIns)
+      .where(and(eq(checkIns.userId, user.id), eq(checkIns.date, yesterday)))
+      .limit(1),
+    db
+      .select({
+        label: actionItems.label,
+        outcome: progressEvents.outcome,
+        note: progressEvents.note,
+      })
+      .from(progressEvents)
+      .innerJoin(actionItems, eq(progressEvents.actionItemId, actionItems.id))
+      .innerJoin(goals, eq(actionItems.goalId, goals.id))
+      .where(and(eq(goals.userId, user.id), eq(progressEvents.date, yesterday))),
+    userStreak(db, user.id, today),
+    db
+      .select({ content: memories.content, kind: memories.kind })
+      .from(memories)
+      .where(and(eq(memories.userId, user.id), eq(memories.status, "active")))
+      .orderBy(desc(memories.lastReinforcedAt))
+      .limit(3),
+    getWeather(deps.weatherApiKey, user.lastCity ?? null),
+  ]);
   const yesterdaySkipped = yesterdayCheckIn[0]?.status === "skipped";
-
-  const yesterdayProgress = await db
-    .select({ label: actionItems.label, outcome: progressEvents.outcome, note: progressEvents.note })
-    .from(progressEvents)
-    .innerJoin(actionItems, eq(progressEvents.actionItemId, actionItems.id))
-    .innerJoin(goals, eq(actionItems.goalId, goals.id))
-    .where(and(eq(goals.userId, user.id), eq(progressEvents.date, yesterday)));
-
-  const hitDatesRows = await db
-    .select({ date: progressEvents.date })
-    .from(progressEvents)
-    .innerJoin(actionItems, eq(progressEvents.actionItemId, actionItems.id))
-    .innerJoin(goals, eq(actionItems.goalId, goals.id))
-    .where(and(eq(goals.userId, user.id), inArray(progressEvents.outcome, ["hit", "partial"])));
-  const streak = currentStreak(
-    hitDatesRows.map((r) => r.date),
-    today,
-  );
-
-  const highlights = await db
-    .select({ content: memories.content, kind: memories.kind })
-    .from(memories)
-    .where(and(eq(memories.userId, user.id), eq(memories.status, "active")))
-    .orderBy(desc(memories.lastReinforcedAt))
-    .limit(3);
-
-  const weather = await getWeather(deps.weatherApiKey, user.lastCity ?? null);
 
   const signals: OpenerSignal[] = [];
   const notable = yesterdayProgress.find((p) => p.outcome === "hit" || p.outcome === "missed");
@@ -351,10 +345,7 @@ export async function openCheckin(
     .update(checkIns)
     .set({ status: "opened", openerMessageId: message.id })
     .where(eq(checkIns.id, claimed.id));
-  await db
-    .update(users)
-    .set({ memoryVersion: sql`${users.memoryVersion} + 1` })
-    .where(eq(users.id, user.id));
+  await bumpMemoryVersion(db, user.id);
 
   const pushIntent: PushIntent = {
     token: user.pushToken ?? null,

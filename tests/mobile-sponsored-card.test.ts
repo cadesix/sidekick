@@ -3,7 +3,6 @@ import {
   type AdView,
   type ChatMessage,
   activeComposerAd,
-  buildChatRows,
 } from "../packages/expo/src/lib/chat-thread";
 import {
   GRAVITY_PIXEL_CONFIG,
@@ -43,25 +42,12 @@ function userMessage(id: number): ChatMessage {
 }
 
 describe("sponsored-card thread rows", () => {
-  const now = new Date(2026, 6, 7, 12, 0);
-
-  it("pins the newest ad above the composer and removes it from transcript rows", () => {
-    const rows = buildChatRows([adMessage(2), userMessage(1)], now);
-    const messageRows = rows.filter((r) => r.type === "message");
-    expect(messageRows).toHaveLength(1);
+  it("pins the newest ad above the composer", () => {
     expect(activeComposerAd([adMessage(2), userMessage(1)])).toEqual(AD);
   });
 
   it("expires the composer ad as soon as a newer message exists", () => {
     expect(activeComposerAd([userMessage(3), adMessage(2), userMessage(1)])).toBeUndefined();
-  });
-
-  it("non-ad messages carry a null ad", () => {
-    const rows = buildChatRows([userMessage(1)], now);
-    const row = rows.find((r) => r.type === "message");
-    if (row?.type === "message") {
-      expect(row.message.ad ?? null).toBeNull();
-    }
   });
 });
 

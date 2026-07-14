@@ -2,7 +2,6 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import {
   type Database,
   actionItems,
-  checkIns,
   documents,
   goals,
   memories,
@@ -123,7 +122,7 @@ export async function renderMemoryBlock(
     renderGoals(db, userId),
     renderReminders(db, userId, today),
     renderDocuments(db, userId),
-    renderHealthLines(db, userId, now),
+    renderHealthLines(db, userId, now, user.timezone),
   ]);
 
   const aboutLines: string[] = [];

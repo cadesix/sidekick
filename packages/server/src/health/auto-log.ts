@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { type Database, actionItems, checkIns, goals, progressEvents, users } from "@sidekick/db";
-import { type HealthWorkout, healthWorkoutSchema } from "@sidekick/shared";
+import { type HealthWorkout, healthWorkoutSchema, userTimezone } from "@sidekick/shared";
 
 /**
  * Which fitness action items a workout type satisfies. Unknown types still count
@@ -128,15 +128,6 @@ function parseWorkouts(value: unknown): HealthWorkout[] {
     }
   }
   return parsed;
-}
-
-async function userTimezone(db: Database, userId: string): Promise<string> {
-  const rows = await db
-    .select({ timezone: users.timezone })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  return rows[0]?.timezone ?? "America/New_York";
 }
 
 /**

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
+import { z } from "zod";
 import { type Database, adEvents, adProfiles, ads, users } from "@sidekick/db";
 import type { FeatureFlags } from "@sidekick/shared";
 import { adForwardMessages } from "../memory/ad-window";
@@ -45,7 +46,10 @@ export type AdDecisionResult =
   | { status: "served"; adUnitId: string; messageId: number }
   | { status: "skipped"; reason: AdSkipReason };
 
-type AdProfileTargeting = { interests: string[]; intents: string[]; hasActiveIntent: boolean };
+/** The stored `ad_profiles.intents` jsonb, as written by the projection sweep. */
+const adProfileIntentsSchema = z.array(
+  z.object({ signal: z.string(), strength: z.string(), expires: z.string() }),
+);
 
 /**
  * The post-response ad-slotting decision (05 §integration architecture, invoked
@@ -112,10 +116,12 @@ export async function runAdDecision(
     return logged(input, { status: "skipped", reason: "frequency_cap" });
   }
 
-  const window = await adForwardMessages(db, input.conversationId, AD_CONTEXT_WINDOW);
-  const targeting = await loadTargeting(db, input.userId);
-  const dismissedTopics = await dismissedAdTopics(db, input.userId);
-  const relevancy = targeting.hasActiveIntent ? RELEVANCY_HIGH_INTENT : RELEVANCY_DEFAULT;
+  const [window, activeIntent, dismissedTopics] = await Promise.all([
+    adForwardMessages(db, input.conversationId, AD_CONTEXT_WINDOW),
+    hasActiveIntent(db, input.userId),
+    dismissedAdTopics(db, input.userId),
+  ]);
+  const relevancy = activeIntent ? RELEVANCY_HIGH_INTENT : RELEVANCY_DEFAULT;
 
   const ad = await network.requestAd({
     messages: window.map((m) => ({ role: m.role, content: m.content })),
@@ -167,55 +173,22 @@ async function dismissedAdTopics(db: Database, userId: string): Promise<string[]
   return [...new Set(rows.map((row) => row.brandName.toLowerCase()))];
 }
 
-async function loadTargeting(db: Database, userId: string): Promise<AdProfileTargeting> {
+/**
+ * Whether the user has a live purchase intent, which is the only thing the ad
+ * request derives from their profile — it raises the relevancy floor.
+ */
+async function hasActiveIntent(db: Database, userId: string): Promise<boolean> {
   const rows = await db
-    .select({ eligible: adProfiles.eligible, interests: adProfiles.interests, intents: adProfiles.intents })
+    .select({ eligible: adProfiles.eligible, intents: adProfiles.intents })
     .from(adProfiles)
     .where(eq(adProfiles.userId, userId))
     .limit(1);
   const profile = rows[0];
-  if (!profile || !profile.eligible) {
-    return { interests: [], intents: [], hasActiveIntent: false };
+  if (!profile?.eligible) {
+    return false;
   }
-  const interests = interestLabels(profile.interests);
-  const { labels: intents, hasActive } = intentLabels(profile.intents);
-  return { interests, intents, hasActiveIntent: hasActive };
-}
-
-function interestLabels(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  const labels: string[] = [];
-  for (const entry of value) {
-    if (typeof entry === "object" && entry !== null) {
-      const label = (entry as Record<string, unknown>).label;
-      if (typeof label === "string") {
-        labels.push(label);
-      }
-    }
-  }
-  return labels;
-}
-
-function intentLabels(value: unknown): { labels: string[]; hasActive: boolean } {
-  if (!Array.isArray(value)) {
-    return { labels: [], hasActive: false };
-  }
-  const labels: string[] = [];
-  let hasActive = false;
-  for (const entry of value) {
-    if (typeof entry === "object" && entry !== null) {
-      const record = entry as Record<string, unknown>;
-      if (typeof record.signal === "string") {
-        labels.push(record.signal);
-        if (record.strength === "active") {
-          hasActive = true;
-        }
-      }
-    }
-  }
-  return { labels, hasActive };
+  const intents = adProfileIntentsSchema.safeParse(profile.intents);
+  return intents.success && intents.data.some((intent) => intent.strength === "active");
 }
 
 function logged(

@@ -12,8 +12,7 @@ import {
 /**
  * Vercel-cron-shaped endpoints for the daily check-in engine (01: Vercel Cron,
  * timezone-sharded). Each tick handles "users whose local reminder time is now".
- * A `CRON_SECRET` gate (when set) protects the routes; unset leaves them open
- * for local/preview.
+ * Auth is the `/cron/*` `CRON_SECRET` gate applied in `buildApp`.
  */
 export function buildCheckinCron(services: Services): Hono {
   const app = new Hono();
@@ -23,15 +22,6 @@ export function buildCheckinCron(services: Services): Hono {
     weatherApiKey: process.env.WEATHER_API_KEY,
     expoAccessToken: process.env.EXPO_ACCESS_TOKEN,
   };
-  const secret = process.env.CRON_SECRET;
-
-  app.use("*", async (c, next) => {
-    if (secret && c.req.header("authorization") !== `Bearer ${secret}`) {
-      return c.json({ error: "unauthorized" }, 401);
-    }
-    return next();
-  });
-
   app.get("/checkins/open", async (c) => {
     const now = new Date();
     const users = await selectDueUsers(deps.db, now);

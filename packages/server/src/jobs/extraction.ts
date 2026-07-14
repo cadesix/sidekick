@@ -12,10 +12,10 @@ import {
   type MemoryKind,
   type MemoryOp,
   PURCHASE_INTENT_TTL_DAYS,
+  bumpMemoryVersion,
   memoryOpsSchema,
   tailMessages,
 } from "@sidekick/shared";
-import { bumpMemoryVersion } from "../memory/store";
 
 export type ExtractionResult = {
   applied: number;

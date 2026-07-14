@@ -2,7 +2,7 @@ import { fetch as streamingFetch } from "expo/fetch";
 import Constants from "expo-constants";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
 import type { AppRouter } from "@sidekick/server/router";
-import { DEEP_TALK_MARKER_ROLE, STREAM_META_DELIMITER } from "@sidekick/shared";
+import { STREAM_META_DELIMITER } from "@sidekick/shared";
 import type {
   AttachmentKind,
   Cadence,
@@ -11,7 +11,6 @@ import type {
   StreamMeta,
 } from "@sidekick/shared";
 import { drainStreamFrames } from "~/features/chat/stream-frames";
-import type { AdView, ChatMessage, MessageAttachment } from "./chat-thread";
 import { Platform } from "react-native";
 
 /**
@@ -81,56 +80,6 @@ export function signInWithEmail(input: {
   return trpc.auth.signIn.mutate(input);
 }
 
-export function mainConversationId(): Promise<{ id: string }> {
-  return trpc.chat.mainConversation.query();
-}
-
-function toRole(role: string): ChatMessage["role"] {
-  if (role === "user") {
-    return "user";
-  }
-  if (role === "tool") {
-    return "tool";
-  }
-  return "assistant";
-}
-
-/**
- * Server message row → the client's `ChatMessage`. tRPC (no transformer)
- * serializes the server's `Date` to an ISO string over the wire, so `createdAt`
- * arrives as a string and is passed through as-is.
- */
-function toChatMessage(row: {
-  id: number;
-  role: string;
-  content: string;
-  adUnitId: string | null;
-  createdAt: string;
-  ad?: AdView | null;
-  toolCalls?: unknown;
-  attachments?: MessageAttachment[];
-}): ChatMessage {
-  return {
-    id: row.id,
-    role: toRole(row.role),
-    content: row.content,
-    createdAt: row.createdAt,
-    adUnitId: row.adUnitId,
-    ad: row.ad ?? null,
-    toolCalls: row.toolCalls,
-    attachments: row.attachments ?? [],
-  };
-}
-
-/** One page of the endless thread, newest-first (08). */
-export async function chatHistory(
-  conversationId: string,
-  cursor: number | undefined,
-  limit: number,
-): Promise<ChatMessage[]> {
-  const rows = await trpc.chat.history.query({ conversationId, cursor, limit });
-  return rows.filter((row) => row.role !== DEEP_TALK_MARKER_ROLE).map(toChatMessage);
-}
 
 /**
  * Consume one chat SSE stream to completion: prose → `onDelta`, control frames →
@@ -256,35 +205,6 @@ export async function fetchHome(): Promise<HomeSummary> {
       doneToday: goal.today.outcome === "hit" || goal.today.outcome === "partial",
     })),
   };
-}
-
-/** Full-text search over the conversation's messages, newest-first (08 §search). */
-export async function searchMessages(
-  conversationId: string,
-  query: string,
-): Promise<ChatMessage[]> {
-  const hits = await trpc.chat.search.query({ conversationId, query });
-  return hits.map((hit) => ({
-    id: hit.id,
-    role: toRole(hit.role),
-    content: hit.content,
-    createdAt: hit.createdAt,
-    adUnitId: null,
-  }));
-}
-
-/**
- * A window of messages centered on `messageId` for jump-to-date / centered mode
- * (08 §jump-to-date). The endpoint returns chronological order; reversed here to
- * newest-first so it feeds `buildChatRows` like every other history page.
- */
-export async function historyAround(
-  conversationId: string,
-  messageId: number,
-  span: number,
-): Promise<ChatMessage[]> {
-  const rows = await trpc.chat.historyAround.query({ conversationId, messageId, span });
-  return rows.map(toChatMessage).reverse();
 }
 
 /**

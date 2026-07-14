@@ -148,11 +148,6 @@ export function deepTalkBySlug(slug: string): DeepTalk | undefined {
   return DEEP_TALK_BY_SLUG.get(slug);
 }
 
-/** Deep talks whose unlock threshold the given context score has reached. */
-export function unlockedDeepTalks(score: number): DeepTalk[] {
-  return DEEP_TALKS.filter((t) => score >= t.unlockAtScore);
-}
-
 export function isDeepTalkUnlocked(talk: DeepTalk, score: number): boolean {
   return score >= talk.unlockAtScore;
 }

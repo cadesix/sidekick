@@ -42,6 +42,13 @@ export function weekStart(date: string): string {
   return addDays(date, -6);
 }
 
+/** The Monday of the calendar week containing `date` — the left edge of the week strip. */
+export function mondayOf(date: string): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const weekday = new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, day ?? 1)).getUTCDay();
+  return addDays(date, -((weekday + 6) % 7));
+}
+
 /**
  * Consecutive days ending at (or the day before) `today` on which the user made
  * progress. Today not being logged yet doesn't break the streak — it counts up

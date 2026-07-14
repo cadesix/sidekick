@@ -14,10 +14,10 @@ export type Rng = () => number;
  * Front-loaded guaranteed-item days (04 reward curve): 1, 2, 3, 5, 7, 10, 14,
  * then weekly. The first week feels generous; anticipation carries the rest.
  */
-export const BASE_MILESTONES = [1, 2, 3, 5, 7, 10, 14] as const;
+export const BASE_MILESTONES: readonly number[] = [1, 2, 3, 5, 7, 10, 14];
 
 export function isStreakMilestone(streak: number): boolean {
-  if (BASE_MILESTONES.includes(streak as (typeof BASE_MILESTONES)[number])) {
+  if (BASE_MILESTONES.includes(streak)) {
     return true;
   }
   return streak > 14 && (streak - 14) % 7 === 0;

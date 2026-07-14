@@ -13,7 +13,6 @@ import {
   reblockMonitorPlan,
   scheduledMonitorPlan,
   selectionCount,
-  setupReady,
   warnThresholdMinutes,
 } from "@sidekick/shared";
 
@@ -145,9 +144,7 @@ test("scheduled and timed session plans enforce and release entirely on-device",
   expect(session.actions[0]?.actions[1]?.type).toBe("sendNotification");
 });
 
-test("setup readiness + labels + focus-goal detection", () => {
-  expect(setupReady({ selectionCount: 0 })).toBe(false);
-  expect(setupReady({ selectionCount: 1 })).toBe(true);
+test("labels + focus-goal detection", () => {
   expect(budgetLabel(15)).toBe("15m");
   expect(budgetLabel(45)).toBe("45m");
   expect(budgetLabel(60)).toBe("1h");

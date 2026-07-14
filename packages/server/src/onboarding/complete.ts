@@ -1,8 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { type Database, memories, users } from "@sidekick/db";
-import { type Cadence, DEFAULT_REMINDER_TIME } from "@sidekick/shared";
-import { bumpMemoryVersion } from "../memory/store";
+import { type Cadence, DEFAULT_REMINDER_TIME, bumpMemoryVersion } from "@sidekick/shared";
 import { ensureGoalPlan } from "./adopt";
 import {
   goalContextSentence,

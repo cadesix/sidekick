@@ -22,20 +22,8 @@ import {
  * means focus isn't set up on this device and the model should say so gently.
  */
 
-const DEVICE_UNAVAILABLE = { error: "device_unavailable" } as const;
-
-const FOCUS_TOOL_NAMES = new Set([
-  "focus_open_setup",
-  "focus_set_budget",
-  "focus_block_now",
-  "focus_start_session",
-  "focus_unblock",
-  "focus_disable",
-]);
-
-export function isFocusTool(toolName: string): boolean {
-  return FOCUS_TOOL_NAMES.has(toolName);
-}
+/** The shape a device tool returns when it can't run (12 — model handles it in-voice). */
+export const DEVICE_UNAVAILABLE = { error: "device_unavailable" } as const;
 
 export async function runFocusDeviceTool(
   toolName: string,

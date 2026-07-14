@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { type Database, checkIns, userCosmetics, users } from "@sidekick/db";
-import { getCosmetic, localDate } from "@sidekick/shared";
+import { getCosmetic, localDate, userTimezone } from "@sidekick/shared";
 import { protectedProcedure, router } from "../trpc";
 import {
   ensureStarterCosmetics,
@@ -13,15 +13,6 @@ import {
   todayRewardStatus,
   unequipCosmetic,
 } from "../rewards/service";
-
-async function userTimezone(db: Database, userId: string): Promise<string> {
-  const rows = await db
-    .select({ timezone: users.timezone })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  return rows[0]?.timezone ?? "America/New_York";
-}
 
 async function sparksBalance(db: Database, userId: string): Promise<number> {
   const rows = await db.select({ sparks: users.sparks }).from(users).where(eq(users.id, userId)).limit(1);

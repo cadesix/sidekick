@@ -68,7 +68,6 @@ export function estimateTokens(content: string): number {
 /** 08 §data model constants. */
 export const TAIL_TARGET_TOKENS = 8_000;
 export const TAIL_MAX_TOKENS = 24_000;
-export const SUMMARY_MAX_TOKENS = 800;
 
 const EARLIER_HEADER = "=== EARLIER IN THIS CONVERSATION ===";
 

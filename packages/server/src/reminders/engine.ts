@@ -2,6 +2,7 @@ import { and, desc, eq, lte, sql } from "drizzle-orm";
 import { generateText, type LanguageModel } from "ai";
 import { type Database, memories, messages, reminders, users } from "@sidekick/db";
 import {
+  bumpMemoryVersion,
   computeNextFireAt,
   estimateTokens,
   parseSchedule,
@@ -142,10 +143,7 @@ export async function fireReminder(
     throw new Error("failed to persist reminder message");
   }
 
-  await db
-    .update(users)
-    .set({ memoryVersion: sql`${users.memoryVersion} + 1` })
-    .where(eq(users.id, user.id));
+  await bumpMemoryVersion(db, user.id);
 
   const pushIntent: PushIntent = {
     token: user.pushToken ?? null,

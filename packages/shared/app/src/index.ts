@@ -1,5 +1,6 @@
 export * from "./attachments";
 export * from "./schemas";
+export * from "./users";
 export * from "./context";
 export * from "./conversation";
 export * from "./deep-talks";

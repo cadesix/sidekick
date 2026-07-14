@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
-import { messages, reminders, users } from "@sidekick/db";
+import { messages, reminders } from "@sidekick/db";
 import type { Database } from "@sidekick/db";
 import {
   computeNextFireAt,
@@ -9,19 +9,11 @@ import {
   scheduleSchema,
   scheduleTimeLabel,
 } from "../reminders/schedule";
+import { bumpMemoryVersion, userTimezone } from "../users";
 import { defineTool, type SidekickTool } from "./types";
 
 /** Reminders past which `create_reminder` refuses (10: "cap 50 active per user"). */
 const ACTIVE_CAP = 50;
-
-async function userTimezone(db: Database, userId: string): Promise<string> {
-  const rows = await db
-    .select({ timezone: users.timezone })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  return rows[0]?.timezone ?? "America/New_York";
-}
 
 /** The id of the user message that prompted this tool call, for `createdFromMessageId`. */
 async function latestUserMessageId(db: Database, conversationId: string): Promise<number | null> {
@@ -40,14 +32,6 @@ async function countActive(db: Database, userId: string): Promise<number> {
     .from(reminders)
     .where(and(eq(reminders.userId, userId), eq(reminders.status, "active")));
   return rows[0]?.count ?? 0;
-}
-
-/** Bump the sync/prompt-cache version so the memory block's REMINDERS section re-renders. */
-async function bumpMemoryVersion(db: Database, userId: string): Promise<void> {
-  await db
-    .update(users)
-    .set({ memoryVersion: sql`${users.memoryVersion} + 1` })
-    .where(eq(users.id, userId));
 }
 
 async function ownedReminder(db: Database, userId: string, reminderId: string) {

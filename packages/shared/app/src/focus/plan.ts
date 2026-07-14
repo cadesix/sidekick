@@ -29,10 +29,13 @@ export const MAX_UNLOCK_MINUTES = 60;
 export const WARN_FRACTION = 0.8;
 
 /** Doomscroll/procrastinate goals are the ones focus mode backs (03 Tier 4). */
-export const FOCUS_GOAL_SLUGS = ["stop-doomscrolling", "stop-procrastinating"] as const;
+export const FOCUS_GOAL_SLUGS: readonly string[] = [
+  "stop-doomscrolling",
+  "stop-procrastinating",
+];
 
 export function isFocusGoalSlug(slug: string): boolean {
-  return (FOCUS_GOAL_SLUGS as readonly string[]).includes(slug);
+  return FOCUS_GOAL_SLUGS.includes(slug);
 }
 
 /** Foundation DateComponents subset — a wall-clock point or an accumulated duration. */
@@ -69,6 +72,17 @@ export type FocusAction =
   | { type: "blockSelection"; familyActivitySelectionId: string; shieldId?: string }
   | { type: "unblockSelection"; familyActivitySelectionId: string }
   | { type: "sendNotification"; payload: FocusNotificationPayload };
+
+/** Shield the chosen apps / lift the shield. Shared so the id can't drift between plans. */
+const BLOCK_SELECTION: FocusAction = {
+  type: "blockSelection",
+  familyActivitySelectionId: FOCUS_SELECTION_ID,
+  shieldId: FOCUS_SHIELD_ID,
+};
+const UNBLOCK_SELECTION: FocusAction = {
+  type: "unblockSelection",
+  familyActivitySelectionId: FOCUS_SELECTION_ID,
+};
 
 export type FocusCallbackName = "intervalDidStart" | "intervalDidEnd" | "eventDidReachThreshold";
 
@@ -163,16 +177,12 @@ export function dailyMonitorPlan(input: {
         callbackName: "eventDidReachThreshold",
         eventName: "limit",
         actions: [
-          {
-            type: "blockSelection",
-            familyActivitySelectionId: FOCUS_SELECTION_ID,
-            shieldId: FOCUS_SHIELD_ID,
-          },
+          BLOCK_SELECTION,
         ],
       },
       {
         callbackName: "intervalDidStart",
-        actions: [{ type: "unblockSelection", familyActivitySelectionId: FOCUS_SELECTION_ID }],
+        actions: [UNBLOCK_SELECTION],
       },
     ],
   };
@@ -198,11 +208,7 @@ export function reblockMonitorPlan(input: { now: Date; minutes: number }): Focus
       {
         callbackName: "intervalDidEnd",
         actions: [
-          {
-            type: "blockSelection",
-            familyActivitySelectionId: FOCUS_SELECTION_ID,
-            shieldId: FOCUS_SHIELD_ID,
-          },
+          BLOCK_SELECTION,
         ],
       },
     ],
@@ -223,7 +229,7 @@ export function focusSessionPlan(input: { now: Date; minutes: number }): FocusMo
       {
         callbackName: "intervalDidEnd",
         actions: [
-          { type: "unblockSelection", familyActivitySelectionId: FOCUS_SELECTION_ID },
+          UNBLOCK_SELECTION,
           {
             type: "sendNotification",
             payload: {
@@ -275,16 +281,12 @@ export function scheduledMonitorPlan(input: {
       {
         callbackName: "intervalDidStart",
         actions: [
-          {
-            type: "blockSelection",
-            familyActivitySelectionId: FOCUS_SELECTION_ID,
-            shieldId: FOCUS_SHIELD_ID,
-          },
+          BLOCK_SELECTION,
         ],
       },
       {
         callbackName: "intervalDidEnd",
-        actions: [{ type: "unblockSelection", familyActivitySelectionId: FOCUS_SELECTION_ID }],
+        actions: [UNBLOCK_SELECTION],
       },
     ],
   };
@@ -314,9 +316,4 @@ export function budgetLabel(minutes: number): string {
     return `${minutes / 60}h`;
   }
   return `${minutes}m`;
-}
-
-/** Setup's "start guarding" is live only once at least one app is chosen (13 §UI). */
-export function setupReady(input: { selectionCount: number }): boolean {
-  return input.selectionCount > 0;
 }

@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
-import { and, asc, eq, sql } from "drizzle-orm";
-import { type Database, memories, memorySuppressions, users } from "@sidekick/db";
+import { and, asc, eq } from "drizzle-orm";
+import { type Database, memories, memorySuppressions } from "@sidekick/db";
+import { bumpMemoryVersion } from "@sidekick/shared";
 
 export type MemoryListItem = {
   id: string;
@@ -11,14 +12,6 @@ export type MemoryListItem = {
   eventDate: string | null;
   createdAt: Date;
 };
-
-/** Bump the sync/cache primitive after any change to a user's memory set. */
-export async function bumpMemoryVersion(db: Database, userId: string): Promise<void> {
-  await db
-    .update(users)
-    .set({ memoryVersion: sql`${users.memoryVersion} + 1` })
-    .where(eq(users.id, userId));
-}
 
 async function ownedActiveMemory(
   db: Database,

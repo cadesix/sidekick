@@ -1,10 +1,7 @@
 import { type DeviceToolFrameCall } from "@sidekick/shared";
 import { submitDeviceToolResult } from "~/lib/api";
 import { runDeviceTools } from "./stream-frames";
-import { isFocusTool, runFocusDeviceTool } from "./focus-device-tools";
-
-/** The shape a device tool returns when it can't run (12 — model handles it in-voice). */
-const DEVICE_UNAVAILABLE = { error: "device_unavailable" } as const;
+import { DEVICE_UNAVAILABLE, runFocusDeviceTool } from "./focus-device-tools";
 
 const TIMEOUT_MS = 8_000;
 
@@ -18,19 +15,18 @@ function withTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
 
 /**
  * Run one device tool natively and return its result value (12 §device tools).
- * Focus tools run on-device. Health summaries run on the server over the user's
- * explicitly shared aggregate window.
- * (13). Unknown tools, bad input, failures and timeouts all resolve to
- * `{ error: 'device_unavailable' }` so the model degrades gracefully. Feature
- * engineers add their device tools here.
+ * Focus tools run on-device; each runner returns `null` for a tool it doesn't own,
+ * so adding a capability means adding a runner here — not a name list to keep in
+ * sync. Unknown tools, bad input, failures and timeouts all resolve to
+ * `{ error: 'device_unavailable' }` so the model degrades gracefully.
  */
 export async function dispatchDeviceTool(call: DeviceToolCall): Promise<unknown> {
   try {
-    if (isFocusTool(call.toolName)) {
-      const result = await withTimeout(runFocusDeviceTool(call.toolName, call.input), DEVICE_UNAVAILABLE);
-      return result ?? DEVICE_UNAVAILABLE;
-    }
-    return DEVICE_UNAVAILABLE;
+    const result = await withTimeout(
+      runFocusDeviceTool(call.toolName, call.input),
+      DEVICE_UNAVAILABLE,
+    );
+    return result ?? DEVICE_UNAVAILABLE;
   } catch {
     return DEVICE_UNAVAILABLE;
   }

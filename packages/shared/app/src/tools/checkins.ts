@@ -1,22 +1,14 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { actionItems, checkIns, goals, progressEvents, users } from "@sidekick/db";
+import { actionItems, checkIns, goals, progressEvents } from "@sidekick/db";
 import type { Database } from "@sidekick/db";
 import { cadenceSchema } from "../goals/catalog";
 import { localDate } from "../goals/dates";
+import { bumpMemoryVersion, userTimezone } from "../users";
 import { defineTool, type SidekickTool } from "./types";
 
 /** Statuses of a check-in that is still open for today. */
 const OPEN_CHECKIN_STATUSES = ["pending", "opened"] as const;
-
-async function userTimezone(db: Database, userId: string): Promise<string> {
-  const rows = await db
-    .select({ timezone: users.timezone })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  return rows[0]?.timezone ?? "America/New_York";
-}
 
 async function activeActionItem(db: Database, userId: string, goalId: string) {
   const rows = await db
@@ -37,14 +29,6 @@ async function activeActionItem(db: Database, userId: string, goalId: string) {
     .orderBy(desc(actionItems.createdAt))
     .limit(1);
   return rows[0];
-}
-
-/** Bump the sync/prompt-cache version on any goal/check-in write (user-memory.md §4). */
-async function bumpMemoryVersion(db: Database, userId: string): Promise<void> {
-  await db
-    .update(users)
-    .set({ memoryVersion: sql`${users.memoryVersion} + 1` })
-    .where(eq(users.id, userId));
 }
 
 export const checkinsTools: SidekickTool[] = [
