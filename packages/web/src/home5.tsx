@@ -12,11 +12,15 @@ import { DevPanel } from "./components/dev-panel";
 import { applyPersonaFromUrl } from "./components/sidekick-profile";
 import { GoalsSheet } from "./components/goals-sheet";
 import { HomeDock } from "./components/home-dock";
-import { WorldMap } from "./components/world-map";
+import { AREA_BIOME, WorldMap } from "./components/world-map";
+import { SessionChat } from "./components/session-chat";
+import { sessionInProgress } from "./components/sidekick-sessions";
 import { ShopSheet } from "./components/shop-sheet";
 import type { CosmeticsControls } from "./components/sidekick-wardrobe";
 import { SpeechBubble, speak } from "./components/speech-bubble";
 import { loadUnread, pushSidekickMessage, subscribeUnread } from "./components/sidekick-inbox";
+import { BoxRewardsModal, GroundBox, StreakSplash } from "./components/daily-box";
+import { claimDailyBox, hasDailyBox, rollDailyBox, type BoxReward } from "./components/sidekick-daily-box";
 
 // Home5: home4 with a full-sheet iMessage chat. Tapping Messages slides a
 // full-screen conversation up while the 3D scene shrinks into a FaceTime-style
@@ -90,6 +94,17 @@ export default function Home5() {
 	// component clears the count when it mounts
 	const [unread, setUnread] = useState(loadUnread);
 	useEffect(() => subscribeUnread(setUnread), []);
+	// First session of the day: streak splash → daily box on the ground → tap →
+	// burst → rewards modal (docs/token-economy.md#faucets). hasDailyBox()
+	// gates the whole flow to once per local day.
+	const [boxStage, setBoxStage] = useState<"streak" | "ground" | "rewards" | "done">(() =>
+		hasDailyBox() ? "streak" : "done",
+	);
+	// today's contents are seeded by date — same result all day, safe to preview
+	const [todaysBox] = useState(() => rollDailyBox(streak));
+	const [boxReward, setBoxReward] = useState<BoxReward | null>(null);
+	// the ground-box element the canvas pins to the lawn beside the character
+	const boxRef = useRef<HTMLDivElement | null>(null);
 	// which world the character stands in — map travel swaps it while the map
 	// still covers the screen, so the new biome is there when the reveal closes
 	const [environment, setEnvironment] = useState<EnvironmentId>("meadow");
@@ -115,6 +130,8 @@ export default function Home5() {
 
 	// set when "Talk about it" opens a goal in chat — auto-sent once on mount
 	const [chatSeed, setChatSeed] = useState<string | undefined>(undefined);
+	// the guided-session window (its own chat, per docs/guided-sessions.md)
+	const [sessionIsland, setSessionIsland] = useState<string | null>(null);
 
 	const open = () => {
 		setMounted(true);
@@ -143,12 +160,13 @@ export default function Home5() {
 			    to CHAT_FRAMING (zoomed out) when the chat drawer opens. */}
 			<SidekickCanvas
 				className="absolute inset-0"
-				framing={mapOpen ? MAP_FRAMING : shopOpen || appearanceOpen ? SHOP_FRAMING : chatOpen ? CHAT_FRAMING : HERO_FRAMING}
-				holdingPhone={chatOpen}
+				framing={mapOpen ? MAP_FRAMING : shopOpen || appearanceOpen ? SHOP_FRAMING : chatOpen || sessionIsland ? CHAT_FRAMING : HERO_FRAMING}
+				holdingPhone={chatOpen || !!sessionIsland}
 				studio={shopOpen || appearanceOpen}
 				environment={environment}
 				controlsRef={controlsRef}
 				overheadRef={bondRef}
+				groundRef={boxRef}
 				handleRef={canvasHandleRef}
 				paused={canvasPaused}
 			/>
@@ -158,6 +176,23 @@ export default function Home5() {
 			<BondBadge ref={bondRef}>
 				<SpeechBubble />
 			</BondBadge>
+
+			{/* Daily box on the lawn beside the character (canvas positions it);
+			    hidden while any sheet/map covers the scene */}
+			{boxStage === "ground" ? (
+				<GroundBox
+					ref={boxRef}
+					tier={todaysBox.tier}
+					milestone={!!todaysBox.milestone}
+					hidden={mounted || shopOpen || mapOpen || goalsOpen || streakOpen || appearanceOpen || !!sessionIsland}
+					onOpened={() => {
+						// claim guards against double-grant; the seeded roll means the
+						// fallback preview shows identical contents either way
+						setBoxReward(claimDailyBox(streak) ?? todaysBox);
+						setBoxStage("rewards");
+					}}
+				/>
+			) : null}
 
 			{/* dev-only user-state panel: personas + individual state dials */}
 			{import.meta.env.DEV ? <DevPanel /> : null}
@@ -215,7 +250,34 @@ export default function Home5() {
 					pushSidekickMessage(line);
 					window.setTimeout(() => speak(line), 650);
 				}}
+				onStartSession={(island) => {
+					closeMap();
+					setSessionIsland(island);
+				}}
 			/>
+
+			{/* Guided session — its own chat window (sliver layout); dive out via
+			    the sliver/chevron, back in via the main chat's continue card */}
+			{sessionIsland ? (
+				<>
+					<button
+						onClick={() => setSessionIsland(null)}
+						aria-label="Leave session"
+						className="absolute inset-x-0 top-0 z-30 h-[20%]"
+					/>
+					<div className="absolute inset-x-0 bottom-0 top-[20%] z-40 animate-sheet-up overflow-hidden rounded-t-[28px] shadow-[0_-8px_40px_rgba(0,0,0,0.22)]">
+						<SessionChat
+							island={sessionIsland}
+							onClose={() => setSessionIsland(null)}
+							onDone={() => {
+								const biome = AREA_BIOME[sessionIsland];
+								setSessionIsland(null);
+								if (biome) setEnvironment(biome);
+							}}
+						/>
+					</div>
+				</>
+			) : null}
 
 			{/* Shop sheet (Shop dock icon) — covers the lower half; the character is
 			    lifted into the band above so you can see the outfit change live */}
@@ -283,9 +345,32 @@ export default function Home5() {
 						>
 							<LuChevronDown className="w-5 h-5 text-[#111]/60" strokeWidth={2.5} />
 						</button>
-						<Chat transparentTop peekIn={false} seed={chatSeed} />
+						<Chat
+							transparentTop
+							peekIn={false}
+							seed={chatSeed}
+							resume={(() => {
+								const p = sessionInProgress();
+								return p
+									? {
+											label: p.def.title,
+											sub: `${Math.min(p.state.beat + 1, p.def.beats.length)} of ${p.def.beats.length}`,
+											onContinue: () => {
+												close();
+												setSessionIsland(p.def.id);
+											},
+										}
+									: undefined;
+							})()}
+						/>
 					</div>
 				</>
+			) : null}
+
+			{/* First-session-of-the-day overlays: streak moment, then box rewards */}
+			{boxStage === "streak" ? <StreakSplash streak={streak} onDone={() => setBoxStage("ground")} /> : null}
+			{boxStage === "rewards" && boxReward ? (
+				<BoxRewardsModal reward={boxReward} onCollect={() => setBoxStage("done")} />
 			) : null}
 		</div>
 	);

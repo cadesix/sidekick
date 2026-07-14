@@ -395,7 +395,7 @@ export default function Onboarding() {
 						onDone={() => {
 							setOnboardingPhase("first-chat");
 							track("flow_completed", { flow: "onboarding-3d" });
-							window.location.href = "/home4";
+							window.location.href = "/home5";
 						}}
 					/>
 				</div>

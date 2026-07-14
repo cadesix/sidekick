@@ -147,6 +147,7 @@ export function SidekickCanvas({
 	environment,
 	controlsRef,
 	overheadRef,
+	groundRef,
 	paused,
 	hidden,
 	timeOfDay,
@@ -178,6 +179,9 @@ export function SidekickCanvas({
 	// an overlay element (e.g. the Bond badge) the canvas pins over the
 	// character's head every frame via 3D→screen projection
 	overheadRef?: MutableRefObject<HTMLDivElement | null>;
+	// an overlay element (e.g. the daily box) pinned to a spot on the ground
+	// beside the character, bottom-center anchored — same projection trick
+	groundRef?: MutableRefObject<HTMLDivElement | null>;
 	// skip all per-frame work while something fully covers the canvas (e.g. the
 	// near-full-screen Shop) — the RAF keeps ticking so resume is instant
 	paused?: boolean;
@@ -618,6 +622,7 @@ export function SidekickCanvas({
 		const camSph = new THREE.Spherical();
 		const camOff = new THREE.Vector3();
 		const overheadV = new THREE.Vector3();
+		const groundV = new THREE.Vector3();
 		const wantPos = new THREE.Vector3();
 		const wantTgt = new THREE.Vector3();
 		let phoneBlend = 0; // 0 idle → 1 holding the phone up
@@ -833,6 +838,21 @@ export function SidekickCanvas({
 					overhead.style.visibility = overheadV.z < 1 ? "visible" : "hidden";
 				} else {
 					overhead.style.visibility = "hidden";
+				}
+			}
+			// pin the ground overlay (daily box) to a fixed spot on the lawn beside
+			// the character (bottom-center anchored so it "stands" on the grass)
+			const ground = groundRef?.current;
+			if (ground) {
+				if (ready && !studioRef.current) {
+					groundV.set(0.95, 0, 0.4);
+					groundV.project(camera);
+					const gx = (groundV.x * 0.5 + 0.5) * mount.clientWidth;
+					const gy = (-groundV.y * 0.5 + 0.5) * mount.clientHeight;
+					ground.style.transform = `translate(-50%, -100%) translate(${gx.toFixed(1)}px, ${gy.toFixed(1)}px)`;
+					ground.style.visibility = groundV.z < 1 ? "visible" : "hidden";
+				} else {
+					ground.style.visibility = "hidden";
 				}
 			}
 			renderer.render(scene, camera);

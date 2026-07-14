@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { LuX } from "react-icons/lu";
+import { LuLock, LuX } from "react-icons/lu";
 import { BOND_MAX, loadBond, subscribeBond } from "./sidekick-bond";
+import { isSessionDone, isSessionStartable, nextSession, sessionFor, sessionState, CONTEXT_EVENT } from "./sidekick-sessions";
 import type { EnvironmentId } from "./sidekick-biomes";
 
 // A single static map for the world page. The art is a tall ~9:16 island chain —
@@ -19,10 +20,10 @@ const CARD_DELAY = 300; // circle has visually landed by here; then the card pop
 
 // Full-screen "world map" that the dock's Map icon opens. Shows the stylized
 // island world with Apple/Google-Maps-style markers over each destination.
-// Destinations unlock as your Bond score grows (guided sessions with the
-// sidekick raise it — see sidekick-bond.ts); snow is free at Bond 0. Tapping a
-// marker slides up an Apple-Maps-style place card; locked cards show the Bond
-// needed and route into chat to start a session.
+// Every island is locked behind ONE guided session (docs/guided-sessions.md):
+// complete the session, unlock the island, bond goes up. Frostpeak starts
+// open. Tapping a marker opens the destination modal — travel when unlocked,
+// the session doorway when locked.
 
 type Area = {
 	id: string;
@@ -32,26 +33,28 @@ type Area = {
 	left: string; // % position over the map image
 	top: string;
 	blurb: string;
-	minBond: number; // Bond score needed to unlock
-	quest: string; // suggested session topic, shown on the locked card
 	biome: EnvironmentId; // the travel environment this destination renders
 };
 
 // positions are % of world-map-quests.webp (941×1672)
 const AREAS: Area[] = [
-	{ id: "frostpeak", name: "Frostpeak", emoji: "❄️", color: "#cfe6ff", left: "29%", top: "19%", blurb: "Snow-capped summit", minBond: 0, quest: "Say hi to your sidekick", biome: "snow" },
-	{ id: "pinewood", name: "Pinewood", emoji: "🌲", color: "#8fd18f", left: "73%", top: "28%", blurb: "Evergreen forest", minBond: 25, quest: "Have your first check-in chat", biome: "forest" },
-	{ id: "blossom", name: "Blossom Vale", emoji: "🌸", color: "#ffc1dd", left: "29%", top: "49%", blurb: "Cherry-blossom groves", minBond: 40, quest: "Share a goal you're working toward", biome: "blossom" },
-	{ id: "dunes", name: "Sandy Dunes", emoji: "🏜️", color: "#f2c98a", left: "82%", top: "57%", blurb: "Golden desert canyon", minBond: 55, quest: "Talk through your morning routine", biome: "desert" },
-	{ id: "palmcove", name: "Palm Cove", emoji: "🌴", color: "#7fd6b0", left: "24%", top: "73%", blurb: "Tropical palm shore", minBond: 70, quest: "Do a gratitude chat", biome: "tropical" },
-	{ id: "ember", name: "Mount Ember", emoji: "🌋", color: "#ff8a5b", left: "65%", top: "79%", blurb: "Smouldering volcano", minBond: 85, quest: "Finish a tough-love pep talk", biome: "volcano" },
+	{ id: "frostpeak", name: "Frostpeak", emoji: "❄️", color: "#cfe6ff", left: "29%", top: "19%", blurb: "Snow-capped summit", biome: "snow" },
+	{ id: "pinewood", name: "Pinewood", emoji: "🌲", color: "#8fd18f", left: "73%", top: "28%", blurb: "Evergreen forest", biome: "forest" },
+	{ id: "blossom", name: "Blossom Vale", emoji: "🌸", color: "#ffc1dd", left: "29%", top: "49%", blurb: "Cherry-blossom groves", biome: "blossom" },
+	{ id: "dunes", name: "Sandy Dunes", emoji: "🏜️", color: "#f2c98a", left: "82%", top: "57%", blurb: "Golden desert canyon", biome: "desert" },
+	{ id: "palmcove", name: "Palm Cove", emoji: "🌴", color: "#7fd6b0", left: "24%", top: "73%", blurb: "Tropical palm shore", biome: "tropical" },
+	{ id: "ember", name: "Mount Ember", emoji: "🌋", color: "#ff8a5b", left: "65%", top: "79%", blurb: "Smouldering volcano", biome: "volcano" },
 ];
+
+// island id → travel environment (the session-complete "see the island" hop)
+export const AREA_BIOME: Record<string, EnvironmentId> = Object.fromEntries(AREAS.map((a) => [a.id, a.biome]));
 
 export function WorldMap({
 	open,
 	onClose,
 	onChat,
 	onTravel,
+	onStartSession,
 }: {
 	open: boolean;
 	onClose: () => void;
@@ -59,6 +62,8 @@ export function WorldMap({
 	// travel to an unlocked destination — the host swaps the 3D environment and
 	// closes the map (the closing reveal masks the instant world swap)
 	onTravel?: (biome: EnvironmentId) => void;
+	// open the guided-session window for an island (its unlock key)
+	onStartSession?: (island: string) => void;
 }) {
 	const [selId, setSelId] = useState<string | null>(null);
 	const selected = AREAS.find((a) => a.id === selId) ?? null;
@@ -67,14 +72,22 @@ export function WorldMap({
 	if (selected) lastSelRef.current = selected;
 	const shown = selected ?? lastSelRef.current;
 
-	// live Bond score → which destinations are open (also re-read on open so
-	// gains from sessions since the last visit show up)
+	// live Bond score for the bottom bar; session completion drives the locks
 	const [bond, setBond] = useState(loadBond);
 	useEffect(() => subscribeBond(setBond), []);
+	const [, setContextTick] = useState(0);
 	useEffect(() => {
-		if (open) setBond(loadBond());
+		const bump = () => setContextTick((t) => t + 1);
+		window.addEventListener(CONTEXT_EVENT, bump);
+		return () => window.removeEventListener(CONTEXT_EVENT, bump);
+	}, []);
+	useEffect(() => {
+		if (open) {
+			setBond(loadBond());
+			setContextTick((t) => t + 1);
+		}
 	}, [open]);
-	const isUnlocked = (a: Area) => bond >= a.minBond;
+	const isUnlocked = (a: Area) => a.id === "frostpeak" || isSessionDone(a.id);
 
 	// the cover-scaled map is wider than the screen; center the horizontal scroll
 	// so both edge islands (Palm Cove / Sandy Dunes) are an easy swipe away
@@ -89,6 +102,7 @@ export function WorldMap({
 	useEffect(() => {
 		if (!open) {
 			setCardIn(false);
+			setSelId(null); // never reopen onto a stale destination modal
 			return;
 		}
 		requestAnimationFrame(centerScroll); // recenter in case the art was cached
@@ -121,34 +135,69 @@ export function WorldMap({
 						className="block h-full w-auto max-w-none select-none"
 						draggable={false}
 					/>
-					{AREAS.map((a) => (
-						<button
-							key={a.id}
-							onClick={(e) => {
-								e.stopPropagation();
-								setSelId(a.id);
-							}}
-							aria-label={a.name}
-							style={{ left: a.left, top: a.top }}
-							className="absolute z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 transition-transform duration-100 active:scale-90"
-						>
-							<span
-								className={`relative grid h-9 w-9 place-items-center rounded-full text-[17px] shadow-[0_2px_7px_rgba(0,0,0,0.4)] ring-2 ring-white ${
-									isUnlocked(a) ? "" : "opacity-80 grayscale"
+					{AREAS.map((a) => {
+						const unlocked = isUnlocked(a);
+						const session = sessionFor(a.id);
+						const startable = isSessionStartable(a.id);
+						const started = session ? sessionState(session.id).answers.some(Boolean) : false;
+						const isNextChallenge = nextSession()?.id === a.id;
+						// low-map islands hang their card ABOVE the pin so nothing clips
+						// at the bottom edge on tall (9:16) screens
+						const cardAbove = parseFloat(a.top) > 60;
+						return (
+							<button
+								key={a.id}
+								onClick={(e) => {
+									e.stopPropagation();
+									// unlocked → travel modal; locked+available → straight
+									// into its session; sequence-locked → nothing (dimmed)
+									if (unlocked) setSelId(a.id);
+									else if (startable && session) onStartSession?.(session.id);
+								}}
+								aria-label={a.name}
+								style={{ left: a.left, top: a.top }}
+								className={`absolute z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 transition-transform duration-100 active:scale-95 ${
+									cardAbove ? "flex-col-reverse" : "flex-col"
 								}`}
-								style={{ background: a.color }}
 							>
-								{a.emoji}
-							</span>
-							<span
-								className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold shadow-[0_1px_4px_rgba(0,0,0,0.3)] ${
-									isUnlocked(a) ? "bg-white/95 text-neutral-800" : "bg-black/50 text-white/80 backdrop-blur-sm"
-								}`}
-							>
-								{a.name}
-							</span>
-						</button>
-					))}
+								<span className="relative">
+									{isNextChallenge ? (
+										<span className="absolute -inset-1.5 animate-ping rounded-full bg-[#7A5AF8]/45" />
+									) : null}
+									<span
+										className={`relative grid h-9 w-9 place-items-center rounded-full text-[17px] shadow-[0_2px_7px_rgba(0,0,0,0.4)] ring-2 ${
+											unlocked ? "ring-white" : startable ? "ring-[#7A5AF8]" : "ring-white/50 opacity-70 grayscale"
+										}`}
+										style={{ background: a.color }}
+									>
+										{a.emoji}
+									</span>
+								</span>
+								{unlocked ? (
+									<span className="whitespace-nowrap rounded-full bg-white/95 px-2 py-0.5 text-[11px] font-bold text-neutral-800 shadow-[0_1px_4px_rgba(0,0,0,0.3)]">
+										{a.name}
+									</span>
+								) : session ? (
+									// the topic card: island + lock, and the chat that opens it
+									<span
+										className={`block w-[132px] rounded-2xl px-2.5 py-2 text-center leading-tight ${
+											startable
+												? "bg-[#7A5AF8] text-white shadow-[0_3px_0_#5638c6]"
+												: "bg-black/45 text-white/80 shadow-[0_1px_4px_rgba(0,0,0,0.3)] backdrop-blur-sm"
+										}`}
+									>
+										<span className="flex items-center justify-center gap-1 text-[12px] font-extrabold">
+											<LuLock className="h-3 w-3 shrink-0" strokeWidth={3} />
+											{a.name}
+										</span>
+										<span className={`mt-1 block text-[10px] font-semibold leading-snug ${startable ? "text-white/85" : "text-white/60"}`}>
+											{started ? `Continue “${session.title}” chat to unlock` : `Complete “${session.title}” chat to unlock`}
+										</span>
+									</span>
+								) : null}
+							</button>
+						);
+					})}
 				</div>
 			</div>
 
@@ -231,35 +280,7 @@ export function WorldMap({
 								</button>
 							</>
 						) : (
-							<>
-								<div className="text-center">
-									<div className="text-[20px] font-extrabold text-neutral-900">{shown.name}</div>
-									<div className="mt-0.5 text-[14px] text-neutral-500">{shown.blurb}</div>
-								</div>
-								<div className="mt-5">
-									<div className="flex items-baseline justify-between text-[12px] font-semibold">
-										<span className="text-neutral-400">Bond</span>
-										<span className="tabular-nums text-neutral-500">
-											{bond}% <span className="text-neutral-300">/ {shown.minBond}%</span>
-										</span>
-									</div>
-									<div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-neutral-100">
-										<div
-											className="h-full rounded-full bg-gradient-to-r from-[#ffb454] to-[#ff7a3d] transition-[width] duration-500 ease-out"
-											style={{ width: `${Math.min(100, (bond / shown.minBond) * 100)}%` }}
-										/>
-									</div>
-									<div className="mt-2.5 text-center text-[13px] leading-snug text-neutral-400">
-										{shown.quest}
-									</div>
-								</div>
-								<button
-									onClick={onChat}
-									className="mt-5 flex w-full items-center justify-center rounded-full bg-[#111] py-3.5 text-[15px] font-semibold text-white transition active:scale-[0.98] active:bg-[#333]"
-								>
-									Start a session
-								</button>
-							</>
+							null
 						)
 					) : null}
 				</div>
