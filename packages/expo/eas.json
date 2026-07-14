@@ -3,10 +3,18 @@
     "appVersionSource": "remote"
   },
   "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://markets-pollution-copies-cat.trycloudflare.com",
+        "EXPO_PUBLIC_DISABLE_DEVICE_ACTIVITY": "1"
+      }
+    },
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://192.168.1.62:8787",
+        "EXPO_PUBLIC_API_URL": "https://markets-pollution-copies-cat.trycloudflare.com",
         "EXPO_PUBLIC_DISABLE_DEVICE_ACTIVITY": "1"
       }
     }
