@@ -3,7 +3,7 @@ import { checkinsTools } from "./checkins";
 import { DEEP_TALK_CHAT_GUIDANCE, deepTalksTools } from "./deep-talks";
 import { documentsTools } from "./documents";
 import { FOCUS_CHAT_GUIDANCE, focusTools } from "./focus";
-import { healthTools } from "./health";
+import { HEALTH_CHAT_GUIDANCE, healthTools } from "./health";
 import { memoryTools } from "./memory";
 import { musicTools } from "./music";
 import { remindersTools } from "./reminders";
@@ -35,7 +35,7 @@ export const capabilities: Capability[] = [
     promptGuidance: SEARCH_CHAT_GUIDANCE,
     providerTools: buildSearchProviderTools,
   },
-  { name: "health", tools: healthTools },
+  { name: "health", tools: healthTools, promptGuidance: HEALTH_CHAT_GUIDANCE },
   { name: "music", tools: musicTools },
   { name: "focus", tools: focusTools, promptGuidance: FOCUS_CHAT_GUIDANCE },
   { name: "deep-talks", tools: deepTalksTools, promptGuidance: DEEP_TALK_CHAT_GUIDANCE },

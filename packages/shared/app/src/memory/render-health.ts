@@ -68,6 +68,9 @@ function renderRow(row: HealthRow, label: string, timezone: string): string | nu
         : "";
     parts.push(`${sleepDuration(row.sleepMinutes)} sleep${window}`);
   }
+  if (row.activeCalories !== null && row.activeCalories > 0) {
+    parts.push(`${row.activeCalories.toLocaleString("en-US")} active calories`);
+  }
   parts.push(...workoutPhrases(row.workouts));
   if (parts.length === 0) {
     return null;

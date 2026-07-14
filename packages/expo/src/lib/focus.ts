@@ -253,10 +253,10 @@ export function unblock(): void {
   }
 }
 
-export async function temporaryUnlock(minutes: number): Promise<number> {
+export async function temporaryUnlock(minutes: number): Promise<number | null> {
   const applied = clampUnlockMinutes(minutes);
   if (!focusAvailable() || !focusSelectionToken()) {
-    return applied;
+    return null;
   }
   assertMonitorCapacity(getActivities(), FOCUS_REBLOCK_ACTIVITY);
   unblock();

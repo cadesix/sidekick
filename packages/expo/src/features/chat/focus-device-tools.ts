@@ -97,6 +97,9 @@ export async function runFocusDeviceTool(
       return DEVICE_UNAVAILABLE;
     }
     const minutes = await temporaryUnlock(parsed.data.minutes);
+    if (minutes === null) {
+      return { error: "no_selection" };
+    }
     return { ok: true, minutes };
   }
 

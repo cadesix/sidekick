@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { SymbolView, type SFSymbol } from "expo-symbols";
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -100,6 +101,27 @@ export default function HealthSetup() {
     },
   });
 
+  const refresh = useMutation({
+    mutationFn: async () => {
+      const days = await readHealthDays(30);
+      if (days.length === 0) {
+        return { synced: 0, logged: 0 };
+      }
+      return syncHealth(days);
+    },
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["health-connection"] });
+      if (result.synced === 0) {
+        Alert.alert("No summaries available", "Sidekick didn’t find readable Health data yet.");
+        return;
+      }
+      Alert.alert("Summaries refreshed", "Sidekick is up to date with Apple Health.");
+    },
+    onError: () => {
+      Alert.alert("Refresh failed", "Your existing summaries are unchanged. Try again in a moment.");
+    },
+  });
+
   async function openHealthApp(): Promise<void> {
     const url = "x-apple-health://";
     if (await Linking.canOpenURL(url)) {
@@ -122,6 +144,7 @@ export default function HealthSetup() {
 
   return (
     <View style={styles.screen}>
+      <StatusBar style="dark" />
       <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
         <Pressable accessibilityLabel="Back" onPress={() => router.back()} style={styles.headerButton}>
           <SymbolView name="chevron.left" size={20} weight="semibold" tintColor="#0A84FF" />
@@ -131,11 +154,11 @@ export default function HealthSetup() {
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 190 }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.heroIcon}>
-          <SymbolView name="heart.fill" size={48} weight="semibold" tintColor="#FF375F" />
+          <SymbolView name="heart.fill" size={42} weight="semibold" tintColor="#FF375F" />
         </View>
 
         {connected ? (
@@ -200,6 +223,16 @@ export default function HealthSetup() {
 
         {connected ? (
           <View>
+            <Pressable
+              disabled={refresh.isPending}
+              style={[styles.refreshButton, refresh.isPending ? styles.actionPending : null]}
+              onPress={() => refresh.mutate()}
+            >
+              <SymbolView name="arrow.clockwise" size={16} weight="semibold" tintColor="#0A84FF" />
+              <Text style={styles.manageText}>
+                {refresh.isPending ? "Refreshing…" : "Refresh summaries"}
+              </Text>
+            </Pressable>
             <Pressable style={styles.manageButton} onPress={() => void openHealthApp()}>
               <Text style={styles.manageText}>Manage access in Health</Text>
               <SymbolView name="arrow.up.forward" size={15} weight="semibold" tintColor="#0A84FF" />
@@ -236,12 +269,12 @@ const styles = StyleSheet.create({
   headerButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   headerTitle: { fontSize: 17, fontWeight: "700", color: "#000000" },
   content: { paddingHorizontal: 20, paddingTop: 10 },
-  heroIcon: { width: 92, height: 92, borderRadius: 28, borderCurve: "continuous", backgroundColor: "#FFE8EE", alignItems: "center", justifyContent: "center", alignSelf: "center", marginTop: 20 },
-  title: { fontSize: 30, lineHeight: 36, letterSpacing: -0.6, fontWeight: "800", color: "#000000", textAlign: "center", marginTop: 24 },
-  body: { fontSize: 16, lineHeight: 23, color: "#636366", textAlign: "center", marginTop: 10 },
-  groupLabel: { fontSize: 13, color: "#8E8E93", marginLeft: 4, marginTop: 28, marginBottom: 8 },
+  heroIcon: { width: 84, height: 84, borderRadius: 26, borderCurve: "continuous", backgroundColor: "#FFE8EE", alignItems: "center", justifyContent: "center", alignSelf: "center", marginTop: 14 },
+  title: { fontSize: 28, lineHeight: 33, letterSpacing: -0.5, fontWeight: "800", color: "#000000", textAlign: "center", marginTop: 18 },
+  body: { fontSize: 15, lineHeight: 22, color: "#636366", textAlign: "center", marginTop: 8 },
+  groupLabel: { fontSize: 13, color: "#8E8E93", marginLeft: 4, marginTop: 22, marginBottom: 8 },
   card: { backgroundColor: "#FFFFFF", borderRadius: 16, borderCurve: "continuous", overflow: "hidden" },
-  metric: { minHeight: 66, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14 },
+  metric: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14 },
   metricIcon: { width: 38, height: 38, borderRadius: 12, borderCurve: "continuous", backgroundColor: "#FFE8EE", alignItems: "center", justifyContent: "center" },
   metricCopy: { flex: 1 },
   metricTitle: { fontSize: 16, fontWeight: "600", color: "#1C1C1E" },
@@ -257,9 +290,11 @@ const styles = StyleSheet.create({
   statusTitle: { fontSize: 16, fontWeight: "700", color: "#1C1C1E" },
   statusDetail: { fontSize: 13, color: "#8E8E93", marginTop: 3 },
   manageButton: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 20 },
+  refreshButton: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 20, backgroundColor: "#FFFFFF", borderRadius: 14, borderCurve: "continuous" },
   manageText: { fontSize: 16, fontWeight: "600", color: "#0A84FF" },
   disconnectButton: { minHeight: 52, borderRadius: 14, borderWidth: 1, borderColor: "#FF3B30", alignItems: "center", justifyContent: "center" },
   disconnectText: { fontSize: 16, fontWeight: "600", color: "#FF3B30" },
   bottomBar: { position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: "rgba(242,242,247,0.96)", paddingHorizontal: 20, paddingTop: 12 },
   consentCaption: { fontSize: 11, lineHeight: 15, color: "#8E8E93", textAlign: "center", marginTop: 7 },
+  actionPending: { opacity: 0.45 },
 });

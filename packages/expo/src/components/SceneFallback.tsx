@@ -2,9 +2,9 @@ import { Image } from 'expo-image';
 import { View, type ViewStyle } from 'react-native';
 
 /**
- * Stand-in for the GL scene when EXPO_PUBLIC_DISABLE_3D=1: the meadow's sky
- * colour with the mascot centred, so the dock and sheets sit on a backdrop that
- * frames them the way the real scene does.
+ * Lightweight stand-in for the GL scene on simulators and when 3D is disabled:
+ * the meadow's sky colour with a static mascot, so the dock and sheets retain
+ * their intended framing without initializing expo-gl.
  */
 export function SceneFallback({ style }: { style?: ViewStyle }) {
   return (

@@ -4,6 +4,8 @@ Date: 2026-07-14
 
 Implementation status: built on 2026-07-14. The application, server, database migration, agent tools, privacy controls, tests, and native iOS extensions are implemented. Simulator QA reached Apple's Screen Time authorization flow. Final enforcement and real HealthKit sample validation remain a signed physical-iPhone release check because those system capabilities are not testable end to end in Simulator.
 
+Integration polish on 2026-07-14 moved foreground refreshes behind authentication, added reliable Settings invalidation, strengthened Health coverage and non-diagnostic response guidance, included active energy in recent context, added a manual Health refresh, and made Focus quick actions fail honestly when the local selection or permission is unavailable.
+
 This plan supersedes the privacy and data-flow assumptions in `13-focus-mode.md` and the Apple Health consent language in `12-life-integrations.md`. The repo already contains partial implementations of both features; this document defines what is safe to ship and the work needed to align them with Apple's current rules.
 
 ## Product decisions

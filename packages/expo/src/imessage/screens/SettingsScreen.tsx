@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { GlassView } from "expo-glass-effect";
 import { SymbolView } from "expo-symbols";
+import { StatusBar } from "expo-status-bar";
 import { type ReactNode, useState } from "react";
 import {
 	Alert,
@@ -212,6 +213,7 @@ export function SettingsScreen() {
 
 	return (
 		<View style={styles.screen}>
+			<StatusBar style="dark" />
 			<View style={[styles.header, { paddingTop: insets.top + 6 }]}>
 				<GlassView isInteractive glassEffectStyle="regular" style={styles.glassButton}>
 					<Pressable hitSlop={12} onPress={() => router.back()} style={styles.glassPressable}>

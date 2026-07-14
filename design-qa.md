@@ -54,10 +54,10 @@
 
 **Implementation Evidence**
 
-- Settings comparison: `/Users/cj/Code/sidekick/plans/qa/settings-comparison.png`.
-- Focus intro comparison: `/Users/cj/Code/sidekick/plans/qa/focus-comparison.png`.
-- Apple Screen Time system authorization: `/Users/cj/Code/sidekick/plans/qa/focus-native-picker.png`.
-- Apple Health intro: `/Users/cj/Code/sidekick/plans/qa/health-intro.png`.
+- Settings comparison: `/Users/cj/Code/sidekick/plans/qa/settings-polish-comparison.png`.
+- Focus intro comparison: `/Users/cj/Code/sidekick/plans/qa/focus-polish-comparison.png`.
+- Final Focus intro: `/Users/cj/Code/sidekick/plans/qa/focus-polished-final.png`.
+- Final Apple Health intro: `/Users/cj/Code/sidekick/plans/qa/health-polished-final.png`.
 - Viewport: iPhone 17 Pro Simulator in portrait at 944 × 2048 physical pixels.
 
 **Findings**
@@ -71,6 +71,8 @@
 **Interaction Verification**
 
 - Focus opened from the real native build, requested Apple's individual Screen Time authorization, and reached Apple's passcode-protected authorization sheet.
+- This polish pass ran the authenticated app against the local server, opened Settings, Focus, and Apple Health through the app's real router, and captured each rendered native screen. The integration rows, modal navigation, authenticated foreground services, and final layouts rendered without a redbox or clipped horizontal content.
+- Simulator home verification: `/Users/cj/Code/sidekick/plans/qa/simulator-static-fallback.png` confirms the app uses the lightweight static mascot and never initializes the GL renderer on Simulator.
 - The final app/category picker, device-activity thresholds, and HealthKit data reads require a physical iPhone with the distribution entitlements and user-owned data; they cannot be proven in the simulator.
 - Type checking, unit/integration tests, changed-file lint, and the native iOS build cover the application logic and extension wiring separately from that physical-device gate.
 
@@ -84,6 +86,20 @@
 - [x] Mark Health-derived assistant output sensitive and exclude it from advertising context.
 - [x] Compare the native Settings and Focus screens side-by-side with the references.
 - [x] Verify the Apple Screen Time system authorization handoff in the simulator.
+- [x] Move foreground refreshes behind authentication and refresh visible Settings state after successful sync.
+- [x] Add agent guidance for natural, coverage-aware, non-diagnostic Health responses.
+- [x] Make Focus quick actions single-flight and reject false-positive unlocks without a guarded selection.
+- [x] Tighten the Focus and Health hierarchy so the benefit, privacy boundary, and primary action fit cleanly in the modal viewport.
 - [ ] Complete the final Screen Time picker/enforcement and HealthKit sample read on a signed physical iPhone.
+
+**Comparison History**
+
+- Earlier pass: Focus and Health were functionally complete, but the intro hierarchy was looser and foreground services could run before authentication.
+- Polish pass: reduced hero scale and vertical gaps, kept all four Health summary groups visible, corrected the light-screen status bar, added honest action error/loading states, and moved integration refresh behind authentication.
+- Final comparison: the combined source/implementation images show a distinct Sidekick design with equivalent permission clarity, stronger privacy copy, balanced vertical rhythm, and no remaining P0/P1/P2 mismatch. Focus uses a native shield instead of copying the competitor illustration; Health uses the same card and typography system as Sidekick Settings.
+
+**Focused Region Evidence**
+
+- The combined full-height comparisons keep the reference and implementation at the same 944 × 2048 viewport. The primary headers, benefit copy, integration rows, icons, controls, and bottom actions are legible at original resolution, so a separate focused crop was not needed.
 
 final result: passed

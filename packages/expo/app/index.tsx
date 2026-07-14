@@ -92,7 +92,7 @@ export default function Home() {
       {/* Full-viewport 3D scene (mounted once saved look-dev state hydrates).
           Settings reuses the pulled-back chat framing so the meadow, sky and
           character stay visible above the panel while tuning. With
-          EXPO_PUBLIC_DISABLE_3D=1 a static backdrop stands in for it. */}
+          simulators and EXPO_PUBLIC_DISABLE_3D=1 use a static backdrop. */}
       {SCENE_3D_ENABLED ? (
         settings ? (
           <SidekickCanvas

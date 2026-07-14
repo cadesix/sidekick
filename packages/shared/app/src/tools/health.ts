@@ -50,7 +50,21 @@ export const healthTools: SidekickTool[] = [
         }
         return { date: row.date, value };
       });
-      return { metric, days };
+      const availableDays = days.filter((day) => day.value !== null).length;
+      return {
+        metric,
+        rangeDays: range_days,
+        availableDays,
+        missingDays: range_days - availableDays,
+        days,
+      };
     },
   }),
 ];
+
+export const HEALTH_CHAT_GUIDANCE = `Apple Health summaries:
+- Health context is user-authorized but sensitive. Use it only when it genuinely helps the current conversation; never recite a dashboard unprompted.
+- Treat the data as incomplete. Name the covered dates or number of available days when that affects the answer, and never call missing data a zero.
+- Be supportive and observational, not diagnostic. Do not infer illness, injury, readiness, or sleep quality from these summaries.
+- Prefer one useful connection in natural language (for example, noticing a completed workout toward a goal) over listing every metric.
+- If the user asks for a trend beyond today or yesterday, use health_summary and state gaps plainly.`;

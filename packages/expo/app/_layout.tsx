@@ -32,13 +32,20 @@ function useForegroundSync(): void {
         const days = await readHealthDays(30);
         if (days.length > 0) {
           await syncHealth(days);
+          await queryClient.invalidateQueries({ queryKey: ['health-connection'] });
         }
       } catch {
         // health not shared / unavailable — no-op
       }
-      await maybeUpdateLocation();
+      try {
+        await maybeUpdateLocation();
+        await queryClient.invalidateQueries({ queryKey: ['location', 'setting'] });
+      } catch {
+        // location not shared / unavailable — no-op
+      }
       try {
         await maybeRefreshFocusShield();
+        await queryClient.invalidateQueries({ queryKey: ['focus-local'] });
       } catch {
         // focus not set up / entitlement missing — no-op
       }
@@ -54,11 +61,29 @@ function useForegroundSync(): void {
   }, []);
 }
 
+function ConnectedApp() {
+  useForegroundSync();
+
+  return (
+    <>
+      <StatusBar style="light" />
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#fff' } }}>
+        <Stack.Screen name="index" />
+        {/* Settings opens from inside the natively-presented chat
+            sheet — only modal presentations appear above it */}
+        <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="focus-setup" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="health-setup" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="dev/ad-preview" options={{ presentation: 'modal' }} />
+      </Stack>
+    </>
+  );
+}
+
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     'Diatype-Rounded': require('../assets/fonts/ABCDiatypeRounded.ttf'),
   });
-  useForegroundSync();
 
   if (!fontsLoaded && !fontError) {
     return null;
@@ -70,16 +95,7 @@ export default function RootLayout() {
         <KeyboardProvider>
           <QueryClientProvider client={queryClient}>
             <AuthGate>
-              <StatusBar style="light" />
-              <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#fff' } }}>
-                <Stack.Screen name="index" />
-                {/* Settings opens from inside the natively-presented chat
-                    sheet — only modal presentations appear above it */}
-                <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
-                <Stack.Screen name="focus-setup" options={{ presentation: 'modal' }} />
-                <Stack.Screen name="health-setup" options={{ presentation: 'modal' }} />
-                <Stack.Screen name="dev/ad-preview" options={{ presentation: 'modal' }} />
-              </Stack>
+              <ConnectedApp />
             </AuthGate>
           </QueryClientProvider>
         </KeyboardProvider>

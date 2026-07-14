@@ -100,6 +100,9 @@ test("health_summary reads only the consented server aggregate window", async ()
     status: "done",
     result: {
       metric: "steps",
+      rangeDays: 7,
+      availableDays: 1,
+      missingDays: 6,
       days: [{ date: new Date().toISOString().slice(0, 10), value: 8200 }],
     },
   });

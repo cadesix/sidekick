@@ -25,6 +25,7 @@ test("renders yesterday's health into a friend-shaped RECENT line", async () => 
     userId,
     date: "2026-07-05",
     steps: 11204,
+    activeCalories: 618,
     sleepMinutes: 401,
     sleepStart: new Date("2026-07-05T04:48:00.000Z"),
     sleepEnd: new Date("2026-07-05T11:29:00.000Z"),
@@ -37,6 +38,7 @@ test("renders yesterday's health into a friend-shaped RECENT line", async () => 
   expect(line.startsWith("- connected Apple Health summary: yesterday:")).toBe(true);
   expect(line).toContain("11,204 steps");
   expect(line).toContain("6h41m sleep");
+  expect(line).toContain("618 active calories");
   expect(line).toContain("34-min run");
 });
 

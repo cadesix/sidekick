@@ -1,6 +1,7 @@
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { SymbolView, type SFSymbol } from "expo-symbols";
 import { useState } from "react";
 import {
@@ -192,7 +193,10 @@ export default function FocusSetup() {
           throw new Error("no selection");
         }
       } else if (action === "unlock") {
-        await temporaryUnlock(15);
+        const minutes = await temporaryUnlock(15);
+        if (minutes === null) {
+          throw new Error("no selection");
+        }
       } else {
         disableFocus();
       }
@@ -206,6 +210,12 @@ export default function FocusSetup() {
       }
       const message = action === "unlock" ? "Unlocked for 15 minutes." : "Focus is active.";
       Alert.alert(message);
+    },
+    onError: () => {
+      Alert.alert(
+        "Focus couldn't change that",
+        "Check your Screen Time access and guarded selections, then try again.",
+      );
     },
   });
 
@@ -276,6 +286,7 @@ export default function FocusSetup() {
 
   return (
     <View style={styles.screen}>
+      <StatusBar style="dark" />
       <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
         <Pressable accessibilityLabel="Back" onPress={goBack} style={styles.headerButton}>
           <SymbolView name="chevron.left" size={20} weight="semibold" tintColor="#0A84FF" />
@@ -314,7 +325,7 @@ export default function FocusSetup() {
               <View style={styles.heroIcon}>
                 <SymbolView
                   name="shield.lefthalf.filled"
-                  size={46}
+                  size={42}
                   weight="semibold"
                   tintColor="#0A84FF"
                 />
@@ -523,22 +534,38 @@ export default function FocusSetup() {
               </View>
               <Text style={styles.groupLabel}>QUICK ACTIONS</Text>
               <View style={styles.summaryCard}>
-                <Pressable style={styles.detailRow} onPress={() => command.mutate("block")}>
+                <Pressable
+                  disabled={command.isPending}
+                  style={[styles.detailRow, command.isPending ? styles.actionPending : null]}
+                  onPress={() => command.mutate("block")}
+                >
                   <Text style={styles.detailTitle}>Block now</Text>
                   <SymbolView name="lock.fill" size={17} weight="semibold" tintColor="#0A84FF" />
                 </Pressable>
                 <View style={styles.divider} />
-                <Pressable style={styles.detailRow} onPress={() => command.mutate("session")}>
+                <Pressable
+                  disabled={command.isPending}
+                  style={[styles.detailRow, command.isPending ? styles.actionPending : null]}
+                  onPress={() => command.mutate("session")}
+                >
                   <Text style={styles.detailTitle}>Start a 45-minute session</Text>
                   <SymbolView name="timer" size={18} weight="semibold" tintColor="#0A84FF" />
                 </Pressable>
                 <View style={styles.divider} />
-                <Pressable style={styles.detailRow} onPress={() => command.mutate("unlock")}>
+                <Pressable
+                  disabled={command.isPending}
+                  style={[styles.detailRow, command.isPending ? styles.actionPending : null]}
+                  onPress={() => command.mutate("unlock")}
+                >
                   <Text style={styles.detailTitle}>Unlock for 15 minutes</Text>
                   <SymbolView name="lock.open.fill" size={18} weight="semibold" tintColor="#0A84FF" />
                 </Pressable>
               </View>
-              <Pressable style={styles.disableButton} onPress={() => command.mutate("disable")}>
+              <Pressable
+                disabled={command.isPending}
+                style={[styles.disableButton, command.isPending ? styles.actionPending : null]}
+                onPress={() => command.mutate("disable")}
+              >
                 <Text style={styles.disableText}>Turn off Focus</Text>
               </Pressable>
               <Text style={styles.detailPrivacy}>
@@ -598,24 +625,24 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 17, fontWeight: "700", color: "#000000" },
   content: { paddingHorizontal: 20, paddingTop: 12 },
   heroIcon: {
-    width: 92,
-    height: 92,
-    borderRadius: 28,
+    width: 84,
+    height: 84,
+    borderRadius: 26,
     borderCurve: "continuous",
     backgroundColor: "#E5F2FF",
     alignItems: "center",
     justifyContent: "center",
     alignSelf: "center",
-    marginTop: 28,
+    marginTop: 22,
   },
   heroTitle: {
-    fontSize: 32,
-    lineHeight: 37,
+    fontSize: 30,
+    lineHeight: 35,
     letterSpacing: -0.7,
     fontWeight: "800",
     color: "#000000",
     textAlign: "center",
-    marginTop: 28,
+    marginTop: 22,
   },
   heroBody: {
     fontSize: 17,
@@ -624,7 +651,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 12,
   },
-  factList: { gap: 18, marginTop: 34 },
+  factList: { gap: 15, marginTop: 28 },
   fact: { flexDirection: "row", alignItems: "center", gap: 14 },
   factIcon: {
     width: 36,
@@ -748,4 +775,5 @@ const styles = StyleSheet.create({
   disableButton: { minHeight: 52, borderRadius: 14, borderWidth: 1, borderColor: "#FF3B30", alignItems: "center", justifyContent: "center", marginTop: 24 },
   disableText: { fontSize: 16, fontWeight: "600", color: "#FF3B30" },
   detailPrivacy: { fontSize: 13, lineHeight: 18, color: "#8E8E93", textAlign: "center", margin: 18 },
+  actionPending: { opacity: 0.45 },
 });
