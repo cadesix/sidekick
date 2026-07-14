@@ -167,6 +167,7 @@ export default function Home5() {
 				controlsRef={controlsRef}
 				overheadRef={bondRef}
 				groundRef={boxRef}
+				dailyBox={boxStage === "ground" ? todaysBox.tier : null}
 				handleRef={canvasHandleRef}
 				paused={canvasPaused}
 			/>
@@ -177,14 +178,13 @@ export default function Home5() {
 				<SpeechBubble />
 			</BondBadge>
 
-			{/* Daily box on the lawn beside the character (canvas positions it);
-			    hidden while any sheet/map covers the scene */}
+			{/* Tap target + burst FX pinned over the 3D chest (canvas positions it
+			    and renders the chest itself); hidden while any sheet covers the scene */}
 			{boxStage === "ground" ? (
 				<GroundBox
 					ref={boxRef}
-					tier={todaysBox.tier}
-					milestone={!!todaysBox.milestone}
 					hidden={mounted || shopOpen || mapOpen || goalsOpen || streakOpen || appearanceOpen || !!sessionIsland}
+					onTap={() => canvasHandleRef.current?.popDailyBox()}
 					onOpened={() => {
 						// claim guards against double-grant; the seeded roll means the
 						// fallback preview shows identical contents either way

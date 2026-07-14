@@ -7,10 +7,12 @@ import {
 	SUN_DIR,
 	makeCharacterMaterials,
 	makeEnvScene,
+	makeItemMaterial,
 	makeOutlineMaterial,
 	loadMatcapTexture,
 	type TexSet,
 } from "./sidekick-shading";
+import type { BoxTier } from "./sidekick-daily-box";
 import { makeGrassEnvironment } from "./sidekick-grass";
 import { makeSky, type TimeOfDay } from "./sidekick-scene";
 import { makeLandscape } from "./sidekick-landscape";
@@ -96,6 +98,9 @@ export type SidekickCanvasHandle = {
 	jumpIn: (opts?: { duration?: number }) => void;
 	shake: (opts?: { amp?: number; duration?: number; mode?: "impact" | "build" }) => void;
 	setColors: (body: string, shadow?: string) => void;
+	// daily box: play the open animation (shake → grow → gone). The DOM layer
+	// (daily-box.tsx) times its flash/confetti to the same beats.
+	popDailyBox: () => void;
 };
 
 // Studio (Shop) backdrop: a soft warm vertical sweep (light top → warm floor) so
@@ -148,6 +153,7 @@ export function SidekickCanvas({
 	controlsRef,
 	overheadRef,
 	groundRef,
+	dailyBox,
 	paused,
 	hidden,
 	timeOfDay,
@@ -179,9 +185,12 @@ export function SidekickCanvas({
 	// an overlay element (e.g. the Bond badge) the canvas pins over the
 	// character's head every frame via 3D→screen projection
 	overheadRef?: MutableRefObject<HTMLDivElement | null>;
-	// an overlay element (e.g. the daily box) pinned to a spot on the ground
-	// beside the character, bottom-center anchored — same projection trick
+	// an overlay element (e.g. the daily box tap target + burst FX) pinned to a
+	// spot on the ground beside the character — same projection trick
 	groundRef?: MutableRefObject<HTMLDivElement | null>;
+	// when set, the 3D loot chest (props/lootbox-v1.glb) stands at the ground
+	// anchor, tinted for the given tier; null/undefined hides it
+	dailyBox?: BoxTier | null;
 	// skip all per-frame work while something fully covers the canvas (e.g. the
 	// near-full-screen Shop) — the RAF keeps ticking so resume is instant
 	paused?: boolean;
@@ -202,6 +211,9 @@ export function SidekickCanvas({
 	// when true, the character raises its right hand + looks down at the phone
 	const phoneRef = useRef(holdingPhone);
 	phoneRef.current = holdingPhone;
+	// daily-box tier (or null) — read by the render loop like the flags above
+	const dailyBoxRef = useRef(dailyBox);
+	dailyBoxRef.current = dailyBox;
 
 	useEffect(() => {
 		const mount = mountRef.current;
@@ -433,7 +445,67 @@ export function SidekickCanvas({
 			}
 			applyShading();
 		});
+		// ---- daily loot chest: a world prop at the ground anchor (daily-box.tsx
+		// owns the DOM tap target + burst FX; home5 orchestrates the flow) ----
+		const DAILY_BOX_POS = new THREE.Vector3(0.55, 0, 0.55);
+		const DAILY_BOX_SCALE = 0.34;
+		// per-tier tints keyed by the GLB's authored material names
+		const BOX_PALETTES: Record<BoxTier, Record<string, string>> = {
+			base: { Chest_Body: "#FFD65C", Chest_Trim: "#FF5B4D", Chest_Emblem: "#FFF2DC" },
+			silver: { Chest_Body: "#DCE6F5", Chest_Trim: "#7C5CFF", Chest_Emblem: "#FFFFFF" },
+			gold: { Chest_Body: "#FFC93D", Chest_Trim: "#7C5CFF", Chest_Emblem: "#FFF6D8" },
+		};
+		const boxGroup = new THREE.Group();
+		boxGroup.position.copy(DAILY_BOX_POS);
+		boxGroup.rotation.y = -0.3; // angle the latch a touch toward the camera
+		boxGroup.visible = false;
+		scene.add(boxGroup);
+		let boxMeshes: THREE.Mesh[] = [];
+		let boxTint: BoxTier | null = null;
+		let boxLoading = false;
+		let boxSpawn = -1; // clock time the chest appeared (scale-in spring)
+		let boxPop = -1; // clock time popDailyBox() fired
+		const tintBox = (tier: BoxTier) => {
+			const pal = BOX_PALETTES[tier];
+			for (const m of boxMeshes) {
+				(m.material as THREE.Material).dispose();
+				m.material = makeItemMaterial(
+					s,
+					{ color: pal[m.userData.matName as string] ?? pal.Chest_Body, map: null },
+					matcapTex,
+				);
+			}
+			boxTint = tier;
+		};
+		const loadBox = () => {
+			boxLoading = true;
+			new GLTFLoader().load("/props/lootbox-v1.glb", (g) => {
+				if (cancelled) return;
+				const meshes: THREE.Mesh[] = [];
+				g.scene.traverse((o) => {
+					const mesh = o as THREE.Mesh;
+					if (mesh.isMesh) meshes.push(mesh);
+				});
+				for (const mesh of meshes) {
+					mesh.userData.matName = (mesh.material as THREE.Material).name;
+					mesh.castShadow = true;
+					// Same amber inverted-hull ink as the character, as a child so it
+					// inherits the mesh transform. The shader's displacement assumes the
+					// character's 0.2-unit-raw → 5× world scaling; the chest renders at
+					// DAILY_BOX_SCALE, so widen proportionally to keep the same ink weight.
+					const ink = new THREE.Mesh(
+						mesh.geometry,
+						makeOutlineMaterial({ ...s, outlineWidth: (s.outlineWidth * 5) / DAILY_BOX_SCALE }),
+					);
+					mesh.add(ink);
+				}
+				boxMeshes = meshes;
+				boxGroup.add(g.scene);
+				boxSpawn = clock.getElapsedTime();
+			});
+		};
 		const applyShading = () => {
+			if (boxTint) tintBox(boxTint); // rebuild chest materials for the new mode
 			if (!bodyMesh) return;
 			const { body, face } = makeCharacterMaterials(s, texSet, matcapTex, faceTex);
 			bodyMesh.material = body;
@@ -654,6 +726,9 @@ export function SidekickCanvas({
 					if (shadow) s.celShadowColor = shadow;
 					applyShading();
 				},
+				popDailyBox: () => {
+					if (boxPop < 0) boxPop = clock.getElapsedTime();
+				},
 			};
 		}
 
@@ -824,6 +899,34 @@ export function SidekickCanvas({
 			}
 			grass.update(now, pull.position);
 			faceCtl?.update(now);
+			// daily loot chest: lazy-load on first request, then spawn spring →
+			// idle bob → (on popDailyBox) excited shake → grow → gone
+			const wantBox = dailyBoxRef.current;
+			if (wantBox && !boxMeshes.length && !boxLoading) loadBox();
+			if (boxMeshes.length) {
+				if (wantBox && boxTint !== wantBox) tintBox(wantBox);
+				if (!wantBox && boxPop >= 0) boxPop = -1; // reset for the next day
+				const popT = boxPop >= 0 ? now - boxPop : -1;
+				boxGroup.visible = !!wantBox && !inStudio && (popT < 0 || popT < 0.82);
+				if (boxGroup.visible) {
+					// scale-in spring on spawn (slight overshoot), then gentle bob
+					const ts = Math.min(1, (now - boxSpawn) / 0.55);
+					const spring = 1 - Math.pow(1 - ts, 3) * Math.cos(ts * 9);
+					let scale = DAILY_BOX_SCALE * spring;
+					boxGroup.position.y = DAILY_BOX_POS.y + (0.5 + 0.5 * Math.sin(now * 2.1)) * 0.022;
+					boxGroup.rotation.z = 0;
+					if (popT >= 0) {
+						if (popT < 0.45) {
+							// excited wiggle, growing in amplitude
+							boxGroup.rotation.z = Math.sin(popT * 42) * 0.12 * (0.4 + popT * 1.6);
+						} else {
+							// burst: swell up while the DOM flash/confetti covers the vanish
+							scale = DAILY_BOX_SCALE * (1 + ((popT - 0.45) / 0.37) * 0.9);
+						}
+					}
+					boxGroup.scale.setScalar(Math.max(0.0001, scale));
+				}
+			}
 			// pin the overhead overlay (Bond badge) above the head bone: world pos
 			// → NDC → CSS px. Follows jumps, drags, and the shop lift for free.
 			const overhead = overheadRef?.current;
@@ -845,7 +948,7 @@ export function SidekickCanvas({
 			const ground = groundRef?.current;
 			if (ground) {
 				if (ready && !studioRef.current) {
-					groundV.set(0.55, 0, 0.55);
+					groundV.copy(DAILY_BOX_POS);
 					groundV.project(camera);
 					const gx = (groundV.x * 0.5 + 0.5) * mount.clientWidth;
 					const gy = (-groundV.y * 0.5 + 0.5) * mount.clientHeight;

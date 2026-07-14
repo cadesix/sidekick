@@ -1,21 +1,15 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
 import { LuFlame } from "react-icons/lu";
 import { Coin } from "./shop-sheet";
-import type { BoxReward, BoxTier } from "./sidekick-daily-box";
+import type { BoxReward } from "./sidekick-daily-box";
 
 // The daily box UI (docs/token-economy.md#faucets): the first session of the
-// day runs streak splash → box on the ground → tap → burst → rewards modal.
-// The host (home5) orchestrates the stages; this file owns the three visuals.
-
-// Tier looks. The chest is drawn in the world's cel language: flat two-tone
-// fills with the same warm amber "ink" outline the character's inverted-hull
-// silhouette uses (sidekick-settings outlineColor #b77d1a).
-const INK = "#b77d1a";
-const TIER_STYLE: Record<BoxTier, { body: string; shade: string; strap: string; emblem: string }> = {
-	base: { body: "#FFD65C", shade: "#EDB93A", strap: "#FF5B4D", emblem: "#FFF2DC" },
-	silver: { body: "#DCE6F5", shade: "#B9C9E2", strap: "#7C5CFF", emblem: "#FFFFFF" },
-	gold: { body: "#FFC93D", shade: "#F0A21C", strap: "#7C5CFF", emblem: "#FFF6D8" },
-};
+// day runs streak splash → chest on the ground → tap → burst → rewards modal.
+// The chest itself is a real 3D prop in the scene (props/lootbox-v1.glb,
+// built by tools/char-pipeline/scripts/build_lootbox.py and cel-shaded by the
+// canvas). This file owns the DOM layer: the tap target + burst FX pinned
+// over the chest, the streak splash, and the rewards modal. The burst FX
+// timings mirror the canvas pop animation (wiggle 0–0.45s, swell 0.45–0.82s).
 
 const CONFETTI_COLORS = ["#FF5B4D", "#F2C94C", "#7C5CFF", "#12C93E", "#9fd0ff", "#ffc1dd"];
 
@@ -26,155 +20,88 @@ function scatter(i: number, n: number, dist: number): { x: number; y: number } {
 	return { x: Math.cos(a) * d, y: Math.sin(a) * d * 0.85 - 30 };
 }
 
-// A chunky rounded loot chest, cel-shaded like the character: flat fills, one
-// hard shade tone, thick amber ink outlines, star emblem on the latch.
-function LootChestSvg({ tier, milestone }: { tier: BoxTier; milestone: boolean }) {
-	const c = TIER_STYLE[tier];
-	return (
-		<svg viewBox="0 0 96 88" className="h-full w-full drop-shadow-[0_8px_10px_rgba(0,0,0,0.22)]">
-			{/* soft contact shadow on the grass */}
-			<ellipse cx="48" cy="82" rx="34" ry="5" fill="#000" opacity="0.15" />
+// The DOM layer pinned over the 3D chest (groundRef → 3D→screen projection,
+// bottom-center anchored, same pattern as the Bond badge): an invisible tap
+// target, tease sparkles, and the burst FX. Tap fires onTap immediately (the
+// host triggers the canvas pop animation), the FX play over the 3D swell, and
+// onOpened fires when the chest is gone.
+export const GroundBox = forwardRef<HTMLDivElement, { hidden?: boolean; onTap: () => void; onOpened: () => void }>(
+	function GroundBox({ hidden, onTap, onOpened }, ref) {
+		const [burst, setBurst] = useState(false);
+		const timers = useRef<number[]>([]);
+		useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), []);
 
-			{/* domed lid */}
-			<path d="M12 40 v-7 a24 24 0 0 1 24-24 h24 a24 24 0 0 1 24 24 v7 z" fill={c.body} />
-			{/* lid cel-shade band (hard edge, no gradient) */}
-			<path d="M12 40 v-6 h72 v6 z" fill={c.shade} />
-			{/* body */}
-			<rect x="12" y="40" width="72" height="38" rx="8" fill={c.body} />
-			{/* body cel-shade: hard tone on the lower third */}
-			<path d="M12 62 h72 v8 a8 8 0 0 1 -8 8 h-56 a8 8 0 0 1 -8 -8 z" fill={c.shade} />
+		const tap = () => {
+			if (burst) return;
+			setBurst(true);
+			onTap(); // canvas starts the wiggle → swell
+			// chest vanishes at ~0.82s; rewards land just after
+			timers.current.push(window.setTimeout(onOpened, 1100));
+		};
 
-			{/* strap over the top */}
-			<path d="M41 9.5 h14 v68.5 h-14 z" fill={c.strap} />
-			<path d="M41 62 h14 v16 h-14 z" fill="#000" opacity="0.14" />
+		return (
+			<div
+				ref={ref}
+				className={`absolute left-0 top-0 z-10 transition-opacity duration-300 ${
+					hidden ? "pointer-events-none opacity-0" : ""
+				}`}
+				style={{ visibility: "hidden" }}
+			>
+				<div className="relative h-[150px] w-[150px]">
+					{/* sparkles teasing "tap me" */}
+					{!burst ? (
+						<>
+							<span className="absolute left-1 top-4 animate-pulse text-[18px]">✨</span>
+							<span className="absolute right-2 top-14 animate-pulse text-[15px] [animation-delay:0.6s]">✨</span>
+						</>
+					) : null}
 
-			{/* ink outlines, drawn on top so fills stay flat */}
-			<g fill="none" stroke={INK} strokeWidth="3.5" strokeLinejoin="round" strokeLinecap="round">
-				<path d="M12 40 v-7 a24 24 0 0 1 24-24 h24 a24 24 0 0 1 24 24 v7" />
-				<rect x="12" y="40" width="72" height="38" rx="8" />
-				<path d="M12 40 h72" />
-				<path d="M41 9.5 v69 M55 9.5 v69" />
-			</g>
-
-			{/* latch: a star emblem sitting on the seam */}
-			<circle cx="48" cy="42" r="12.5" fill={c.emblem} stroke={INK} strokeWidth="3.5" />
-			<path
-				d="M48 34.5l2.4 4.9 5.4.8-3.9 3.8.9 5.3-4.8-2.5-4.8 2.5.9-5.3-3.9-3.8 5.4-.8z"
-				fill={c.strap}
-				stroke={INK}
-				strokeWidth="1.8"
-				strokeLinejoin="round"
-			/>
-
-			{/* flat highlight blob (vinyl-toy sheen, cel style) */}
-			<path d="M22 22 a17 17 0 0 1 12-9 l3 0 a20 20 0 0 0 -12 9 z" fill="#fff" opacity="0.55" />
-
-			{/* milestone days: a crown of sparkles so the box reads special */}
-			{milestone ? (
-				<g fill="#fff" stroke={INK} strokeWidth="1.6" strokeLinejoin="round">
-					<path d="M48 -1l1.8 3.7 3.9.6-2.8 2.7.7 4-3.6-1.9-3.6 1.9.7-4-2.8-2.7 3.9-.6z" />
-					<path d="M24 6l1.3 2.6 2.8.4-2 1.9.5 2.9-2.6-1.4-2.6 1.4.5-2.9-2-1.9 2.8-.4z" />
-					<path d="M72 6l1.3 2.6 2.8.4-2 1.9.5 2.9-2.6-1.4-2.6 1.4.5-2.9-2-1.9 2.8-.4z" />
-				</g>
-			) : null}
-		</svg>
-	);
-}
-
-// The box sitting on the ground beside the character. The outer div is pinned
-// by the canvas (groundRef → 3D→screen projection, bottom-center anchored,
-// same pattern as the Bond badge). Tap → shake → burst, then onOpened fires.
-export const GroundBox = forwardRef<
-	HTMLDivElement,
-	{ tier: BoxTier; milestone: boolean; hidden?: boolean; onOpened: () => void }
->(function GroundBox({ tier, milestone, hidden, onOpened }, ref) {
-	const [stage, setStage] = useState<"drop" | "idle" | "burst">("drop");
-	const timers = useRef<number[]>([]);
-	useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), []);
-
-	const tap = () => {
-		if (stage === "burst") return;
-		setStage("burst");
-		// shake (450ms) → pop/flash/confetti (~550ms) → hand off to the modal
-		timers.current.push(window.setTimeout(onOpened, 1000));
-	};
-
-	return (
-		<div
-			ref={ref}
-			className={`absolute left-0 top-0 z-10 transition-opacity duration-300 ${
-				hidden ? "pointer-events-none opacity-0" : ""
-			}`}
-			style={{ visibility: "hidden" }}
-		>
-			<div className="relative h-[124px] w-[124px]">
-				{/* sparkles teasing "tap me" */}
-				{stage !== "burst" ? (
-					<>
-						<span className="absolute -left-4 top-2 animate-pulse text-[18px]">✨</span>
-						<span className="absolute -right-3 top-12 animate-pulse text-[15px] [animation-delay:0.6s]">✨</span>
-					</>
-				) : null}
-
-				{stage === "burst" ? (
-					<>
-						{/* flash ring */}
-						<div className="animate-box-flash absolute inset-0 rounded-full bg-white" />
-						{/* rays */}
-						{Array.from({ length: 8 }, (_, i) => (
-							<div
-								key={`r${i}`}
-								className="animate-box-ray absolute bottom-1/2 left-1/2 h-24 w-2 -translate-x-1/2 rounded-full"
-								style={
-									{
-										"--ray-angle": `${i * 45}deg`,
-										background: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-										animationDelay: "0.42s",
-									} as React.CSSProperties
-								}
-							/>
-						))}
-						{/* confetti chips */}
-						{Array.from({ length: 14 }, (_, i) => {
-							const { x, y } = scatter(i, 14, 118);
-							return (
+					{burst ? (
+						<>
+							{/* flash ring, timed to the start of the 3D swell */}
+							<div className="animate-box-flash absolute inset-6 rounded-full bg-white [animation-delay:0.45s]" />
+							{/* rays */}
+							{Array.from({ length: 8 }, (_, i) => (
 								<div
-									key={`c${i}`}
-									className="animate-box-confetti absolute left-1/2 top-1/2 h-3.5 w-3 rounded-[3px]"
+									key={`r${i}`}
+									className="animate-box-ray absolute bottom-1/2 left-1/2 h-24 w-2 -translate-x-1/2 rounded-full"
 									style={
 										{
-											"--cx": `${x.toFixed(0)}px`,
-											"--cy": `${y.toFixed(0)}px`,
+											"--ray-angle": `${i * 45}deg`,
 											background: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-											animationDelay: "0.44s",
+											animationDelay: "0.5s",
 										} as React.CSSProperties
 									}
 								/>
-							);
-						})}
-					</>
-				) : null}
+							))}
+							{/* confetti chips */}
+							{Array.from({ length: 14 }, (_, i) => {
+								const { x, y } = scatter(i, 14, 118);
+								return (
+									<div
+										key={`c${i}`}
+										className="animate-box-confetti absolute left-1/2 top-1/2 h-3.5 w-3 rounded-[3px]"
+										style={
+											{
+												"--cx": `${x.toFixed(0)}px`,
+												"--cy": `${y.toFixed(0)}px`,
+												background: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+												animationDelay: "0.52s",
+											} as React.CSSProperties
+										}
+									/>
+								);
+							})}
+						</>
+					) : null}
 
-				{/* the box itself */}
-				<button
-					type="button"
-					aria-label="Open daily box"
-					onClick={tap}
-					className={`absolute inset-0 ${
-						stage === "drop" ? "animate-box-drop" : stage === "idle" ? "animate-box-bob" : ""
-					}`}
-					onAnimationEnd={() => stage === "drop" && setStage("idle")}
-				>
-					<span className={`block h-full w-full ${stage === "burst" ? "animate-box-shake" : ""}`}>
-						<span className={`block h-full w-full ${stage === "burst" ? "animate-box-pop [animation-delay:0.45s]" : ""}`}>
-							<LootChestSvg tier={tier} milestone={milestone} />
-						</span>
-					</span>
-				</button>
+					{/* invisible tap target covering the chest */}
+					<button type="button" aria-label="Open daily box" onClick={tap} className="absolute inset-0 rounded-full" />
+				</div>
 			</div>
-		</div>
-	);
-});
+		);
+	},
+);
 
 // Full-screen streak moment shown at the start of the first session of the
 // day: the flame pops in and the count ticks up from yesterday's number.
