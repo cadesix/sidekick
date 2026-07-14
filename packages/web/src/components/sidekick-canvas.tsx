@@ -469,7 +469,7 @@ export function SidekickCanvas({
 		let boxPop = -1; // clock time popDailyBox() fired
 		// the light that pours out when the lid opens: an additive beam cone +
 		// a radial glow sprite at the mouth, hidden until the open beat
-		let beamMat: THREE.MeshBasicMaterial | null = null;
+		let beamOpacity: { value: number } | null = null;
 		let glowMat: THREE.SpriteMaterial | null = null;
 		let beam: THREE.Mesh | null = null;
 		let boxLight: THREE.PointLight | null = null; // real light: spills onto character + ground
@@ -509,11 +509,31 @@ export function SidekickCanvas({
 				}
 				boxMeshes = meshes;
 				boxLidNodes = meshes.filter((m) => m.name.startsWith("LootLid"));
-				// beam: a widening additive cone rising from the chest mouth
-				beamMat = new THREE.MeshBasicMaterial({
-					color: 0xfff2b8,
+				// beam: a widening additive cone rising from the chest mouth. Soft-edged:
+				// fresnel falloff kills the silhouette (edge-on normals → transparent,
+				// core → bright) and a vertical fade dissolves the tip into the sky.
+				const beamUniforms = { uColor: { value: new THREE.Color(0xfff2b8) }, uOpacity: { value: 0 } };
+				beamOpacity = beamUniforms.uOpacity;
+				const beamMat = new THREE.ShaderMaterial({
+					uniforms: beamUniforms,
+					vertexShader:
+						"varying vec3 vN; varying vec3 vV; varying float vY;\n" +
+						"void main() {\n" +
+						"  vN = normalize(normalMatrix * normal);\n" +
+						"  vec4 mv = modelViewMatrix * vec4(position, 1.0);\n" +
+						"  vV = normalize(-mv.xyz);\n" +
+						"  vY = position.y;\n" + // local: -0.85 (mouth) .. 0.85 (tip)
+						"  gl_Position = projectionMatrix * mv;\n" +
+						"}",
+					fragmentShader:
+						"uniform vec3 uColor; uniform float uOpacity;\n" +
+						"varying vec3 vN; varying vec3 vV; varying float vY;\n" +
+						"void main() {\n" +
+						"  float edge = pow(abs(dot(normalize(vN), normalize(vV))), 1.6);\n" +
+						"  float fade = smoothstep(0.85, -0.55, vY);\n" +
+						"  gl_FragColor = vec4(uColor, uOpacity * edge * fade);\n" +
+						"}",
 					transparent: true,
-					opacity: 0,
 					blending: THREE.AdditiveBlending,
 					side: THREE.DoubleSide,
 					depthWrite: false,
@@ -956,7 +976,7 @@ export function SidekickCanvas({
 					// reset for the next spawn: lid shut, light off
 					boxPop = -1;
 					for (const n of boxLidNodes) n.rotation.x = 0;
-					if (beamMat) beamMat.opacity = 0;
+					if (beamOpacity) beamOpacity.value = 0;
 					if (glowMat) glowMat.opacity = 0;
 					if (boxLight) boxLight.intensity = 0;
 				}
@@ -988,8 +1008,8 @@ export function SidekickCanvas({
 						const swing = 1 + (k + 1) * Math.pow(lt - 1, 3) + k * Math.pow(lt - 1, 2);
 						for (const n of boxLidNodes) n.rotation.x = -1.75 * swing;
 						const lightT = Math.min(1, Math.max(0, (popT - 0.62) / 0.18));
-						if (beamMat && beam) {
-							beamMat.opacity = lightT * (0.78 + 0.08 * Math.sin(now * 6.5));
+						if (beamOpacity && beam) {
+							beamOpacity.value = lightT * (0.85 + 0.08 * Math.sin(now * 6.5));
 							beam.scale.set(1, 0.35 + 0.65 * lightT, 1);
 						}
 						if (glowMat) glowMat.opacity = lightT * (0.95 + 0.05 * Math.sin(now * 5.2));

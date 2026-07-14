@@ -64,8 +64,14 @@ export const GroundBox = forwardRef<HTMLDivElement, { hidden?: boolean; onTap: (
 
 					{burst ? (
 						<>
-							{/* flash ring, timed to the moment the light bursts out */}
-							<div className="animate-box-flash absolute inset-6 rounded-full bg-white [animation-delay:0.62s]" />
+							{/* soft flash, timed to the moment the light bursts out */}
+							<div
+								className="animate-box-flash absolute inset-6 rounded-full [animation-delay:0.62s]"
+								style={{
+									background:
+										"radial-gradient(closest-side, rgba(255,255,255,0.95), rgba(255,252,235,0.55) 55%, rgba(255,252,235,0))",
+								}}
+							/>
 							{/* confetti chips */}
 							{Array.from({ length: 14 }, (_, i) => {
 								const { x, y } = scatter(i, 14, 118);
