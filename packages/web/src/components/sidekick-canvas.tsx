@@ -12,7 +12,7 @@ import {
 	type TexSet,
 } from "./sidekick-shading";
 import { makeGrassEnvironment } from "./sidekick-grass";
-import { makeSky } from "./sidekick-scene";
+import { makeSky, type TimeOfDay } from "./sidekick-scene";
 import { makeLandscape } from "./sidekick-landscape";
 import { createFaceController, loadFaceTexture, type FaceController } from "./sidekick-face";
 import { createInteraction, POKE_FACE } from "./sidekick-interact";
@@ -88,6 +88,16 @@ export type CanvasFraming = {
 	fov?: number;
 };
 
+// Imperative controls for the /onboarding cinematic, populated via `handleRef`
+// (same mutable-ref pattern as controlsRef): the jump-into-frame entrance, a
+// camera shake, and a live body recolor. Hosts that don't pass handleRef are
+// unaffected.
+export type SidekickCanvasHandle = {
+	jumpIn: (opts?: { duration?: number }) => void;
+	shake: (opts?: { amp?: number; duration?: number; mode?: "impact" | "build" }) => void;
+	setColors: (body: string, shadow?: string) => void;
+};
+
 // Studio (Shop) backdrop: a soft warm vertical sweep (light top → warm floor) so
 // the character pops out of the meadow into a clean "photo studio". Mapped onto an
 // inward sphere so it can crossfade over the sky as the Shop opens.
@@ -138,11 +148,23 @@ export function SidekickCanvas({
 	controlsRef,
 	overheadRef,
 	paused,
+	hidden,
+	timeOfDay,
+	cameraDrag = true,
+	handleRef,
 }: {
 	className?: string;
 	framing?: CanvasFraming;
 	landscape?: boolean;
 	holdingPhone?: boolean;
+	// onboarding: park the character below the frame until jumpIn() (entrance)
+	hidden?: boolean;
+	// onboarding: force a time-of-day (e.g. "evening") over the saved setting
+	timeOfDay?: TimeOfDay;
+	// when false, hold the camera at its framing (no orbit drag) — onboarding
+	cameraDrag?: boolean;
+	// onboarding imperative handle (jumpIn / shake / setColors)
+	handleRef?: MutableRefObject<SidekickCanvasHandle | null>;
 	// lift the whole character up out of the grass so the legs/shoes are visible
 	// (used by the Shop so you can see pants & shoes swaps)
 	raised?: boolean;
@@ -186,7 +208,7 @@ export function SidekickCanvas({
 		// cosmetics or publish controls, or controlsRef ends up on a dead canvas.
 		let cancelled = false;
 
-		const sc = s.scenes[s.timeOfDay];
+		const sc = s.scenes[timeOfDay ?? s.timeOfDay];
 		const scene = new THREE.Scene();
 		scene.background = makeSky(sc);
 		// the vista wants light, far haze so distant mountains recede; the close
@@ -427,6 +449,13 @@ export function SidekickCanvas({
 		const rest = {} as Record<BoneName, THREE.Quaternion>;
 		let ready = false;
 
+		// onboarding entrance + shake state (no-ops unless jumpIn/shake are called)
+		const HIDDEN_Y = -3;
+		let entranceY = hidden ? HIDDEN_Y : 0;
+		let jump: { start: number; dur: number } | null = null;
+		let landed = false;
+		let shake: { start: number; dur: number; amp: number; mode: "impact" | "build" } | null = null;
+
 		new GLTFLoader().load(
 			MODEL_URL,
 			(gltf) => {
@@ -544,7 +573,7 @@ export function SidekickCanvas({
 			targets: () =>
 				[bodyMesh, faceMesh, ...(cos?.targets() ?? [])].filter(Boolean) as THREE.Object3D[],
 			bone: (n) => bones[n],
-			cameraDrag: true,
+			cameraDrag,
 			onPoke: (part) => {
 				const expr = POKE_FACE[part];
 				if (expr) faceCtl?.pulse(expr, 1.6);
@@ -598,6 +627,31 @@ export function SidekickCanvas({
 		let curEnv: EnvironmentId = "meadow";
 		applyEnv(curEnv);
 		const lerp = THREE.MathUtils.lerp;
+
+		// onboarding imperative controls, consumed via handleRef
+		if (handleRef) {
+			handleRef.current = {
+				jumpIn: (o) => {
+					jump = { start: clock.getElapsedTime(), dur: (o?.duration ?? 800) / 1000 };
+					landed = false;
+					faceCtl?.pulse("excited", 1);
+				},
+				shake: (o) => {
+					shake = {
+						start: clock.getElapsedTime(),
+						dur: (o?.duration ?? 500) / 1000,
+						amp: o?.amp ?? 0.1,
+						mode: o?.mode ?? "impact",
+					};
+				},
+				setColors: (body, shadow) => {
+					s.celBodyColor = body;
+					if (shadow) s.celShadowColor = shadow;
+					applyShading();
+				},
+			};
+		}
+
 		const animate = () => {
 			raf = requestAnimationFrame(animate);
 			if (pausedRef.current) return;
@@ -646,13 +700,42 @@ export function SidekickCanvas({
 			scene.fog = inStudio ? null : envFog;
 			// ease the "raised out of the grass" lift used by the Shop
 			liftY += ((raisedRef.current ? 0.62 : 0) - liftY) * 0.1;
-			// body-drag lean/offset/squash (springs home to rest on release)
-			pull.position.set(fr.bodyX, liftY, fr.bodyZ);
+			// jump-into-frame entrance: launch from HIDDEN_Y with an eased rise + a
+			// short arc overshoot; fire the impact shake at touchdown
+			if (jump) {
+				const p = THREE.MathUtils.clamp((now - jump.start) / jump.dur, 0, 1);
+				const rise = 1 - Math.pow(1 - p, 3);
+				const hop = Math.sin(p * Math.PI) * 0.3;
+				entranceY = THREE.MathUtils.lerp(HIDDEN_Y, 0, rise) + hop;
+				if (p >= 0.9 && !landed) {
+					landed = true;
+					shake = { start: now, dur: 0.55, amp: 0.2, mode: "impact" };
+				}
+				if (p >= 1) {
+					entranceY = 0;
+					jump = null;
+				}
+			}
+			// body-drag lean/offset/squash (springs home to rest on release); the
+			// entrance offset rides on the same group so he lands into the scene
+			pull.position.set(fr.bodyX, liftY + entranceY, fr.bodyZ);
 			pull.rotation.set(fr.tiltX, 0, fr.tiltZ);
 			pull.scale.set(1 / Math.sqrt(fr.squash), fr.squash, 1 / Math.sqrt(fr.squash));
 			if (ready) {
 				const breath = 1 + Math.sin(now * 2.2) * 0.012;
-				rig.scale.set(1 / Math.sqrt(breath), breath, 1 / Math.sqrt(breath));
+				// jump-entrance envelopes: touchdown squash, arms reach up, knees tuck.
+				// All 0 when not jumping, so idle/phone pose is byte-identical to before.
+				let land = 1;
+				let armUp = 0;
+				let tuck = 0;
+				if (jump) {
+					const p = THREE.MathUtils.clamp((now - jump.start) / jump.dur, 0, 1);
+					if (p > 0.75) land = 1 - Math.sin(((p - 0.75) / 0.25) * Math.PI) * 0.14;
+					armUp = 1 - THREE.MathUtils.smoothstep(p, 0.2, 0.85);
+					tuck = 1 - THREE.MathUtils.smoothstep(p, 0.1, 0.7);
+				}
+				const ys = breath * land;
+				rig.scale.set(1 / Math.sqrt(ys), ys, 1 / Math.sqrt(ys));
 				const sway = Math.sin(now * 2.2) * 0.04;
 				// ease the "holding phone" pose in/out and toggle the prop's visibility
 				phoneBlend += ((phoneRef.current ? 1 : 0) - phoneBlend) * 0.09;
@@ -667,27 +750,27 @@ export function SidekickCanvas({
 				// quaternion, so the body yaw must already be in place or the arms
 				// resolve to a different local pose than the /pose studio authored.
 				pull.rotation.y = PHONE_POSE.bodyYaw * pb;
-				// both arms blend from idle toward the two-handed phone-hold pose
-				setArm(
-					"armL",
-					"forearmL",
-					1,
-					lerp(s.poseArmForward + fr.armL.fwd, PHONE_L.swingX, pb),
-					lerp(-s.poseArmDown + sway + fr.armL.swing, PHONE_L.swingZ, pb),
-					lerp(s.poseArmTwist, PHONE_L.twist, pb),
-					lerp(s.poseForeBend, PHONE_L.foreX, pb),
-					lerp(0, PHONE_L.foreZ, pb),
-				);
-				setArm(
-					"armR",
-					"forearmR",
-					-1,
-					lerp(s.poseArmForward + fr.armR.fwd, PHONE_R.swingX, pb),
-					lerp(s.poseArmDown - sway + fr.armR.swing, PHONE_R.swingZ, pb),
-					lerp(-s.poseArmTwist, PHONE_R.twist, pb),
-					lerp(s.poseForeBend, PHONE_R.foreX, pb),
-					lerp(0, PHONE_R.foreZ, pb),
-				);
+				// arm targets: idle → two-handed phone-hold (pb) → jump-up reach (armUp)
+				let swXL = lerp(s.poseArmForward + fr.armL.fwd, PHONE_L.swingX, pb);
+				let swZL = lerp(-s.poseArmDown + sway + fr.armL.swing, PHONE_L.swingZ, pb);
+				let twL = lerp(s.poseArmTwist, PHONE_L.twist, pb);
+				let foXL = lerp(s.poseForeBend, PHONE_L.foreX, pb);
+				const foZL = lerp(0, PHONE_L.foreZ, pb);
+				let swXR = lerp(s.poseArmForward + fr.armR.fwd, PHONE_R.swingX, pb);
+				let swZR = lerp(s.poseArmDown - sway + fr.armR.swing, PHONE_R.swingZ, pb);
+				let twR = lerp(-s.poseArmTwist, PHONE_R.twist, pb);
+				let foXR = lerp(s.poseForeBend, PHONE_R.foreX, pb);
+				const foZR = lerp(0, PHONE_R.foreZ, pb);
+				if (armUp > 0) {
+					swZL = lerp(swZL, 0.95, armUp);
+					twL = lerp(twL, 0, armUp);
+					foXL = lerp(foXL, 0, armUp);
+					swZR = lerp(swZR, -0.95, armUp);
+					twR = lerp(twR, 0, armUp);
+					foXR = lerp(foXR, 0, armUp);
+				}
+				setArm("armL", "forearmL", 1, swXL, swZL, twL, foXL, foZL);
+				setArm("armR", "forearmR", -1, swXR, swZR, twR, foXR, foZR);
 				bones.armL.scale.setScalar(1 + fr.armL.stretch);
 				bones.armR.scale.setScalar(1 + fr.armR.stretch);
 				setBone("head", fr.headPitch + PHONE_POSE.headPitch * pb, fr.headYaw + PHONE_POSE.headYaw * pb, 0);
@@ -695,10 +778,11 @@ export function SidekickCanvas({
 				// point); the trailing leg lifts and its knee curls when off balance
 				setBone("waist", fr.bendX * 0.5, 0, fr.bendZ * 0.5);
 				setBone("spine", fr.bendX * 0.5, 0, fr.bendZ * 0.5);
-				setBone("thighL", 0, 0, fr.legL.lift);
-				setBone("calfL", fr.legL.curl, 0, 0);
-				setBone("thighR", 0, 0, fr.legR.lift);
-				setBone("calfR", fr.legR.curl, 0, 0);
+				// knees tuck up while airborne, releasing to a stand on landing
+				setBone("thighL", 0, 0, fr.legL.lift + tuck * 0.55);
+				setBone("calfL", fr.legL.curl - tuck * 0.9, 0, 0);
+				setBone("thighR", 0, 0, fr.legR.lift - tuck * 0.55);
+				setBone("calfR", fr.legR.curl - tuck * 0.9, 0, 0);
 			}
 			// ease the base framing toward the current prop (smooth zoom on chat open)
 			const wf = framingRef.current;
@@ -718,6 +802,21 @@ export function SidekickCanvas({
 			camSph.phi = THREE.MathUtils.clamp(camSph.phi + fr.camPitch, 0.3, Math.PI - 0.3);
 			camera.position.setFromSpherical(camSph).add(camBaseTarget);
 			camera.lookAt(camBaseTarget);
+			// onboarding camera shake: "impact" spikes then decays, "build" ramps up
+			if (shake) {
+				const sp = (now - shake.start) / shake.dur;
+				if (sp >= 1) {
+					shake = null;
+				} else {
+					const env = shake.mode === "build" ? sp * sp : (1 - sp) * (1 - sp);
+					const a = shake.amp * env;
+					camera.position.x += Math.sin(now * 92) * a;
+					camera.position.y += Math.cos(now * 71) * a;
+					camera.position.z += Math.sin(now * 64) * a * 0.8;
+					camera.rotation.z += Math.sin(now * 83) * a * 0.7;
+					camera.rotation.x += Math.cos(now * 101) * a * 0.35;
+				}
+			}
 			grass.update(now, pull.position);
 			faceCtl?.update(now);
 			// pin the overhead overlay (Bond badge) above the head bone: world pos
@@ -752,6 +851,7 @@ export function SidekickCanvas({
 			cancelAnimationFrame(raf);
 			window.removeEventListener("resize", onResize);
 			if (controlsRef) controlsRef.current = null;
+			if (handleRef) handleRef.current = null;
 			studioTex.dispose();
 			studioSphere.geometry.dispose();
 			(studioSphere.material as THREE.Material).dispose();

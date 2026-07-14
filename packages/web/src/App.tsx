@@ -4,6 +4,7 @@ import Home from "./home";
 import Home2 from "./home2";
 import Home3 from "./home3";
 import Home4 from "./home4";
+import Onboarding from "./onboarding";
 import Vista from "./vista";
 import Sidekick3D from "./sidekick-3d";
 import SidekickStudio from "./sidekick-studio";
@@ -43,6 +44,9 @@ export default function App() {
 	}
 	if (path === "/vista") {
 		return <Vista />;
+	}
+	if (path === "/onboarding") {
+		return <Onboarding />;
 	}
 	if (path === "/home4") {
 		return <Home4 />;
