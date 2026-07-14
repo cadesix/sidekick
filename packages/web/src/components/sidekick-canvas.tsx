@@ -845,11 +845,17 @@ export function SidekickCanvas({
 			renderer.setSize(mount.clientWidth, mount.clientHeight);
 		};
 		window.addEventListener("resize", onResize);
+		// also follow the MOUNT's own size — hosts animate it (e.g. the onboarding
+		// chat shrinks the scene into a FaceTime-style PiP), and the draw buffer
+		// should shrink with it (fill-rate drops with the pixels)
+		const ro = new ResizeObserver(onResize);
+		ro.observe(mount);
 
 		return () => {
 			cancelled = true;
 			cancelAnimationFrame(raf);
 			window.removeEventListener("resize", onResize);
+			ro.disconnect();
 			if (controlsRef) controlsRef.current = null;
 			if (handleRef) handleRef.current = null;
 			studioTex.dispose();
