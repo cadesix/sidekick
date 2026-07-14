@@ -845,7 +845,7 @@ export function SidekickCanvas({
 			const ground = groundRef?.current;
 			if (ground) {
 				if (ready && !studioRef.current) {
-					groundV.set(0.95, 0, 0.4);
+					groundV.set(0.55, 0, 0.55);
 					groundV.project(camera);
 					const gx = (groundV.x * 0.5 + 0.5) * mount.clientWidth;
 					const gy = (-groundV.y * 0.5 + 0.5) * mount.clientHeight;

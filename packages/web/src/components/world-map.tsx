@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { LuLock, LuX } from "react-icons/lu";
+import { SidekickAvatar } from "./sidekick-avatar";
 import { BOND_MAX, loadBond, subscribeBond } from "./sidekick-bond";
 import { isSessionDone, isSessionStartable, nextSession, sessionFor, sessionState, CONTEXT_EVENT } from "./sidekick-sessions";
 import type { EnvironmentId } from "./sidekick-biomes";
@@ -149,10 +150,9 @@ export function WorldMap({
 								key={a.id}
 								onClick={(e) => {
 									e.stopPropagation();
-									// unlocked → travel modal; locked+available → straight
-									// into its session; sequence-locked → nothing (dimmed)
-									if (unlocked) setSelId(a.id);
-									else if (startable && session) onStartSession?.(session.id);
+									// every island opens the modal: travel when unlocked,
+									// the unlock-chat pitch when locked
+									setSelId(a.id);
 								}}
 								aria-label={a.name}
 								style={{ left: a.left, top: a.top }}
@@ -265,7 +265,34 @@ export function WorldMap({
 					}`}
 				>
 					{shown ? (
-						isUnlocked(shown) ? (
+						!isUnlocked(shown) ? (
+							(() => {
+								const session = sessionFor(shown.id);
+								const startable = isSessionStartable(shown.id);
+								const target = startable ? session : nextSession();
+								const started = target ? sessionState(target.id).answers.some(Boolean) : false;
+								if (!session || !target) return null;
+								return (
+									<>
+										<SidekickAvatar className="mx-auto h-24 w-24 object-contain" alt="" />
+										<div className="mt-1 text-center text-[20px] font-extrabold leading-snug text-neutral-900">
+											Chat with me about {session.topic} to unlock this world
+										</div>
+										{!startable ? (
+											<div className="mt-2 text-center text-[13px] font-medium text-neutral-400">
+												first things first though, we still have “{target.title}” to finish
+											</div>
+										) : null}
+										<button
+											onClick={() => onStartSession?.(target.id)}
+											className="mt-5 flex w-full items-center justify-center rounded-full bg-[#7A5AF8] py-3.5 text-[16px] font-bold text-white shadow-[0_4px_0_#5638c6] transition-all duration-100 active:translate-y-[3px] active:shadow-[0_1px_0_#5638c6]"
+										>
+											{startable ? (started ? "Continue the chat" : "Start the chat") : `Chat about ${target.topic}`}
+										</button>
+									</>
+								);
+							})()
+						) : isUnlocked(shown) ? (
 							// travel confirmation: just the big question + a chunky purple
 							// pill with a hard (0-blur) drop shadow it presses down into
 							<>

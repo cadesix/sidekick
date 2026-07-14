@@ -17,6 +17,7 @@ export type SessionDef = {
 	id: string; // island id (map area id)
 	title: string;
 	tease: string; // one-line topic descriptor for the map's topic card
+	topic: string; // spoken phrase: "chat with me about {topic} to unlock…"
 	minutes: number;
 	bond: number; // % gained on completion
 	coins: number;
@@ -34,6 +35,7 @@ export type SessionDef = {
 export const SESSIONS: SessionDef[] = [
 	{
 		id: "frostpeak",
+		topic: "yourself",
 		title: "About You",
 		tease: "the basics of your life",
 		minutes: 3,
@@ -58,6 +60,7 @@ export const SESSIONS: SessionDef[] = [
 	},
 	{
 		id: "pinewood",
+		topic: "what you're into",
 		title: "Taste Check",
 		tease: "what you're into + who you're around",
 		minutes: 3,
@@ -78,6 +81,7 @@ export const SESSIONS: SessionDef[] = [
 	},
 	{
 		id: "blossom",
+		topic: "where you're from",
 		title: "Where You're From",
 		tease: "your past + what shaped you",
 		minutes: 3,
@@ -99,6 +103,7 @@ export const SESSIONS: SessionDef[] = [
 	},
 	{
 		id: "dunes",
+		topic: "how you're wired",
 		title: "How You're Wired",
 		tease: "personality + what drives you",
 		minutes: 4,
@@ -120,6 +125,7 @@ export const SESSIONS: SessionDef[] = [
 	},
 	{
 		id: "palmcove",
+		topic: "your goals and dreams",
 		title: "Goals & Dreams",
 		tease: "where you're headed",
 		minutes: 4,
@@ -141,6 +147,7 @@ export const SESSIONS: SessionDef[] = [
 	},
 	{
 		id: "ember",
+		topic: "the deep stuff",
 		title: "The Deep Stuff",
 		tease: "the real talk",
 		minutes: 4,

@@ -7,11 +7,14 @@ import type { BoxReward, BoxTier } from "./sidekick-daily-box";
 // day runs streak splash → box on the ground → tap → burst → rewards modal.
 // The host (home5) orchestrates the stages; this file owns the three visuals.
 
-// tier looks: base = the app yellow, silver/gold get fancier with streak
-const TIER_STYLE: Record<BoxTier, { body: string; bodyDark: string; ribbon: string }> = {
-	base: { body: "#F2C94C", bodyDark: "#E0B12F", ribbon: "#FF5B4D" },
-	silver: { body: "#C7D2E4", bodyDark: "#A9B8D0", ribbon: "#7C5CFF" },
-	gold: { body: "#FFC93D", bodyDark: "#F0A818", ribbon: "#FF5B4D" },
+// Tier looks. The chest is drawn in the world's cel language: flat two-tone
+// fills with the same warm amber "ink" outline the character's inverted-hull
+// silhouette uses (sidekick-settings outlineColor #b77d1a).
+const INK = "#b77d1a";
+const TIER_STYLE: Record<BoxTier, { body: string; shade: string; strap: string; emblem: string }> = {
+	base: { body: "#FFD65C", shade: "#EDB93A", strap: "#FF5B4D", emblem: "#FFF2DC" },
+	silver: { body: "#DCE6F5", shade: "#B9C9E2", strap: "#7C5CFF", emblem: "#FFFFFF" },
+	gold: { body: "#FFC93D", shade: "#F0A21C", strap: "#7C5CFF", emblem: "#FFF6D8" },
 };
 
 const CONFETTI_COLORS = ["#FF5B4D", "#F2C94C", "#7C5CFF", "#12C93E", "#9fd0ff", "#ffc1dd"];
@@ -20,30 +23,59 @@ const CONFETTI_COLORS = ["#FF5B4D", "#F2C94C", "#7C5CFF", "#12C93E", "#9fd0ff", 
 function scatter(i: number, n: number, dist: number): { x: number; y: number } {
 	const a = (i / n) * Math.PI * 2 + (i % 2 ? 0.4 : 0);
 	const d = dist * (0.75 + 0.35 * ((i * 7919) % 10) * 0.1);
-	return { x: Math.cos(a) * d, y: Math.sin(a) * d * 0.85 - 24 };
+	return { x: Math.cos(a) * d, y: Math.sin(a) * d * 0.85 - 30 };
 }
 
-function GiftBoxSvg({ tier, milestone }: { tier: BoxTier; milestone: boolean }) {
+// A chunky rounded loot chest, cel-shaded like the character: flat fills, one
+// hard shade tone, thick amber ink outlines, star emblem on the latch.
+function LootChestSvg({ tier, milestone }: { tier: BoxTier; milestone: boolean }) {
 	const c = TIER_STYLE[tier];
 	return (
-		<svg viewBox="0 0 72 72" className="h-full w-full drop-shadow-[0_6px_8px_rgba(0,0,0,0.25)]">
+		<svg viewBox="0 0 96 88" className="h-full w-full drop-shadow-[0_8px_10px_rgba(0,0,0,0.22)]">
+			{/* soft contact shadow on the grass */}
+			<ellipse cx="48" cy="82" rx="34" ry="5" fill="#000" opacity="0.15" />
+
+			{/* domed lid */}
+			<path d="M12 40 v-7 a24 24 0 0 1 24-24 h24 a24 24 0 0 1 24 24 v7 z" fill={c.body} />
+			{/* lid cel-shade band (hard edge, no gradient) */}
+			<path d="M12 40 v-6 h72 v6 z" fill={c.shade} />
 			{/* body */}
-			<rect x="10" y="30" width="52" height="36" rx="6" fill={c.body} />
-			<rect x="10" y="30" width="52" height="10" fill={c.bodyDark} opacity="0.35" />
-			{/* lid */}
-			<rect x="6" y="20" width="60" height="14" rx="5" fill={c.body} />
-			<rect x="6" y="20" width="60" height="14" rx="5" fill="#fff" opacity="0.15" />
-			{/* ribbon */}
-			<rect x="32" y="20" width="8" height="46" fill={c.ribbon} />
-			<path d="M36 20c-7-2-13-9-9-13 3-3 8 2 9 9 1-7 6-12 9-9 4 4-2 11-9 13z" fill={c.ribbon} />
-			{/* milestone days get a little star so the box reads as special */}
+			<rect x="12" y="40" width="72" height="38" rx="8" fill={c.body} />
+			{/* body cel-shade: hard tone on the lower third */}
+			<path d="M12 62 h72 v8 a8 8 0 0 1 -8 8 h-56 a8 8 0 0 1 -8 -8 z" fill={c.shade} />
+
+			{/* strap over the top */}
+			<path d="M41 9.5 h14 v68.5 h-14 z" fill={c.strap} />
+			<path d="M41 62 h14 v16 h-14 z" fill="#000" opacity="0.14" />
+
+			{/* ink outlines, drawn on top so fills stay flat */}
+			<g fill="none" stroke={INK} strokeWidth="3.5" strokeLinejoin="round" strokeLinecap="round">
+				<path d="M12 40 v-7 a24 24 0 0 1 24-24 h24 a24 24 0 0 1 24 24 v7" />
+				<rect x="12" y="40" width="72" height="38" rx="8" />
+				<path d="M12 40 h72" />
+				<path d="M41 9.5 v69 M55 9.5 v69" />
+			</g>
+
+			{/* latch: a star emblem sitting on the seam */}
+			<circle cx="48" cy="42" r="12.5" fill={c.emblem} stroke={INK} strokeWidth="3.5" />
+			<path
+				d="M48 34.5l2.4 4.9 5.4.8-3.9 3.8.9 5.3-4.8-2.5-4.8 2.5.9-5.3-3.9-3.8 5.4-.8z"
+				fill={c.strap}
+				stroke={INK}
+				strokeWidth="1.8"
+				strokeLinejoin="round"
+			/>
+
+			{/* flat highlight blob (vinyl-toy sheen, cel style) */}
+			<path d="M22 22 a17 17 0 0 1 12-9 l3 0 a20 20 0 0 0 -12 9 z" fill="#fff" opacity="0.55" />
+
+			{/* milestone days: a crown of sparkles so the box reads special */}
 			{milestone ? (
-				<path
-					d="M56 10l1.9 3.8 4.1.6-3 2.9.7 4.2-3.7-2-3.7 2 .7-4.2-3-2.9 4.1-.6z"
-					fill="#fff"
-					stroke={c.ribbon}
-					strokeWidth="1"
-				/>
+				<g fill="#fff" stroke={INK} strokeWidth="1.6" strokeLinejoin="round">
+					<path d="M48 -1l1.8 3.7 3.9.6-2.8 2.7.7 4-3.6-1.9-3.6 1.9.7-4-2.8-2.7 3.9-.6z" />
+					<path d="M24 6l1.3 2.6 2.8.4-2 1.9.5 2.9-2.6-1.4-2.6 1.4.5-2.9-2-1.9 2.8-.4z" />
+					<path d="M72 6l1.3 2.6 2.8.4-2 1.9.5 2.9-2.6-1.4-2.6 1.4.5-2.9-2-1.9 2.8-.4z" />
+				</g>
 			) : null}
 		</svg>
 	);
@@ -75,12 +107,12 @@ export const GroundBox = forwardRef<
 			}`}
 			style={{ visibility: "hidden" }}
 		>
-			<div className="relative h-[68px] w-[68px]">
+			<div className="relative h-[124px] w-[124px]">
 				{/* sparkles teasing "tap me" */}
 				{stage !== "burst" ? (
 					<>
-						<span className="absolute -left-3 top-0 animate-pulse text-[13px]">✨</span>
-						<span className="absolute -right-2 top-6 animate-pulse text-[11px] [animation-delay:0.6s]">✨</span>
+						<span className="absolute -left-4 top-2 animate-pulse text-[18px]">✨</span>
+						<span className="absolute -right-3 top-12 animate-pulse text-[15px] [animation-delay:0.6s]">✨</span>
 					</>
 				) : null}
 
@@ -92,7 +124,7 @@ export const GroundBox = forwardRef<
 						{Array.from({ length: 8 }, (_, i) => (
 							<div
 								key={`r${i}`}
-								className="animate-box-ray absolute bottom-1/2 left-1/2 h-16 w-1.5 -translate-x-1/2 rounded-full"
+								className="animate-box-ray absolute bottom-1/2 left-1/2 h-24 w-2 -translate-x-1/2 rounded-full"
 								style={
 									{
 										"--ray-angle": `${i * 45}deg`,
@@ -104,11 +136,11 @@ export const GroundBox = forwardRef<
 						))}
 						{/* confetti chips */}
 						{Array.from({ length: 14 }, (_, i) => {
-							const { x, y } = scatter(i, 14, 78);
+							const { x, y } = scatter(i, 14, 118);
 							return (
 								<div
 									key={`c${i}`}
-									className="animate-box-confetti absolute left-1/2 top-1/2 h-2.5 w-2 rounded-[2px]"
+									className="animate-box-confetti absolute left-1/2 top-1/2 h-3.5 w-3 rounded-[3px]"
 									style={
 										{
 											"--cx": `${x.toFixed(0)}px`,
@@ -135,7 +167,7 @@ export const GroundBox = forwardRef<
 				>
 					<span className={`block h-full w-full ${stage === "burst" ? "animate-box-shake" : ""}`}>
 						<span className={`block h-full w-full ${stage === "burst" ? "animate-box-pop [animation-delay:0.45s]" : ""}`}>
-							<GiftBoxSvg tier={tier} milestone={milestone} />
+							<LootChestSvg tier={tier} milestone={milestone} />
 						</span>
 					</span>
 				</button>
