@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Sidekick Docs</title>
+<style>
+:root {
+  --bg: #faf9f7; --panel: #ffffff; --fg: #1c1b1f; --muted: #6f6d75;
+  --border: #e7e4df; --accent: #6c4ef5; --accent-soft: #efeafe; --code-bg: #f3f1ec;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16151a; --panel: #1e1d24; --fg: #eceaf0; --muted: #9c99a6;
+    --border: #2c2a34; --accent: #a08bff; --accent-soft: #2a2340; --code-bg: #232129;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.layout { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 250px; flex-shrink: 0; padding: 56px 16px 28px; border-right: 1px solid var(--border);
+  position: sticky; top: 0; height: 100vh; overflow-y: auto;
+}
+.navtoggle {
+  position: fixed; top: 14px; left: 14px; z-index: 10;
+  width: 34px; height: 34px; border-radius: 8px; padding: 0;
+  border: 1px solid var(--border); background: var(--panel); color: var(--muted);
+  font-size: 15px; line-height: 1; cursor: pointer;
+}
+.navtoggle:hover { color: var(--accent); border-color: var(--accent); }
+body.nav-collapsed .sidebar { display: none; }
+.brand { display: block; font-weight: 700; font-size: 17px; color: var(--fg); padding: 6px 12px 18px; }
+.brand:hover { text-decoration: none; }
+.brand span { color: var(--accent); }
+.navlink {
+  display: block; padding: 7px 12px; margin: 2px 0; border-radius: 8px;
+  color: var(--fg); font-size: 14px;
+}
+.navlink:hover { background: var(--accent-soft); text-decoration: none; }
+.navlink.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.sidebar .foot { margin-top: 24px; padding: 0 12px; font-size: 12px; color: var(--muted); }
+.sidebar .foot code { font-size: 11px; }
+
+main { flex: 1; min-width: 0; padding: 44px 48px 96px; }
+main > * { max-width: 46rem; }
+
+/* overview */
+#home h1 { font-size: 28px; letter-spacing: -0.02em; margin: 0 0 6px; }
+#home .sub { color: var(--muted); margin: 0 0 28px; }
+.cards { display: grid; gap: 14px; }
+.card {
+  display: block; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 14px; padding: 20px 22px; color: var(--fg);
+  transition: border-color .15s, transform .15s;
+}
+.card:hover { text-decoration: none; border-color: var(--accent); transform: translateY(-1px); }
+.card h2 { margin: 0 0 6px; font-size: 17px; letter-spacing: -0.01em; }
+.card p { margin: 0 0 10px; color: var(--muted); font-size: 14px; }
+.meta { font-size: 12.5px; color: var(--muted); }
+
+/* article */
+.dochead { margin-bottom: 8px; }
+.back { font-size: 13px; color: var(--muted); display: inline-block; margin-bottom: 18px; }
+article h1 { font-size: 27px; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 8px; }
+article h2 {
+  font-size: 20px; letter-spacing: -0.01em; margin: 40px 0 12px;
+  padding-top: 18px; border-top: 1px solid var(--border);
+}
+article h3 { font-size: 16.5px; margin: 28px 0 8px; }
+article h4 { font-size: 15px; margin: 22px 0 6px; }
+article p, article li { font-size: 15.5px; }
+article li { margin: 4px 0; }
+article hr { border: 0; border-top: 1px solid var(--border); margin: 28px 0; }
+
+.toc { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0 4px; }
+.toc a {
+  font-size: 12.5px; padding: 4px 10px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+}
+.toc a:hover { text-decoration: none; filter: brightness(1.05); }
+
+code {
+  font: 0.86em/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  background: var(--code-bg); padding: 1.5px 5px; border-radius: 5px;
+}
+pre {
+  background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; overflow-x: auto;
+}
+pre code { background: none; padding: 0; font-size: 13px; }
+
+blockquote {
+  margin: 16px 0; padding: 2px 18px; border-left: 3px solid var(--accent);
+  background: var(--panel); border-radius: 0 10px 10px 0; color: var(--muted);
+}
+blockquote p { font-size: 14.5px; }
+
+.tablewrap { overflow-x: auto; margin: 16px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { font-weight: 600; color: var(--muted); font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em; }
+
+@media (max-width: 800px) {
+  .layout { flex-direction: column; }
+  .sidebar {
+    width: 100%; height: auto; position: static; border-right: 0;
+    border-bottom: 1px solid var(--border); padding: 16px 16px 12px 58px;
+  }
+  .sidebar .foot { display: none; }
+  main { padding: 28px 20px 80px; }
+}
+</style>
+</head>
+<body>
+<button class="navtoggle" title="Hide nav" aria-label="Toggle navigation">«</button>
+<div class="layout">
+  <nav class="sidebar">
+    <a class="brand" href="#">Sidekick <span>Docs</span></a>
+    <a class="navlink" data-slug="creative-brief" href="#creative-brief">Sidekick — Creative Strategy Brief (v1)</a>
+      <a class="navlink" data-slug="token-economy" href="#token-economy">Token Economy Spec</a>
+      <a class="navlink" data-slug="guided-sessions" href="#guided-sessions">Guided Sessions — UX + Content Design</a>
+      <a class="navlink" data-slug="monorepo" href="#monorepo">The Sidekick monorepo</a>
+      <a class="navlink" data-slug="sync-plan" href="#sync-plan">Web ↔ iOS sync plan</a>
+    <p class="foot">Generated snapshot — after editing docs, rerun<br><code>node docs/build-index.mjs</code></p>
+  </nav>
+  <main>
+    <section id="home">
+      <h1>Sidekick Docs</h1>
+      <p class="sub">Product, economy, and architecture docs for the Sidekick monorepo.</p>
+      <div class="cards">
+      <a class="card" href="#creative-brief">
+        <h2>Sidekick — Creative Strategy Brief (v1)</h2>
+        <p>Sidekick is a cute AI companion that holds you accountable for actually living better. You pick your goals, and a small, deeply lovable character — think collectible vinyl toy c…</p>
+        <span class="meta">creative-brief.md · 4 min read · updated Jul 8, 2026</span>
+      </a>
+      <a class="card" href="#token-economy">
+        <h2>Token Economy Spec</h2>
+        <p>Goal: a progression curve tuned for retention and habit formation. Very rewarding in the first week (visible transformation, near-daily purchases), then a gradually stretching c…</p>
+        <span class="meta">token-economy.md · 10 min read · updated Jul 14, 2026</span>
+      </a>
+      <a class="card" href="#guided-sessions">
+        <h2>Guided Sessions — UX + Content Design</h2>
+        <p>The map is a progression system over ONE underlying loop: guided chats that build context about the user. Bond is the score of how much the sidekick knows. The context powers (1…</p>
+        <span class="meta">guided-sessions.md · 9 min read · updated Jul 14, 2026</span>
+      </a>
+      <a class="card" href="#monorepo">
+        <h2>The Sidekick monorepo</h2>
+        <p>Sidekick is a cel-shaded 3D mascot buddy — a full-screen three.js character with a chat drawer, cosmetics shop, and world map. This repo holds two apps that render the same prod…</p>
+        <span class="meta">MONOREPO.md · 5 min read · updated Jul 12, 2026</span>
+      </a>
+      <a class="card" href="#sync-plan">
+        <h2>Web ↔ iOS sync plan</h2>
+        <p>Intent: develop and tweak in the web app (packages/web, fast iteration, look-dev editor), then port to the RN app (packages/expo) for prod. This doc is the pipeline for making t…</p>
+        <span class="meta">SYNC-PLAN.md · 5 min read · updated Jul 12, 2026</span>
+      </a>
+      </div>
+    </section>
+
+<article id="doc-creative-brief" hidden>
+      <header class="dochead">
+        <a class="back" href="#">← All docs</a>
+        <h1>Sidekick — Creative Strategy Brief (v1)</h1>
+        <div class="meta">4 min read · updated Jul 8, 2026 · <a href="creative-brief.md">open creative-brief.md</a></div>
+        <nav class="toc"><a href="#creative-brief--what-sidekick-is">What Sidekick is</a><a href="#creative-brief--who-we-re-talking-to">Who we're talking to</a><a href="#creative-brief--the-pain-points-be-concrete-never-abstract">The pain points (be concrete, never abstract)</a><a href="#creative-brief--why-she-buys-three-stacked-selling-pillars">Why she buys (three stacked selling pillars)</a><a href="#creative-brief--positioning-in-one-breath">Positioning in one breath</a><a href="#creative-brief--tone">Tone</a><a href="#creative-brief--starter-hook-territories-to-expand-later">Starter hook territories (to expand later)</a></nav>
+      </header>
+      <p><em>For creative strategists and DR ad writers. Everything here maps to what's actually in the product/funnel today.</em></p>
+<h2 id="creative-brief--what-sidekick-is">What Sidekick is</h2>
+<p><strong>Sidekick is a cute AI companion that holds you accountable for actually living better.</strong> You pick your goals, and a small, deeply lovable character — think collectible vinyl toy come to life — checks in on you, nudges you, celebrates you, and grows with you as you build real habits. A cross between <strong>Finch</strong> (self-care pet that thrives when you do) and <strong>Tolan</strong> (an AI companion with a real personality you talk to) — with sharper accountability: your Sidekick's job is to get you off your phone, into bed on time, and through the things you keep putting off.</p>
+<p><strong>One-liner:</strong> <em>A tiny friend who won't let you give up on yourself.</em></p>
+<h2 id="creative-brief--who-we-re-talking-to">Who we're talking to</h2>
+<p>Gen-Z and millennial women (core 18–34) who:</p>
+<ul><li>Know exactly what they <em>should</em> be doing — sleep more, scroll less, move more — and feel low-grade guilt that they aren't.</li><li>Have tried habit trackers, planners, Notion templates, screen-time limits… and abandoned them all. Discipline-shaped products fail them because they run on shame.</li><li>Grew up on Tamagotchi / Neopets / Animal Crossing / Sims. Nurturing a cute creature is a native behavior, not a gimmick.</li><li>Are companion-app aware (Finch is mainstream on TikTok) but haven't found one that actually moves their real-life outcomes.</li></ul>
+<p><strong>The core insight: she doesn't need more information or more discipline — she needs someone gently on her case.</strong> Accountability from a friend works where willpower fails. Sidekick makes that friend adorable, endlessly patient, and always there.</p>
+<h2 id="creative-brief--the-pain-points-be-concrete-never-abstract">The pain points (be concrete, never abstract)</h2>
+<p>These are the exact goals users pick in onboarding — each one is an ad territory on its own:</p>
+<div class="tablewrap"><table><thead><tr><th>Pain</th><th>The felt moment to dramatize</th></tr></thead><tbody><tr><td>Doomscrolling</td><td>1:40am, "one more video," waking up already tired and mad at yourself</td></tr><tr><td>Sleeping better</td><td>Revenge bedtime procrastination; the 6 alarms; being a zombie by 3pm</td></tr><tr><td>Procrastinating</td><td>The task that takes 20 minutes but has been haunting you for 3 weeks</td></tr><tr><td>Eating healthier / getting fit</td><td>Restart-every-Monday cycle; gym guilt; "I'll be good tomorrow"</td></tr><tr><td>Managing stress</td><td>The overwhelm spiral; never actually doing the thing that helps</td></tr><tr><td>Social skills / connection</td><td>Wanting to text a friend back for days; loneliness she doesn't post about</td></tr><tr><td>Reading more / being productive</td><td>The book pile; the 4-hour screen time report vs. the life she wants</td></tr></tbody></table></div>
+<p>Rule of thumb for copy: <strong>name the behavior at the hour it happens.</strong> "Stop doomscrolling" is a category; "it's 1am and you're 200 videos deep" is an ad.</p>
+<h2 id="creative-brief--why-she-buys-three-stacked-selling-pillars">Why she buys (three stacked selling pillars)</h2>
+<p><strong>1. Life-improvement outcomes (the rational close).</strong> We're not selling a chatbot or a toy — we're selling <em>sleeping by 11, phone down, gym twice this week, the scary task finally done.</em> Every ad should land on a concrete before/after in her actual week. The funnel already sells this way ("With a sidekick, you're 87% more likely to reach your goals") — creatives should set up that promise.</p>
+<p><strong>2. The character (the thumb-stopper and the heart).</strong> Sidekick is a chunky, glossy, vinyl-toy creature — sunny golden-yellow, big smile, oversized mitten paws — engineered to be screenshotted and cooed over. In-feed, the character IS the hook: it's a pattern interrupt in a feed of talking heads and screen recordings. Emotionally, it converts "self-improvement app" (a chore) into "a little guy who believes in me" (a relationship). The character lets us sell accountability without it ever feeling like a drill sergeant or a productivity bro.</p>
+<p><strong>3. Gamification &amp; the bond (the retention story, and a selling angle too).</strong> You don't just download Sidekick — you <em>meet yours</em>. Onboarding matches a Sidekick to your personality, you choose its color, you name it. From there the loop deepens: check-ins, streaks, cosmetics and outfits, your Sidekick's world growing as your habits do — and friend characters beyond your own (teal Pip, coral Rosa…). In ads this shows up as ownership and progression: "this is MY guy," day-30 glow-ups, "look what my Sidekick earned when I finally cleaned my room." Care-taking flips the accountability: <em>you show up for your goals because your Sidekick shows up for you.</em></p>
+<h2 id="creative-brief--positioning-in-one-breath">Positioning in one breath</h2>
+<ul><li><strong>vs. Finch:</strong> just as cute, but pointed at real-life outcomes — not only journaling and self-care check-ins. Sidekick pushes (kindly).</li><li><strong>vs. Tolan:</strong> not just a companion to talk to — a companion with a <em>job</em>: your goals, your streaks, your follow-through.</li><li><strong>vs. habit trackers / screen-time apps:</strong> those are mirrors and fences; Sidekick is a relationship. Trackers shame you with data. Sidekick roots for you.</li></ul>
+<h2 id="creative-brief--tone">Tone</h2>
+<p>Warm, playful, a little cheeky — the supportive best friend who calls you out lovingly ("babe. it's 1am. put me down."). Never clinical, never hustle-culture, never shame. Guilt is the <em>pain</em> in our ads; it must never be the <em>voice</em> of our brand or the character.</p>
+<h2 id="creative-brief--starter-hook-territories-to-expand-later">Starter hook territories (to expand later)</h2>
+<ol><li><strong>POV / confession:</strong> "I have 4 hours of screen time a day and a Tamagotchi is fixing it."</li><li><strong>Character-as-narrator:</strong> the Sidekick calls out your habits to camera, adorably.</li><li><strong>Before/after week:</strong> same girl, 7 days apart — one variable changed: she got a Sidekick.</li><li><strong>The 1am intervention:</strong> Sidekick appears mid-doomscroll. Instant recognition, instant demo.</li><li><strong>Naming/unboxing moment:</strong> the onboarding reveal ("meet your Sidekick") as UGC — the cute overload IS the CTA.</li><li><strong>Anti-discipline:</strong> "I stopped trying to be disciplined and just got a needy little creature instead."</li></ol>
+<hr>
+<p><em>Next steps we can layer on: concrete ad scripts per pain point, UGC creator brief, hook matrix (pain × format × angle), landing/funnel congruence pass, and competitor creative teardown (Finch/Tolan winning ads).</em></p>
+
+    </article>
+
+<article id="doc-token-economy" hidden>
+      <header class="dochead">
+        <a class="back" href="#">← All docs</a>
+        <h1>Token Economy Spec</h1>
+        <div class="meta">10 min read · updated Jul 14, 2026 · <a href="token-economy.md">open token-economy.md</a></div>
+        <nav class="toc"><a href="#token-economy--where-we-are-today">Where we are today</a><a href="#token-economy--design-principles">Design principles</a><a href="#token-economy--currency-model">Currency model</a><a href="#token-economy--faucets">Faucets</a><a href="#token-economy--the-curve">The curve</a><a href="#token-economy--sinks">Sinks</a><a href="#token-economy--bond-track-progressive-onboarding">Bond track = progressive onboarding</a><a href="#token-economy--integrity">Integrity</a><a href="#token-economy--where-iap-lands-later-not-day-0">Where IAP lands later (not day 0)</a><a href="#token-economy--build-order">Build order</a><a href="#token-economy--tuning-levers-what-to-watch">Tuning levers &amp; what to watch</a></nav>
+      </header>
+      <p>Goal: a progression curve tuned for retention and habit formation. Very rewarding in the first week (visible transformation, near-daily purchases), then a gradually stretching challenge curve where desirable items become multi-day savings goals — without ever making the core loop (chat) feel like grinding.</p>
+<p>Coins are the engagement scaffold, not the product. Every faucet is an anchor that pulls the user back into chat; nothing pays per-message or per-minute.</p>
+<h2 id="token-economy--where-we-are-today">Where we are today</h2>
+<p>The spend side is built; the earn side is entirely stubbed:</p>
+<ul><li><code>sidekick-economy.ts</code> — coins + inventory in localStorage. <code>spendCoins()</code> is wired to the shop; <code>addCoins()</code> has <strong>zero callers</strong>.</li><li><code>shop-sheet.tsx</code> — full catalog with prices (commons 25–50, rares 60–90, epics 100–150, legendaries 200–250), daily seeded rotation, rarity tiers.</li><li><code>streak-sheet.tsx</code> — milestone reward table exists but is <strong>display-only</strong> ("Claim/grant plumbing comes later").</li><li><code>goals-sheet.tsx</code> — daily binary checks, <strong>no rewards</strong>.</li><li><code>sidekick-bond.ts</code> — <code>addBond()</code> has zero callers outside the dev lever.</li><li><code>api/chat.js</code> / <code>chat.tsx</code> — no reward hooks.</li></ul>
+<p>So this spec defines faucets against already-fixed prices, which is the right order.</p>
+<h2 id="token-economy--design-principles">Design principles</h2>
+<ol><li><strong>Coins reward showing up — never chatting.</strong> Coins attach to the ritual around the relationship (daily check-in, streaks, later guided sessions), never to the relationship itself. No chat-attached rewards of any kind: paying users to talk to their sidekick invites spam and turns the emotional core of the app into a job. All faucets are once-per-local-day, matching the existing streak/shop-rotation day logic.</li><li><strong>Two tracks, never convertible — and only one is forever.</strong> Coins buy cosmetics and run for the life of the user. Bond is <strong>progressive onboarding</strong> (see <a href="guided-sessions.md">guided-sessions.md</a>): the score of how much the sidekick knows, earned by completing the session syllabus, finite by design — a fully activated user tops it out in a few weeks and never thinks about bond again. Never purchasable with coins or money: bond measures real context, and that context is the foundation of everything downstream (personalized memory, ad relevance). Paying for it would defeat its purpose.</li><li><strong>The curve stretches via prices, not earn decay.</strong> Daily earn stays roughly flat (slightly growing with streak); the rarity ladder does the stretching. Early items are same-day gratification; legendaries are week-long goals.</li><li><strong>Deterministic + idempotent</strong>, like everything else in the app: all grants keyed by local <code>YYYY-MM-DD</code>, replays are no-ops, works offline.</li></ol>
+<h2 id="token-economy--currency-model">Currency model</h2>
+<p>Single earned currency: <strong>coins</strong>. No gems, no coin sales (see IAP section).</p>
+<p><strong>Change <code>START_COINS</code> 250 → 150.</strong> At 250 a new user can buy the 250-coin crown — the top aspirational item — on day 0, which torches the entire ladder. 150 still buys 2–3 commons in the first session (the "dress your sidekick" tutorial dopamine) but keeps rares as day-2 goals and legendaries aspirational.</p>
+<h2 id="token-economy--faucets">Faucets</h2>
+<p>Two layers with different lifetimes:</p>
+<p><strong>Steady-state faucets (launch, run forever).</strong> Both login-shaped, both idempotent per local day. Daily earn: <strong>20–30/day</strong>, fully deterministic — which is a feature: every price maps to an exact number of days, so items become clear savings goals ("come back 3 more days and the boots are yours").</p>
+<div class="tablewrap"><table><thead><tr><th>Faucet</th><th>Amount</th><th>Trigger</th><th>Wire point</th></tr></thead><tbody><tr><td>Daily check-in</td><td>20 base; 25 at streak ≥7; 30 at ≥30</td><td>Tap-to-claim on the streak sheet (claim, not auto-grant — the tap is the ritual)</td><td><code>touchStreak()</code> result + new claim state in <code>sidekick-streak.ts</code></td></tr><tr><td>Streak milestones</td><td>Existing table (D1 10c … D365 crown-gold)</td><td>Auto-claim alongside daily check-in</td><td><code>streak-sheet.tsx</code> table → <code>addCoins</code>/<code>addToInventory</code></td></tr></tbody></table></div>
+<p>The milestone table's item drops (D3 beanie, D6 glasses, D7 sneakers, D14 backpack) are already well-placed: a free, visible outfit transformation across week 1. Keep them exactly as designed — they're the "exciting beginning."</p>
+<p><strong>Onboarding-arc faucets (ship with guided sessions; a finite, one-time pool).</strong> Context about the user is the foundation of the whole product, so sessions get the heaviest incentives in the economy — but as a bounded pool that front-loads the first weeks without inflating steady state:</p>
+<div class="tablewrap"><table><thead><tr><th>Faucet</th><th>Amount</th><th>Trigger</th><th>Wire point</th></tr></thead><tbody><tr><td>Session completed</td><td>25 (shallow) → 40 (deep), mirroring the bond 4–8% depth scale</td><td>The recap screen's "did i get that right? → yep" beat — reward lands at the moment of confirmed knowledge</td><td>session engine → <code>grantCoins("s8", ...)</code></td></tr><tr><td>Island arrival chest</td><td>1 exclusive island-themed cosmetic + 25–50 coins</td><td>First travel to a newly unlocked island — a visible chest at the arrival point</td><td>first-visit flag in <code>world-map.tsx</code> <code>onTravel</code></td></tr><tr><td>Life-update re-take</td><td>10</td><td>Re-completing a stale session (30-day freshness)</td><td>session engine, per-session cooldown</td></tr></tbody></table></div>
+<p>Full pool ≈ 13 sessions (~420 coins) + 6 chests (~200 coins + 6 exclusives) ≈ <strong>600 one-time coins plus 6 items that can't be bought</strong>. The exclusives do the heavy lifting: they make unlocking islands <em>materially</em> rewarding (not just new scenery), they preview that the world contains things the shop doesn't sell, and they don't dilute coin scarcity. Session rewards are per-session, not per-day — the ~2/day cadence cap in the sessions spec is what paces them.</p>
+<p><strong>Loot boxes</strong> (the chest is already a fixed-content one): a variable-content version is a v2 option for session/island rewards if the fixed pool tests flat. If ever added, earned-only and cosmetic-only — never purchasable with money (gambling adjacency, app-store policy risk, and it would poison the trust the sessions depend on).</p>
+<p>Deliberately <strong>not</strong> faucets, ever or for now:</p>
+<ul><li><strong>Chatting — never.</strong> See principle 1. No first-chat bonus, no per-message anything.</li><li><strong>Goal completion coins — hold.</strong> Self-reported binary checks are trivially gameable and goals may not need extrinsic juice. Revisit only if goal engagement lags check-in rate. Same for a weekly quest (5-of-7 goal days → 50 coins; <code>sidekick_habit_checks_v1</code> already supports computing it).</li></ul>
+<h2 id="token-economy--the-curve">The curve</h2>
+<p>Two regimes: a deliberately rich <strong>onboarding arc</strong> (while the session syllabus runs) that tapers into a calm, predictable <strong>steady state</strong>.</p>
+<div class="tablewrap"><table><thead><tr><th>Phase</th><th>Earn state</th><th>Feel</th></tr></thead><tbody><tr><td>Day 0</td><td>150 start + first check-in + first session (S1 is available immediately)</td><td>2–3 commons in the first minutes, and the session→reward loop demonstrated on day one</td></tr><tr><td>Onboarding arc (~weeks 1–3)</td><td>50–90 on session days: check-in + 1–2 sessions + chest coins + week-1 milestones</td><td>Something new almost every day — a purchase, an exclusive, a new island. This is the front-loaded excitement window, and it's also when the product is extracting its foundation (context)</td></tr><tr><td>Graduation (syllabus done)</td><td>Drops to 25/day</td><td>The pivot from "earning fast" to "saving deliberately": rares every ~3 days, epics a ~5-day save, crown (250) a ~8-day save</td></tr><tr><td>Steady state</td><td>25–30/day + big streak milestones (D30 wizard, D45 100c, D90 200c)</td><td>Calm and deterministic; all variance/excitement comes from the shop side — daily rotation, deal slot, mystery milestone cards, eventual seasonals</td></tr></tbody></table></div>
+<p><strong>Keeping the carrot hung:</strong> front-loading must never mean satiation. The rule: at every point in the curve the user can see <strong>at least two desirable items they can't yet afford</strong>. The featured shop slots (already filtered to cost ≥ 60) enforce this automatically in week 1 when balances are small; the legendary tier (200–250) does it for the arc; limited/seasonal items do it in steady state. If the balance metric shows users sitting above the price of everything they're shown, the front-load is too rich — cut chest coins first, session coins second, never the check-in.</p>
+<p><strong>The graduation cliff is a real churn risk</strong> — earn rate drops ~60% exactly when the map stops producing novelty. It's cushioned by design: the D30 wizard milestone, the streak bonus tier, and (eventually) seasonal shop drops should all land in the post-graduation window. Watch D21–D35 retention specifically.</p>
+<p><strong>Catalog runway check:</strong> steady state ~800/month ≈ 13 items/month against maybe 60–80 <em>distinct desirable</em> looks — a 4–5 month runway after the arc (the arc itself buys ~15–20 items). Seasonal/limited drops are the eventual answer; not a launch problem.</p>
+<h2 id="token-economy--sinks">Sinks</h2>
+<ol><li><strong>Cosmetics</strong> (exists) — the primary sink; prices stay as-is.</li><li><strong>Streak freeze</strong> (new, high priority) — 150 coins (≈ a week of check-ins — deliberate; insurance should feel like a real purchase), hold max 2, auto-consumed on a missed day. Today a missed day hard-resets to 1, which is the single biggest churn cliff in the design: the punished user is the one most likely to quit. A freeze converts loss-aversion into a coin sink, softens the cliff, and is the proven IAP conversion point later (Duolingo). Implement in <code>touchStreak()</code>.</li><li><strong>Shop deal slot</strong> (cheap win) — 1-in-3 days (via the existing <code>mulberry32</code> seeded roll) one featured item shows at 30% off. Variable-ratio reward that makes the daily shop check worth doing even when not saving for anything.</li><li><strong>Later:</strong> gifts/consumables for the sidekick (snacks, toys — small bond-adjacent moments), room/environment decor, seasonal limited-window items (urgency + catalog refresh), re-color/dye an owned item.</li></ol>
+<h2 id="token-economy--bond-track-progressive-onboarding">Bond track = progressive onboarding</h2>
+<p>Bond is not a parallel long-term economy — it's the <strong>onboarding meter</strong>. Per <a href="guided-sessions.md">guided-sessions.md</a>: bond is the score of how much the sidekick knows, it moves <strong>only</strong> through guided sessions (+4–8% each, deeper themes pay more), and the ~2 sessions/day soft cap paces the arc. Thirteen sessions at ~6% average from the floor of 10 tops the meter out — a fully activated user finishes in roughly 2–4 weeks and <strong>never deals with bond again</strong>. The map islands are the syllabus chapters; their existing thresholds (25/40/55/70/85) are the intimacy ladder, not grindable gates.</p>
+<p>Economy-relevant consequences:</p>
+<ul><li><strong>Bond is never purchasable</strong> (coins or money) — it measures real context, which is the foundation of personalization and ad relevance. Selling it would produce a high number that means nothing.</li><li><strong>No chat-based or goal-based bond.</strong> Sessions are the only source, so the meter stays an honest proxy for "context collected." (Deleting a memory in "What I know about you" reduces bond accordingly — the sessions doc already requires this.)</li><li><strong>The bond/map surface goes quiet after the arc</strong>, by design. Life-update re-takes (context freshness) are the only recurring touch, paid in coins (see faucets), not bond theater.</li><li><strong>No decay.</strong> If freshness ever needs teeth, decay the <em>context staleness</em> indicator, not the meter — and never re-lock islands (unlocks must feel earned forever, or travel becomes anxiety).</li></ul>
+<h2 id="token-economy--integrity">Integrity</h2>
+<p>Everything is client-side localStorage and the dev panel can set any value — that's fine for now; the economy is single-player and stakes are cosmetic. <strong>The hard prerequisite for IAP is moving coin balance + grants server-side</strong> (grant log keyed by date + faucet id, validated server-side). Design decision now that keeps that migration cheap: every grant goes through a single <code>grantCoins(faucetId, date)</code> choke point in <code>sidekick-economy.ts</code> rather than scattered <code>addCoins()</code> calls.</p>
+<h2 id="token-economy--where-iap-lands-later-not-day-0">Where IAP lands later (not day 0)</h2>
+<p>Ranked by fit, all preserving the earn curve:</p>
+<ol><li><strong>Streak repair/freeze for money</strong> — restore a lost streak or buy freezes. Monetizes loss aversion without touching item pacing. Best first IAP.</li><li><strong>Exclusive premium cosmetics / seasonal pass</strong> — money-only items (or a season track with free + paid lanes). The crown/laurel tier shows the shape: aspirational slots that never compete with earnable items on the same ladder.</li><li><strong>Coin packs — avoid, or price as a whale-skip.</strong> Selling the earned currency directly deflates every faucet above. If ever added, price so it's a convenience for people who'd never grind, not a better deal than engaging.</li><li><strong>Never sellable:</strong> bond, map unlocks, streak count itself. These are the relationship; selling them converts the app's sincerity into a vending machine.</li></ol>
+<h2 id="token-economy--build-order">Build order</h2>
+<ol><li><strong>Grant plumbing</strong> — <code>grantCoins(faucetId, date)</code> choke point + idempotency ledger in localStorage; wire daily check-in claim + streak milestone table (table already exists, this is the highest-leverage single change). <code>START_COINS</code> → 150 in the same change.</li><li><strong>Streak freeze</strong> item + <code>touchStreak()</code> consumption logic.</li><li><strong>Deal slot</strong> in <code>todaysShop()</code>.</li><li><strong>Onboarding-arc rewards</strong> — session coins, island arrival chests, and the 6 exclusive island cosmetics (needs asset work). Ships with the session engine, and is the highest-priority thing after launch: sessions build the context foundation, so their incentive layer shouldn't trail them.</li><li>v2, only if metrics ask for it: goal completion coins, weekly quest, variable-content loot boxes, gifts/consumables, seasonal drops.</li></ol>
+<h2 id="token-economy--tuning-levers-what-to-watch">Tuning levers &amp; what to watch</h2>
+<p>Levers, in order of safety: faucet amounts (safe to tune anytime) → milestone table (safe) → prices (avoid after launch; visible and feels like a rug-pull) → <code>START_COINS</code> (day-0 only, invisible to existing users).</p>
+<p>Watch: D1/D7/D30 retention against check-in claim rate (the claim rate IS the habit metric now); median coins held (persistent hoarding &gt; ~300 means the catalog isn't desirable, since the faucet can't be "too rich" at 20–30/day); time-to-first-purchase (should be session 1); % of days the shop sheet gets opened (the deal slot's job); streak-reset → churn correlation (the freeze's job).</p>
+
+    </article>
+
+<article id="doc-guided-sessions" hidden>
+      <header class="dochead">
+        <a class="back" href="#">← All docs</a>
+        <h1>Guided Sessions — UX + Content Design</h1>
+        <div class="meta">9 min read · updated Jul 14, 2026 · <a href="guided-sessions.md">open guided-sessions.md</a></div>
+        <nav class="toc"><a href="#guided-sessions--1-session-ux">1. Session UX</a><a href="#guided-sessions--2-content-the-island-syllabus">2. Content: the island syllabus</a><a href="#guided-sessions--3-data-model">3. Data model</a><a href="#guided-sessions--4-session-engine-implementation-shape">4. Session engine (implementation shape)</a><a href="#guided-sessions--5-trust-ads-product-critical-not-legal-boilerplate">5. Trust &amp; ads (product-critical, not legal boilerplate)</a><a href="#guided-sessions--6-open-questions">6. Open questions</a></nav>
+      </header>
+      <p>The map is a progression system over ONE underlying loop: guided chats that build context about the user. Bond is the score of how much the sidekick knows. The context powers (1) personalized conversation + advice with real memory, and (2) ad relevance. Both depend on the same thing: the user <em>willingly</em> telling us true things — so the design optimizes for the user WANTING to share, seeing the payoff immediately, and staying in control of what's known.</p>
+<hr>
+<h2 id="guided-sessions--1-session-ux">1. Session UX</h2>
+<h3 id="guided-sessions--the-format-guided-free-form-conversation">The format: guided free-form conversation</h3>
+<p>Every session is <strong>all free-form text input</strong> — no quick-reply chips. The sidekick guides; the user types. A session is 5–7 question beats, 3–5 minutes, one theme.</p>
+<ul><li><strong>The script owns the arc, not the answers.</strong> Each beat is a scripted ask (with the scene-setting/reasoning style from onboarding), the user answers in their own words, the LLM acknowledges <em>specifically</em> (referencing what they said, in voice) and may probe <strong>once</strong> before moving to the next beat. Bounded improv: scripted spine, live musculature.</li><li><strong>Questions must be one-line answerable.</strong> "morning person or night owl?" works as free text; "describe your relationship with productivity" doesn't. Every ask is written so a lazy 5-word answer is a fully valid answer — the probe invites depth, never demands it.</li><li><strong>Skipping is always available</strong>: a persistent, low-key "skip" affordance next to the input (not a guilt-tripped chip). Skips are recorded (a skip on a sensitive topic is itself signal to back off).</li><li><strong>Reactions carry the feel.</strong> Since there are no chips to pace the rhythm, the sidekick's specific acknowledgments ("wait, 5am gym? respect. terrifying, but respect") are what make it a conversation instead of a form. These are LLM-generated with the session's context in the prompt, in the global voice.</li></ul>
+<h3 id="guided-sessions--structured-data-comes-from-extraction-not-input">Structured data comes from extraction, not input</h3>
+<p>With free text everywhere, structured fields are produced by an <strong>extraction pass</strong>: after each session (or incrementally per beat), an LLM call maps the transcript onto the session's field schema:</p>
+<pre><code>transcript + schema → { fields: {chronotype: "night-owl", …},
+                        notes: [{tag, quote}], confidence per field }</code></pre>
+<ul><li>Runs server-side (same <code>/api/*</code> pattern as chat; the session engine posts the transcript with the session's schema).</li><li>Low-confidence fields surface in the recap for confirmation (below), so the user is the validator of last resort — extraction never silently writes facts the user didn't mean.</li></ul>
+<h3 id="guided-sessions--the-recap-now-doing-double-duty">The recap — now doing double duty</h3>
+<p>Every session ends with the sidekick reading back what he learned, compressed, in his voice:</p>
+<blockquote><p>"ok so: CS junior, night owl pretending to be a morning person, gym tuesdays, wants out of ohio by 25. got it. locked in 🔒"</p></blockquote>
+<p>Then: <strong>"did i get that right?"</strong> — the user replies in free text too ("mostly, but i'm a senior now"), and corrections re-run extraction on the reply. The recap is simultaneously: the memory-forming proof moment, the extraction validation UI, the bond-gain payoff beat (+N% animating on the overhead badge), and the trust builder for everything downstream (ads included).</p>
+<h3 id="guided-sessions--entry-points">Entry points</h3>
+<ol><li><strong>The map</strong> (primary): locked island card → "Start a session". Each island themes its sessions (§2), so the map IS the syllabus.</li><li><strong>Proactive offer</strong>: after N ambient chats or a completed daily goal, the sidekick offers one ("yo can i ask you stuff for like 3 min? i wanna actually know you"). Cap: one offer/day, dismissible without guilt.</li><li><strong>Session picker</strong> (map card): title + time + reward up front: "Your Daily Rhythm · ~3 min · +6% bond".</li></ol>
+<h3 id="guided-sessions--memory-the-user-can-see-and-edit">Memory the user can see and edit</h3>
+<p>A <strong>"What I know about you"</strong> surface (entry: tapping the Bond badge). All collected context as cards grouped by theme — extracted fields AND their source quotes — each editable and deletable. Deleting reduces bond accordingly: knowledge IS the score, so this stays honest. Ad-relevance transparency lives here too (§5).</p>
+<h3 id="guided-sessions--gating-cadence">Gating &amp; cadence</h3>
+<ul><li>Sessions unlock on an <strong>intimacy ladder</strong> (§2): you can't get "fears &amp; blockers" until bond 85. Deep questions asked too early feel invasive; the same questions after 3 weeks of daily contact feel like friendship.</li><li>Soft cadence cap: ~2 sessions/day. Scarcity keeps answers thoughtful and spreads bond gain across the retention curve (pairs with streaks).</li><li>Sessions are <strong>re-visitable</strong>: "life update?" versions with deltas ("still at the same job?") — context decays; freshness matters for both personalization and ads.</li></ul>
+<h3 id="guided-sessions--reward-loop">Reward loop</h3>
+<ul><li>Bond +4–8% per session (deeper themes pay more), animated at recap.</li><li>Island unlocks at existing thresholds (25/40/55/70/85) — travel is the celebration moment.</li><li>Coin bonus per completed session (feeds the shop economy).</li><li><strong>The real reward is downstream</strong>: the ambient chat visibly using what it learned within the next day ("how'd the tuesday lift go?"). Schedule at least one callback reference after every session — this is the moment users decide the product is magic.</li></ul>
+<hr>
+<h2 id="guided-sessions--2-content-the-island-syllabus">2. Content: the island syllabus</h2>
+<p>Ordered shallow → deep (self-disclosure reciprocity: earn the right to ask). Every beat is a free-text ask; listed per session: the asks, and the fields the extraction pass targets.</p>
+<h3 id="guided-sessions--frostpeak-the-basics-bond-0-25-available-from-day-1">Frostpeak — "The Basics" (bond 0–25, available from day 1)</h3>
+<p><strong>S1 · Your Daily Rhythm</strong> (~3 min)</p>
+<ul><li>"morning person or night owl? be honest"</li><li>"what's your weekday situation — school, work, both, figuring it out?"</li><li>"when are you actually at your best? and when are you useless lol"</li><li>"walk me through a random tuesday, speedrun version"</li><li>Extract: <code>chronotype</code>, <code>occupation_type</code>, <code>energy_pattern</code> + <code>weekday_note</code></li></ul>
+<p><strong>S2 · About You</strong> (~3 min) — <em>the starting-point "About you"</em></p>
+<ul><li>"so what do you do? and like, what do you actually DO day to day"</li><li>"where do you live — big city, suburbs, small town?"</li><li>"who's at home — roommates, family, partner, just you?"</li><li>Extract: <code>occupation</code>, <code>field</code>, <code>locale_type</code>, <code>household</code> + <code>occupation_note</code></li></ul>
+<p><strong>S3 · Taste Check</strong> (~2 min)</p>
+<ul><li>"what's on repeat right now — music, shows, games, whatever"</li><li>"how do you actually unwind, honest version"</li><li>"any app you open way too much?"</li><li>Extract: <code>media_note</code>, <code>unwind</code>, <code>screen_apps</code> (high ad relevance, low intimacy — that's why it's at the shallow end)</li></ul>
+<h3 id="guided-sessions--pinewood-your-world-bond-25">Pinewood — "Your World" (bond 25)</h3>
+<p><strong>S4 · Your People</strong> (~3 min)</p>
+<ul><li>"who do you actually talk to most?"</li><li>"does being around people fill you up or drain you?"</li><li>"seeing anyone / married / gloriously single? (skip if you want)"</li><li>"who's someone that really gets you?"</li><li>Extract: <code>closest_tie</code>, <code>social_energy</code>, <code>relationship</code>, <code>pets</code> + <code>people_note</code></li></ul>
+<p><strong>S5 · Where You're From</strong> — <em>the starting-point "Your past"</em></p>
+<ul><li>"where'd you grow up?"</li><li>"what kind of place was it — and what kind of house? loud, quiet, strict, chill?"</li><li>"what's one thing from back home that still shapes you?"</li><li>Extract: <code>hometown</code>, <code>origin_type</code>, <code>upbringing</code> + <code>roots_note</code></li><li>NOTE: heavy answers get a soft LLM acknowledgment and NO probe — never dig twice here. A skip is respected instantly. This session earns disproportionate trust when handled well.</li></ul>
+<h3 id="guided-sessions--blossom-vale-inner-you-bond-40">Blossom Vale — "Inner You" (bond 40)</h3>
+<p><strong>S6 · How You're Wired</strong> (~4 min)</p>
+<ul><li>Import the funnel's Big Five if present; VALIDATE instead of re-test: "the quiz said you're big on openness — feel right or nah?"</li><li>"are you a planner or a wing-it person?"</li><li>"when you're stressed, what do you actually do? shut down, speed up, snap, doomscroll?"</li><li>"what do people usually get wrong about you?"</li><li>Extract: <code>personality</code> (confidence-weighted), <code>planning_style</code>, <code>stress_response</code> + <code>self_note</code></li></ul>
+<p><strong>S7 · What Drives You</strong> (~3 min)</p>
+<ul><li>"what actually drives you — winning, freedom, people, security, peace?"</li><li>"describe a genuinely great day. not a vacation day, a normal great day"</li><li>"whose life do you lowkey envy, and what part of it?"</li><li>Extract: <code>core_drives</code>, <code>great_day_note</code>, <code>aspiration_note</code></li></ul>
+<h3 id="guided-sessions--sandy-dunes-goals-dreams-bond-55-goals-dreams-from-the-sketch">Sandy Dunes — "Goals &amp; Dreams" (bond 55) — <em>goals/dreams from the sketch</em></h3>
+<p><strong>S8 · The Ambition Session</strong> (~4 min)</p>
+<ul><li>"one year from now — what's different?"</li><li>"ok now the 5-year version. no realism allowed"</li><li>"what skill do you wish you just… had?"</li><li>"what would you do if money wasn't a thing?"</li><li>Extract: <code>goal_1yr_note</code>, <code>dream_note</code>, <code>skill_wants</code>, <code>calling_note</code></li></ul>
+<p><strong>S9 · Money &amp; Priorities</strong> (~3 min)</p>
+<ul><li>"are you a spender, a saver, or chaos?"</li><li>"saving for anything big right now?"</li><li>"what's a subscription or purchase you never regret?"</li><li>Extract: <code>money_style</code>, <code>saving_targets</code>, <code>spend_note</code></li><li>(Highest direct ad value in the syllabus. Asked at bond 55+ where it reads as friendship, not fishing — and every beat is skippable.)</li></ul>
+<h3 id="guided-sessions--palm-cove-body-habits-bond-70">Palm Cove — "Body &amp; Habits" (bond 70)</h3>
+<p><strong>S10 · Body Check</strong> — exercise history, sleep quality, how eating actually goes, energy dips → <code>fitness_level</code>, <code>sleep_quality</code>, <code>diet_pattern</code> <strong>S11 · Screens &amp; Vices</strong> — real phone hours, the app that traps you, what you'd cut if it were easy → <code>screen_habits</code>, <code>vice_note</code> (directly powers the stop-doomscrolling coaching)</p>
+<h3 id="guided-sessions--mount-ember-the-deep-stuff-bond-85">Mount Ember — "The Deep Stuff" (bond 85)</h3>
+<p><strong>S12 · What Gets In Your Way</strong> — "when you procrastinate, what does it actually look like?", "what's the pattern you keep repeating?", "what do you avoid that you know you shouldn't?" → <code>blocker_notes</code> <strong>S13 · What You've Tried</strong> — past attempts at their goals, what failed, what almost worked, what they'd never try again → <code>history_notes</code>. The highest-value personalization data in the product: advice that references failed-attempt patterns ("last time you went 5×/week and burned out — start with 2") is the "it actually knows me" moment.</p>
+<hr>
+<h2 id="guided-sessions--3-data-model">3. Data model</h2>
+<pre><code>sidekick_context_v1 = {
+  fields: { chronotype: "night-owl", occupation: "cs-student", ... },   // extracted
+  notes:  [{ tag: "dream", text: "...their words...", session: "s8", ts }], // quotes
+  sessions: { s1: { completedAt, version }, ... },
+}</code></pre>
+<ul><li><strong>fields</strong> = extraction output, enum-ish, queryable → gating, targeting, prompt facts. Carry a confidence score; low-confidence goes through recap confirmation before being treated as fact.</li><li><strong>notes</strong> = verbatim quotes with tags → injected selectively into the system prompt; quoting the user's own phrasing back is the personalization cheat code.</li><li>Prompt assembly: compact profile block (fields) + 3–5 most relevant notes (recency + topic match) appended to the global system prompt, server-side, same place <code>[sidekick.name]</code> substitutes.</li><li>Every beat emits the standard analytics events (<code>step_completed</code> with session/beat ids) through the existing facade. Skips are events too.</li></ul>
+<h2 id="guided-sessions--4-session-engine-implementation-shape">4. Session engine (implementation shape)</h2>
+<p>One declarative format drives all 13 sessions (and future ones without code):</p>
+<pre><code>{ id: "s2", island: "frostpeak", title: "About You", minutes: 3, bond: 6,
+  beats: [
+    { id: "occupation", ask: ["so what do you do?", "and what do you actually DO day to day"],
+      probe: true },
+    { id: "locale", ask: ["where do you live — big city, suburbs, small town?"], probe: false },
+  ],
+  schema: { fields: ["occupation", "field", "locale_type", "household"],
+            notes: ["occupation_note"] } }</code></pre>
+<p>Runtime per beat: scripted ask → free-text answer → LLM acknowledgment (+ optional single probe) → next beat. Post-session: extraction call with <code>schema</code>, then the recap beat with confirmation. The onboarding chat should be retro-fitted as session zero of this engine once it exists (its goal-picking becomes free text + extraction like everything else).</p>
+<h2 id="guided-sessions--5-trust-ads-product-critical-not-legal-boilerplate">5. Trust &amp; ads (product-critical, not legal boilerplate)</h2>
+<p>The whole model only works while sharing feels safe. Three design rules:</p>
+<ol><li><strong>Visible memory</strong> ("What I know about you", editable/deletable, quotes shown next to extracted facts) — control is what makes depth feel safe.</li><li><strong>Say why, in character, when asked or when it's sensitive</strong>: "i ask so my advice isn't generic. also, real talk, ads keep me free — i'd rather show you stuff you'd actually want than random junk." Honesty in the sidekick's voice converts the ad model from a betrayal risk into a stated deal.</li><li><strong>Sensitive lanes stay out of targeting</strong>: upbringing, fears, mental-health adjacent notes are personalization-only, never ad signals. Draw this line in code (a <code>targetable: false</code> flag on fields/notes), not in policy docs. S5/S12/S13 answers are the trust core of the product; monetizing them directly is how you lose the user and the story.</li></ol>
+<h2 id="guided-sessions--6-open-questions">6. Open questions</h2>
+<ul><li>Extraction timing: per-beat (incremental, enables smarter probes) vs end-of-session (one call, simpler)? Start end-of-session.</li><li>Session re-take cadence (30-day freshness prompts?)</li><li>Voice sessions later? (free-text format ports to voice cleanly — better than chips ever would have)</li><li>Does bond decay if the user vanishes for weeks? (streak already covers presence; probably no)</li><li>Where "What I know about you" lives (Bond badge tap is the current bet)</li></ul>
+
+    </article>
+
+<article id="doc-monorepo" hidden>
+      <header class="dochead">
+        <a class="back" href="#">← All docs</a>
+        <h1>The Sidekick monorepo</h1>
+        <div class="meta">5 min read · updated Jul 12, 2026 · <a href="MONOREPO.md">open MONOREPO.md</a></div>
+        <nav class="toc"><a href="#monorepo--the-core-idea-develop-on-web-ship-on-native">The core idea: develop on web, ship on native</a><a href="#monorepo--repo-structure">Repo structure</a><a href="#monorepo--how-the-two-apps-relate-file-by-file">How the two apps relate, file by file</a><a href="#monorepo--assets-flow-one-way-web-expo">Assets flow one way: web → expo</a><a href="#monorepo--tooling-conventions-don-t-fight-these">Tooling conventions (don't fight these)</a><a href="#monorepo--running-things">Running things</a><a href="#monorepo--roadmap-from-mirrored-files-to-shared-packages">Roadmap: from mirrored files to shared packages</a></nav>
+      </header>
+      <p>Sidekick is a cel-shaded 3D mascot buddy — a full-screen three.js character with a chat drawer, cosmetics shop, and world map. This repo holds <strong>two apps that render the same product on different platforms</strong>, plus the shared packages that keep them from drifting apart.</p>
+<h2 id="monorepo--the-core-idea-develop-on-web-ship-on-native">The core idea: develop on web, ship on native</h2>
+<pre><code>   packages/web  (dev surface)              packages/expo  (prod surface)
+  ┌─────────────────────────────┐          ┌──────────────────────────────┐
+  │ Vite + React + three.js     │  port →  │ Expo + RN + expo-gl + three  │
+  │ instant HMR, look-dev editor│          │ dev-client builds, App Store │
+  │ every experiment lives here │          │ only proven features arrive  │
+  └─────────────────────────────┘          └──────────────────────────────┘</code></pre>
+<ul><li><strong><code>@sidekick/web</code> is where development happens.</strong> Iteration is fast (Vite HMR), and the look-dev tooling lives here: <code>/sidekick-3d</code> (live scene editor with lil-gui), <code>/pose</code> (pose studio), <code>/biomes</code> (biome preview). New features, new cosmetics, new scenes, and all visual tuning land on web first. Web is also the <strong>canonical home of art assets</strong> (<code>public/cosmetics/</code>, face sheets, world maps).</li><li><strong><code>@sidekick/expo</code> is what ships to users.</strong> It is a deliberate <em>port</em> of web's <code>/home4</code> experience to React Native — same scene, same cosmetics engine, same chat — rebuilt on <code>expo-gl</code> + <code>expo-three</code> because RN has no DOM. Features arrive here only after they've been proven on web.</li><li><strong>Parity is a maintained contract, not an accident.</strong> The two renderers are currently parallel implementations of the same logic (see the mapping table below). Anything that changes on one side either gets ported in the same cycle or logged as pending. The long-term fix is extracting the duplicated logic into <code>@sidekick/core</code> so most of it is literally the same file.</li></ul>
+<p>The full porting playbook (port protocol, config baking, asset pipeline, verification) is <code>docs/SYNC-PLAN.md</code>. The hard-won expo-gl platform gotchas are in <code>packages/expo/README.md</code> — read both before porting anything.</p>
+<h2 id="monorepo--repo-structure">Repo structure</h2>
+<pre><code>sidekick/
+├── package.json            workspace root — orchestration scripts + pnpm.overrides
+├── pnpm-workspace.yaml     packages/*, packages/config/*, packages/shared/*
+├── .npmrc                  node-linker=hoisted (required for Expo/Metro)
+├── pnpm-lock.yaml          single lockfile for everything
+├── docs/                   this file, SYNC-PLAN.md, creative-brief.md
+└── packages/
+    ├── web/                @sidekick/web — Vite web app (dev surface, Vercel deploy)
+    │   ├── src/components/sidekick-*.ts   imperative three.js scene modules
+    │   ├── src/*.tsx                      routes (home4, sidekick-3d, funnel, …)
+    │   ├── public/cosmetics/              CANONICAL cosmetics GLBs + manifest.json
+    │   ├── api/chat.js                    Vercel serverless chat endpoint
+    │   └── vite-plugin-sidekick.ts        /sidekick-3d studio dev plugin
+    ├── expo/               @sidekick/expo — RN app (prod surface)
+    │   ├── app/                           expo-router routes
+    │   ├── src/three/                     ported three.js scene (see mapping below)
+    │   ├── src/components/                RN UI (dock, chat, shop, map)
+    │   ├── assets/                        stripped GLBs + PNG variants (derived from web)
+    │   └── scripts/strip-glb.mjs          GLB texture stripper
+    ├── shared/
+    │   └── core/           @sidekick/core — platform-agnostic shared logic
+    │                       (being populated incrementally; see "Roadmap")
+    └── config/
+        ├── tsconfig/       @sidekick/tsconfig — shared TS configs
+        └── tailwind/       @sidekick/tailwind-config — shared Tailwind preset (brand tokens)</code></pre>
+<h2 id="monorepo--how-the-two-apps-relate-file-by-file">How the two apps relate, file by file</h2>
+<p>The expo renderer is a hand-ported mirror of web's. Until extraction into <code>@sidekick/core</code> is done, these pairs must be kept in sync manually:</p>
+<div class="tablewrap"><table><thead><tr><th>Concern</th><th>Web (canonical)</th><th>Expo (port)</th></tr></thead><tbody><tr><td>Scene build + render loop</td><td><code>src/components/sidekick-canvas.tsx</code>, <code>sidekick-scene.ts</code></td><td><code>src/three/renderer.ts</code>, <code>src/components/SidekickCanvas.tsx</code></td></tr><tr><td>Cel shading + outline + item materials</td><td><code>sidekick-shading.ts</code></td><td><code>src/three/shading.ts</code></td></tr><tr><td>Cosmetics/equipment engine</td><td><code>sidekick-equipment.ts</code></td><td><code>src/three/cosmetics.ts</code></td></tr><tr><td>Cosmetics manifest</td><td><code>public/cosmetics/manifest.json</code></td><td><code>src/three/cosmetics-manifest.ts</code> (hand-mirrored TS)</td></tr><tr><td>Wardrobe state + persistence</td><td><code>sidekick-wardrobe.ts</code></td><td><code>src/three/wardrobe.ts</code></td></tr><tr><td>Face expression atlas</td><td><code>sidekick-face.ts</code></td><td><code>src/three/face.ts</code></td></tr><tr><td>Settings + scene presets</td><td><code>sidekick-settings.ts</code> / <code>sidekick-scene.ts</code></td><td><code>src/three/settings.ts</code></td></tr><tr><td>Poke/drag interaction springs</td><td><code>sidekick-interact.ts</code></td><td><code>src/three/interact.ts</code></td></tr><tr><td>Grass field</td><td><code>sidekick-grass.ts</code></td><td><code>src/three/grass.ts</code></td></tr><tr><td>Chat UI + API</td><td><code>chat.tsx</code>, <code>api/chat.js</code></td><td><code>src/components/Chat.tsx</code>, <code>src/lib/chat-api.ts</code></td></tr><tr><td>Home dock / shop / map</td><td><code>home-dock.tsx</code>, <code>shop-sheet.tsx</code>, <code>world-map.tsx</code></td><td><code>HomeDock.tsx</code>, <code>ShopSheet.tsx</code>, <code>WorldMap.tsx</code></td></tr></tbody></table></div>
+<p>Deliberately shared runtime contracts (same key, same shape, on both platforms — a tuned look or outfit from either side works on the other):</p>
+<ul><li><code>sidekick-wardrobe-v1</code> — equipped outfit (localStorage / AsyncStorage)</li><li><code>sidekick3d-settings-v2</code> — look-dev settings blob</li></ul>
+<p>Web-only (not ported, by design): the onboarding funnel, look-dev editor routes, design-system pages. Expo-only until back-ported: check <code>docs/SYNC-PLAN.md</code> §2's reverse-flow note (e.g. the world-anchored fog patch).</p>
+<h2 id="monorepo--assets-flow-one-way-web-expo">Assets flow one way: web → expo</h2>
+<p>Canonical art lives in <code>packages/web/public/</code>. The expo copies in <code>packages/expo/assets/</code> are <strong>derived</strong>:</p>
+<ol><li>GLBs are texture-stripped (<code>pnpm --filter @sidekick/expo strip-glb</code>) because three's GLTFLoader can't decode embedded GLB images in RN.</li><li>Cosmetic variant <code>.webp</code> textures are converted to <code>.png</code>.</li><li>Face sheets / world maps are copied.</li><li><code>src/three/cosmetics-manifest.ts</code> mirrors <code>manifest.json</code> by hand (codegen for this is planned — it's the worst drift hazard).</li></ol>
+<p>Never edit expo's derived assets directly; regenerate from web's.</p>
+<h2 id="monorepo--tooling-conventions-don-t-fight-these">Tooling conventions (don't fight these)</h2>
+<ul><li><strong>pnpm workspace, <code>node-linker=hoisted</code></strong> (<code>.npmrc</code>). Hoisting is what makes Expo/Metro work in a monorepo — Metro auto-detects the workspace (SDK 52+) and resolves everything from the root <code>node_modules</code>. Don't switch to symlinked node_modules casually.</li><li><strong><code>three</code> is pinned workspace-wide</strong> to one exact version via root <code>pnpm.overrides</code> (<code>three</code> + <code>@types/three</code>). Nineteen releases of drift between the apps was the biggest "same code, different pixels" risk — bump the override, never a per-package range. After any three bump, verify rendering on a <strong>physical device</strong> (simulator GL lies; see expo README).</li><li><strong><code>react</code>/<code>react-dom</code> are pinned exact</strong> and identical in both apps so hoisting yields a single copy.</li><li><strong>Workspace deps use <code>workspace:*</code></strong> — which means <code>npm install</code> no longer works anywhere in this repo. Always <code>pnpm install</code> at the root.</li><li>Shared config packages: app tsconfigs extend <code>@sidekick/tsconfig</code> (web) or <code>expo/tsconfig.base</code> (expo — Expo's own base is correct there); both tailwind configs consume the <code>@sidekick/tailwind-config</code> preset for brand tokens.</li></ul>
+<h2 id="monorepo--running-things">Running things</h2>
+<pre><code>pnpm install                          # once, at the root
+pnpm dev                              # web dev server
+pnpm --filter @sidekick/expo ios      # build + run the expo dev client (NOT Expo Go — expo-gl is native)
+pnpm --filter @sidekick/expo start    # Metro for an existing dev client
+pnpm typecheck                        # all packages
+pnpm build                            # production web build</code></pre>
+<p>Web deploys to Vercel with the project's <strong>Root Directory set to <code>packages/web</code></strong> ("Include source files outside of Root Directory" enabled so the root lockfile is visible). The serverless chat endpoint is <code>packages/web/api/chat.js</code>; chat needs <code>OPENAI_API_KEY</code> (web <code>.env.local</code> / Vercel env). Expo uses <code>EXPO_PUBLIC_OPENAI_API_KEY</code> (see <code>packages/expo/.env.example</code>) or falls back to canned replies.</p>
+<h2 id="monorepo--roadmap-from-mirrored-files-to-shared-packages">Roadmap: from mirrored files to shared packages</h2>
+<p>The mapping table above is the debt. The plan (SYNC-PLAN §1, now via real workspace packages instead of copy scripts) is to move everything that is "a number, a color, a table, a formula, or a shader string" into <code>@sidekick/core</code>, leaving only renderer plumbing (DOM canvas vs expo-gl) and UI (Tailwind DOM vs RN) platform-specific. Rough order, lowest-risk first:</p>
+<ol><li>Cosmetics manifest (typed export generated from/replacing <code>manifest.json</code>) — kills the worst hand-mirror</li><li>Settings type + DEFAULT_SETTINGS + scene presets (+ <code>bake-config</code> from the /sidekick-3d editor)</li><li>GLSL sources (cel, outline, grass blades, fog)</li><li>Interaction spring math; face/bone/pose tables</li><li>Grass layout math</li></ol>
+<p>Each extraction: move the module into <code>packages/shared/core/src</code>, point both apps at it, then verify on web <em>and</em> on a physical iOS device before the next.</p>
+
+    </article>
+
+<article id="doc-sync-plan" hidden>
+      <header class="dochead">
+        <a class="back" href="#">← All docs</a>
+        <h1>Web ↔ iOS sync plan</h1>
+        <div class="meta">5 min read · updated Jul 12, 2026 · <a href="SYNC-PLAN.md">open SYNC-PLAN.md</a></div>
+        <nav class="toc"><a href="#sync-plan--0-prerequisites-one-time-do-first">0. Prerequisites (one-time, do first)</a><a href="#sync-plan--1-shared-core-one-source-of-truth-for-pure-logic">1. Shared core — one source of truth for pure logic</a><a href="#sync-plan--2-config-bake-from-the-editor-don-t-hand-copy">2. Config — bake from the editor, don't hand-copy</a><a href="#sync-plan--3-assets-scripted-one-way-pipeline-web-mobile">3. Assets — scripted one-way pipeline (web → mobile)</a><a href="#sync-plan--4-port-protocol-process-per-feature">4. Port protocol — process per feature</a><a href="#sync-plan--5-platform-gotchas-keep-them-executable">5. Platform gotchas — keep them executable</a><a href="#sync-plan--6-verification-trust-screenshots-not-vibes">6. Verification — trust screenshots, not vibes</a><a href="#sync-plan--sequencing">Sequencing</a></nav>
+      </header>
+      <blockquote><p><strong>Status (2026-07-12):</strong> partially superseded. This doc was written when web and mobile were separate repos; both now live in this monorepo (<code>packages/web</code> + <code>packages/expo</code>), which IS the "true monorepo endgame" described in §1 — so the rsync/checksum copy-script machinery is obsolete. Shared code goes in <code>packages/shared/core</code> (<code>@sidekick/core</code>) as a real workspace dependency instead. §0's prerequisites are done (both apps committed/remoted; <code>three</code> pinned to 0.185.1 workspace-wide via root pnpm overrides). Still-relevant parts: the shared-vs-platform-specific inventory (§1's table), bake-config (§2), the asset pipeline + manifest codegen (§3), the port protocol/PARITY.md (§4), the platform gotchas (§5), and the screenshot harness (§6). Referenced scripts (<code>sync-shared</code>, <code>sync-assets</code>, <code>bake-config</code>) are still TODO, not real yet.</p></blockquote>
+<p>Intent: <strong>develop and tweak in the web app</strong> (<code>packages/web</code>, fast iteration, look-dev editor), then <strong>port to the RN app</strong> (<code>packages/expo</code>) for prod. This doc is the pipeline for making that repeatable and drift-proof.</p>
+<h2 id="sync-plan--0-prerequisites-one-time-do-first">0. Prerequisites (one-time, do first)</h2>
+<ul><li>[ ] <strong>Commit + remote this repo.</strong> Everything here sits uncommitted on top of an Expo boilerplate "Initial commit" — there is no history to diff against and no way to bisect a bad port. Create a GitHub repo, commit, and require commits per port from here on.</li><li>[ ] <strong>Align three.js versions.</strong> Web is <code>three@0.185</code>, mobile is pinned to <code>0.166</code> (expo-three peer). Nineteen releases of lighting/color internals is the biggest "same code, different pixels" risk. Test expo-three against r185 in a branch; if it works, pin BOTH repos to the same version and add a CI check that the two package.jsons agree.</li></ul>
+<h2 id="sync-plan--1-shared-core-one-source-of-truth-for-pure-logic">1. Shared core — one source of truth for pure logic</h2>
+<p>Most divergence risk is in things that are <strong>plain data/math and could be literally the same file</strong>:</p>
+<div class="tablewrap"><table><thead><tr><th>Module</th><th>Web today</th><th>Mobile today</th></tr></thead><tbody><tr><td>Settings type + DEFAULT_SETTINGS + scene presets</td><td><code>sidekick-settings.ts</code> / <code>sidekick-scene.ts</code></td><td><code>src/three/settings.ts</code> (hand-mirrored)</td></tr><tr><td>Cosmetics manifest</td><td><code>public/cosmetics/manifest.json</code></td><td><code>src/three/cosmetics-manifest.ts</code> (hand-mirrored)</td></tr><tr><td>Face cell map, bone map, phone pose, framings</td><td>scattered</td><td>scattered copies</td></tr><tr><td>Interaction spring math</td><td><code>sidekick-interact.ts</code></td><td><code>src/three/interact.ts</code> (fork)</td></tr><tr><td>GLSL sources (cel, outline, blades, fog patch)</td><td>injections/strings</td><td>self-contained strings</td></tr><tr><td>Grass layout math + cloud recipe</td><td><code>sidekick-grass.ts</code></td><td><code>src/three/grass.ts</code> (fork)</td></tr></tbody></table></div>
+<p><strong>Plan:</strong> create <code>shared/</code> in the <strong>web repo</strong> (canonical) holding platform-agnostic TS modules with <strong>zero DOM/RN imports</strong>: types, constants, presets, pose/face/bone tables, spring class, layout math, GLSL strings, manifest schema. Mobile mirrors it via <code>npm run sync-shared</code> (rsync + checksum manifest committed to this repo). CI/typecheck fails if checksums drift. (A true monorepo or git subtree is the endgame; the copy-script gets 90% of the value without restructuring repos.)</p>
+<p>Rule of thumb for what goes in shared: <strong>if it's a number, a color, a table, a formula, or a shader string — it's shared.</strong> Only renderer plumbing (DOM canvas vs expo-gl) and UI (Tailwind vs RN) stay platform-specific.</p>
+<h2 id="sync-plan--2-config-bake-from-the-editor-don-t-hand-copy">2. Config — bake from the editor, don't hand-copy</h2>
+<ul><li>Look-dev truth lives in the browser's <code>sidekick3d-settings-v2</code> localStorage (the repo defaults LAG it — this bit us: outline, cel shadow, face placement, grass height and scene colors all differed).</li><li>Add to the web repo: <code>npm run bake-config</code> — reads a pasted/exported JSON and writes <code>shared/default-settings.json</code>. Both apps import that JSON as DEFAULT_SETTINGS. The /sidekick-3d editor gets an "Export current look" button that copies the JSON.</li><li>Mobile's Settings sheet already persists the same key/shape, so a tuned look from EITHER platform can be baked.</li><li><strong>Reverse flow exists too</strong>: mobile-first features (e.g. the world-anchored fog patch in <code>src/three/fog-patch.ts</code>, added 2026-07-11) must be ported back to web in the same PR cycle or logged in PARITY.md as web-pending.</li></ul>
+<h2 id="sync-plan--3-assets-scripted-one-way-pipeline-web-mobile">3. Assets — scripted one-way pipeline (web → mobile)</h2>
+<p>Canonical art lives in web <code>public/</code>. Replace today's hand-copying with <code>npm run sync-assets</code> in this repo:</p>
+<ol><li>Copy character/cosmetics GLBs → <code>assets/</code> and run <code>strip-glb.mjs</code> (GLTFLoader can't decode embedded textures in RN; strip is deterministic).</li><li>Convert cosmetic variant <code>.webp</code> → <code>.png</code> (use <code>sharp</code> instead of macOS <code>sips</code> so it runs in CI).</li><li>Copy face sheet / world-map art.</li><li><strong>Codegen <code>src/three/cosmetics-manifest.ts</code> from <code>manifest.json</code></strong> — the require() lines are mechanical; generating them kills the worst hand-mirroring hazard (new slots/variants silently missing on mobile).</li></ol>
+<p>Check the generated files in; the script is re-run whenever web assets change.</p>
+<h2 id="sync-plan--4-port-protocol-process-per-feature">4. Port protocol — process per feature</h2>
+<ol><li>Feature lands in web (dev happens there).</li><li>Its PR description lists: shared-module changes, web-only view code, assets touched. Anything in <code>shared/</code> or assets auto-flags "mobile port needed".</li><li>Port PR in this repo: run sync-shared + sync-assets, port the view layer, bump <code>BUILD_MARKER</code>, verify on a <strong>physical device</strong> (sim GL lies — see README), tick the row in <code>PARITY.md</code>.</li><li>Keep <code>PARITY.md</code> (add it) as the feature → web file → mobile file → status table. Today's rows: dock, chat, shop/cosmetics, world map, grass, interactions, settings/look-dev, bloom, world-fog (web ⬅ pending).</li></ol>
+<h2 id="sync-plan--5-platform-gotchas-keep-them-executable">5. Platform gotchas — keep them executable</h2>
+<p>The expo-gl porting rules are hard-won and MUST travel with the repo (they're in README + Claude memory today): de-interleave GLB geometry, no skinned raycasts on Hermes, self-contained ShaderMaterials instead of onBeforeCompile, uniform-updates-not-rebuilds for live tuning, 8-bit render targets only, <code>msaaSamples</code> device/sim split, cold-relaunch after GL changes, function-form Pressable styles are dropped by css-interop. Consolidate into <code>PORTING-RULES.md</code> and link it from both repos' CLAUDE.md so any session (human or Claude) ports under the same constraints.</p>
+<h2 id="sync-plan--6-verification-trust-screenshots-not-vibes">6. Verification — trust screenshots, not vibes</h2>
+<ul><li>Web: Playwright captures of /home4 in hero/chat/shop/map × day/evening/night against the baked config → committed contact sheet.</li><li>Mobile: same states captured on-device per release (manual today; Maestro later). Put the two contact sheets side by side in the port PR.</li><li>The <code>BUILD_MARKER</code> log line remains the "am I actually running this code" guard (Metro serves stale bundles).</li></ul>
+<h2 id="sync-plan--sequencing">Sequencing</h2>
+<ol><li>Commit + remote this repo (unblocks everything).</li><li><code>PARITY.md</code> + <code>PORTING-RULES.md</code> (an hour, pure writing).</li><li><code>sync-assets</code> with manifest codegen (highest drift-risk kill).</li><li><code>shared/</code> extraction starting with settings/presets + manifest schema + GLSL strings, then <code>bake-config</code>.</li><li>three version alignment experiment.</li><li>Screenshot harness last (nice-to-have once the above holds).</li></ol>
+
+    </article>
+  </main>
+</div>
+<script>
+(function () {
+  var slugs = ["creative-brief","token-economy","guided-sessions","monorepo","sync-plan"];
+  function route() {
+    var hash = decodeURIComponent(location.hash.slice(1));
+    var slug = slugs.find(function (s) { return hash === s || hash.indexOf(s + "--") === 0; }) || "";
+    document.getElementById("home").hidden = !!slug;
+    slugs.forEach(function (s) {
+      document.getElementById("doc-" + s).hidden = s !== slug;
+    });
+    document.querySelectorAll(".navlink").forEach(function (a) {
+      a.classList.toggle("active", a.dataset.slug === slug);
+    });
+    if (hash && hash !== slug) {
+      var el = document.getElementById(hash);
+      if (el) { el.scrollIntoView(); return; }
+    }
+    window.scrollTo(0, 0);
+  }
+  window.addEventListener("hashchange", route);
+  route();
+
+  var NAV_KEY = "sidekick-docs-nav-collapsed";
+  var toggle = document.querySelector(".navtoggle");
+  function setNav(collapsed) {
+    document.body.classList.toggle("nav-collapsed", collapsed);
+    toggle.textContent = collapsed ? "\u2630" : "\u00ab";
+    toggle.title = collapsed ? "Show nav" : "Hide nav";
+    try { localStorage.setItem(NAV_KEY, collapsed ? "1" : "0"); } catch (e) {}
+  }
+  toggle.addEventListener("click", function () {
+    setNav(!document.body.classList.contains("nav-collapsed"));
+  });
+  try { setNav(localStorage.getItem(NAV_KEY) === "1"); } catch (e) {}
+})();
+</script>
+</body>
+</html>
