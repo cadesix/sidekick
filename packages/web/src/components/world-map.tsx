@@ -277,29 +277,38 @@ export function WorldMap({
 								if (!session || !target) return null;
 								return (
 									<>
-										<SidekickAvatar className="mx-auto h-24 w-24 object-contain" alt="" />
-										<div className="mt-1 text-center text-[20px] font-extrabold leading-snug text-neutral-900">
-											I need to get to know you better before we can travel that far
+										{/* bond score, up top */}
+										<div className="mb-1.5 flex items-center gap-1.5">
+											<img src="/icons/bond.png" alt="" draggable={false} className="h-5 w-5 object-contain" />
+											<span className="font-mono text-[12px] font-bold lowercase tracking-tight text-neutral-500">
+												bond score
+											</span>
+											<span className="ml-auto font-mono text-[13px] font-bold tabular-nums text-neutral-800">{bond}%</span>
 										</div>
-										{/* current bond score toward reaching this place */}
-										<div className="mt-5">
-											<div className="mb-1.5 flex items-center gap-1.5">
-												<img src="/icons/bond.png" alt="" draggable={false} className="h-5 w-5 object-contain" />
-												<span className="font-mono text-[12px] font-bold lowercase tracking-tight text-neutral-500">
-													bond score
-												</span>
-												<span className="ml-auto font-mono text-[13px] font-bold tabular-nums text-neutral-800">{bond}%</span>
-											</div>
-											<div className="h-2.5 w-full overflow-hidden rounded-full bg-black/10">
-												<div
-													className="h-full rounded-full bg-gradient-to-r from-[#ffb454] to-[#ff7a3d] transition-[width] duration-500 ease-out"
-													style={{ width: `${(bond / BOND_MAX) * 100}%` }}
-												/>
+										<div className="h-2.5 w-full overflow-hidden rounded-full bg-black/10">
+											<div
+												className="h-full rounded-full bg-gradient-to-r from-[#ffb454] to-[#ff7a3d] transition-[width] duration-500 ease-out"
+												style={{ width: `${(bond / BOND_MAX) * 100}%` }}
+											/>
+										</div>
+
+										{/* the sidekick with a speech bubble off the side of its head */}
+										<div className="mt-6 flex items-center gap-2">
+											<SidekickAvatar className="h-20 w-20 shrink-0 object-contain" alt="" />
+											<div className="relative flex-1 rounded-2xl bg-[#FBEFC9] px-3.5 py-2.5 text-left text-[13px] font-semibold leading-snug text-neutral-800">
+												<span className="absolute -left-1 top-1/2 h-3 w-3 -translate-y-1/2 rotate-45 rounded-[2px] bg-[#FBEFC9]" />
+												<span className="relative">I need to get to know you better before we can travel that far</span>
 											</div>
 										</div>
+
+										{/* primary CTA copy */}
+										<div className="mt-5 text-center text-[19px] font-extrabold leading-snug text-neutral-900">
+											Start a Guided Chat to Unlock
+										</div>
+
 										<button
 											onClick={() => onStartSession?.(target.id)}
-											className="mt-5 flex w-full items-center justify-center rounded-full bg-[#7A5AF8] py-3.5 text-[16px] font-bold text-white shadow-[0_4px_0_#5638c6] transition-all duration-100 active:translate-y-[3px] active:shadow-[0_1px_0_#5638c6]"
+											className="mt-4 flex w-full items-center justify-center rounded-full bg-[#7A5AF8] py-3.5 text-[16px] font-bold text-white shadow-[0_4px_0_#5638c6] transition-all duration-100 active:translate-y-[3px] active:shadow-[0_1px_0_#5638c6]"
 										>
 											Chat
 										</button>
