@@ -1,5 +1,4 @@
 import type { TrueSheet } from '@lodev09/react-native-true-sheet';
-import { Redirect } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Dimensions, Pressable, View } from 'react-native';
 
@@ -88,9 +87,7 @@ export default function Home() {
     void chatSheet.current?.present();
   };
 
-  return <Redirect href="/focus-setup" />;
-
-  /*return (
+  return (
     <View className="flex-1 bg-white">
       {/* Full-viewport 3D scene (mounted once saved look-dev state hydrates).
           Settings reuses the pulled-back chat framing so the meadow, sky and
@@ -189,5 +186,5 @@ export default function Home() {
       ) : null}
       <ChatScreen sheetRef={chatSheet} onWillDismiss={() => setChatOpen(false)} />
     </View>
-  );*/
+  );
 }

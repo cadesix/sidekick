@@ -45,4 +45,45 @@
 
 - A separate focused crop was not needed because the location row, native switch, and privacy footer are fully legible in the 1178-pixel-wide full-view comparison.
 
+## Focus and Apple Health
+
+**Source Visual Truth**
+
+- `/Users/cj/Downloads/Screenshot 2026-07-14 at 09.43.27.png` and the four Focus screenshots captured between 09:48 and 09:49.
+- The screenshots are competitive references. The implementation preserves the understandable capability, permission, app-selection, limit, and active-state hierarchy while using Sidekick's grouped iOS settings language and original copy.
+
+**Implementation Evidence**
+
+- Settings comparison: `/Users/cj/Code/sidekick/plans/qa/settings-comparison.png`.
+- Focus intro comparison: `/Users/cj/Code/sidekick/plans/qa/focus-comparison.png`.
+- Apple Screen Time system authorization: `/Users/cj/Code/sidekick/plans/qa/focus-native-picker.png`.
+- Apple Health intro: `/Users/cj/Code/sidekick/plans/qa/health-intro.png`.
+- Viewport: iPhone 17 Pro Simulator in portrait at 944 × 2048 physical pixels.
+
+**Findings**
+
+- No actionable P0, P1, or P2 visual differences remain. Settings uses the existing Sidekick grouped layout; Focus and Health use platform-native symbols, continuous corners, system typography, and clear bottom actions.
+- Focus is visually distinct from the reference: it replaces the competitor mascot illustration with a native shield, uses original benefit-led copy, and makes the on-device selection boundary explicit.
+- Apple Health clearly enumerates the four shared summary groups and separates Apple authorization from explicit Sidekick/AI sharing consent.
+- Long content scrolls beneath a persistent primary action with enough bottom inset to reach every privacy disclosure.
+- Accessibility inspection exposed meaningful labels for Settings rows, the Location switch, both integration disclosures, all four Health data groups, and the primary actions.
+
+**Interaction Verification**
+
+- Focus opened from the real native build, requested Apple's individual Screen Time authorization, and reached Apple's passcode-protected authorization sheet.
+- The final app/category picker, device-activity thresholds, and HealthKit data reads require a physical iPhone with the distribution entitlements and user-owned data; they cannot be proven in the simulator.
+- Type checking, unit/integration tests, changed-file lint, and the native iOS build cover the application logic and extension wiring separately from that physical-device gate.
+
+**Implementation Checklist**
+
+- [x] Add Focus and Apple Health disclosures to Settings.
+- [x] Build native Screen Time authorization, Apple app/category/site selection, daily limits, weekday schedules, manual blocking, timed sessions, temporary unlock, re-block, and disable flows.
+- [x] Keep opaque Screen Time selection tokens and configuration on-device and expose only minimal command success to the agent.
+- [x] Add explicit Apple Health/AI sharing consent for steps, sleep, workouts, and active energy.
+- [x] Retain at most 30 days of Health summaries and delete stored summaries on disconnect.
+- [x] Mark Health-derived assistant output sensitive and exclude it from advertising context.
+- [x] Compare the native Settings and Focus screens side-by-side with the references.
+- [x] Verify the Apple Screen Time system authorization handoff in the simulator.
+- [ ] Complete the final Screen Time picker/enforcement and HealthKit sample read on a signed physical iPhone.
+
 final result: passed
