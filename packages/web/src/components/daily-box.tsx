@@ -1,5 +1,4 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
-import { LuFlame } from "react-icons/lu";
 import { Coin } from "./shop-sheet";
 import type { BoxReward } from "./sidekick-daily-box";
 
@@ -123,9 +122,7 @@ export function StreakSplash({ streak, onDone }: { streak: number; onDone: () =>
 			className="absolute inset-0 z-50 grid w-full place-items-center bg-black/35 backdrop-blur-[2px]"
 		>
 			<div className="animate-splash-pop flex flex-col items-center">
-				<span className="grid h-24 w-24 place-items-center rounded-[28px] bg-white shadow-[0_16px_40px_rgba(0,0,0,0.3)]">
-					<LuFlame className="h-14 w-14 text-[#ff7a3d]" strokeWidth={2.5} />
-				</span>
+				<img src="/icons/streak.png" alt="" draggable={false} className="h-28 w-28 object-contain drop-shadow-[0_10px_20px_rgba(0,0,0,0.3)]" />
 				<div
 					key={shown} // re-mount on tick so the number pops
 					className="animate-splash-pop mt-4 text-[64px] font-extrabold leading-none text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.35)] tabular-nums"

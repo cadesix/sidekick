@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { LuChevronDown, LuFlame } from "react-icons/lu";
+import { LuChevronDown } from "react-icons/lu";
 import { StreakModal } from "./components/streak-sheet";
 import { touchStreak } from "./components/sidekick-streak";
 import { Chat } from "./chat";
@@ -213,9 +213,9 @@ export default function Home5() {
 				<button
 					onClick={() => setStreakOpen(true)}
 					aria-label="Streak"
-					className="flex items-center gap-1.5 rounded-full bg-white/85 px-3.5 py-2 shadow-[0_3px_0_rgba(0,0,0,0.12)] backdrop-blur-sm transition-all duration-100 active:translate-y-[2px] active:shadow-[0_1px_0_rgba(0,0,0,0.12)]"
+					className="flex items-center gap-1 rounded-full bg-white/85 py-1.5 pl-2 pr-3.5 shadow-[0_3px_0_rgba(0,0,0,0.12)] backdrop-blur-sm transition-all duration-100 active:translate-y-[2px] active:shadow-[0_1px_0_rgba(0,0,0,0.12)]"
 				>
-					<LuFlame className="h-5 w-5 text-[#ff7a3d]" strokeWidth={2.5} />
+					<img src="/icons/streak.png" alt="" draggable={false} className="h-7 w-7 object-contain" />
 					<span className="text-[14px] font-extrabold tabular-nums text-[#111]">{streak}</span>
 				</button>
 			</div>

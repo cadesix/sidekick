@@ -1,7 +1,9 @@
 // iOS-home-screen-style dock: a frosted, rounded glass panel pinned to the bottom
-// with four app-icon "squircles". Messages opens the chat sheet; Shop / Map /
-// Goals are wired to callbacks. The whole dock fades down out of the way while
-// the chat sheet is up, like the app covering the dock.
+// with four app icons. The icons are the shared 3D-rendered set in
+// public/icons/*.png (they carry their own depth + shadow, so they float on the
+// glass rather than sitting on colored squircles). Messages opens the chat sheet;
+// Shop / Map / Goals are wired to callbacks. The whole dock fades down out of the
+// way while the chat sheet is up, like the app covering the dock.
 
 type DockProps = {
 	hidden?: boolean;
@@ -13,26 +15,21 @@ type DockProps = {
 	onGoals?: () => void;
 };
 
-// one dock app: a rounded-squircle tile with a soft drop shadow and press-in
-function AppTile({
-	label,
-	onClick,
-	className,
-	children,
-}: {
-	label: string;
-	onClick?: () => void;
-	className?: string;
-	children: React.ReactNode;
-}) {
+// one dock app: a floating 3D icon with a press-in shrink
+function AppTile({ label, icon, onClick }: { label: string; icon: string; onClick?: () => void }) {
 	return (
 		<button
 			type="button"
 			aria-label={label}
 			onClick={onClick}
-			className={`relative h-[58px] w-[58px] overflow-hidden rounded-[14px] ring-1 ring-black/5 transition-transform duration-100 active:scale-90 ${className ?? ""}`}
+			className="relative h-[54px] w-[54px] transition-transform duration-100 active:scale-90"
 		>
-			{children}
+			<img
+				src={`/icons/${icon}.png`}
+				alt=""
+				draggable={false}
+				className="h-full w-full object-contain drop-shadow-[0_3px_4px_rgba(0,0,0,0.18)]"
+			/>
 		</button>
 	);
 }
@@ -44,59 +41,20 @@ export function HomeDock({ hidden, unread = 0, onMessages, onShop, onMap, onGoal
 				hidden ? "translate-y-6 opacity-0" : "translate-y-0 opacity-100"
 			}`}
 		>
-			<div className="pointer-events-auto flex items-center gap-[18px] rounded-[32px] border border-white/40 bg-white/25 px-[18px] py-[14px] backdrop-blur-2xl">
-				{/* Messages — opens the chat sheet. The badge sits on a wrapper because
-				    the tile itself clips (overflow-hidden rounded squircle). */}
+			<div className="pointer-events-auto flex items-center gap-[18px] rounded-[32px] border border-white/40 bg-white/25 px-[20px] py-[12px] backdrop-blur-2xl">
+				{/* Messages — opens the chat sheet; unread badge on a wrapper */}
 				<div className="relative">
-					<AppTile label="Messages" onClick={onMessages} className="bg-gradient-to-b from-[#5BF76B] to-[#12C93E]">
-						<svg viewBox="0 0 24 24" className="absolute left-1/2 top-1/2 h-[62%] w-[62%] -translate-x-1/2 -translate-y-1/2">
-							<path
-								fill="#fff"
-								d="M12 4.2C6.9 4.2 3 7.3 3 11.2c0 2.2 1.3 4.2 3.3 5.5-.2 1.1-.8 2.1-1.5 2.9 1.5-.1 3.1-.6 4.3-1.5.9.3 1.9.4 2.9.4 5.1 0 9-3.1 9-7S17.1 4.2 12 4.2z"
-							/>
-						</svg>
-					</AppTile>
+					<AppTile label="Messages" icon="messages" onClick={onMessages} />
 					{unread > 0 ? (
-						<span className="pointer-events-none absolute -right-1.5 -top-1.5 z-10 grid h-[21px] min-w-[21px] place-items-center rounded-full bg-[#FF3B30] px-1.5 text-[11px] font-bold tabular-nums text-white shadow-[0_1px_4px_rgba(0,0,0,0.25)]">
+						<span className="pointer-events-none absolute -right-1 -top-1 z-10 grid h-[21px] min-w-[21px] place-items-center rounded-full bg-[#FF3B30] px-1.5 text-[11px] font-bold tabular-nums text-white shadow-[0_1px_4px_rgba(0,0,0,0.25)]">
 							{unread > 9 ? "9+" : unread}
 						</span>
 					) : null}
 				</div>
 
-				{/* Shop — shopping bag */}
-				<AppTile label="Shop" onClick={onShop} className="bg-gradient-to-b from-[#FF9E5A] to-[#FF5E3A]">
-					<svg viewBox="0 0 24 24" className="absolute left-1/2 top-1/2 h-[56%] w-[56%] -translate-x-1/2 -translate-y-1/2">
-						<path
-							fill="#fff"
-							fillRule="evenodd"
-							d="M9 8V7.4a3 3 0 0 1 6 0V8h2.1c.53 0 .97.4 1.02.93l.8 8.7A2 2 0 0 1 16.93 20H7.07a2 2 0 0 1-1.99-2.37l.8-8.7A1.02 1.02 0 0 1 6.9 8H9zm1.6 0h2.8v-.6a1.4 1.4 0 0 0-2.8 0V8zm-1.6 2.6a.9.9 0 1 0 0-1.8.9.9 0 0 0 0 1.8zm6 0a.9.9 0 1 0 0-1.8.9.9 0 0 0 0 1.8z"
-							clipRule="evenodd"
-						/>
-					</svg>
-				</AppTile>
-
-				{/* Map — Apple-Maps-style: roads, a lake, a park patch and a red pin */}
-				<AppTile label="Map" onClick={onMap}>
-					<svg viewBox="0 0 60 60" className="absolute inset-0 h-full w-full">
-						<rect width="60" height="60" fill="#eaf1e2" />
-						<path d="M0 42C10 44 16 52 18 60L0 60Z" fill="#9fd0ff" />
-						<path d="M60 0L60 22C50 22 44 14 44 0Z" fill="#c7e6a8" />
-						<path d="M-6 16C18 26 34 30 66 12" stroke="#f2d9a0" strokeWidth="8" fill="none" />
-						<path d="M-6 16C18 26 34 30 66 12" stroke="#fff" strokeWidth="1.6" strokeDasharray="3 3" fill="none" />
-						<path d="M14 62L30 -2" stroke="#ffffff" strokeWidth="4" fill="none" />
-						<path d="M36 22c0-3.3-2.7-6-6-6s-6 2.7-6 6c0 4.5 6 11 6 11s6-6.5 6-11z" fill="#ff5b4d" />
-						<circle cx="30" cy="22" r="2.2" fill="#fff" />
-					</svg>
-				</AppTile>
-
-				{/* Goals — bullseye target over a blue gradient */}
-				<AppTile label="Goals" onClick={onGoals} className="bg-gradient-to-b from-[#6BB6FF] to-[#3D7BFF]">
-					<svg viewBox="0 0 24 24" className="absolute left-1/2 top-1/2 h-[62%] w-[62%] -translate-x-1/2 -translate-y-1/2">
-						<circle cx="12" cy="12" r="8.5" fill="none" stroke="#fff" strokeWidth="2" />
-						<circle cx="12" cy="12" r="4.75" fill="none" stroke="#fff" strokeWidth="2" />
-						<circle cx="12" cy="12" r="1.6" fill="#fff" />
-					</svg>
-				</AppTile>
+				<AppTile label="Shop" icon="shop" onClick={onShop} />
+				<AppTile label="Map" icon="map" onClick={onMap} />
+				<AppTile label="Goals" icon="goals" onClick={onGoals} />
 			</div>
 		</div>
 	);

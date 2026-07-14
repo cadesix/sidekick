@@ -34,8 +34,8 @@ export const BondBadge = forwardRef<HTMLDivElement, { children?: React.ReactNode
 				className="flex flex-col items-center gap-1 transition-transform duration-300"
 				style={{ transform: pop ? "scale(1.18)" : "scale(1)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}
 			>
-				<div className="flex items-center gap-1.5 rounded-full bg-white/85 px-3 py-1 shadow-[0_2px_10px_rgba(0,0,0,0.18)] backdrop-blur-sm">
-					<span className="text-[13px]">🧡</span>
+				<div className="flex items-center gap-1 rounded-full bg-white/85 py-1 pl-1.5 pr-3 shadow-[0_2px_10px_rgba(0,0,0,0.18)] backdrop-blur-sm">
+					<img src="/icons/bond.png" alt="" draggable={false} className="h-5 w-5 object-contain" />
 					<span className="text-[12px] font-extrabold tracking-wide text-[#111]">
 						Your Bond <span className="tabular-nums">{bond}%</span>
 					</span>

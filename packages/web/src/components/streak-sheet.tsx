@@ -1,4 +1,3 @@
-import { LuFlame } from "react-icons/lu";
 import { Coin } from "./shop-sheet";
 import { MILESTONES } from "./sidekick-daily-box";
 
@@ -32,9 +31,7 @@ export function StreakModal({ open, onClose, streak }: { open: boolean; onClose:
 			>
 				{/* the streak itself */}
 				<div className="flex flex-col items-center text-center">
-					<span className="grid h-14 w-14 place-items-center rounded-2xl bg-[#fff1e6]">
-						<LuFlame className="h-8 w-8 text-[#ff7a3d]" strokeWidth={2.5} />
-					</span>
+					<img src="/icons/streak.png" alt="" draggable={false} className="h-16 w-16 object-contain" />
 					<div className="mt-2 text-[24px] font-extrabold leading-tight text-neutral-900">
 						{streak}-day streak
 					</div>
