@@ -43,8 +43,8 @@ export const BondBadge = forwardRef<HTMLDivElement, { children?: React.ReactNode
 						draggable={false}
 						className="h-6 w-6 object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]"
 					/>
-					<span className="text-[15px] font-extrabold tracking-wide text-white">
-						Your Bond <span className="tabular-nums">{bond}%</span>
+					<span className="font-mono text-[14px] font-bold lowercase tracking-tight text-white">
+						bond score <span className="tabular-nums">{bond}%</span>
 					</span>
 				</div>
 				{/* wide inset track with an amber gradient fill (rounded caps) */}
