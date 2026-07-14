@@ -16,9 +16,9 @@ import {
 	View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { healthStatus, locationStatus, trpc } from "~/lib/api";
+import { locationStatus, trpc } from "~/lib/api";
 import { getLocalFocusSettings } from "~/lib/focus";
-import { healthAgentSharingEnabled } from "~/lib/health";
+import { HEALTH_CONNECTION_QUERY_KEY, loadHealthConnection } from "~/lib/health-connection";
 import {
 	disableLocationAccess,
 	enableLocationAccess,
@@ -110,14 +110,6 @@ function locationDescription(setting: Awaited<ReturnType<typeof loadLocationSett
 	return "Finding your city…";
 }
 
-async function loadHealthSetting() {
-	const [sharingEnabled, status] = await Promise.all([
-		healthAgentSharingEnabled(),
-		healthStatus(),
-	]);
-	return { sharingEnabled, status };
-}
-
 function focusDescription(setting: ReturnType<typeof getLocalFocusSettings> | undefined): string {
 	if (!setting?.enabled) {
 		return "Block distractions on this iPhone";
@@ -131,11 +123,11 @@ function focusDescription(setting: ReturnType<typeof getLocalFocusSettings> | un
 	return "On · whenever you ask";
 }
 
-function healthDescription(setting: Awaited<ReturnType<typeof loadHealthSetting>> | undefined): string {
+function healthDescription(setting: Awaited<ReturnType<typeof loadHealthConnection>> | undefined): string {
 	if (!setting?.sharingEnabled) {
 		return "Share steps, sleep, workouts, and active energy";
 	}
-	if (setting.status.lastSyncedAt) {
+	if (setting.status?.lastSyncedAt) {
 		return "Connected · up to 30 days of daily summaries";
 	}
 	return "Connected · waiting for available data";
@@ -177,7 +169,10 @@ export function SettingsScreen() {
 	const me = useQuery({ queryKey: ["me"], queryFn: () => trpc.users.me.query() });
 	const location = useQuery({ queryKey: ["location", "setting"], queryFn: loadLocationSetting });
 	const focus = useQuery({ queryKey: ["focus-local"], queryFn: getLocalFocusSettings });
-	const health = useQuery({ queryKey: ["health-connection"], queryFn: loadHealthSetting });
+	const health = useQuery({
+		queryKey: HEALTH_CONNECTION_QUERY_KEY,
+		queryFn: loadHealthConnection,
+	});
 
 	const save = useMutation({
 		mutationFn: (patch: { name?: string; sidekickName?: string }) =>

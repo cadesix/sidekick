@@ -5,22 +5,14 @@ import { SymbolView, type SFSymbol } from "expo-symbols";
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PrimaryButton } from "~/components/PrimaryButton";
-import { disconnectHealth, healthStatus, syncHealth } from "~/lib/api";
+import { disconnectHealth, syncHealth } from "~/lib/api";
 import {
-  healthAgentSharingEnabled,
   healthAvailable,
   readHealthDays,
   requestHealthAuthorization,
   setHealthAgentSharingEnabled,
 } from "~/lib/health";
-
-async function loadHealthConnection() {
-  const [sharingEnabled, server] = await Promise.all([
-    healthAgentSharingEnabled(),
-    healthStatus(),
-  ]);
-  return { sharingEnabled, server };
-}
+import { HEALTH_CONNECTION_QUERY_KEY, loadHealthConnection } from "~/lib/health-connection";
 
 function Metric({ symbol, title, detail }: { symbol: SFSymbol; title: string; detail: string }) {
   return (
@@ -51,7 +43,10 @@ function formattedSyncDate(value: Date | string | null): string {
 export default function HealthSetup() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const connection = useQuery({ queryKey: ["health-connection"], queryFn: loadHealthConnection });
+  const connection = useQuery({
+    queryKey: HEALTH_CONNECTION_QUERY_KEY,
+    queryFn: loadHealthConnection,
+  });
   const connected = connection.data?.sharingEnabled ?? false;
 
   const connect = useMutation({
@@ -72,7 +67,7 @@ export default function HealthSetup() {
       }
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["health-connection"] });
+      void queryClient.invalidateQueries({ queryKey: HEALTH_CONNECTION_QUERY_KEY });
       Alert.alert("Apple Health is connected", "Sidekick can now use the summaries you chose to share.");
     },
     onError: () => {
@@ -89,11 +84,11 @@ export default function HealthSetup() {
       return disconnectHealth();
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["health-connection"] });
+      void queryClient.invalidateQueries({ queryKey: HEALTH_CONNECTION_QUERY_KEY });
       Alert.alert("Disconnected", "Sidekick deleted its stored Apple Health summaries.");
     },
     onError: () => {
-      void queryClient.invalidateQueries({ queryKey: ["health-connection"] });
+      void queryClient.invalidateQueries({ queryKey: HEALTH_CONNECTION_QUERY_KEY });
       Alert.alert(
         "Sharing is off",
         "Sidekick stopped future uploads, but server deletion is still pending. Tap Delete stored summaries to retry.",
@@ -110,7 +105,7 @@ export default function HealthSetup() {
       return syncHealth(days);
     },
     onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: ["health-connection"] });
+      await queryClient.invalidateQueries({ queryKey: HEALTH_CONNECTION_QUERY_KEY });
       if (result.synced === 0) {
         Alert.alert("No summaries available", "Sidekick didn’t find readable Health data yet.");
         return;
@@ -173,7 +168,7 @@ export default function HealthSetup() {
                 <View style={styles.statusCopy}>
                   <Text style={styles.statusTitle}>Sharing with Sidekick is on</Text>
                   <Text style={styles.statusDetail}>
-                    {formattedSyncDate(connection.data?.server.lastSyncedAt ?? null)}
+                    {formattedSyncDate(connection.data?.status?.lastSyncedAt ?? null)}
                   </Text>
                 </View>
               </View>

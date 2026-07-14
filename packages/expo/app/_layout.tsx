@@ -15,6 +15,7 @@ import { syncHealth } from '~/lib/api';
 import { AuthGate } from '~/lib/auth';
 import { maybeRefreshFocusShield } from '~/lib/focus';
 import { readHealthDays } from '~/lib/health';
+import { HEALTH_CONNECTION_QUERY_KEY } from '~/lib/health-connection';
 import { maybeUpdateLocation } from '~/lib/location';
 
 const queryClient = new QueryClient();
@@ -32,7 +33,7 @@ function useForegroundSync(): void {
         const days = await readHealthDays(30);
         if (days.length > 0) {
           await syncHealth(days);
-          await queryClient.invalidateQueries({ queryKey: ['health-connection'] });
+          await queryClient.invalidateQueries({ queryKey: HEALTH_CONNECTION_QUERY_KEY });
         }
       } catch {
         // health not shared / unavailable — no-op
