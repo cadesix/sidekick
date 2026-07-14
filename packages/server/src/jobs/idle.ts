@@ -86,7 +86,10 @@ export async function findIdleConversations(
     .select({
       id: conversations.id,
       timezone: users.timezone,
-      idle: sql<boolean>`max(${messages.createdAt}) < ${idleThreshold}`,
+      // Bound as an ISO string, not a Date: the postgres-js driver can't serialize a
+      // Date into a bind slot, and PGlite (tests) accepts it, so a Date passes CI and
+      // 500s in production.
+      idle: sql<boolean>`max(${messages.createdAt}) < ${idleThreshold.toISOString()}::timestamptz`,
     })
     .from(conversations)
     .innerJoin(messages, eq(messages.conversationId, conversations.id))
