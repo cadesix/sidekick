@@ -17,6 +17,9 @@ type EconomyState = {
   spendCoins: (amount: number) => boolean;
   addToInventory: (renderKey: string) => void;
   owns: (renderKey: string) => boolean;
+  // DEV-only setters (used by DevPanel; not part of normal gameplay)
+  setCoins: (value: number) => void;
+  setInventory: (renderKeys: string[]) => void;
 };
 
 export const useEconomy = create<EconomyState>()(
@@ -40,6 +43,8 @@ export const useEconomy = create<EconomyState>()(
         set((st) => ({ inventory: [...st.inventory, renderKey] }));
       },
       owns: (renderKey) => get().inventory.includes(renderKey),
+      setCoins: (value) => set({ coins: clampCoins(value) }),
+      setInventory: (renderKeys) => set({ inventory: [...renderKeys] }),
     }),
     {
       name: 'sidekick_economy_v1',

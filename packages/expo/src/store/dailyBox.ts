@@ -16,6 +16,8 @@ type DailyBoxState = {
   hasBox: () => boolean;
   preview: (streak: number) => BoxReward;
   claim: (streak: number) => BoxReward | null;
+  // DEV-only (used by DevPanel): clear the claim stamp so today's box re-arms.
+  reset: () => void;
 };
 
 export const useDailyBox = create<DailyBoxState>()(
@@ -34,6 +36,7 @@ export const useDailyBox = create<DailyBoxState>()(
         if (reward.milestone?.render) econ.addToInventory(reward.milestone.render);
         return reward;
       },
+      reset: () => set({ lastClaimed: '' }),
     }),
     {
       name: 'sidekick_daily_box_v1',

@@ -42,6 +42,9 @@ export type SidekickContext = {
   isSessionStartable: (id: string) => boolean;
   nextSession: () => SessionDef | undefined;
   sessionInProgress: () => { def: SessionDef; state: SessionState } | null;
+
+  // DEV-only (used by DevPanel): wipe all session progress to re-lock the map.
+  resetSessions: () => void;
 };
 
 export const useSidekickContext = create<SidekickContext>()(
@@ -83,6 +86,8 @@ export const useSidekickContext = create<SidekickContext>()(
       isSessionStartable: (id) => coreIsSessionStartable(get().sessions, id),
       nextSession: () => coreNextSession(get().sessions),
       sessionInProgress: () => coreSessionInProgress(get().sessions),
+
+      resetSessions: () => set({ sessions: {} }),
     }),
     {
       name: 'sidekick_context_v1',

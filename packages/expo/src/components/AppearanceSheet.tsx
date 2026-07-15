@@ -143,26 +143,35 @@ export function AppearanceSheet({
                   key={c.id}
                   onPress={() => pickSkin(c)}
                   accessibilityLabel={c.id}
-                  style={[
-                    styles.swatch,
-                    { backgroundColor: c.body },
-                    selected ? styles.swatchSelected : styles.swatchIdle,
-                  ]}
+                  style={styles.swatch}
                 >
-                  {selected ? <Ionicons name="checkmark" size={20} color="#fff" /> : null}
+                  {/* ring-2 + ring-offset-2: a 2px ring sitting 2px outside the
+                      44px dot, drawn as an overlay so it doesn't take layout
+                      space (matches web's box-shadow ring). Selected only
+                      changes ring color; width stays 2px. */}
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.swatchRing,
+                      { borderColor: selected ? '#171717' : 'rgba(0,0,0,0.1)' },
+                    ]}
+                  />
+                  <View style={[styles.swatchBody, { backgroundColor: c.body }]}>
+                    {selected ? <Ionicons name="checkmark" size={20} color="#fff" /> : null}
+                  </View>
                 </Pressable>
               );
             })}
           </View>
 
           {/* closet: owned items, tap to wear / take off */}
-          <Text style={[styles.sectionTitle, { marginTop: 28 }]}>Closet</Text>
+          <Text style={[styles.sectionTitle, { marginTop: 32 }]}>Closet</Text>
           {owned.length ? (
             WARDROBE_SLOTS.map((slot) => {
               const items = owned.filter((p) => p.slot === slot);
               if (!items.length) return null;
               return (
-                <View key={slot} style={{ paddingTop: 18 }}>
+                <View key={slot} style={{ paddingTop: 20 }}>
                   <Text style={styles.shelfLabel}>{SLOT_LABEL[slot]}</Text>
                   <ScrollView
                     horizontal
@@ -179,7 +188,7 @@ export function AppearanceSheet({
                             {render != null ? (
                               <Image
                                 source={render}
-                                style={styles.tileArt}
+                                style={[styles.tileArt, styles.tileArtShadow]}
                                 contentFit="contain"
                               />
                             ) : (
@@ -187,7 +196,7 @@ export function AppearanceSheet({
                             )}
                             {worn ? (
                               <View style={styles.wornBadge}>
-                                <Ionicons name="checkmark" size={13} color="#fff" />
+                                <Ionicons name="checkmark" size={14} color="#fff" />
                               </View>
                             ) : null}
                           </View>
@@ -248,27 +257,52 @@ const styles = StyleSheet.create({
 
   sectionTitle: { marginTop: 12, fontSize: 17, fontWeight: '800', color: '#171717' },
 
-  swatchRow: { marginTop: 12, flexDirection: 'row', gap: 12 },
+  swatchRow: { marginTop: 10, flexDirection: 'row', gap: 12 },
+  // 44px layout footprint (matches web's h-11 w-11 box); the ring overflows
+  // into the gap via an absolute overlay, so gap-3 (12) still measures dot→dot.
   swatch: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swatchBody: {
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  swatchIdle: { borderWidth: 2, borderColor: 'rgba(0,0,0,0.1)' },
-  swatchSelected: { borderWidth: 3, borderColor: '#171717' },
+  // 2px ring, 2px gap (ring-offset) outside the 44px dot → outer Ø 52.
+  swatchRing: {
+    position: 'absolute',
+    top: -4,
+    left: -4,
+    right: -4,
+    bottom: -4,
+    borderWidth: 2,
+    borderRadius: 26,
+  },
 
   shelfLabel: {
     marginBottom: 8,
     fontSize: 13,
     fontWeight: '600',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
     textTransform: 'uppercase',
     color: '#a3a3a3',
   },
   tile: { width: 112 },
   tileArt: { width: 112, height: 112 },
+  // web: drop-shadow-[0_8px_10px_rgba(0,0,0,0.18)]. On iOS the shadow follows
+  // the PNG's alpha (hugs the item silhouette); Android renders it via elevation.
+  tileArtShadow: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 6,
+  },
   tilePlaceholder: { borderRadius: 16, backgroundColor: '#e9edf1' },
   tileName: { marginTop: 4, fontSize: 12, fontWeight: '600', color: '#404040' },
   wornBadge: {
@@ -283,5 +317,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  empty: { marginTop: 20, textAlign: 'center', fontSize: 14, fontWeight: '500', color: '#a3a3a3' },
+  empty: { marginTop: 24, textAlign: 'center', fontSize: 14, fontWeight: '500', color: '#a3a3a3' },
 });

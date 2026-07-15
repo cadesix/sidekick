@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppearanceSheet } from '../src/components/AppearanceSheet';
 import { BondBadge } from '../src/components/BondBadge';
 import { BoxRewardsModal, GroundBox, StreakSplash } from '../src/components/DailyBox';
+import { DevPanel } from '../src/components/DevPanel';
 import { Chat } from '../src/components/Chat';
 import { GoalsSheet } from '../src/components/GoalsSheet';
 import { StreakModal } from '../src/components/StreakModal';
@@ -182,7 +183,7 @@ export default function Home() {
           framing={
             mapOpen
               ? MAP_FRAMING
-              : shopOpen
+              : shopOpen || appearanceOpen
                 ? SHOP_FRAMING
                 : open || settingsOpen
                   ? CHAT_FRAMING
@@ -190,7 +191,7 @@ export default function Home() {
           }
           holdingPhone={open}
           talking={loading}
-          studio={shopOpen}
+          studio={shopOpen || appearanceOpen}
           environment={environment}
           onControls={setControls}
           onController={setController}
@@ -384,6 +385,9 @@ export default function Home() {
         </Pressable>
         <Chat transparentTop />
       </Animated.View>
+
+      {/* DEV state controls (top-left chip → panel); renders nothing in prod */}
+      <DevPanel />
     </View>
   );
 }

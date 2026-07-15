@@ -10,6 +10,9 @@ import { computeStreak, localDay, type StreakState } from '@sidekick/core';
 type StreakStore = StreakState & {
   hydrated: boolean;
   touch: () => number;
+  // DEV-only setter (used by DevPanel): force the count, stamped as today so
+  // the next touch() treats it as an already-counted day.
+  setCount: (count: number) => void;
 };
 
 export const useStreak = create<StreakStore>()(
@@ -25,6 +28,7 @@ export const useStreak = create<StreakStore>()(
         set({ count: next.count, last: next.last });
         return next.count;
       },
+      setCount: (count) => set({ count: Math.max(0, count), last: localDay(Date.now()) }),
     }),
     {
       name: 'sidekick_streak_v1',
