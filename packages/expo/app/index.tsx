@@ -219,13 +219,6 @@ export default function Home() {
           >
             <Ionicons name="shirt" size={20} color="#7A5AF8" />
           </Pressable>
-          <Pressable
-            onPress={() => setGoalsOpen(true)}
-            accessibilityLabel="Goals"
-            style={{ height: 40, width: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Ionicons name="disc" size={22} color="#0a84ff" />
-          </Pressable>
           <StreakPill onPress={() => setStreakModalOpen(true)} />
         </View>
       ) : null}
@@ -246,7 +239,7 @@ export default function Home() {
         onMessages={openDrawer}
         onShop={() => setShopOpen(true)}
         onMap={openMap}
-        onSettings={() => setSettingsOpen(true)}
+        onGoals={() => setGoalsOpen(true)}
       />
 
       {/* Full-screen world map — scales in from centre while the camera pulls
