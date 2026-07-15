@@ -355,7 +355,9 @@ export default function Home() {
       <Animated.View
         style={[
           drawerStyle,
-          { position: 'absolute', left: 0, right: 0, top: DRAWER_TOP, bottom: 0, zIndex: 40 },
+          // explicit height (not bottom:0) so the Chat's flex-1 white panel
+          // fills the drawer on RN-web (top+bottom doesn't size flex children)
+          { position: 'absolute', left: 0, right: 0, top: DRAWER_TOP, height: SCREEN_H - DRAWER_TOP, zIndex: 40 },
         ]}
         pointerEvents={open ? 'auto' : 'none'}
       >
