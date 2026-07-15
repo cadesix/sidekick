@@ -45,6 +45,9 @@ export type SidekickContext = {
 
   // DEV-only (used by DevPanel): wipe all session progress to re-lock the map.
   resetSessions: () => void;
+  // DEV-only: full guided-chat wipe — progress AND the extracted profile
+  // (fields + notes), so a replayed alignment starts from a clean slate.
+  resetGuidedChats: () => void;
 };
 
 export const useSidekickContext = create<SidekickContext>()(
@@ -88,6 +91,7 @@ export const useSidekickContext = create<SidekickContext>()(
       sessionInProgress: () => coreSessionInProgress(get().sessions),
 
       resetSessions: () => set({ sessions: {} }),
+      resetGuidedChats: () => set({ sessions: {}, fields: {}, notes: [] }),
     }),
     {
       name: 'sidekick_context_v1',

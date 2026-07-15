@@ -60,6 +60,7 @@ export function DevPanel() {
   const setInventory = useEconomy.getState().setInventory;
   const resetBox = useDailyBox.getState().reset;
   const resetSessions = useSidekickContext.getState().resetSessions;
+  const resetGuidedChats = useSidekickContext.getState().resetGuidedChats;
 
   // Full wipe: put every dial back to its starting value (the web's
   // "Reset profile (wipe all keys)").
@@ -69,7 +70,7 @@ export function DevPanel() {
     setCoins(START_COINS);
     setInventory([...START_INVENTORY]);
     resetBox();
-    resetSessions();
+    resetGuidedChats();
   };
 
   return (
@@ -119,8 +120,9 @@ export function DevPanel() {
             <Btn label="Own none" onPress={() => setInventory([...START_INVENTORY])} />
           </Row>
 
-          <Row label="Map / sessions">
-            <Btn label="Reset sessions (re-lock map)" onPress={resetSessions} wide />
+          <Row label="Guided chats">
+            <Btn label="Re-lock map (progress only)" onPress={resetSessions} wide />
+            <Btn label="Wipe guided chats (+ profile)" onPress={resetGuidedChats} wide />
           </Row>
 
           <Pressable onPress={resetProfile} style={styles.resetBtn}>
