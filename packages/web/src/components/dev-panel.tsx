@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { BOND_KEY, loadBond } from "./sidekick-bond";
+import { DAILY_BOX_KEY, hasDailyBox } from "./sidekick-daily-box";
 import { COINS_KEY, INV_KEY, loadCoins, loadInventory } from "./sidekick-economy";
 import { STREAK_KEY } from "./sidekick-streak";
 import {
@@ -27,9 +28,21 @@ function write(key: string, value: string): void {
 	window.location.reload();
 }
 
-function localDay(): string {
-	const d = new Date();
+function localDay(offsetDays = 0): string {
+	const d = new Date(Date.now() + offsetDays * 86400000);
 	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// Replay "first session of the day": rewind the streak to yesterday at one
+// less and unclaim today's box — on reload, touchStreak() increments again and
+// the streak-splash → daily-box flow re-runs from the top.
+function replayFirstSession(currentStreak: number): void {
+	try {
+		localStorage.removeItem(DAILY_BOX_KEY);
+	} catch {
+		// storage blocked
+	}
+	write(STREAK_KEY, JSON.stringify({ count: Math.max(0, currentStreak - 1), last: localDay(-1) }));
 }
 
 // every product key in the catalog (variants come from the manifest)
@@ -104,6 +117,15 @@ export function DevPanel() {
 								{v}
 							</button>
 						))}
+					</div>
+
+					<div className="text-[10px] uppercase tracking-widest text-neutral-500">
+						Daily box <span className="text-lime-300">{hasDailyBox() ? "unclaimed" : "claimed"}</span>
+					</div>
+					<div className="flex gap-1.5">
+						<button onClick={() => replayFirstSession(streak)} className={chip}>
+							Replay first session of day
+						</button>
 					</div>
 
 					<div className="text-[10px] uppercase tracking-widest text-neutral-500">

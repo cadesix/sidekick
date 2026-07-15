@@ -12,46 +12,68 @@ import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
-  withRepeat,
   withTiming,
 } from 'react-native-reanimated';
 
+import { SidekickAvatar } from './SidekickAvatar';
 import { useChat } from '../store/chat';
 
 // RN port of sidekick/src/chat.tsx. Same conversation UI (assistant/user
-// bubbles, avatar, typing dots, pill input) rebuilt in RN primitives; state and
-// persistence live in the zustand store.
+// bubbles, avatar, animated ellipsis, pill input) rebuilt in RN primitives;
+// state and persistence live in the zustand store. Visuals mirror the web
+// reference class-for-class via nativewind.
 //
 // Keyboard: the input bar rides on top of the keyboard via animated bottom
 // padding driven by keyboardWillShow/Hide. (KeyboardAvoidingView can't measure
 // itself inside the translated absolute-positioned chat drawer, so it left the
 // input buried under the keyboard.)
 
-function Dot({ delay }: { delay: number }) {
-  const v = useSharedValue(0.3);
-  useEffect(() => {
-    v.value = withDelay(delay, withRepeat(withTiming(1, { duration: 500 }), -1, true));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const style = useAnimatedStyle(() => ({ opacity: v.value }));
-  return <Animated.View style={style} className="w-2 h-2 rounded-full bg-black/30" />;
+// Sidekick head avatar — the live 3D head (real body color, face, worn hats/
+// glasses), mirroring web's <SidekickAvatar>, sized `w-8 h-8`. Each is its own
+// GL context (browser caps ~16), so we only mount it LIVE for the newest
+// assistant bubble + the typing row (≤2 contexts no matter how long the history
+// is); earlier bubbles reserve the same 32px slot to keep alignment. `paused`
+// freezes the loop while the drawer is closed.
+function Avatar({ live, paused }: { live: boolean; paused: boolean }) {
+  if (!live) return <View className="w-8 h-8" />;
+  return <SidekickAvatar size={32} paused={paused} />;
 }
 
-function TypingDots() {
+// Web renders a CSS `.ellipsis-dots` span: a 1.6s steps(1) cycle through
+// "", ".", "..", "..." at 40% black, in a fixed-width (w-7 = 28px) slot so the
+// bubble doesn't jitter. Reproduced here with a 400ms interval.
+const DOT_FRAMES = ['', '.', '..', '...'];
+
+function EllipsisDots() {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setI((n) => (n + 1) % DOT_FRAMES.length), 400);
+    return () => clearInterval(id);
+  }, []);
   return (
-    <View className="flex-row gap-1 py-1">
-      <Dot delay={0} />
-      <Dot delay={160} />
-      <Dot delay={320} />
-    </View>
+    <Text
+      className="text-[15px] leading-[21px]"
+      style={{ width: 28, color: 'rgba(17,17,17,0.4)' }}
+    >
+      {DOT_FRAMES[i]}
+    </Text>
   );
 }
 
-export function Chat({ transparentTop = false }: { transparentTop?: boolean }) {
+export function Chat({
+  transparentTop = false,
+  active = true,
+}: {
+  transparentTop?: boolean;
+  // false when the chat drawer is closed — freezes the live head avatars
+  active?: boolean;
+}) {
   const { messages, loading, send } = useChat();
   const [input, setInput] = useState('');
   const scrollRef = useRef<ScrollView>(null);
+
+  // only the newest assistant bubble carries a live GL head (see <Avatar>)
+  const lastAssistantIdx = messages.map((m) => m.role).lastIndexOf('assistant');
 
   useEffect(() => {
     const id = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
@@ -85,46 +107,56 @@ export function Chat({ transparentTop = false }: { transparentTop?: boolean }) {
     void send(text);
   };
 
+  const canSend = !!input.trim() && !loading;
+
   return (
-    <View className={`flex-1 ${transparentTop ? '' : 'bg-[#FBEFC9]'}`}>
-      <Animated.View style={kbPad} className="flex-1 bg-white rounded-t-[32px] overflow-hidden">
+    // explicit flex:1 (not just className) so the white panel fills the drawer
+    // reliably on RN-web, where nativewind flex-1 in an absolute parent is flaky
+    <View style={{ flex: 1 }} className={transparentTop ? '' : 'bg-[#FBEFC9]'}>
+      {/* White chat container — explicit white bg (nativewind bg-white on an
+          Animated.View with a style array wasn't applying, so the cream drawer
+          showed through; web is a WHITE panel with cream bubbles) */}
+      <Animated.View
+        style={[{ flex: 1, backgroundColor: '#ffffff' }, kbPad]}
+        className="rounded-t-[32px] overflow-hidden"
+      >
         <ScrollView
           ref={scrollRef}
-          className="flex-1 px-4 pt-9"
+          style={{ flex: 1 }}
+          className="px-4 pt-9"
           contentContainerStyle={{ paddingBottom: 12, gap: 12 }}
           showsVerticalScrollIndicator={false}
         >
           {messages.map((m, i) =>
             m.role === 'assistant' ? (
-              <View key={i} className="flex-row items-end gap-2 max-w-[85%]">
-                <View className="w-8 h-8 rounded-full bg-[#F2C94C] items-center justify-center">
-                  <Ionicons name="happy" size={18} color="#fff" />
-                </View>
-                <View className="rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-2.5">
-                  <Text className="text-[15px] leading-5 text-[#111]">{m.content}</Text>
+              // maxWidth on the row + shrink on the bubble so the text WRAPS
+              // within the panel instead of overflowing off the right edge
+              <View key={i} style={{ maxWidth: '85%' }} className="flex-row items-end gap-2">
+                <Avatar live={i === lastAssistantIdx && !loading} paused={!active} />
+                <View className="shrink rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-2.5">
+                  <Text className="text-[15px] leading-[21px] text-[#111]">{m.content}</Text>
                 </View>
               </View>
             ) : (
-              <View key={i} className="self-end max-w-[80%]">
-                <View className="rounded-3xl rounded-br-md bg-[#E9E9EC] px-4 py-2.5">
-                  <Text className="text-[15px] leading-5 text-[#111]">{m.content}</Text>
+              <View key={i} style={{ maxWidth: '80%' }} className="self-end">
+                <View className="shrink rounded-3xl rounded-br-md bg-[#E9E9EC] px-4 py-2.5">
+                  <Text className="text-[15px] leading-[21px] text-[#111]">{m.content}</Text>
                 </View>
               </View>
             ),
           )}
           {loading ? (
             <View className="flex-row items-end gap-2">
-              <View className="w-8 h-8 rounded-full bg-[#F2C94C] items-center justify-center">
-                <Ionicons name="happy" size={18} color="#fff" />
-              </View>
+              <Avatar live paused={!active} />
+              {/* Sized exactly like a one-line message bubble so the swap to text doesn't shift the list. */}
               <View className="rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-2.5">
-                <TypingDots />
+                <EllipsisDots />
               </View>
             </View>
           ) : null}
         </ScrollView>
 
-        <View className="px-3 pt-2 pb-3 border-t border-black/10 flex-row items-center gap-2">
+        <View className="px-3 pt-2 pb-3 border-t border-[#111]/10 flex-row items-center gap-2">
           <TextInput
             value={input}
             onChangeText={setInput}
@@ -136,9 +168,9 @@ export function Chat({ transparentTop = false }: { transparentTop?: boolean }) {
           />
           <Pressable
             onPress={onSend}
-            disabled={!input.trim() || loading}
+            disabled={!canSend}
             className={`w-11 h-11 rounded-full bg-[#F2C94C] items-center justify-center ${
-              !input.trim() || loading ? 'opacity-40' : ''
+              canSend ? '' : 'opacity-40'
             }`}
           >
             <Ionicons name="arrow-up" size={20} color="#fff" />

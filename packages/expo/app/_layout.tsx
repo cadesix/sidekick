@@ -12,6 +12,7 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
+          <Stack.Screen name="sidekick-3d" options={{ presentation: 'modal' }} />
         </Stack>
         <StatusBar style="light" />
       </SafeAreaProvider>

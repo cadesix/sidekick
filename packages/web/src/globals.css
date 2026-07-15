@@ -314,3 +314,55 @@ input::-webkit-inner-spin-button {
 input[type="number"] {
 	-moz-appearance: textfield;
 }
+
+/* ---------- Daily box burst FX (daily-box.tsx; the chest itself is a 3D
+   prop animated by the canvas) ---------- */
+
+/* white flash ring behind the burst */
+@keyframes box-flash {
+	0% {
+		transform: scale(0.2);
+		opacity: 0.95;
+	}
+	100% {
+		transform: scale(3);
+		opacity: 0;
+	}
+}
+.animate-box-flash {
+	animation: box-flash 0.5s ease-out both;
+}
+
+/* confetti chips: fly outward (per-chip --cx/--cy) with spin + fade */
+@keyframes box-confetti {
+	0% {
+		transform: translate(0, 0) rotate(0deg) scale(1);
+		opacity: 1;
+	}
+	100% {
+		transform: translate(var(--cx), var(--cy)) rotate(540deg) scale(0.6);
+		opacity: 0;
+	}
+}
+.animate-box-confetti {
+	animation: box-confetti 0.9s cubic-bezier(0.16, 0.84, 0.44, 1) both;
+}
+
+/* streak splash: the flame + count pops in with an overshoot */
+@keyframes splash-pop {
+	0% {
+		transform: scale(0.5);
+		opacity: 0;
+	}
+	60% {
+		transform: scale(1.12);
+		opacity: 1;
+	}
+	100% {
+		transform: scale(1);
+		opacity: 1;
+	}
+}
+.animate-splash-pop {
+	animation: splash-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}

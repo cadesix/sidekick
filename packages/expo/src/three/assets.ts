@@ -1,5 +1,6 @@
 import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Platform } from 'react-native';
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 // expo-three patches THREE.TextureLoader to accept an expo Asset and upload it
@@ -43,8 +44,13 @@ export async function loadGLB(moduleRef: number): Promise<GLTF> {
   const asset = Asset.fromModule(moduleRef);
   await asset.downloadAsync();
   const uri = asset.localUri ?? asset.uri;
-  const b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-  const buffer = base64ToArrayBuffer(b64);
+  // Per-platform asset read: on web the uri is an HTTP URL Metro serves, so
+  // fetch it directly (expo-file-system has no web implementation); on native
+  // there's no fetch(file://), so read the file to base64 → ArrayBuffer.
+  const buffer =
+    Platform.OS === 'web'
+      ? await fetch(uri).then((r) => r.arrayBuffer())
+      : base64ToArrayBuffer(await FileSystem.readAsStringAsync(uri, { encoding: 'base64' }));
   const loader = new GLTFLoader();
   return new Promise<GLTF>((resolve, reject) => {
     loader.parse(buffer, '', resolve, reject);

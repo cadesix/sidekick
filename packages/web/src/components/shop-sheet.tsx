@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type MutableRefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { LuX, LuCheck, LuClock3 } from "react-icons/lu";
 import type { Manifest } from "./sidekick-equipment";
 import { ItemTurntable } from "./item-turntable";
+import { CharacterPreview, type CharacterPreviewHandle } from "./character-preview";
 import { addToInventory, loadCoins, loadInventory, spendCoins, subscribeCoins } from "./sidekick-economy";
 import {
 	SLOT_LABEL,
@@ -214,6 +215,9 @@ export function ShopSheet({
 	const [coins, setCoins] = useState(loadCoins);
 	const [inventory, setInventory] = useState<Set<string>>(loadInventory);
 	useEffect(() => subscribeCoins(setCoins), []);
+	// the spinning dressing mirror at the top of the takeover
+	const previewRef = useRef<CharacterPreviewHandle | null>(null);
+	const syncPreview = () => previewRef.current?.sync();
 
 	// snapshot outfit + catalog + balances when the sheet opens
 	useEffect(() => {
@@ -259,6 +263,7 @@ export function ShopSheet({
 		if (p.variantId) c.equipVariant(p.slot, p.variantId);
 		else if (p.color) c.setColor(p.slot, p.color);
 		sync();
+		syncPreview();
 	};
 	const buy = (p: Product) => {
 		if (!spendCoins(p.cost)) return;
@@ -313,33 +318,38 @@ export function ShopSheet({
 
 	return (
 		<div
-			className={`absolute inset-x-0 bottom-0 z-40 h-[92%] transition-transform duration-300 ease-out ${
+			className={`absolute inset-0 z-40 flex flex-col bg-white transition-transform duration-300 ease-out ${
 				open ? "translate-y-0" : "pointer-events-none translate-y-full"
 			}`}
 		>
-			<div className="relative flex h-full flex-col overflow-hidden rounded-t-[28px] bg-white shadow-[0_-8px_40px_rgba(0,0,0,0.22)]">
-				{/* grabber + header with the live coin balance */}
-				<div className="relative shrink-0 px-5 pt-3">
-					<div className="mx-auto h-1.5 w-10 rounded-full bg-neutral-200" />
-					<div className="mt-2 flex items-center justify-between">
-						<div className="text-[22px] font-extrabold text-neutral-900">Shop</div>
-						<div className="flex items-center gap-3">
-							<div className="flex items-center gap-1.5 rounded-full bg-neutral-100 px-3 py-1.5 shadow-[0_2px_0_rgba(0,0,0,0.08)]">
-								<Coin className="h-4 w-4" />
-								<span className="text-[14px] font-extrabold tabular-nums text-neutral-800">{coins}</span>
-							</div>
-							<button
-								onClick={onClose}
-								aria-label="Close shop"
-								className="grid h-9 w-9 place-items-center rounded-full bg-neutral-100 text-neutral-500 active:bg-neutral-200"
-							>
-								<LuX className="h-5 w-5" strokeWidth={2.5} />
-							</button>
+			{/* sticky top: header row + the spinning dressing mirror */}
+			<div className="relative z-10 shrink-0 bg-white pt-[max(env(safe-area-inset-top),12px)]">
+				<div className="flex items-center justify-between px-5">
+					<div className="text-[22px] font-extrabold text-neutral-900">Shop</div>
+					<div className="flex items-center gap-3">
+						<div className="flex items-center gap-1.5 rounded-full bg-neutral-100 px-3 py-1.5 shadow-[0_2px_0_rgba(0,0,0,0.08)]">
+							<Coin className="h-4 w-4" />
+							<span className="text-[14px] font-extrabold tabular-nums text-neutral-800">{coins}</span>
 						</div>
+						<button
+							onClick={onClose}
+							aria-label="Close shop"
+							className="grid h-9 w-9 place-items-center rounded-full bg-neutral-100 text-neutral-500 active:bg-neutral-200"
+						>
+							<LuX className="h-5 w-5" strokeWidth={2.5} />
+						</button>
 					</div>
 				</div>
+				{/* the character, on a soft studio disc, slowly rotating */}
+				<div className="relative mx-auto mt-1 h-[190px] w-full max-w-[320px]">
+					<div className="absolute inset-x-8 bottom-3 h-8 rounded-[50%] bg-black/10 blur-md" />
+					{open ? <CharacterPreview ref={previewRef} className="relative h-full w-full" /> : null}
+				</div>
+				{/* fade so scrolling content dissolves under the sticky character */}
+				<div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 translate-y-full bg-gradient-to-b from-white to-transparent" />
+			</div>
 
-				<div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-6 pb-[max(env(safe-area-inset-bottom),20px)]">
+			<div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-6 pb-[max(env(safe-area-inset-bottom),20px)] pt-2">
 							{/* ---- Today's Shop: featured + daily rotation ---- */}
 							<div className="mt-3 flex items-center justify-between">
 								<div className="text-[16px] font-extrabold text-neutral-900">Today's Shop</div>
@@ -479,7 +489,6 @@ export function ShopSheet({
 							)}
 						</div>
 					) : null}
-				</div>
 			</div>
 		</div>
 	);

@@ -12,4 +12,22 @@ const config = getDefaultConfig(__dirname);
 // Let Metro bundle 3D model + texture assets as static files (require()-able).
 config.resolver.assetExts.push('glb', 'gltf', 'obj', 'mtl', 'bin', 'hdr');
 
-module.exports = withNativeWind(config, { input: './global.css' });
+const nwConfig = withNativeWind(config, { input: './global.css' });
+
+// zustand's ESM build (which Metro selects for web via package exports) uses
+// Vite-style `import.meta.env` in its devtools middleware — a SyntaxError in
+// Metro's classic web bundle ("Cannot use 'import.meta' outside a module").
+// zustand's CommonJS build is import.meta-free (uses process.env), so force
+// zustand to CJS on the web platform. Set AFTER withNativeWind so its resolver
+// doesn't clobber this. Native is untouched.
+const prevResolveRequest = nwConfig.resolver.resolveRequest;
+nwConfig.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (platform === 'web' && (moduleName === 'zustand' || moduleName === 'zustand/middleware')) {
+    return { type: 'sourceFile', filePath: require.resolve(moduleName) };
+  }
+  return prevResolveRequest
+    ? prevResolveRequest(context, moduleName, platform)
+    : context.resolveRequest(context, moduleName, platform);
+};
+
+module.exports = nwConfig;

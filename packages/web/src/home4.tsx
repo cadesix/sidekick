@@ -12,7 +12,9 @@ import { DevPanel } from "./components/dev-panel";
 import { applyPersonaFromUrl } from "./components/sidekick-profile";
 import { GoalsSheet } from "./components/goals-sheet";
 import { HomeDock } from "./components/home-dock";
-import { WorldMap } from "./components/world-map";
+import { AREA_BIOME, WorldMap } from "./components/world-map";
+import { SessionChat } from "./components/session-chat";
+import { sessionInProgress } from "./components/sidekick-sessions";
 import { ShopSheet } from "./components/shop-sheet";
 import type { CosmeticsControls } from "./components/sidekick-wardrobe";
 
@@ -94,6 +96,8 @@ export default function Home4() {
 
 	// set when "Talk about it" opens a goal in chat — auto-sent once on mount
 	const [chatSeed, setChatSeed] = useState<string | undefined>(undefined);
+	// the guided-session window (its own chat, per docs/guided-sessions.md)
+	const [sessionIsland, setSessionIsland] = useState<string | null>(null);
 
 	const open = () => {
 		setMounted(true);
@@ -122,8 +126,8 @@ export default function Home4() {
 			    to CHAT_FRAMING (zoomed out) when the chat drawer opens. */}
 			<SidekickCanvas
 				className="absolute inset-0"
-				framing={mapOpen ? MAP_FRAMING : shopOpen || appearanceOpen ? SHOP_FRAMING : chatOpen ? CHAT_FRAMING : HERO_FRAMING}
-				holdingPhone={chatOpen}
+				framing={mapOpen ? MAP_FRAMING : shopOpen || appearanceOpen ? SHOP_FRAMING : chatOpen || sessionIsland ? CHAT_FRAMING : HERO_FRAMING}
+				holdingPhone={chatOpen || !!sessionIsland}
 				studio={shopOpen || appearanceOpen}
 				environment={environment}
 				controlsRef={controlsRef}
@@ -185,7 +189,34 @@ export default function Home4() {
 					setEnvironment(biome);
 					closeMap();
 				}}
+				onStartSession={(island) => {
+					closeMap();
+					setSessionIsland(island);
+				}}
 			/>
+
+			{/* Guided session — its own chat window; dive out via the chevron and
+			    back in via the main chat's continue card */}
+			{sessionIsland ? (
+				<>
+					<button
+						onClick={() => setSessionIsland(null)}
+						aria-label="Leave session"
+						className="absolute inset-x-0 top-0 h-[45%] z-30"
+					/>
+					<div className="absolute inset-x-0 bottom-0 top-[45%] z-40 animate-sheet-up overflow-hidden rounded-t-[28px] shadow-[0_-8px_40px_rgba(0,0,0,0.22)]">
+						<SessionChat
+							island={sessionIsland}
+							onClose={() => setSessionIsland(null)}
+							onDone={() => {
+								const biome = AREA_BIOME[sessionIsland];
+								setSessionIsland(null);
+								if (biome) setEnvironment(biome);
+							}}
+						/>
+					</div>
+				</>
+			) : null}
 
 			{/* Shop sheet (Shop dock icon) — covers the lower half; the character is
 			    lifted into the band above so you can see the outfit change live */}
@@ -257,7 +288,24 @@ export default function Home4() {
 						>
 							<LuChevronDown className="w-5 h-5 text-[#111]/60" strokeWidth={2.5} />
 						</button>
-						<Chat transparentTop peekIn={false} seed={chatSeed} />
+						<Chat
+							transparentTop
+							peekIn={false}
+							seed={chatSeed}
+							resume={(() => {
+								const p = sessionInProgress();
+								return p
+									? {
+											label: p.def.title,
+											sub: `${Math.min(p.state.beat + 1, p.def.beats.length)} of ${p.def.beats.length}`,
+											onContinue: () => {
+												close();
+												setSessionIsland(p.def.id);
+											},
+										}
+									: undefined;
+							})()}
+						/>
 					</div>
 				</>
 			) : null}

@@ -31,18 +31,8 @@ export type GrassEnv = {
   // call per frame: t in seconds, charPos = character root world position
   update: (t: number, charPos: THREE.Vector3) => void;
   setColors: (hill: string, base: string, tip: string, rock?: string) => void;
-  // feed the blade shader the same light rig as the scene (preset-driven)
-  setLights: (rig: {
-    hemiSky: string;
-    hemiGround: string;
-    hemiIntensity: number;
-    keyColor: string;
-    keyIntensity: number;
-    fillColor: string;
-    fillIntensity: number;
-    rimColor: string;
-    rimIntensity: number;
-  }) => void;
+  // tint the cel clouds for the active scene (lit ← key light, shade/haze ← fog)
+  setClouds: (keyColor: string, fogColor: string) => void;
   relayout: (height: number, clumping: number) => void;
   // 1 = full meadow, 0 = fully faded out (Shop studio crossfade)
   setOpacity: (o: number) => void;
@@ -61,91 +51,6 @@ function makeBlade(height: number, width: number, curve: number): THREE.BufferGe
   geo.computeVertexNormals();
   return geo;
 }
-
-// Self-contained instanced blade shader: same wind sway, per-patch tone cells,
-// trample-away-from-feet and height ramp (shadow → base → tip) as the web
-// injection. Lighting reproduces MeshLambertMaterial exactly — hemisphere +
-// key/fill/rim directional irradiance × 1/π against the blade card normal —
-// driven by the same time-of-day preset as the web light rig, so the field
-// picks up the warm sunlit brightness instead of a flat constant.
-const BLADE_VERT = /* glsl */ `
-#include <common>
-#include <fog_pars_vertex>
-uniform float uTime;
-uniform vec3 uPush;
-varying float vHFrac;
-varying float vTint;
-varying float vTone;
-varying vec3 vWN;
-float hash2( vec2 p ){ return fract( sin( dot( p, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 ); }
-void main() {
-	vec3 transformed = position;
-	vHFrac = clamp( transformed.y / ${TALLEST.toFixed(3)}, 0.0, 1.0 );
-	#ifdef USE_INSTANCING
-	vec4 wpos = modelMatrix * instanceMatrix * vec4( transformed, 1.0 );
-	vWN = normalize( mat3( modelMatrix ) * ( mat3( instanceMatrix ) * normal ) );
-	#else
-	vec4 wpos = modelMatrix * vec4( transformed, 1.0 );
-	vWN = normalize( mat3( modelMatrix ) * normal );
-	#endif
-	float ph = wpos.x * 13.7 + wpos.z * 9.3;
-	// patchy tone: cells of ~1.6 units share a green → broad color patches
-	vTone = hash2( floor( wpos.xz / 1.6 ) );
-	vTint = 0.9 + 0.2 * fract( sin( ph ) * 43758.5453 );
-	float bend = vHFrac * vHFrac;
-	wpos.x += ( sin( uTime * 1.6 + ph ) * 0.7 + sin( uTime * 2.8 + ph * 1.31 ) * 0.3 ) * 0.02 * bend;
-	wpos.z += cos( uTime * 1.3 + ph * 0.7 ) * 0.012 * bend;
-	// trample: blades near the character bend away from his feet
-	vec2 away = wpos.xz - uPush.xz;
-	float push = ( 1.0 - smoothstep( 0.06, 0.42, length( away ) ) )
-		* ( 1.0 - smoothstep( 0.02, 0.18, uPush.y ) );
-	wpos.xz += normalize( away + vec2( 1e-5 ) ) * push * 0.1 * vHFrac;
-	wpos.y -= push * 0.035 * vHFrac;
-	vec4 mvPosition = viewMatrix * wpos;
-	gl_Position = projectionMatrix * mvPosition;
-	#include <fog_vertex>
-}
-`;
-
-const BLADE_FRAG = /* glsl */ `
-#include <common>
-#include <fog_pars_fragment>
-uniform vec3 uShadow;
-uniform vec3 uBase;
-uniform vec3 uTip;
-uniform float uOpacity;
-uniform vec3 uHemiSky;
-uniform vec3 uHemiGround;
-uniform vec3 uKeyColor;
-uniform vec3 uKeyDir;
-uniform vec3 uFillColor;
-uniform vec3 uFillDir;
-uniform vec3 uRimColor;
-uniform vec3 uRimDir;
-varying float vHFrac;
-varying float vTint;
-varying float vTone;
-varying vec3 vWN;
-void main() {
-	// dark base band (fake AO/shadow) → base green → bright tip
-	vec3 g = mix( uShadow, uBase, smoothstep( 0.0, 0.38, vHFrac ) );
-	g = mix( g, uTip, smoothstep( 0.45, 1.0, vHFrac ) );
-	// patchy tone shift toward warm-lime or cool-olive per patch
-	g = mix( g * vec3( 0.86, 0.94, 0.72 ), g * vec3( 1.08, 1.04, 0.86 ), vTone );
-	// MeshLambertMaterial's exact irradiance: hemisphere + Σ dotNL·light, then
-	// the Lambert BRDF's 1/π (light colors arrive premultiplied by intensity)
-	vec3 N = normalize( vWN );
-	if ( ! gl_FrontFacing ) N = -N;
-	vec3 irr = mix( uHemiGround, uHemiSky, N.y * 0.5 + 0.5 );
-	irr += uKeyColor * max( dot( N, uKeyDir ), 0.0 );
-	irr += uFillColor * max( dot( N, uFillDir ), 0.0 );
-	irr += uRimColor * max( dot( N, uRimDir ), 0.0 );
-	gl_FragColor = vec4( g * vTint * irr * RECIPROCAL_PI, uOpacity );
-	#include <tonemapping_fragment>
-	#include <colorspace_fragment>
-	#include <fog_fragment>
-}
-`;
 
 export function makeGrassEnvironment(blades = 20000, radius = 11): GrassEnv {
   const group = new THREE.Group();
@@ -173,32 +78,72 @@ export function makeGrassEnvironment(blades = 20000, radius = 11): GrassEnv {
   group.add(hill);
 
   // ---- shared cel-flat blade material ----------------------------------------
+  // web's EXACT recipe: a real MeshLambertMaterial lit by the scene's actual
+  // lights, with an onBeforeCompile injection for the wind/trample vertex math
+  // and the base→tip colour ramp. The earlier expo build hand-rolled the whole
+  // light rig in a raw ShaderMaterial (to dodge onBeforeCompile, thought
+  // unreliable on expo-gl) and drifted noticeably darker/harsher than web —
+  // this uses three's own Lambert lighting so it can't drift. Verified on Expo
+  // Web; if a future native build shows the injection misbehaving on expo-gl,
+  // that's the tradeoff to revisit.
   const uniforms: Record<string, THREE.IUniform> = {
     uTime: { value: 0 },
     uPush: { value: new THREE.Vector3(0, 0, 0) },
     uShadow: { value: new THREE.Color(GRASS_SHADOW) },
     uBase: { value: new THREE.Color(GRASS_BASE) },
     uTip: { value: new THREE.Color(GRASS_TIP) },
-    uOpacity: { value: 1 },
-    // light rig (colors premultiplied by intensity; dirs match the scene's
-    // key/fill/rim placement in renderer.ts) — overwritten by setLights()
-    uHemiSky: { value: new THREE.Color('#dcefff').multiplyScalar(0.55) },
-    uHemiGround: { value: new THREE.Color('#8a9560').multiplyScalar(0.55) },
-    uKeyColor: { value: new THREE.Color('#fff4dc').multiplyScalar(1.5) },
-    uKeyDir: { value: new THREE.Vector3(2.6, 4.4, 2.2).normalize() },
-    uFillColor: { value: new THREE.Color('#a9c9ff').multiplyScalar(0.5) },
-    uFillDir: { value: new THREE.Vector3(-4, 1.5, 3).normalize() },
-    uRimColor: { value: new THREE.Color('#ffffff').multiplyScalar(1.0) },
-    uRimDir: { value: new THREE.Vector3(2.6 * 8, 2.2, 2.2 * 8).normalize() },
-    ...(THREE.UniformsUtils.clone(THREE.UniformsLib.fog) as Record<string, THREE.IUniform>),
   };
-  const mat = new THREE.ShaderMaterial({
-    vertexShader: BLADE_VERT,
-    fragmentShader: BLADE_FRAG,
-    uniforms,
-    side: THREE.DoubleSide,
-    fog: true,
-  });
+  const mat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
+  mat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader =
+      `uniform float uTime;
+      uniform vec3 uPush;
+      varying float vHFrac;
+      varying float vTint;
+      varying float vTone;
+      float hash( vec2 p ){ return fract( sin( dot( p, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 ); }
+      ` +
+      shader.vertexShader.replace(
+        '#include <project_vertex>',
+        `vHFrac = clamp( transformed.y / ${TALLEST.toFixed(3)}, 0.0, 1.0 );
+        vec4 wpos = instanceMatrix * vec4( transformed, 1.0 );
+        float ph = wpos.x * 13.7 + wpos.z * 9.3;
+        // patchy tone: cells of ~1.6 units share a green → broad color patches
+        vTone = hash( floor( wpos.xz / 1.6 ) );
+        vTint = 0.9 + 0.2 * fract( sin( ph ) * 43758.5453 );
+        float bend = vHFrac * vHFrac;
+        wpos.x += ( sin( uTime * 1.6 + ph ) * 0.7 + sin( uTime * 2.8 + ph * 1.31 ) * 0.3 ) * 0.02 * bend;
+        wpos.z += cos( uTime * 1.3 + ph * 0.7 ) * 0.012 * bend;
+        // trample: blades near the character bend away from his feet
+        vec2 away = wpos.xz - uPush.xz;
+        float push = ( 1.0 - smoothstep( 0.06, 0.42, length( away ) ) )
+          * ( 1.0 - smoothstep( 0.02, 0.18, uPush.y ) );
+        wpos.xz += normalize( away + vec2( 1e-5 ) ) * push * 0.1 * vHFrac;
+        wpos.y -= push * 0.035 * vHFrac;
+        vec4 mvPosition = viewMatrix * wpos;
+        gl_Position = projectionMatrix * mvPosition;`,
+      );
+    shader.fragmentShader =
+      `uniform vec3 uShadow;
+      uniform vec3 uBase;
+      uniform vec3 uTip;
+      varying float vHFrac;
+      varying float vTint;
+      varying float vTone;
+      ` +
+      shader.fragmentShader.replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        // dark base band (fake AO/shadow) → base green → bright tip
+        vec3 g = mix( uShadow, uBase, smoothstep( 0.0, 0.38, vHFrac ) );
+        g = mix( g, uTip, smoothstep( 0.45, 1.0, vHFrac ) );
+        // patchy tone shift toward warm-lime or cool-olive per patch
+        g = mix( g * vec3( 0.86, 0.94, 0.72 ), g * vec3( 1.08, 1.04, 0.86 ), vTone );
+        diffuseColor.rgb = g * vTint;`,
+      );
+  };
+  mat.customProgramCacheKey = () => 'sidekick-grass';
 
   // ---- blade variants + instanced fields ---------------------------------
   const geos = [
@@ -325,12 +270,12 @@ export function makeGrassEnvironment(blades = 20000, radius = 11): GrassEnv {
   const cloudEnv = makeClouds();
   group.add(cloudEnv.group);
 
-  // every non-blade meadow material, for the studio crossfade
+  // every non-blade meadow material, for the studio crossfade (clouds fade via
+  // their own ShaderMaterial uniform, handled below)
   const fadeMats: (THREE.MeshLambertMaterial | THREE.MeshBasicMaterial | THREE.MeshStandardMaterial)[] = [
     hillMat,
     flowerMat,
     rockMat,
-    cloudEnv.material,
   ];
   let lastOpacity = 1;
 
@@ -348,36 +293,30 @@ export function makeGrassEnvironment(blades = 20000, radius = 11): GrassEnv {
       (uniforms.uShadow.value as THREE.Color).copy(uniforms.uBase.value as THREE.Color).multiplyScalar(0.55);
       if (rock) rockMat.color.set(rock);
     },
-    setLights: (rig) => {
-      (uniforms.uHemiSky.value as THREE.Color).set(rig.hemiSky).multiplyScalar(rig.hemiIntensity);
-      (uniforms.uHemiGround.value as THREE.Color).set(rig.hemiGround).multiplyScalar(rig.hemiIntensity);
-      (uniforms.uKeyColor.value as THREE.Color).set(rig.keyColor).multiplyScalar(rig.keyIntensity);
-      (uniforms.uFillColor.value as THREE.Color).set(rig.fillColor).multiplyScalar(rig.fillIntensity);
-      (uniforms.uRimColor.value as THREE.Color).set(rig.rimColor).multiplyScalar(rig.rimIntensity);
-    },
+    // tint the cel clouds for the active scene (lit tone ← key light, shade/haze ← fog)
+    setClouds: cloudEnv.setLook,
     relayout,
     setOpacity: (o) => {
       if (o === lastOpacity) return;
       lastOpacity = o;
       const fading = o < 0.999;
       group.visible = o > 0.001;
-      uniforms.uOpacity.value = o;
       mat.transparent = fading;
       mat.depthWrite = !fading; // while fading, don't occlude the studio sphere
+      mat.opacity = o;
       for (const fm of fadeMats) {
         fm.transparent = fading;
         fm.depthWrite = !fading;
         fm.opacity = o;
       }
+      cloudEnv.setOpacity(o);
       // the flower sprite is inherently transparent — keep its cutout behavior
       flowerMat.transparent = true;
     },
   };
 }
 
-// Comet-shaped low-poly cumulus clouds — same recipe/placement/material as web
-// (MeshStandardMaterial: smooth per-fragment shading; Lambert's per-vertex
-// Gouraud read as hard grey facets on the low-poly lobes).
+// Comet-shaped low-poly cumulus clouds — verbatim recipe/placement from web.
 const CLOUD_RECIPE: { x: number; y: number; s: [number, number, number] }[] = [
   // wide flat base lobes (flat underside)
   { x: -0.6, y: 0.12, s: [2.5, 0.85, 1.35] },
@@ -395,44 +334,125 @@ const CLOUD_RECIPE: { x: number; y: number; s: [number, number, number] }[] = [
   { x: -2.1, y: 0.15, s: [1.0, 0.58, 0.85] },
 ];
 
+// Stylized cel clouds — the web's exact recipe (sidekick-grass.ts). Each cloud
+// is ONE merged geometry of overlapping lobes (not a pile of sphere meshes:
+// separate meshes shade with hard grey creases at every overlap and read as a
+// "3D render"). Normals are re-aimed away from a low centre-line so the whole
+// mass shades as one soft dome; anything below y=0 is clamped flat with a
+// straight-down normal → razor-flat base in the shade tone. Unlit two-tone cel
+// split by one soft terminator, hazed toward the fog with distance. On expo-gl
+// this is a raw ShaderMaterial (onBeforeCompile is unreliable here) rather than
+// the web's MeshBasic + injection, but the GLSL is the same.
+const CLOUD_VERT = /* glsl */ `
+#include <common>
+attribute float aHaze;
+varying vec3 vCloudN;
+varying float vHaze;
+void main() {
+	vCloudN = normal; // cloud meshes never rotate, object dir == world dir
+	vHaze = aHaze;
+	vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+	gl_Position = projectionMatrix * mvPosition;
+}
+`;
+const CLOUD_FRAG = /* glsl */ `
+#include <common>
+uniform vec3 uLit;
+uniform vec3 uShade;
+uniform vec3 uHaze;
+uniform float uOpacity;
+varying vec3 vCloudN;
+varying float vHaze;
+void main() {
+	float dNL = dot( normalize( vCloudN ), normalize( vec3( 0.45, 0.75, 0.4 ) ) );
+	vec3 cel = mix( uShade, uLit, smoothstep( -0.06, 0.22, dNL ) );
+	vec3 col = mix( cel, uHaze, vHaze );
+	gl_FragColor = vec4( col, uOpacity );
+	#include <tonemapping_fragment>
+	#include <colorspace_fragment>
+}
+`;
+
 function makeClouds(): {
   group: THREE.Group;
-  material: THREE.MeshStandardMaterial;
   drift: (t: number) => void;
+  setLook: (keyColor: string, fogColor: string) => void;
+  setOpacity: (o: number) => void;
 } {
   const group = new THREE.Group();
-  const geo = new THREE.SphereGeometry(1, 8, 6); // low-poly per the spec
-  const mat = new THREE.MeshStandardMaterial({
-    color: '#fdfdfb', // bright white
-    roughness: 1,
-    metalness: 0,
-    emissive: new THREE.Color('#c4d2e2'), // cool lift so flat undersides read soft blue-grey
-    // web adds a warm PMREM env on top (envIntensity 0.786); the emissive is
-    // nudged up to stand in for that missing ambient
-    emissiveIntensity: 0.24,
-    fog: false, // background sky element — don't let the lawn fog eat it
+  const geo = new THREE.SphereGeometry(1, 12, 8);
+  const uniforms: Record<string, THREE.IUniform> = {
+    uLit: { value: new THREE.Color('#fff8ea') },
+    uShade: { value: new THREE.Color('#c3cde4') },
+    uHaze: { value: new THREE.Color('#dcecfb') },
+    uOpacity: { value: 1 },
+  };
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: CLOUD_VERT,
+    fragmentShader: CLOUD_FRAG,
+    uniforms,
+    // background sky element — no lawn fog, opaque unless the studio fade dims it
+    fog: false,
   });
+  const setLook = (keyColor: string, fogColor: string) => {
+    // lit tone leans toward the key light; the shadow tone is the fog color
+    // pulled cool+dark so the underside band stays visible against the sky
+    (uniforms.uLit.value as THREE.Color).set('#ffffff').lerp(new THREE.Color(keyColor), 0.4);
+    (uniforms.uShade.value as THREE.Color).set(fogColor).lerp(new THREE.Color('#6b79a8'), 0.3);
+    (uniforms.uHaze.value as THREE.Color).set(fogColor);
+  };
   const rand = (n: number) => {
     const v = Math.sin(n * 127.1 + 311.7) * 43758.5453;
     return v - Math.floor(v);
   };
-  const comet = (dir: number, seed: number): THREE.Group => {
-    const g = new THREE.Group();
+  // one merged geometry per cloud, with the web's re-aimed normals + flat base
+  const comet = (dir: number, seed: number): THREE.BufferGeometry => {
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const indices: number[] = [];
+    let vOff = 0;
+    const src = geo.attributes.position as THREE.BufferAttribute;
+    const srcIdx = geo.index!;
+    const n = new THREE.Vector3();
+    const e = new THREE.Vector3();
     for (let k = 0; k < CLOUD_RECIPE.length; k++) {
       const pf = CLOUD_RECIPE[k];
-      const [sx, sy, sz] = pf.s;
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.scale.set(sx * (0.9 + rand(seed + k) * 0.2), sy, sz);
-      // flat underside: centre each puff near its own half-height
-      mesh.position.set((pf.x - 2.3) * dir, sy * 0.85 + pf.y * 0.35, (rand(seed + k * 2) - 0.5) * 0.5);
-      g.add(mesh);
+      const [sx0, sy, sz] = pf.s;
+      const sx = sx0 * (0.9 + rand(seed + k) * 0.2);
+      const px = (pf.x - 2.3) * dir;
+      const py = sy * 0.85 + pf.y * 0.35;
+      const pz = (rand(seed + k * 2) - 0.5) * 0.5;
+      for (let i = 0; i < src.count; i++) {
+        const ux = src.getX(i);
+        const uy = src.getY(i);
+        const uz = src.getZ(i);
+        const x = ux * sx + px;
+        let y = uy * sy + py;
+        const z = uz * sz + pz;
+        if (y <= 0) {
+          y = 0;
+          normals.push(0, -1, 0);
+        } else {
+          n.set(ux / sx, uy / sy, uz / sz).normalize(); // lobe normal (inverse scale)
+          e.set(x * 0.45, y + 0.9, z * 0.6).normalize(); // envelope dir from low centre-line
+          n.lerp(e, 0.7).normalize();
+          normals.push(n.x, n.y, n.z);
+        }
+        positions.push(x, y, z);
+      }
+      for (let i = 0; i < srcIdx.count; i++) indices.push(srcIdx.getX(i) + vOff);
+      vOff += src.count;
     }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    g.setIndex(indices);
     return g;
   };
-  const drifters: { g: THREE.Group; baseX: number; speed: number; wrap: number }[] = [];
+  const drifters: { g: THREE.Object3D; baseX: number; speed: number; wrap: number }[] = [];
   let idx = 0;
   const place = (
-    n: number,
+    count: number,
     scMin: number,
     scMax: number,
     yMin: number,
@@ -441,13 +461,20 @@ function makeClouds(): {
     zMax: number,
     xRange: number,
   ) => {
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < count; i++) {
       const dir = rand(idx * 3 + 2) < 0.5 ? 1 : -1;
       const sc = scMin + rand(idx * 5 + 1) * (scMax - scMin);
       const x = (rand(idx * 7 + 3) - 0.5) * xRange;
       const y = yMin + rand(idx * 9 + 5) * (yMax - yMin);
       const z = zMin + rand(idx * 11 + 7) * (zMax - zMin);
-      const c = comet(dir, idx * 13 + 1);
+      const cg = comet(dir, idx * 13 + 1);
+      // atmospheric perspective: farther tiers melt toward the fog color
+      const haze = THREE.MathUtils.clamp((-z - 24) / 85, 0, 1) * 0.85;
+      cg.setAttribute(
+        'aHaze',
+        new THREE.Float32BufferAttribute(new Float32Array(cg.attributes.position.count).fill(haze), 1),
+      );
+      const c = new THREE.Mesh(cg, mat);
       c.position.set(x, y, z);
       c.scale.setScalar(sc);
       group.add(c);
@@ -464,7 +491,14 @@ function makeClouds(): {
       d.g.position.x = ((((d.baseX + t * d.speed + span / 2) % span) + span) % span) - span / 2;
     }
   };
-  return { group, material: mat, drift };
+  const setOpacity = (o: number) => {
+    uniforms.uOpacity.value = o;
+    const fading = o < 0.999;
+    mat.transparent = fading;
+    mat.depthWrite = !fading;
+    group.visible = o > 0.001;
+  };
+  return { group, drift, setLook, setOpacity };
 }
 
 // small procedural daisy: white petals around a yellow center, transparent bg.

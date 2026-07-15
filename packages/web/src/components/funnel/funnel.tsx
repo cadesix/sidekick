@@ -244,7 +244,7 @@ export function Funnel() {
 						onDone={() => {
 							setOnboardingPhase("first-chat");
 							// land on the CURRENT home (dock, map, bond, streak, shop)
-							window.location.href = "/home4";
+							window.location.href = "/home5";
 						}}
 					/>
 				);

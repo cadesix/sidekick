@@ -1,30 +1,60 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Dimensions, Pressable, ScrollView, Text, View } from 'react-native';
 import Animated, {
   Easing,
+  interpolate,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import {
+  BOND_MAX,
+  isSessionStartable,
+  nextSession,
+  sessionFor,
+} from '@sidekick/core';
+
+import { AREA_BIOME, type EnvironmentId } from '../three/biomes';
+import { loadSettings } from '../three/settings';
+import { useBond } from '../store/bond';
+import { useSidekickContext } from '../store/context';
 
 // RN port of sidekick/src/components/world-map.tsx: the full-screen "world map"
 // the dock's Map icon opens. A static 3:4 map fills the viewport height (cover)
-// and pans horizontally; each area is an unlockable region with an emoji pin;
-// tapping one slides up an Apple-Maps-style place card.
+// and pans horizontally; each island is locked behind ONE guided session.
+// Unlocked islands show an emoji badge + name pill; locked islands show the
+// "Chat to unlock" purple lock-pill. Tapping any island opens the centered
+// destination modal — travel when unlocked, the session doorway when locked.
 //
 // The web's `clip-path: circle()` reveal has no RN equivalent, so the mask is
 // built by hand: a screen-centered circular container (overflow hidden) scales
 // up from 0 while its screen-sized inner content counter-scales by 1/s, so the
 // map stays pinned to the viewport as the circle grows over it.
 
-const MAP_SRC = require('../../assets/images/world-map-day.webp');
-const MAP_ASPECT = 1080 / 1440; // art normalized to 1080×1440 (3:4)
+// time-of-day-matched quest map art (mirrors web's MAP_ART), 941×1672
+const MAP_ART = {
+  day: require('../../assets/images/world-map-quests.webp'),
+  evening: require('../../assets/images/world-map-quests-evening.webp'),
+  night: require('../../assets/images/world-map-quests-night.webp'),
+} as const;
+const BOND_ICON = require('../../assets/icons/bond.png');
+const MAP_ASPECT = 941 / 1672; // quests art dimensions
 
 const REVEAL_MS = 380;
 const CARD_DELAY = 300; // circle has visually landed by here; then the card pops
+
+// brand purple + the hard drop-shadow it presses into (web: #7A5AF8 / #5638c6)
+const PURPLE = '#7A5AF8';
+const PURPLE_SHADOW = '#5638c6';
+// bond bar fill gradient (web: from-[#ffb454] to-[#ff7a3d])
+const BOND_FILL: readonly [string, string] = ['#ffb454', '#ff7a3d'];
 
 type Area = {
   id: string;
@@ -33,18 +63,18 @@ type Area = {
   color: string; // marker badge background
   left: number; // fraction of the map image
   top: number;
-  unlocked: boolean;
+  biome: EnvironmentId; // 3D world this island travels to
   blurb: string;
 };
 
 // positions are fractions of the world-map-*.webp image (matches the web's %)
 const AREAS: Area[] = [
-  { id: 'frostpeak', name: 'Frostpeak', emoji: '❄️', color: '#cfe6ff', left: 0.28, top: 0.26, unlocked: true, blurb: 'Snow-capped summit' },
-  { id: 'pinewood', name: 'Pinewood', emoji: '🌲', color: '#8fd18f', left: 0.74, top: 0.32, unlocked: true, blurb: 'Evergreen forest' },
-  { id: 'blossom', name: 'Blossom Vale', emoji: '🌸', color: '#ffc1dd', left: 0.29, top: 0.55, unlocked: false, blurb: 'Cherry-blossom groves' },
-  { id: 'dunes', name: 'Sandy Dunes', emoji: '🏜️', color: '#f2c98a', left: 0.8, top: 0.64, unlocked: false, blurb: 'Golden desert canyon' },
-  { id: 'palmcove', name: 'Palm Cove', emoji: '🌴', color: '#7fd6b0', left: 0.18, top: 0.79, unlocked: false, blurb: 'Tropical palm shore' },
-  { id: 'ember', name: 'Mount Ember', emoji: '🌋', color: '#ff8a5b', left: 0.58, top: 0.86, unlocked: false, blurb: 'Smouldering volcano' },
+  { id: 'frostpeak', name: 'Frostpeak', emoji: '❄️', color: '#cfe6ff', left: 0.29, top: 0.19, biome: AREA_BIOME.frostpeak, blurb: 'Snow-capped summit' },
+  { id: 'pinewood', name: 'Pinewood', emoji: '🌲', color: '#8fd18f', left: 0.73, top: 0.28, biome: AREA_BIOME.pinewood, blurb: 'Evergreen forest' },
+  { id: 'blossom', name: 'Blossom Vale', emoji: '🌸', color: '#ffc1dd', left: 0.29, top: 0.49, biome: AREA_BIOME.blossom, blurb: 'Cherry-blossom groves' },
+  { id: 'dunes', name: 'Sandy Dunes', emoji: '🏜️', color: '#f2c98a', left: 0.82, top: 0.57, biome: AREA_BIOME.dunes, blurb: 'Golden desert canyon' },
+  { id: 'palmcove', name: 'Palm Cove', emoji: '🌴', color: '#7fd6b0', left: 0.24, top: 0.73, biome: AREA_BIOME.palmcove, blurb: 'Tropical palm shore' },
+  { id: 'ember', name: 'Mount Ember', emoji: '🌋', color: '#ff8a5b', left: 0.65, top: 0.79, biome: AREA_BIOME.ember, blurb: 'Smouldering volcano' },
 ];
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -53,24 +83,50 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const CIRCLE_D = 2 * 0.74 * (Math.hypot(SCREEN_W, SCREEN_H) / Math.SQRT2);
 const MAP_W = SCREEN_H * MAP_ASPECT; // cover: fills height, pans horizontally
 
+// each marker box is centered on its map point; box is large enough to never
+// clip the lock-pill / name, and box-none so only the pill takes touches
+const MARK_W = 200;
+const MARK_H = 140;
+
 export function WorldMap({
   open,
   onClose,
   onChat,
+  onTravel,
+  onStartSession,
 }: {
   open: boolean;
   onClose: () => void;
   onChat?: () => void;
+  onTravel?: (biome: EnvironmentId) => void;
+  onStartSession?: (islandId: string) => void;
 }) {
   const insets = useSafeAreaInsets();
+  // map art matches the scene's time of day (like web's MAP_ART)
+  const mapSrc = MAP_ART[loadSettings().timeOfDay] ?? MAP_ART.day;
   const [selId, setSelId] = useState<string | null>(null);
   const selected = AREAS.find((a) => a.id === selId) ?? null;
+  // the modal keeps rendering the last destination through its fade-out
+  const lastSelRef = useRef<Area | null>(null);
+  if (selected) lastSelRef.current = selected;
+  const shown = selected ?? lastSelRef.current;
 
-  // the bottom promo card pops in only after the circle mask finishes expanding
+  // live Bond score for the bars; session completion drives the locks
+  const bond = useBond((s) => s.bond);
+  const sessions = useSidekickContext((s) => s.sessions);
+  // real gating: Frostpeak is always open; every other island unlocks by
+  // completing its guided session (mirrors web isUnlocked)
+  const isUnlocked = (id: string) => id === 'frostpeak' || !!sessions[id]?.done;
+
+  // the top notification rides in with the locked-island modal
+  const notifShown = !!selected && !isUnlocked(selected.id);
+
+  // ---- reveal + pan mechanics (unchanged) ----------------------------------
   const [cardIn, setCardIn] = useState(false);
   useEffect(() => {
     if (!open) {
       setCardIn(false);
+      setSelId(null); // never reopen onto a stale destination modal
       return;
     }
     const t = setTimeout(() => setCardIn(true), CARD_DELAY);
@@ -92,7 +148,61 @@ export function WorldMap({
     transform: [{ scale: 1 / Math.max(reveal.value, 0.0001) }],
   }));
 
-  const promoStyle = useAnimatedStyle(() => ({ opacity: reveal.value }));
+  // ---- pop / drop-in animations --------------------------------------------
+  // bottom bond card: springs in (scale 0.9 → 1, fade) after the reveal lands
+  const cardV = useSharedValue(0);
+  const wantCard = cardIn && !selected;
+  useEffect(() => {
+    cardV.value = wantCard
+      ? withSpring(1, { damping: 12, stiffness: 170, mass: 0.7 })
+      : withTiming(0, { duration: 140 });
+  }, [wantCard, cardV]);
+  const cardStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(cardV.value, [0, 1], [0, 1], 'clamp'),
+    transform: [{ scale: 0.9 + 0.1 * cardV.value }],
+  }));
+
+  // destination modal: backdrop fade + card spring
+  const modalV = useSharedValue(0);
+  useEffect(() => {
+    modalV.value = selected
+      ? withSpring(1, { damping: 14, stiffness: 180, mass: 0.7 })
+      : withTiming(0, { duration: 200 });
+  }, [selected, modalV]);
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(modalV.value, [0, 1], [0, 1], 'clamp'),
+  }));
+  const modalCardStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(modalV.value, [0, 0.6, 1], [0, 1, 1], 'clamp'),
+    transform: [{ scale: 0.9 + 0.1 * Math.min(modalV.value, 1) }],
+  }));
+
+  // notification banner: drops in from above (translateY -160 → 0)
+  const notifV = useSharedValue(0);
+  useEffect(() => {
+    notifV.value = notifShown
+      ? withSpring(1, { damping: 15, stiffness: 160, mass: 0.8 })
+      : withTiming(0, { duration: 250 });
+  }, [notifShown, notifV]);
+  const notifStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: interpolate(notifV.value, [0, 1], [-160, 0], 'clamp') }],
+  }));
+
+  // the animated ping ring on the nextSession island (tailwind animate-ping)
+  const ping = useSharedValue(0);
+  useEffect(() => {
+    ping.value = withRepeat(
+      withTiming(1, { duration: 1000, easing: Easing.bezier(0, 0, 0.2, 1) }),
+      -1,
+      false,
+    );
+  }, [ping]);
+  const pingStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(ping.value, [0, 1], [0.45, 0]),
+    transform: [{ scale: interpolate(ping.value, [0, 1], [1, 1.9]) }],
+  }));
+
+  const nextId = nextSession(sessions)?.id;
 
   return (
     <View
@@ -127,8 +237,10 @@ export function WorldMap({
           ]}
         >
           {/* sky→sea gradient backs the letterbox bands while the art loads */}
-          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: SCREEN_H / 2, backgroundColor: '#9d8fc2' }} />
-          <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: SCREEN_H / 2, backgroundColor: '#6991ac' }} />
+          <LinearGradient
+            colors={['#b795c9', '#3e97d9']}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          />
 
           {/* the 3:4 map fills the viewport height; it's wider than the screen,
               so it pans horizontally and opens centered */}
@@ -139,77 +251,143 @@ export function WorldMap({
           >
             <Pressable onPress={() => setSelId(null)} style={{ width: MAP_W, height: SCREEN_H }}>
               <Image
-                source={MAP_SRC}
+                source={mapSrc}
                 style={{ width: MAP_W, height: SCREEN_H }}
                 contentFit="cover"
               />
-              {AREAS.map((a) => (
-                <Pressable
-                  key={a.id}
-                  onPress={() => setSelId(a.id)}
-                  accessibilityLabel={a.name}
-                  // static style only: css-interop drops function-form Pressable styles
-                  style={{
-                    position: 'absolute',
-                    left: a.left * MAP_W - 60,
-                    top: a.top * SCREEN_H - 18,
-                    width: 120,
-                    alignItems: 'center',
-                    gap: 4,
-                  }}
-                >
+              {AREAS.map((a) => {
+                const unlocked = isUnlocked(a.id);
+                const session = sessionFor(a.id);
+                const startable = isSessionStartable(sessions, a.id);
+                const isNext = nextId === a.id;
+                // low-map islands flip their card ABOVE the pin so nothing clips
+                // at the bottom edge on tall (9:16) screens
+                const cardAbove = a.top > 0.6;
+                return (
                   <View
+                    key={a.id}
+                    pointerEvents="box-none"
                     style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 18,
-                      backgroundColor: a.color,
+                      position: 'absolute',
+                      left: a.left * MAP_W - MARK_W / 2,
+                      top: a.top * SCREEN_H - MARK_H / 2,
+                      width: MARK_W,
+                      height: MARK_H,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      borderWidth: 2,
-                      borderColor: '#fff',
-                      opacity: a.unlocked ? 1 : 0.8,
-                      shadowColor: '#000',
-                      shadowOffset: { width: 0, height: 2 },
-                      shadowOpacity: 0.4,
-                      shadowRadius: 3.5,
-                      elevation: 4,
                     }}
                   >
-                    <Text style={{ fontSize: 17 }}>{a.emoji}</Text>
-                    {!a.unlocked ? (
-                      <View
-                        style={{
-                          position: 'absolute',
-                          bottom: -4,
-                          right: -4,
-                          width: 16,
-                          height: 16,
-                          borderRadius: 8,
-                          backgroundColor: '#262626',
-                          borderWidth: 1.5,
-                          borderColor: '#fff',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <Ionicons name="lock-closed" size={9} color="#fff" />
-                      </View>
-                    ) : null}
+                    <Pressable
+                      onPress={() => setSelId(a.id)}
+                      accessibilityLabel={a.name}
+                      style={{
+                        flexDirection: cardAbove ? 'column-reverse' : 'column',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      {unlocked ? (
+                        <>
+                          <View
+                            style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: 18,
+                              backgroundColor: a.color,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              borderWidth: 2,
+                              borderColor: '#fff',
+                              shadowColor: '#000',
+                              shadowOffset: { width: 0, height: 2 },
+                              shadowOpacity: 0.4,
+                              shadowRadius: 3.5,
+                              elevation: 4,
+                            }}
+                          >
+                            <Text style={{ fontSize: 17 }}>{a.emoji}</Text>
+                          </View>
+                          <View
+                            style={{
+                              borderRadius: 999,
+                              backgroundColor: 'rgba(255,255,255,0.95)',
+                              paddingHorizontal: 8,
+                              paddingVertical: 2,
+                              overflow: 'hidden',
+                              shadowColor: '#000',
+                              shadowOffset: { width: 0, height: 1 },
+                              shadowOpacity: 0.3,
+                              shadowRadius: 4,
+                              elevation: 2,
+                            }}
+                          >
+                            <Text
+                              numberOfLines={1}
+                              style={{ fontSize: 11, fontWeight: '700', color: '#262626' }}
+                            >
+                              {a.name}
+                            </Text>
+                          </View>
+                        </>
+                      ) : session ? (
+                        // locked: the lock icon IS the marker (no emoji circle) —
+                        // "Chat to unlock" primary, the island name secondary
+                        <View style={{ position: 'relative' }}>
+                          {isNext ? (
+                            <Animated.View
+                              pointerEvents="none"
+                              style={[
+                                pingStyle,
+                                {
+                                  position: 'absolute',
+                                  top: -6,
+                                  left: -6,
+                                  right: -6,
+                                  bottom: -6,
+                                  borderRadius: 20,
+                                  backgroundColor: 'rgba(122,90,248,0.45)',
+                                },
+                              ]}
+                            />
+                          ) : null}
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 8,
+                              borderRadius: 16,
+                              paddingHorizontal: 12,
+                              paddingVertical: 8,
+                              backgroundColor: startable ? PURPLE : 'rgba(0,0,0,0.45)',
+                              shadowColor: startable ? PURPLE_SHADOW : '#000',
+                              shadowOffset: { width: 0, height: startable ? 3 : 1 },
+                              shadowOpacity: startable ? 1 : 0.3,
+                              shadowRadius: startable ? 0 : 4,
+                              elevation: startable ? 5 : 3,
+                            }}
+                          >
+                            <Ionicons name="lock-closed" size={15} color="#fff" />
+                            <View>
+                              <Text style={{ fontSize: 12, fontWeight: '800', color: '#fff' }}>
+                                Chat to unlock
+                              </Text>
+                              <Text
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: '600',
+                                  color: startable ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.6)',
+                                }}
+                              >
+                                {a.name}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      ) : null}
+                    </Pressable>
                   </View>
-                  <Text
-                    numberOfLines={1}
-                    className="rounded-full px-2 py-0.5 text-[11px] font-semibold overflow-hidden"
-                    style={
-                      a.unlocked
-                        ? { backgroundColor: 'rgba(255,255,255,0.95)', color: '#262626' }
-                        : { backgroundColor: 'rgba(0,0,0,0.5)', color: 'rgba(255,255,255,0.8)' }
-                    }
-                  >
-                    {a.name}
-                  </Text>
-                </Pressable>
-              ))}
+                );
+              })}
             </Pressable>
           </ScrollView>
 
@@ -237,100 +415,204 @@ export function WorldMap({
             </View>
           </View>
 
-          {/* Default bottom prompt — styled like an incoming chat message from
-              the sidekick. Hides when a marker's place card takes over. Tapping
-              it starts a chat (how you unlock areas). */}
+          {/* Default bottom card — the Bond progress bar. Hides when a marker's
+              destination modal takes over. Tapping it starts a chat. */}
           {cardIn && !selected ? (
             <Animated.View
-              style={[promoStyle, { position: 'absolute', left: 12, right: 12, bottom: Math.max(insets.bottom, 12) }]}
+              style={[cardStyle, { position: 'absolute', left: 12, right: 12, bottom: Math.max(insets.bottom, 12) }]}
             >
               <Pressable
                 onPress={onChat}
-                className="flex-row items-end gap-2.5 p-3"
-                // static style only: css-interop drops function-form Pressable styles
-                style={{
+                style={({ pressed }) => ({
                   borderRadius: 26,
                   backgroundColor: 'rgba(255,255,255,0.85)',
+                  padding: 16,
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
                   shadowColor: '#000',
                   shadowOffset: { width: 0, height: 10 },
                   shadowOpacity: 0.28,
                   shadowRadius: 20,
                   elevation: 10,
-                }}
+                })}
               >
-                <View className="w-11 h-11 rounded-full bg-[#F2C94C] items-center justify-center">
-                  <Ionicons name="happy" size={24} color="#fff" />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={{ flex: 1, height: 10, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+                    <LinearGradient
+                      colors={BOND_FILL}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={{ height: '100%', width: `${(bond / BOND_MAX) * 100}%`, borderRadius: 999 }}
+                    />
+                  </View>
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: '#111' }}>{bond}%</Text>
                 </View>
-                <View className="rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-3 flex-1">
-                  <Text className="text-[17px] font-extrabold leading-tight text-[#111]">
-                    Explore the World
-                  </Text>
-                  <Text className="mt-0.5 text-[14px] leading-snug text-[#111]/60">
-                    Unlock new areas by chatting with me
-                  </Text>
-                </View>
+                <Text style={{ marginTop: 8, textAlign: 'center', fontSize: 14, fontWeight: '600', color: 'rgba(17,17,17,0.6)' }}>
+                  Grow our bond to explore the world
+                </Text>
               </Pressable>
             </Animated.View>
           ) : null}
 
-          {/* Apple-Maps-style place card */}
-          {selected ? (
-            <View
-              style={{ position: 'absolute', left: 12, right: 12, bottom: Math.max(insets.bottom, 12) }}
+          {/* Destination modal — centered, minimal: bond progress toward the
+              unlock (when locked), one pill CTA. Backdrop tap dismisses. */}
+          <View
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}
+            pointerEvents={selected ? 'auto' : 'none'}
+          >
+            <Animated.View
+              style={[backdropStyle, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.3)' }]}
             >
-              <View
-                className="rounded-[26px] bg-white p-4"
-                style={{
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 10 },
-                  shadowOpacity: 0.35,
-                  shadowRadius: 20,
-                  elevation: 12,
-                }}
+              <Pressable accessibilityLabel="Dismiss" onPress={() => setSelId(null)} style={{ flex: 1 }} />
+            </Animated.View>
+
+            {shown ? (
+              <Animated.View
+                style={[
+                  modalCardStyle,
+                  {
+                    width: SCREEN_W - 64,
+                    maxWidth: 384,
+                    borderRadius: 28,
+                    backgroundColor: '#fff',
+                    padding: 24,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 20 },
+                    shadowOpacity: 0.35,
+                    shadowRadius: 40,
+                    elevation: 24,
+                  },
+                ]}
               >
-                <View className="flex-row items-center gap-3">
-                  <View
-                    className="h-12 w-12 items-center justify-center rounded-2xl"
-                    style={{ backgroundColor: selected.color }}
-                  >
-                    <Text style={{ fontSize: 24 }}>{selected.emoji}</Text>
-                  </View>
-                  <View className="flex-1">
-                    <Text numberOfLines={1} className="text-[17px] font-bold text-neutral-900">
-                      {selected.name}
+                {!isUnlocked(shown.id) ? (
+                  <>
+                    {/* bond score, up top */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                      <Image source={BOND_ICON} style={{ width: 20, height: 20 }} contentFit="contain" />
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#737373', fontVariant: ['tabular-nums'] }}>
+                        bond score
+                      </Text>
+                      <Text style={{ marginLeft: 'auto', fontSize: 13, fontWeight: '700', color: '#262626', fontVariant: ['tabular-nums'] }}>
+                        {bond}%
+                      </Text>
+                    </View>
+                    <View style={{ height: 10, width: '100%', borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+                      <LinearGradient
+                        colors={BOND_FILL}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={{ height: '100%', width: `${(bond / BOND_MAX) * 100}%`, borderRadius: 999 }}
+                      />
+                    </View>
+
+                    <Text style={{ marginTop: 28, textAlign: 'center', fontSize: 19, lineHeight: 24, fontWeight: '800', color: '#171717' }}>
+                      Start a Guided Chat to Unlock
                     </Text>
-                    <Text numberOfLines={1} className="text-sm text-neutral-500">
-                      {selected.blurb} · {selected.unlocked ? 'Unlocked' : 'Locked'}
+
+                    <Pressable
+                      onPress={() => {
+                        const startable = isSessionStartable(sessions, shown.id);
+                        const target = startable ? sessionFor(shown.id) : nextSession(sessions);
+                        setSelId(null);
+                        if (target) onStartSession?.(target.id);
+                      }}
+                      style={({ pressed }) => ({
+                        marginTop: 16,
+                        borderRadius: 999,
+                        backgroundColor: PURPLE,
+                        paddingVertical: 14,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transform: [{ translateY: pressed ? 3 : 0 }],
+                        shadowColor: PURPLE_SHADOW,
+                        shadowOffset: { width: 0, height: pressed ? 1 : 4 },
+                        shadowOpacity: 1,
+                        shadowRadius: 0,
+                        elevation: 6,
+                      })}
+                    >
+                      <Text style={{ fontSize: 16, fontWeight: '700', color: '#fff' }}>Chat</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  // travel confirmation: the big question + a chunky purple pill
+                  // with a hard (0-blur) drop shadow it presses down into
+                  <>
+                    <Text style={{ paddingHorizontal: 8, paddingVertical: 32, textAlign: 'center', fontSize: 26, lineHeight: 30, fontWeight: '800', color: '#171717' }}>
+                      Travel to {shown.name}?
                     </Text>
-                  </View>
-                  <Pressable
-                    onPress={() => setSelId(null)}
-                    accessibilityLabel="Dismiss"
-                    className="h-7 w-7 items-center justify-center rounded-full bg-neutral-200"
-                  >
-                    <Ionicons name="close" size={16} color="#737373" />
-                  </Pressable>
-                </View>
-                <Pressable
-                  disabled={!selected.unlocked}
-                  className={`mt-4 flex-row items-center justify-center gap-2 rounded-2xl py-3 ${
-                    selected.unlocked ? 'bg-[#0a84ff]' : 'bg-neutral-100'
-                  }`}
-                >
-                  {!selected.unlocked ? (
-                    <Ionicons name="lock-closed" size={16} color="#a3a3a3" />
-                  ) : null}
-                  <Text
-                    className={`text-[15px] font-semibold ${
-                      selected.unlocked ? 'text-white' : 'text-neutral-400'
-                    }`}
-                  >
-                    {selected.unlocked ? 'Explore' : 'Locked'}
-                  </Text>
-                </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        const biome = shown.biome;
+                        setSelId(null);
+                        onTravel?.(biome);
+                      }}
+                      style={({ pressed }) => ({
+                        borderRadius: 999,
+                        backgroundColor: PURPLE,
+                        paddingVertical: 16,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transform: [{ translateY: pressed ? 4 : 0 }],
+                        shadowColor: PURPLE_SHADOW,
+                        shadowOffset: { width: 0, height: pressed ? 1 : 5 },
+                        shadowOpacity: 1,
+                        shadowRadius: 0,
+                        elevation: 6,
+                      })}
+                    >
+                      <Text style={{ fontSize: 17, fontWeight: '700', color: '#fff' }}>Continue</Text>
+                    </Pressable>
+                  </>
+                )}
+              </Animated.View>
+            ) : null}
+          </View>
+
+          {/* Notification banner — drops in from the top in sync with the locked
+              island modal, like a push from the sidekick. */}
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              notifStyle,
+              {
+                position: 'absolute',
+                top: Math.max(insets.top, 12),
+                left: 12,
+                right: 12,
+                alignItems: 'center',
+                zIndex: 30,
+              },
+            ]}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+                width: '100%',
+                maxWidth: 384,
+                borderRadius: 22,
+                backgroundColor: 'rgba(255,255,255,0.9)',
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 12 },
+                shadowOpacity: 0.28,
+                shadowRadius: 34,
+                elevation: 14,
+              }}
+            >
+              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#F2C94C', alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="happy" size={22} color="#fff" />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#171717' }}>Sidekick</Text>
+                <Text style={{ fontSize: 13, fontWeight: '500', lineHeight: 17, color: '#525252' }}>
+                  I need to get to know you better before we can travel that far
+                </Text>
               </View>
             </View>
-          ) : null}
+          </Animated.View>
         </Animated.View>
       </Animated.View>
     </View>

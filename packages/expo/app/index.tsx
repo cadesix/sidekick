@@ -2,9 +2,25 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { Dimensions, Pressable, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AppearanceSheet } from '../src/components/AppearanceSheet';
+import { BondBadge } from '../src/components/BondBadge';
+import { BoxRewardsModal, GroundBox, StreakSplash } from '../src/components/DailyBox';
+import { DevPanel } from '../src/components/DevPanel';
 import { Chat } from '../src/components/Chat';
+import { GoalsSheet } from '../src/components/GoalsSheet';
+import { StreakModal } from '../src/components/StreakModal';
+import { SessionChat } from '../src/components/SessionChat';
+import { SidekickAvatar } from '../src/components/SidekickAvatar';
+import { SpeechBubble } from '../src/components/SpeechBubble';
+import { StreakPill } from '../src/components/StreakPill';
 import { HomeDock } from '../src/components/HomeDock';
+import { AREA_BIOME, type EnvironmentId } from '../src/three/biomes';
+import { useDailyBox } from '../src/store/dailyBox';
+import { speak } from '../src/store/speech';
+import { useStreak } from '../src/store/streak';
+import { boxTier, type BoxReward } from '@sidekick/core';
 import { SettingsSheet } from '../src/components/SettingsSheet';
 import { ShopSheet } from '../src/components/ShopSheet';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
@@ -27,9 +43,9 @@ const HERO_FRAMING: Framing = {
 };
 
 const CHAT_FRAMING: Framing = {
-  pos: [0, 1.0, 7.7],
-  target: [0, -0.55, 0],
-  fov: 31,
+  pos: [0, 1.6, 13],
+  target: [0, -2.0, 0],
+  fov: 30,
 };
 
 // Opening the map: the camera rapidly rockets up + back (pull away from the
@@ -49,8 +65,19 @@ const SHOP_FRAMING: Framing = {
   fov: 26,
 };
 
+// arrival line spoken/pushed when travelling to each world (verbatim from home5)
+const TRAVEL_LINES: Record<EnvironmentId, string> = {
+  meadow: 'ahh home sweet meadow 🌼',
+  snow: "brrr it's FREEZING up here ❄️ worth it for the view though",
+  forest: 'ooh it smells so good here 🌲 pine trees hit different',
+  blossom: 'petals everywhere!! 🌸 this might be my favorite spot',
+  desert: "oh it's HOT here 🥵 like, really hot",
+  tropical: 'beach day!!! 🌴 you can literally hear the waves',
+  volcano: 'uhh is that lava?? 🌋 this is fine. we’re fine.',
+};
+
 const { height: SCREEN_H } = Dimensions.get('window');
-const DRAWER_TOP = SCREEN_H * 0.45; // drawer covers the lower 55%
+const DRAWER_TOP = SCREEN_H * 0.2; // chat drawer covers the lower 80% (web: top-[20%])
 
 export default function Home() {
   const [open, setOpen] = useState(false);
@@ -60,6 +87,15 @@ export default function Home() {
   const [mapShown, setMapShown] = useState(false);
   const [shopOpen, setShopOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // world environment (map travel) + the active guided session (if any)
+  const [environment, setEnvironment] = useState<EnvironmentId>('meadow');
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  // daily-box flow: streak splash → ground chest → rewards modal → done
+  const [boxStage, setBoxStage] = useState<'init' | 'streak' | 'ground' | 'rewards' | 'done'>('init');
+  const [boxReward, setBoxReward] = useState<BoxReward | null>(null);
+  const [goalsOpen, setGoalsOpen] = useState(false);
+  const [streakModalOpen, setStreakModalOpen] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   // imperative handle the canvas publishes once cosmetics are ready; the Shop
   // uses it to dress the live character
   const [controls, setControls] = useState<CosmeticsControls | null>(null);
@@ -71,12 +107,58 @@ export default function Home() {
     hydrateSettings().then(() => setSettings(loadSettings()));
   }, []);
   const loading = useChat((s) => s.loading);
+  const unread = useChat((s) => s.unread);
+  const clearUnread = useChat((s) => s.clearUnread);
+  const pushMsg = useChat((s) => s.pushSidekickMessage);
+
+  // travel to a biome: swap the 3D world, close the map, and drop an arrival
+  // line (badge now, bubble after the map reveal shrinks so it pops over the
+  // visible character) — mirrors home5.tsx onTravel.
+  const travelTo = (biome: EnvironmentId) => {
+    setEnvironment(biome);
+    closeMap();
+    const line = TRAVEL_LINES[biome];
+    if (line) {
+      pushMsg(line);
+      setTimeout(() => speak(line), 650);
+    }
+  };
+  const insets = useSafeAreaInsets();
+
+  // count today's streak once the store has hydrated (idempotent per local day)
+  const streakHydrated = useStreak((s) => s.hydrated);
+  const streakCount = useStreak((s) => s.count);
+  const dailyBoxHydrated = useDailyBox((s) => s.hydrated);
+  useEffect(() => {
+    if (streakHydrated) useStreak.getState().touch();
+  }, [streakHydrated]);
+  // once streak + box have hydrated, open the daily flow if today's box is unclaimed
+  useEffect(() => {
+    if (boxStage === 'init' && streakHydrated && dailyBoxHydrated) {
+      setBoxStage(useDailyBox.getState().hasBox() ? 'streak' : 'done');
+    }
+  }, [boxStage, streakHydrated, dailyBoxHydrated]);
 
   // 0 = closed (drawer off-screen), 1 = open
   const progress = useSharedValue(0);
 
+  // head-tracked overlay position (bond badge / speech bubble); the canvas
+  // writes these every frame from the head-bone projection
+  const overheadX = useSharedValue(0);
+  const overheadY = useSharedValue(0);
+  const overheadVisible = useSharedValue(0);
+  const overhead = { x: overheadX, y: overheadY, visible: overheadVisible };
+
+  // ground-anchor projection for the daily loot chest (canvas writes the chest's
+  // on-screen base every frame; GroundBox pins its tap target/FX over it)
+  const groundX = useSharedValue(0);
+  const groundY = useSharedValue(0);
+  const groundVisible = useSharedValue(0);
+  const ground = { x: groundX, y: groundY, visible: groundVisible };
+
   const openDrawer = () => {
     setOpen(true);
+    clearUnread();
     progress.value = withTiming(1, { duration: 380 });
   };
   const closeDrawer = () => {
@@ -109,7 +191,7 @@ export default function Home() {
           framing={
             mapOpen
               ? MAP_FRAMING
-              : shopOpen
+              : shopOpen || appearanceOpen
                 ? SHOP_FRAMING
                 : open || settingsOpen
                   ? CHAT_FRAMING
@@ -117,10 +199,42 @@ export default function Home() {
           }
           holdingPhone={open}
           talking={loading}
-          studio={shopOpen}
+          studio={shopOpen || appearanceOpen}
+          environment={environment}
           onControls={setControls}
           onController={setController}
+          overhead={overhead}
+          ground={ground}
+          dailyBox={boxStage === 'ground' || boxStage === 'rewards' ? boxTier(streakCount) : null}
         />
+      ) : null}
+
+      {/* bond score floating over the character's head (hidden while a full
+          surface covers the scene) */}
+      {settings ? (
+        <BondBadge overhead={overhead} hidden={mapShown || shopOpen || open || settingsOpen}>
+          <SpeechBubble />
+        </BondBadge>
+      ) : null}
+
+      {/* top-right cluster: appearance + goals + streak (hidden under surfaces) */}
+      {!mapShown && !shopOpen && !open ? (
+        <View
+          style={{ position: 'absolute', top: insets.top + 8, right: 16, zIndex: 25, flexDirection: 'row', gap: 8, alignItems: 'center' }}
+          pointerEvents="box-none"
+        >
+          <Pressable
+            onPress={() => setAppearanceOpen(true)}
+            accessibilityLabel="Appearance"
+            style={{ height: 40, width: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+          >
+            {/* the live head avatar IS the closet button (mirrors web home5).
+                Freeze it while the Closet is open so its GL context isn't
+                competing with the sheet's image load + studio crossfade. */}
+            <SidekickAvatar size={40} style={{ transform: [{ scale: 1.1 }] }} paused={appearanceOpen} />
+          </Pressable>
+          <StreakPill onPress={() => setStreakModalOpen(true)} />
+        </View>
       ) : null}
 
       {/* Tap the character band above the drawer to close */}
@@ -135,10 +249,11 @@ export default function Home() {
           full-screen map reveal hides it */}
       <HomeDock
         hidden={mapShown}
+        unread={unread}
         onMessages={openDrawer}
         onShop={() => setShopOpen(true)}
         onMap={openMap}
-        onSettings={() => setSettingsOpen(true)}
+        onGoals={() => setGoalsOpen(true)}
       />
 
       {/* Full-screen world map — scales in from centre while the camera pulls
@@ -150,7 +265,52 @@ export default function Home() {
           closeMap();
           openDrawer();
         }}
+        onTravel={travelTo}
+        onStartSession={(id) => {
+          closeMap();
+          setSessionId(id);
+        }}
       />
+
+      {/* Guided session — full overlay; on completion travel to its island */}
+      {sessionId ? (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 60 }}>
+          <SessionChat
+            sessionId={sessionId}
+            onClose={() => setSessionId(null)}
+            onDone={() => {
+              const biome = AREA_BIOME[sessionId];
+              setSessionId(null);
+              if (biome) travelTo(biome);
+            }}
+          />
+        </View>
+      ) : null}
+
+      {/* Daily-box flow (home only): streak splash → ground chest → rewards */}
+      {settings && !mapShown && !shopOpen && !open && !settingsOpen && !sessionId ? (
+        <>
+          {boxStage === 'streak' ? (
+            <StreakSplash streak={streakCount} onDone={() => setBoxStage('ground')} />
+          ) : null}
+          {boxStage === 'ground' ? (
+            <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 30 }} pointerEvents="box-none">
+              <GroundBox
+                ground={ground}
+                onTap={() => controller?.popDailyBox()}
+                onOpened={() => {
+                  const db = useDailyBox.getState();
+                  setBoxReward(db.claim(streakCount) ?? db.preview(streakCount));
+                  setBoxStage('rewards');
+                }}
+              />
+            </View>
+          ) : null}
+          {boxStage === 'rewards' && boxReward ? (
+            <BoxRewardsModal reward={boxReward} onCollect={() => setBoxStage('done')} />
+          ) : null}
+        </>
+      ) : null}
 
       {/* Shop sheet — covers the lower half; tap the character band above to
           close */}
@@ -162,6 +322,28 @@ export default function Home() {
         />
       ) : null}
       <ShopSheet open={shopOpen} onClose={() => setShopOpen(false)} controls={controls} />
+
+      {/* goals, streak ladder, appearance/closet */}
+      <GoalsSheet
+        open={goalsOpen}
+        onClose={() => setGoalsOpen(false)}
+        onTalk={() => {
+          setGoalsOpen(false);
+          openDrawer();
+        }}
+      />
+      <StreakModal open={streakModalOpen} onClose={() => setStreakModalOpen(false)} />
+      {settings ? (
+        <AppearanceSheet
+          open={appearanceOpen}
+          onClose={() => setAppearanceOpen(false)}
+          controls={controls}
+          onSkinChange={(next) => {
+            setSettings(next);
+            controller?.applySettings(next);
+          }}
+        />
+      ) : null}
 
       {/* Look-dev settings sheet — compact so the scene stays visible above it;
           every control tick applies to the live scene */}
@@ -186,7 +368,21 @@ export default function Home() {
       <Animated.View
         style={[
           drawerStyle,
-          { position: 'absolute', left: 0, right: 0, top: DRAWER_TOP, bottom: 0, zIndex: 40 },
+          // explicit height (not bottom:0) so the Chat's flex-1 white panel
+          // fills the drawer on RN-web (top+bottom doesn't size flex children).
+          // cream bg + rounded top mirror web's drawer (bg-[#FBEFC9] rounded-t-[28px]).
+          {
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: DRAWER_TOP,
+            height: SCREEN_H - DRAWER_TOP,
+            zIndex: 40,
+            backgroundColor: '#FBEFC9',
+            borderTopLeftRadius: 28,
+            borderTopRightRadius: 28,
+            overflow: 'hidden',
+          },
         ]}
         pointerEvents={open ? 'auto' : 'none'}
       >
@@ -199,8 +395,11 @@ export default function Home() {
         >
           <Ionicons name="chevron-down" size={20} color="rgba(17,17,17,0.6)" />
         </Pressable>
-        <Chat transparentTop />
+        <Chat transparentTop active={open} />
       </Animated.View>
+
+      {/* DEV state controls (top-left chip → panel); renders nothing in prod */}
+      <DevPanel />
     </View>
   );
 }

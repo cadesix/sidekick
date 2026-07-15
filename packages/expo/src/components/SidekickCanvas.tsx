@@ -2,9 +2,22 @@ import Constants from 'expo-constants';
 import { GLView, type ExpoWebGLRenderingContext } from 'expo-gl';
 import { useEffect, useRef } from 'react';
 import { StyleSheet, View, type GestureResponderEvent, type ViewStyle } from 'react-native';
+import type { SharedValue } from 'react-native-reanimated';
 
+import type { BoxTier } from '@sidekick/core';
+
+import type { EnvironmentId } from '../three/biomes';
 import { createSidekickRenderer, type Framing, type SidekickController } from '../three/renderer';
 import type { CosmeticsControls } from '../three/wardrobe';
+
+// Head-tracked overlay target: the canvas writes the head-bone's on-screen
+// position (layout px) + visibility into these SharedValues every frame; a
+// head-tracked overlay (bond badge, speech bubble) reads them via useAnimatedStyle.
+export type OverheadTarget = {
+  x: SharedValue<number>;
+  y: SharedValue<number>;
+  visible: SharedValue<number>; // 1 = in front of camera, 0 = behind/hidden
+};
 
 // RN analog of sidekick/src/components/sidekick-canvas.tsx: a GLView hosting the
 // imperative THREE scene. Props (framing, holdingPhone, studio) are pushed to
@@ -22,8 +35,12 @@ export function SidekickCanvas({
   holdingPhone,
   talking,
   studio,
+  environment,
   onControls,
   onController,
+  overhead,
+  dailyBox,
+  ground,
 }: {
   style?: ViewStyle;
   framing: Framing;
@@ -31,9 +48,16 @@ export function SidekickCanvas({
   talking?: boolean;
   // Shop "studio": hide the meadow and show the character on a clean backdrop
   studio?: boolean;
+  // world environment (map travel): 'meadow' | biome id
+  environment?: EnvironmentId;
   onControls?: (c: CosmeticsControls | null) => void;
   // the raw scene controller (Settings sheet uses applySettings for live look-dev)
   onController?: (c: SidekickController | null) => void;
+  // head-tracked overlay position sink (bond badge / speech bubble)
+  overhead?: OverheadTarget;
+  // daily loot chest tier (spawns the 3D chest) + its ground-anchor sink
+  dailyBox?: BoxTier | null;
+  ground?: OverheadTarget;
 }) {
   const controller = useRef<SidekickController | null>(null);
   // keep the latest callbacks without re-creating the GL scene
@@ -41,14 +65,30 @@ export function SidekickCanvas({
   onControlsRef.current = onControls;
   const onControllerRef = useRef(onController);
   onControllerRef.current = onController;
+  const overheadRef = useRef(overhead);
+  overheadRef.current = overhead;
+  const groundRef = useRef(ground);
+  groundRef.current = ground;
   const size = useRef({ w: 1, h: 1 });
+
+  // NDC (-1..1, +y up) → layout px (top-left origin)
+  const project = (t: OverheadTarget | undefined, nx: number, ny: number, visible: boolean) => {
+    if (!t) return;
+    t.x.value = (nx * 0.5 + 0.5) * size.current.w;
+    t.y.value = (-ny * 0.5 + 0.5) * size.current.h;
+    t.visible.value = visible ? 1 : 0;
+  };
 
   const onContextCreate = (gl: ExpoWebGLRenderingContext) => {
     controller.current = createSidekickRenderer(gl, {
       framing,
       holdingPhone,
       studio,
+      environment,
+      dailyBox,
       onControls: (c) => onControlsRef.current?.(c),
+      onOverhead: (nx, ny, visible) => project(overheadRef.current, nx, ny, visible),
+      onGround: (nx, ny, visible) => project(groundRef.current, nx, ny, visible),
     });
     onControllerRef.current?.(controller.current);
   };
@@ -75,8 +115,16 @@ export function SidekickCanvas({
   }, [talking]);
 
   useEffect(() => {
+    if (environment) controller.current?.setEnvironment(environment);
+  }, [environment]);
+
+  useEffect(() => {
     controller.current?.setStudio(!!studio);
   }, [studio]);
+
+  useEffect(() => {
+    controller.current?.setDailyBox(dailyBox ?? null);
+  }, [dailyBox]);
 
   useEffect(() => {
     return () => {

@@ -34,15 +34,23 @@ export const BondBadge = forwardRef<HTMLDivElement, { children?: React.ReactNode
 				className="flex flex-col items-center gap-1 transition-transform duration-300"
 				style={{ transform: pop ? "scale(1.18)" : "scale(1)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}
 			>
-				<div className="flex items-center gap-1.5 rounded-full bg-white/85 px-3 py-1 shadow-[0_2px_10px_rgba(0,0,0,0.18)] backdrop-blur-sm">
-					<span className="text-[13px]">🧡</span>
-					<span className="text-[12px] font-extrabold tracking-wide text-[#111]">
-						Your Bond <span className="tabular-nums">{bond}%</span>
+				{/* heart + label float directly on the scene (no pill); white text
+				    with a soft shadow so it reads on any biome */}
+				<div className="flex items-center gap-1.5 [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]">
+					<img
+						src="/icons/bond.png"
+						alt=""
+						draggable={false}
+						className="h-6 w-6 object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]"
+					/>
+					<span className="font-mono text-[14px] font-bold lowercase tracking-tight text-white">
+						bond score <span className="tabular-nums">{bond}%</span>
 					</span>
 				</div>
-				<div className="h-1 w-16 overflow-hidden rounded-full bg-black/15">
+				{/* wide inset track with an amber gradient fill (rounded caps) */}
+				<div className="mt-0.5 h-2.5 w-40 rounded-full bg-black/25 p-[2px] shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
 					<div
-						className="h-full rounded-full bg-gradient-to-r from-[#ffb454] to-[#ff7a3d] transition-[width] duration-500 ease-out"
+						className="h-full rounded-full bg-gradient-to-b from-[#ffd36b] to-[#ff9b2b] shadow-[0_0_6px_rgba(255,170,60,0.6)] transition-[width] duration-500 ease-out"
 						style={{ width: `${(bond / BOND_MAX) * 100}%` }}
 					/>
 				</div>
