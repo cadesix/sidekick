@@ -39,7 +39,7 @@ import {
 
 // require() the bundled, texture-stripped model (scripts/strip-glb.mjs).
 const MASCOT_GLB = require('../../assets/models/sidekick-rigged.stripped.glb');
-const FACE_SHEET = require('../../assets/textures/face-sheet-v3.png');
+const FACE_SHEET = require('../../assets/textures/face-sheet-v6.png');
 
 const BONE_MAP = {
   head: 'Head',
@@ -88,6 +88,51 @@ export type SidekickController = {
 // serves stale bundles; see scripts/sim-snap.sh).
 export const BUILD_MARKER = 'build-035';
 
+// Whether the production home renders through the bloom composer. Off: web
+// /home5 renders direct (no post) with antialias, so we match it. Flip on only
+// if a home-screen glow effect is deliberately wanted.
+const HOME_BLOOM = false;
+
+// Warm-sunset image-based-lighting scene, PMREM'd into scene.environment. This
+// is the single biggest reason web's meadow reads lighter + warmer than a plain
+// direct-lit render: every material (incl. the MeshLambert grass) picks up warm
+// indirect fill from it. Ported DOM-free from sidekick-shading.ts's makeEnvScene
+// (the web built its sky with a 2D <canvas>; here it's a DataTexture gradient).
+function makeEnvScene(): THREE.Scene {
+  const env = new THREE.Scene();
+  const skyTex = makeGradientTexture(
+    [
+      { at: 0, color: '#ffe6c9' },
+      { at: 0.5, color: '#f7c6b6' },
+      { at: 1, color: '#e8b09e' },
+    ],
+    256,
+  );
+  const sky = new THREE.Mesh(
+    new THREE.SphereGeometry(10, 16, 16),
+    new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide }),
+  );
+  env.add(sky);
+  const panel = (
+    color: number,
+    intensity: number,
+    pos: [number, number, number],
+    size: [number, number],
+  ) => {
+    const p = new THREE.Mesh(
+      new THREE.PlaneGeometry(size[0], size[1]),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(intensity) }),
+    );
+    p.position.set(pos[0], pos[1], pos[2]);
+    p.lookAt(0, 0, 0);
+    env.add(p);
+  };
+  panel(0xfff2dc, 3.5, [3, 4, 3], [4, 4]); // warm key
+  panel(0xffc9d8, 1.5, [-4, 1, 2], [3, 4]); // pink fill
+  panel(0xfff8f0, 2.5, [-1, 3, -4], [5, 2]); // rim
+  return env;
+}
+
 export function createSidekickRenderer(
   gl: ExpoWebGLRenderingContext,
   opts: {
@@ -129,7 +174,7 @@ export function createSidekickRenderer(
   // from his feet), daisies, rocks, drifting clouds — same module as the web.
   const grass = makeGrassEnvironment();
   grass.setColors(sc.grassHill, sc.grassBase, sc.grassTip, sc.rock);
-  grass.setLights(sc);
+  grass.setClouds(sc.keyColor, sc.fog);
   grass.relayout(s.grassHeight, s.grassClumping);
   scene.add(grass.group);
 
@@ -183,6 +228,18 @@ export function createSidekickRenderer(
   // expo-three's own viewport state blanks the whole scene on expo-gl.
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = sc.exposure;
+
+  // Warm IBL — matches web's scene.environment. PMREM prefilters the env scene
+  // into an environment map; MeshLambert/cel materials pick up its warm indirect
+  // fill, which is what makes the meadow read lighter + warmer than direct light
+  // alone. (PMREM uses a half-float render target — fine on WebGL2/Expo Web; if
+  // a native expo-gl build can't allocate it, guard this behind a try/catch.)
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const envScene = makeEnvScene();
+  scene.environment = pmrem.fromScene(envScene, 0.04).texture;
+  (scene as THREE.Scene & { environmentIntensity?: number }).environmentIntensity = s.envIntensity;
+  pmrem.dispose();
+
   // shadows: shadowOpacity defaults to 0 (no visible shadow), so we skip the
   // shadow map on mobile for perf. Re-enable when a lawn shadow is wanted.
 
@@ -207,9 +264,15 @@ export function createSidekickRenderer(
   // EXT_color_buffer_float, so every render target in the chain is forced to
   // 8-bit — slight banding in the glow, but renderable. OutputPass applies the
   // ACES/sRGB output transform the direct path gets from rendering to screen.
+  //
+  // samples:4 → MSAA on the composer's render target. Without it the scene is
+  // rendered to a non-multisampled FBO (the context's own antialias:true only
+  // covers the DEFAULT framebuffer, which the composer bypasses), so thin grass
+  // blades aliased into hard dark-gapped spikes and read far darker/sparser than
+  // web's direct antialiased render. WebGL2 caps at MAX_SAMPLES (4 here).
   const composer = new EffectComposer(
     renderer,
-    new THREE.WebGLRenderTarget(width, height, { type: THREE.UnsignedByteType }),
+    new THREE.WebGLRenderTarget(width, height, { type: THREE.UnsignedByteType, samples: 4 }),
   );
   composer.addPass(new RenderPass(scene, camera));
   const bloomPass = new UnrealBloomPass(
@@ -566,7 +629,13 @@ export function createSidekickRenderer(
       faceCtl.update(now);
       if (faceMat && faceSheet) syncCelMapTransform(faceMat, faceSheet);
     }
-    if (s.bloomEnabled && !bloomBroken) {
+    // Direct render, matching web /home5 (sidekick-canvas.tsx), which renders
+    // straight to the antialiased default framebuffer with NO post-processing.
+    // The bloom composer is kept wired (for the /sidekick-3d look-dev editor and
+    // future effects) but the production home does NOT bloom — its UnrealBloom
+    // added a flower glow /home5 never had, and its non-MSAA render target
+    // aliased the grass. HOME_BLOOM flips it back on if ever wanted.
+    if (HOME_BLOOM && s.bloomEnabled && !bloomBroken) {
       try {
         composer.render();
       } catch (err) {
@@ -626,7 +695,7 @@ export function createSidekickRenderer(
       renderer.toneMappingExposure = nsc.exposure;
       // meadow
       grass.setColors(nsc.grassHill, nsc.grassBase, nsc.grassTip, nsc.rock);
-      grass.setLights(nsc);
+      grass.setClouds(nsc.keyColor, nsc.fog);
       if (next.grassHeight !== prevHeight || next.grassClumping !== prevClumping) {
         grass.relayout(next.grassHeight, next.grassClumping); // 20k matrices — only on change
       }

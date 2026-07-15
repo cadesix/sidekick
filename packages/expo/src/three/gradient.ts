@@ -6,12 +6,6 @@ import * as THREE from 'three';
 
 type Stop = { at: number; color: string };
 
-function lerpColor(a: THREE.Color, b: THREE.Color, t: number, out: THREE.Color) {
-  out.r = a.r + (b.r - a.r) * t;
-  out.g = a.g + (b.g - a.g) * t;
-  out.b = a.b + (b.b - a.b) * t;
-  return out;
-}
 
 // Soft elliptical contact-shadow blob (the web drew this with a DOM canvas
 // radial gradient: 0 → 0.42 alpha, 0.7 → 0.12, 1 → 0). Ink color fixed at the
@@ -43,8 +37,16 @@ export function makeRadialShadowTexture(size = 128): THREE.DataTexture {
 export function fillGradientTexture(tex: THREE.DataTexture, stops: Stop[]): void {
   const height = tex.image.height;
   const data = tex.image.data as Uint8Array;
-  const colors = stops.map((s) => ({ at: s.at, c: new THREE.Color(s.color) }));
-  const tmp = new THREE.Color();
+  // Store sRGB-ENCODED bytes. This texture is tagged SRGBColorSpace, so the GPU
+  // sRGB-decodes it at sample time. THREE.Color(hex) holds LINEAR components
+  // under color management, so writing those raw got decoded a SECOND time —
+  // the sky came out dark and red-shifted (salmon/gold stops crushed toward
+  // saturated red). Convert each stop back to sRGB and interpolate in sRGB
+  // space, matching the web's 2D-canvas gradient, which also blends raw sRGB.
+  const colors = stops.map((s) => {
+    const c = new THREE.Color(s.color).convertLinearToSRGB();
+    return { at: s.at, r: c.r, g: c.g, b: c.b };
+  });
   for (let y = 0; y < height; y++) {
     const t = y / (height - 1);
     // find the surrounding stops
@@ -59,11 +61,10 @@ export function fillGradientTexture(tex: THREE.DataTexture, stops: Stop[]): void
     }
     const span = hi.at - lo.at || 1;
     const local = THREE.MathUtils.clamp((t - lo.at) / span, 0, 1);
-    lerpColor(lo.c, hi.c, local, tmp);
     const o = y * 4;
-    data[o] = Math.round(tmp.r * 255);
-    data[o + 1] = Math.round(tmp.g * 255);
-    data[o + 2] = Math.round(tmp.b * 255);
+    data[o] = Math.round((lo.r + (hi.r - lo.r) * local) * 255);
+    data[o + 1] = Math.round((lo.g + (hi.g - lo.g) * local) * 255);
+    data[o + 2] = Math.round((lo.b + (hi.b - lo.b) * local) * 255);
     data[o + 3] = 255;
   }
   tex.needsUpdate = true;
