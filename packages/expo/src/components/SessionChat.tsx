@@ -75,8 +75,12 @@ function parseAnalysis(a: unknown): Analysis {
 }
 
 // one OpenAI turn with a custom inline system prompt → the reply text (or null
-// on no-key / error, so callers can fall back to a scripted line)
-async function llm(system: string, user: string): Promise<string | null> {
+// on no-key / error, so callers can fall back to a scripted line). `maxTokens`
+// defaults small (acks are one line); the extraction pass needs more room since
+// its JSON now carries fields + notes + recap + the astral analysis — too tight
+// and the JSON truncates mid-object, JSON.parse throws, and the whole
+// extraction (incl. the session's profile data) is silently lost.
+async function llm(system: string, user: string, maxTokens = 200): Promise<string | null> {
   if (!KEY) return null;
   try {
     const r = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -88,7 +92,7 @@ async function llm(system: string, user: string): Promise<string | null> {
           { role: 'system', content: system },
           { role: 'user', content: user },
         ],
-        max_tokens: 400,
+        max_tokens: maxTokens,
       }),
     });
     const data = await r.json();
@@ -126,7 +130,9 @@ async function fetchExtraction(
     `  - "archetype": a poetic 2-4 word lowercase title capturing their vibe (e.g. "the midnight builder")\n` +
     `  - "reading": a warm, slightly mystical 2-3 sentence read of who they are — like a personalized horoscope grounded in what they actually said. lowercase, no em-dash, no clichés\n` +
     `  - "traits": 3-4 short lowercase trait words drawn from the chat`;
-  const reply = await llm(system, transcript);
+  // extraction JSON is the biggest payload (fields + notes + recap + analysis) —
+  // give it real headroom so it never truncates mid-object
+  const reply = await llm(system, transcript, 900);
   if (!reply) return null;
   try {
     const raw = reply
