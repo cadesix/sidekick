@@ -12,6 +12,7 @@ import { Chat } from '../src/components/Chat';
 import { GoalsSheet } from '../src/components/GoalsSheet';
 import { StreakModal } from '../src/components/StreakModal';
 import { SessionChat } from '../src/components/SessionChat';
+import { SidekickAvatar } from '../src/components/SidekickAvatar';
 import { SpeechBubble } from '../src/components/SpeechBubble';
 import { StreakPill } from '../src/components/StreakPill';
 import { HomeDock } from '../src/components/HomeDock';
@@ -225,9 +226,10 @@ export default function Home() {
           <Pressable
             onPress={() => setAppearanceOpen(true)}
             accessibilityLabel="Appearance"
-            style={{ height: 40, width: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center' }}
+            style={{ height: 40, width: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
           >
-            <Ionicons name="shirt" size={20} color="#7A5AF8" />
+            {/* the live head avatar IS the closet button (mirrors web home5) */}
+            <SidekickAvatar size={40} style={{ transform: [{ scale: 1.1 }] }} />
           </Pressable>
           <StreakPill onPress={() => setStreakModalOpen(true)} />
         </View>

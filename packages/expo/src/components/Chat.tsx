@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import {
-  Image,
   Keyboard,
   Pressable,
   ScrollView,
@@ -16,6 +15,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { SidekickAvatar } from './SidekickAvatar';
 import { useChat } from '../store/chat';
 
 // RN port of sidekick/src/chat.tsx. Same conversation UI (assistant/user
@@ -28,12 +28,12 @@ import { useChat } from '../store/chat';
 // itself inside the translated absolute-positioned chat drawer, so it left the
 // input buried under the keyboard.)
 
-// Sidekick head avatar — mirrors web's <SidekickAvatar> (a live 3D head
-// snapshot on web; the static pfp art here), sized `w-8 h-8 object-contain`.
-const AVATAR = require('../../assets/images/sidekick-pfp.webp');
-
+// Sidekick head avatar — the live 3D head (real body color, face, worn hats/
+// glasses), mirroring web's <SidekickAvatar>, sized `w-8 h-8`. Each is its own
+// GL context, so this is only viable because a chat shows a handful of assistant
+// bubbles; if that ever grows large, cap live instances to the visible run.
 function Avatar() {
-  return <Image source={AVATAR} resizeMode="contain" className="w-8 h-8" />;
+  return <SidekickAvatar size={32} />;
 }
 
 // Web renders a CSS `.ellipsis-dots` span: a 1.6s steps(1) cycle through

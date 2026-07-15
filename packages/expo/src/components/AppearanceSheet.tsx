@@ -10,6 +10,7 @@ import { buildProducts, type Product } from '@sidekick/core';
 import { MANIFEST } from '../three/cosmetics-manifest';
 import { shopRender } from '../three/shop-renders';
 import { loadSettings, type SidekickSettings } from '../three/settings';
+import { useCosmeticVersion } from '../store/cosmeticVersion';
 import { useEconomy } from '../store/economy';
 import { applySkin, currentSkinId, SKIN_COLORS, type SkinColor } from '../store/skin';
 import {
@@ -87,6 +88,7 @@ export function AppearanceSheet({
 
   const sync = () => {
     if (controls) setWardrobe(controls.getState());
+    useCosmeticVersion.getState().bump(); // regenerate the live head avatars
   };
   const isWorn = (p: Product) => {
     const st = wardrobe?.[p.slot as WardrobeSlot];
@@ -106,6 +108,7 @@ export function AppearanceSheet({
     setSkin(c.id);
     const next = applySkin(c.id); // persist; home re-applies to the live scene
     onSkinChange?.(next);
+    useCosmeticVersion.getState().bump(); // avatar body color follows the skin
   };
 
   return (

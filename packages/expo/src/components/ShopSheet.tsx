@@ -17,6 +17,7 @@ import {
 
 import { MANIFEST } from '../three/cosmetics-manifest';
 import { shopRender } from '../three/shop-renders';
+import { useCosmeticVersion } from '../store/cosmeticVersion';
 import { useEconomy } from '../store/economy';
 import {
   SHOP_COLORS,
@@ -152,6 +153,7 @@ export function ShopSheet({
 
   const sync = () => {
     if (controls) setWardrobe(controls.getState());
+    useCosmeticVersion.getState().bump(); // regenerate the live head avatars
   };
   const isWorn = (p: Product) => {
     const st = wardrobe?.[p.slot as WardrobeSlot];
