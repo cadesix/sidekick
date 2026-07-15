@@ -35,6 +35,7 @@ export function Chat({
 	peekPop = false,
 	seed,
 	greeting,
+	resume,
 }: {
 	peekIn?: boolean;
 	transparentTop?: boolean;
@@ -42,6 +43,9 @@ export function Chat({
 	// a message auto-sent from the user once on mount — e.g. the Goals sheet
 	// opening a goal in chat ("I want to talk about my goal: …")
 	seed?: string;
+	// an in-progress guided session: rendered as a pinned continue card above
+	// the input (dive back in without the session polluting this thread)
+	resume?: { label: string; sub: string; onContinue: () => void };
 	// overrides the sidekick's opening line when there's no saved history
 	// (e.g. onboarding starts by asking about goals)
 	greeting?: string;
@@ -170,6 +174,21 @@ export function Chat({
 			</div>
 
 			<div className="px-3 pt-2 pb-3 border-t border-[#111]/10">
+				{resume ? (
+					<button
+						type="button"
+						onClick={resume.onContinue}
+						className="mb-2 flex w-full items-center justify-between rounded-2xl bg-[#FBEFC9] px-4 py-2.5 text-left shadow-[0_3px_0_rgba(0,0,0,0.08)] transition-all duration-100 active:translate-y-[2px] active:shadow-[0_1px_0_rgba(0,0,0,0.08)]"
+					>
+						<div className="min-w-0">
+							<div className="truncate text-[14px] font-bold text-[#111]">{resume.label}</div>
+							<div className="text-[12px] font-medium text-[#111]/50">{resume.sub}</div>
+						</div>
+						<span className="ml-3 shrink-0 rounded-full bg-[#111] px-3 py-1 text-[12px] font-bold text-white">
+							Continue
+						</span>
+					</button>
+				) : null}
 				<form
 					onSubmit={(e) => {
 						e.preventDefault();

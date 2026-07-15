@@ -7,10 +7,12 @@ import {
 	SUN_DIR,
 	makeCharacterMaterials,
 	makeEnvScene,
+	makeItemMaterial,
 	makeOutlineMaterial,
 	loadMatcapTexture,
 	type TexSet,
 } from "./sidekick-shading";
+import type { BoxTier } from "./sidekick-daily-box";
 import { makeGrassEnvironment } from "./sidekick-grass";
 import { makeSky, type TimeOfDay } from "./sidekick-scene";
 import { makeLandscape } from "./sidekick-landscape";
@@ -96,6 +98,9 @@ export type SidekickCanvasHandle = {
 	jumpIn: (opts?: { duration?: number }) => void;
 	shake: (opts?: { amp?: number; duration?: number; mode?: "impact" | "build" }) => void;
 	setColors: (body: string, shadow?: string) => void;
+	// daily box: play the open animation (shake → grow → gone). The DOM layer
+	// (daily-box.tsx) times its flash/confetti to the same beats.
+	popDailyBox: () => void;
 };
 
 // Studio (Shop) backdrop: a soft warm vertical sweep (light top → warm floor) so
@@ -147,6 +152,8 @@ export function SidekickCanvas({
 	environment,
 	controlsRef,
 	overheadRef,
+	groundRef,
+	dailyBox,
 	paused,
 	hidden,
 	timeOfDay,
@@ -178,6 +185,12 @@ export function SidekickCanvas({
 	// an overlay element (e.g. the Bond badge) the canvas pins over the
 	// character's head every frame via 3D→screen projection
 	overheadRef?: MutableRefObject<HTMLDivElement | null>;
+	// an overlay element (e.g. the daily box tap target + burst FX) pinned to a
+	// spot on the ground beside the character — same projection trick
+	groundRef?: MutableRefObject<HTMLDivElement | null>;
+	// when set, the 3D loot chest (props/lootbox-v1.glb) stands at the ground
+	// anchor, tinted for the given tier; null/undefined hides it
+	dailyBox?: BoxTier | null;
 	// skip all per-frame work while something fully covers the canvas (e.g. the
 	// near-full-screen Shop) — the RAF keeps ticking so resume is instant
 	paused?: boolean;
@@ -198,6 +211,9 @@ export function SidekickCanvas({
 	// when true, the character raises its right hand + looks down at the phone
 	const phoneRef = useRef(holdingPhone);
 	phoneRef.current = holdingPhone;
+	// daily-box tier (or null) — read by the render loop like the flags above
+	const dailyBoxRef = useRef(dailyBox);
+	dailyBoxRef.current = dailyBox;
 
 	useEffect(() => {
 		const mount = mountRef.current;
@@ -429,7 +445,134 @@ export function SidekickCanvas({
 			}
 			applyShading();
 		});
+		// ---- daily loot chest: a world prop at the ground anchor (daily-box.tsx
+		// owns the DOM tap target + burst FX; home5 orchestrates the flow) ----
+		// directly in front of the character, near-centered to the hero camera
+		const DAILY_BOX_POS = new THREE.Vector3(0.1, 0, 0.75);
+		const DAILY_BOX_SCALE = 0.34;
+		// per-tier tints keyed by the GLB's authored material names
+		const BOX_PALETTES: Record<BoxTier, Record<string, string>> = {
+			base: { Chest_Body: "#FFD65C", Chest_Trim: "#FF5B4D", Chest_Emblem: "#FFF2DC" },
+			silver: { Chest_Body: "#DCE6F5", Chest_Trim: "#7C5CFF", Chest_Emblem: "#FFFFFF" },
+			gold: { Chest_Body: "#FFC93D", Chest_Trim: "#7C5CFF", Chest_Emblem: "#FFF6D8" },
+		};
+		const boxGroup = new THREE.Group();
+		boxGroup.position.copy(DAILY_BOX_POS);
+		boxGroup.rotation.y = -0.3; // angle the latch a touch toward the camera
+		boxGroup.visible = false;
+		scene.add(boxGroup);
+		let boxMeshes: THREE.Mesh[] = [];
+		let boxLidNodes: THREE.Object3D[] = []; // hinge-origin lid meshes (rotate.x to open)
+		let boxTint: BoxTier | null = null;
+		let boxLoading = false;
+		let boxSpawn = -1; // clock time the chest appeared (scale-in spring)
+		let boxPop = -1; // clock time popDailyBox() fired
+		// the light that pours out when the lid opens: an additive beam cone +
+		// a radial glow sprite at the mouth, hidden until the open beat
+		let beamOpacity: { value: number } | null = null;
+		let glowMat: THREE.SpriteMaterial | null = null;
+		let beam: THREE.Mesh | null = null;
+		let boxLight: THREE.PointLight | null = null; // real light: spills onto character + ground
+		const tintBox = (tier: BoxTier) => {
+			const pal = BOX_PALETTES[tier];
+			for (const m of boxMeshes) {
+				(m.material as THREE.Material).dispose();
+				m.material = makeItemMaterial(
+					s,
+					{ color: pal[m.userData.matName as string] ?? pal.Chest_Body, map: null },
+					matcapTex,
+				);
+			}
+			boxTint = tier;
+		};
+		const loadBox = () => {
+			boxLoading = true;
+			new GLTFLoader().load("/props/lootbox-v1.glb", (g) => {
+				if (cancelled) return;
+				const meshes: THREE.Mesh[] = [];
+				g.scene.traverse((o) => {
+					const mesh = o as THREE.Mesh;
+					if (mesh.isMesh) meshes.push(mesh);
+				});
+				for (const mesh of meshes) {
+					mesh.userData.matName = (mesh.material as THREE.Material).name;
+					mesh.castShadow = true;
+					// Same amber inverted-hull ink as the character, as a child so it
+					// inherits the mesh transform. The shader's displacement assumes the
+					// character's 0.2-unit-raw → 5× world scaling; the chest renders at
+					// DAILY_BOX_SCALE, so widen proportionally to keep the same ink weight.
+					const ink = new THREE.Mesh(
+						mesh.geometry,
+						makeOutlineMaterial({ ...s, outlineWidth: (s.outlineWidth * 5) / DAILY_BOX_SCALE }),
+					);
+					mesh.add(ink);
+				}
+				boxMeshes = meshes;
+				boxLidNodes = meshes.filter((m) => m.name.startsWith("LootLid"));
+				// beam: a widening additive cone rising from the chest mouth. Soft-edged:
+				// fresnel falloff kills the silhouette (edge-on normals → transparent,
+				// core → bright) and a vertical fade dissolves the tip into the sky.
+				const beamUniforms = { uColor: { value: new THREE.Color(0xfff2b8) }, uOpacity: { value: 0 } };
+				beamOpacity = beamUniforms.uOpacity;
+				const beamMat = new THREE.ShaderMaterial({
+					uniforms: beamUniforms,
+					vertexShader:
+						"varying vec3 vN; varying vec3 vV; varying float vY;\n" +
+						"void main() {\n" +
+						"  vN = normalize(normalMatrix * normal);\n" +
+						"  vec4 mv = modelViewMatrix * vec4(position, 1.0);\n" +
+						"  vV = normalize(-mv.xyz);\n" +
+						"  vY = position.y;\n" + // local: -0.85 (mouth) .. 0.85 (tip)
+						"  gl_Position = projectionMatrix * mv;\n" +
+						"}",
+					fragmentShader:
+						"uniform vec3 uColor; uniform float uOpacity;\n" +
+						"varying vec3 vN; varying vec3 vV; varying float vY;\n" +
+						"void main() {\n" +
+						"  float edge = pow(abs(dot(normalize(vN), normalize(vV))), 1.6);\n" +
+						"  float fade = smoothstep(0.85, -0.55, vY);\n" +
+						"  gl_FragColor = vec4(uColor, uOpacity * edge * fade);\n" +
+						"}",
+					transparent: true,
+					blending: THREE.AdditiveBlending,
+					side: THREE.DoubleSide,
+					depthWrite: false,
+				});
+				beam = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.3, 1.7, 24, 1, true), beamMat);
+				beam.position.y = 0.5 + 0.85; // mouth of the chest + half the beam height (raw GLB units)
+				boxGroup.add(beam);
+				// glow: a soft radial sprite sitting right in the mouth
+				const gc = document.createElement("canvas");
+				gc.width = gc.height = 128;
+				const gctx = gc.getContext("2d")!;
+				const grad = gctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+				grad.addColorStop(0, "rgba(255,250,225,1)");
+				grad.addColorStop(0.4, "rgba(255,238,170,0.75)");
+				grad.addColorStop(1, "rgba(255,238,170,0)");
+				gctx.fillStyle = grad;
+				gctx.fillRect(0, 0, 128, 128);
+				glowMat = new THREE.SpriteMaterial({
+					map: new THREE.CanvasTexture(gc),
+					transparent: true,
+					opacity: 0,
+					blending: THREE.AdditiveBlending,
+					depthWrite: false,
+				});
+				const glow = new THREE.Sprite(glowMat);
+				glow.position.y = 0.62;
+				glow.scale.setScalar(2.1);
+				boxGroup.add(glow);
+				// an actual point light in the mouth so the glow reads as a real
+				// source — it lights the character's front and the grass around
+				boxLight = new THREE.PointLight(0xffe9b0, 0, 5, 1.6);
+				boxLight.position.y = 0.7;
+				boxGroup.add(boxLight);
+				boxGroup.add(g.scene);
+				boxSpawn = clock.getElapsedTime();
+			});
+		};
 		const applyShading = () => {
+			if (boxTint) tintBox(boxTint); // rebuild chest materials for the new mode
 			if (!bodyMesh) return;
 			const { body, face } = makeCharacterMaterials(s, texSet, matcapTex, faceTex);
 			bodyMesh.material = body;
@@ -618,6 +761,7 @@ export function SidekickCanvas({
 		const camSph = new THREE.Spherical();
 		const camOff = new THREE.Vector3();
 		const overheadV = new THREE.Vector3();
+		const groundV = new THREE.Vector3();
 		const wantPos = new THREE.Vector3();
 		const wantTgt = new THREE.Vector3();
 		let phoneBlend = 0; // 0 idle → 1 holding the phone up
@@ -648,6 +792,9 @@ export function SidekickCanvas({
 					s.celBodyColor = body;
 					if (shadow) s.celShadowColor = shadow;
 					applyShading();
+				},
+				popDailyBox: () => {
+					if (boxPop < 0) boxPop = clock.getElapsedTime();
 				},
 			};
 		}
@@ -819,6 +966,57 @@ export function SidekickCanvas({
 			}
 			grass.update(now, pull.position);
 			faceCtl?.update(now);
+			// daily loot chest: lazy-load on first request, then spawn spring →
+			// idle bob → (on popDailyBox) excited shake → grow → gone
+			const wantBox = dailyBoxRef.current;
+			if (wantBox && !boxMeshes.length && !boxLoading) loadBox();
+			if (boxMeshes.length) {
+				if (wantBox && boxTint !== wantBox) tintBox(wantBox);
+				if (!wantBox && boxPop >= 0) {
+					// reset for the next spawn: lid shut, light off
+					boxPop = -1;
+					for (const n of boxLidNodes) n.rotation.x = 0;
+					if (beamOpacity) beamOpacity.value = 0;
+					if (glowMat) glowMat.opacity = 0;
+					if (boxLight) boxLight.intensity = 0;
+				}
+				const popT = boxPop >= 0 ? now - boxPop : -1;
+				boxGroup.visible = !!wantBox && !inStudio;
+				if (boxGroup.visible) {
+					// scale-in spring on spawn (slight overshoot)
+					const ts = Math.min(1, (now - boxSpawn) / 0.55);
+					const spring = 1 - Math.pow(1 - ts, 3) * Math.cos(ts * 9);
+					boxGroup.scale.setScalar(Math.max(0.0001, DAILY_BOX_SCALE * spring));
+					if (popT < 0) {
+						// idle: rattle in short bursts, like something inside wants out —
+						// a wiggle burst every ~1.7s with little hops on the beats
+						const cycle = (now - boxSpawn) % 1.7;
+						let rattle = 0;
+						if (cycle < 0.55) {
+							const env = Math.sin((cycle / 0.55) * Math.PI);
+							rattle = Math.sin(cycle * 50) * 0.09 * env;
+						}
+						boxGroup.rotation.z = rattle;
+						boxGroup.position.y = DAILY_BOX_POS.y + Math.abs(rattle) * 0.14;
+					} else {
+						// tapped: wild rattle (0–0.35s) → lid swings open with overshoot
+						// (0.35–0.75s) → light pours out (from 0.62s) and keeps pulsing
+						boxGroup.rotation.z = popT < 0.35 ? Math.sin(popT * 46) * 0.13 * (0.5 + popT * 2) : 0;
+						boxGroup.position.y = DAILY_BOX_POS.y;
+						const lt = Math.min(1, Math.max(0, (popT - 0.35) / 0.4));
+						const k = 1.9; // ease-out-back: swings past open, settles back
+						const swing = 1 + (k + 1) * Math.pow(lt - 1, 3) + k * Math.pow(lt - 1, 2);
+						for (const n of boxLidNodes) n.rotation.x = -1.75 * swing;
+						const lightT = Math.min(1, Math.max(0, (popT - 0.62) / 0.18));
+						if (beamOpacity && beam) {
+							beamOpacity.value = lightT * (0.85 + 0.08 * Math.sin(now * 6.5));
+							beam.scale.set(1, 0.35 + 0.65 * lightT, 1);
+						}
+						if (glowMat) glowMat.opacity = lightT * (0.95 + 0.05 * Math.sin(now * 5.2));
+						if (boxLight) boxLight.intensity = lightT * (6 + 0.9 * Math.sin(now * 5.7));
+					}
+				}
+			}
 			// pin the overhead overlay (Bond badge) above the head bone: world pos
 			// → NDC → CSS px. Follows jumps, drags, and the shop lift for free.
 			const overhead = overheadRef?.current;
@@ -833,6 +1031,21 @@ export function SidekickCanvas({
 					overhead.style.visibility = overheadV.z < 1 ? "visible" : "hidden";
 				} else {
 					overhead.style.visibility = "hidden";
+				}
+			}
+			// pin the ground overlay (daily box) to a fixed spot on the lawn beside
+			// the character (bottom-center anchored so it "stands" on the grass)
+			const ground = groundRef?.current;
+			if (ground) {
+				if (ready && !studioRef.current) {
+					groundV.copy(DAILY_BOX_POS);
+					groundV.project(camera);
+					const gx = (groundV.x * 0.5 + 0.5) * mount.clientWidth;
+					const gy = (-groundV.y * 0.5 + 0.5) * mount.clientHeight;
+					ground.style.transform = `translate(-50%, -100%) translate(${gx.toFixed(1)}px, ${gy.toFixed(1)}px)`;
+					ground.style.visibility = groundV.z < 1 ? "visible" : "hidden";
+				} else {
+					ground.style.visibility = "hidden";
 				}
 			}
 			renderer.render(scene, camera);

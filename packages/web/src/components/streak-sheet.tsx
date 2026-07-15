@@ -1,33 +1,13 @@
-import { LuFlame } from "react-icons/lu";
 import { Coin } from "./shop-sheet";
+import { MILESTONES } from "./sidekick-daily-box";
 
 // Streak modal: current streak up top, then only the NEXT few milestone
 // containers — everything past that is a mystery card, so upcoming rewards
 // tease without revealing the whole curve. The schedule itself is frontloaded
 // (a reward every day for week one) then tapers (10, 14, 21, 30…365) so later
 // rewards keep scarcity. Rewards are coins or real shop cosmetics (product
-// renders). Claim/grant plumbing comes later; state derives from the count.
-
-type Milestone = { day: number; label: string; coins?: number; render?: string };
-
-const MILESTONES: Milestone[] = [
-	{ day: 1, label: "10 coins", coins: 10 },
-	{ day: 2, label: "15 coins", coins: 15 },
-	{ day: 3, label: "Charcoal Beanie", render: "beanie-charcoal" },
-	{ day: 4, label: "20 coins", coins: 20 },
-	{ day: 5, label: "25 coins", coins: 25 },
-	{ day: 6, label: "Black Glasses", render: "glasses-black" },
-	{ day: 7, label: "White Sneakers", render: "sneakers-white" },
-	{ day: 10, label: "40 coins", coins: 40 },
-	{ day: 14, label: "Sky Backpack", render: "backpack-sky" },
-	{ day: 21, label: "75 coins", coins: 75 },
-	{ day: 30, label: "Wizard Hat", render: "wizard-purple" },
-	{ day: 45, label: "100 coins", coins: 100 },
-	{ day: 60, label: "Night Bucket Hat", render: "bucket-night" },
-	{ day: 90, label: "200 coins", coins: 200 },
-	{ day: 180, label: "Silver Crown", render: "crown-silver" },
-	{ day: 365, label: "Gold Crown", render: "crown-gold" },
-];
+// renders), granted through the daily box on milestone days
+// (sidekick-daily-box.ts, which owns the MILESTONES table).
 
 const SHOW_NEXT = 3; // upcoming milestones revealed; the rest stay hidden
 
@@ -51,9 +31,7 @@ export function StreakModal({ open, onClose, streak }: { open: boolean; onClose:
 			>
 				{/* the streak itself */}
 				<div className="flex flex-col items-center text-center">
-					<span className="grid h-14 w-14 place-items-center rounded-2xl bg-[#fff1e6]">
-						<LuFlame className="h-8 w-8 text-[#ff7a3d]" strokeWidth={2.5} />
-					</span>
+					<img src="/icons/streak.png" alt="" draggable={false} className="h-16 w-16 object-contain" />
 					<div className="mt-2 text-[24px] font-extrabold leading-tight text-neutral-900">
 						{streak}-day streak
 					</div>

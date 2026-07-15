@@ -11,6 +11,7 @@ import { createCosmetics, type CosmeticsHandle } from './cosmetics';
 import { configureFaceTexture, createFaceController, type FaceController } from './face';
 import { patchWorldFog } from './fog-patch';
 import { fillGradientTexture, makeGradientTexture, makeRadialShadowTexture } from './gradient';
+import { BIOMES, type BiomeId, type EnvironmentId } from './biomes';
 import { makeGrassEnvironment } from './grass';
 import { createInteraction, POKE_FACE, type Interaction } from './interact';
 import { loadSettings, type SidekickSettings } from './settings';
@@ -23,6 +24,7 @@ import {
 } from './wardrobe';
 import {
   makeCharacterMaterials,
+  makeItemMaterial,
   makeOutlineMaterial,
   retintCelMaterial,
   retintOutlineMaterial,
@@ -30,6 +32,7 @@ import {
   SUN_DIR,
   type TexSet,
 } from './shading';
+import type { BoxTier } from '@sidekick/core';
 
 // Ported from sidekick/src/components/sidekick-canvas.tsx. The web version ran
 // inside a React useEffect against a DOM <canvas>; here it runs against an
@@ -39,7 +42,8 @@ import {
 
 // require() the bundled, texture-stripped model (scripts/strip-glb.mjs).
 const MASCOT_GLB = require('../../assets/models/sidekick-rigged.stripped.glb');
-const FACE_SHEET = require('../../assets/textures/face-sheet-v3.png');
+const LOOTBOX_GLB = require('../../assets/props/lootbox-v1.glb');
+const FACE_SHEET = require('../../assets/textures/face-sheet-v6.png');
 
 const BONE_MAP = {
   head: 'Head',
@@ -74,6 +78,11 @@ export type SidekickController = {
   setHoldingPhone: (v: boolean) => void;
   setTalking: (v: boolean) => void;
   setStudio: (v: boolean) => void;
+  // swap the world environment (map travel): 'meadow' | biome id
+  setEnvironment: (id: EnvironmentId) => void;
+  // daily loot chest: spawn/hide (tier or null) + trigger the open animation
+  setDailyBox: (tier: BoxTier | null) => void;
+  popDailyBox: () => void;
   // live look-dev: re-apply a full settings object to the running scene
   applySettings: (next: SidekickSettings) => void;
   // touch input in NDC (-1..1, +y up) — fed by the canvas component
@@ -88,15 +97,70 @@ export type SidekickController = {
 // serves stale bundles; see scripts/sim-snap.sh).
 export const BUILD_MARKER = 'build-035';
 
+// Whether the production home renders through the bloom composer. Off: web
+// /home5 renders direct (no post) with antialias, so we match it. Flip on only
+// if a home-screen glow effect is deliberately wanted.
+const HOME_BLOOM = false;
+
+// Warm-sunset image-based-lighting scene, PMREM'd into scene.environment. This
+// is the single biggest reason web's meadow reads lighter + warmer than a plain
+// direct-lit render: every material (incl. the MeshLambert grass) picks up warm
+// indirect fill from it. Ported DOM-free from sidekick-shading.ts's makeEnvScene
+// (the web built its sky with a 2D <canvas>; here it's a DataTexture gradient).
+function makeEnvScene(): THREE.Scene {
+  const env = new THREE.Scene();
+  const skyTex = makeGradientTexture(
+    [
+      { at: 0, color: '#ffe6c9' },
+      { at: 0.5, color: '#f7c6b6' },
+      { at: 1, color: '#e8b09e' },
+    ],
+    256,
+  );
+  const sky = new THREE.Mesh(
+    new THREE.SphereGeometry(10, 16, 16),
+    new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide }),
+  );
+  env.add(sky);
+  const panel = (
+    color: number,
+    intensity: number,
+    pos: [number, number, number],
+    size: [number, number],
+  ) => {
+    const p = new THREE.Mesh(
+      new THREE.PlaneGeometry(size[0], size[1]),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(intensity) }),
+    );
+    p.position.set(pos[0], pos[1], pos[2]);
+    p.lookAt(0, 0, 0);
+    env.add(p);
+  };
+  panel(0xfff2dc, 3.5, [3, 4, 3], [4, 4]); // warm key
+  panel(0xffc9d8, 1.5, [-4, 1, 2], [3, 4]); // pink fill
+  panel(0xfff8f0, 2.5, [-1, 3, -4], [5, 2]); // rim
+  return env;
+}
+
 export function createSidekickRenderer(
   gl: ExpoWebGLRenderingContext,
   opts: {
     framing: Framing;
     holdingPhone?: boolean;
     studio?: boolean;
+    environment?: EnvironmentId;
+    // daily loot chest tier (or null to hide); read live like the flags above
+    dailyBox?: BoxTier | null;
+    // per-frame ground-anchor screen position (NDC + visibility) for the daily
+    // box tap-target overlay, mirroring the head overhead projection
+    onGround?: (x: number, y: number, visible: boolean) => void;
     // handed the imperative dressing controls once cosmetics are ready (and
     // null on dispose) — the Shop sheet drives the live character through it
     onControls?: (c: CosmeticsControls | null) => void;
+    // per-frame head-bone screen position in NDC (-1..1, +y up) + visibility
+    // (z<1 = in front of camera). Drives head-tracked overlays (bond badge,
+    // speech bubble); the canvas converts NDC→layout px. Web: overheadRef.
+    onOverhead?: (x: number, y: number, visible: boolean) => void;
   },
 ): SidekickController {
   console.log(
@@ -129,7 +193,7 @@ export function createSidekickRenderer(
   // from his feet), daisies, rocks, drifting clouds — same module as the web.
   const grass = makeGrassEnvironment();
   grass.setColors(sc.grassHill, sc.grassBase, sc.grassTip, sc.rock);
-  grass.setLights(sc);
+  grass.setClouds(sc.keyColor, sc.fog);
   grass.relayout(s.grassHeight, s.grassClumping);
   scene.add(grass.group);
 
@@ -183,6 +247,18 @@ export function createSidekickRenderer(
   // expo-three's own viewport state blanks the whole scene on expo-gl.
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = sc.exposure;
+
+  // Warm IBL — matches web's scene.environment. PMREM prefilters the env scene
+  // into an environment map; MeshLambert/cel materials pick up its warm indirect
+  // fill, which is what makes the meadow read lighter + warmer than direct light
+  // alone. (PMREM uses a half-float render target — fine on WebGL2/Expo Web; if
+  // a native expo-gl build can't allocate it, guard this behind a try/catch.)
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const envScene = makeEnvScene();
+  scene.environment = pmrem.fromScene(envScene, 0.04).texture;
+  (scene as THREE.Scene & { environmentIntensity?: number }).environmentIntensity = s.envIntensity;
+  pmrem.dispose();
+
   // shadows: shadowOpacity defaults to 0 (no visible shadow), so we skip the
   // shadow map on mobile for perf. Re-enable when a lawn shadow is wanted.
 
@@ -203,13 +279,87 @@ export function createSidekickRenderer(
   rim.position.copy(SUN_DIR).multiplyScalar(8).setY(2.2);
   scene.add(rim);
 
+  // ---- biome environments (map travel) --------------------------------------
+  // Lazily built + cached like web's applyEnv (sidekick-canvas.tsx). Swapping the
+  // environment changes background/fog/lights/exposure/cloud tint + the raking
+  // key/rim directions, and toggles which ground group is visible. Composes with
+  // the studio crossfade below via `activeGround` + `envFog`.
+  const meadowSky = skyTex;
+  const meadowKeyPos = key.position.clone();
+  const meadowRimPos = rim.position.clone();
+  const tmpDir = new THREE.Vector3();
+  let envFog: THREE.Fog | null = meadowFog;
+  let activeGround: THREE.Object3D = grass.group;
+  type BiomeBuilt = { group: THREE.Group; sky: THREE.DataTexture; fog: THREE.Fog };
+  const biomeCache = new Map<BiomeId, BiomeBuilt>();
+  const getBiome = (id: BiomeId): BiomeBuilt => {
+    let bc = biomeCache.get(id);
+    if (!bc) {
+      const def = BIOMES[id];
+      const group = def.build();
+      group.visible = false;
+      scene.add(group);
+      const p = def.preset;
+      const sky = makeGradientTexture([
+        { at: 0, color: p.skyHorizon },
+        { at: 0.42, color: p.skyMid },
+        { at: 1, color: p.skyTop },
+      ]);
+      const fog = new THREE.Fog(p.fog, p.fogNear, p.fogFar);
+      bc = { group, sky, fog };
+      biomeCache.set(id, bc);
+    }
+    return bc;
+  };
+  const applyEnv = (id: EnvironmentId) => {
+    activeGround.visible = false;
+    let look: typeof sc | (typeof BIOMES)[BiomeId]['preset'];
+    if (id === 'meadow') {
+      look = s.scenes[s.timeOfDay];
+      scene.background = meadowSky;
+      envFog = scene.fog as THREE.Fog; // meadow fog is refilled by applySettings
+      activeGround = grass.group;
+      key.position.copy(meadowKeyPos);
+      rim.position.copy(meadowRimPos);
+    } else {
+      const bc = getBiome(id);
+      look = BIOMES[id].preset;
+      scene.background = bc.sky;
+      envFog = bc.fog;
+      activeGround = bc.group;
+      key.position.copy(tmpDir.fromArray(BIOMES[id].preset.keyDir).normalize()).multiplyScalar(16);
+      rim.position.copy(tmpDir.fromArray(BIOMES[id].preset.rimDir).normalize()).multiplyScalar(12);
+    }
+    key.color.set(look.keyColor);
+    key.intensity = look.keyIntensity;
+    fill.color.set(look.fillColor);
+    fill.intensity = look.fillIntensity;
+    rim.color.set(look.rimColor);
+    rim.intensity = look.rimIntensity;
+    hemi.color.set(look.hemiSky);
+    hemi.groundColor.set(look.hemiGround);
+    hemi.intensity = look.hemiIntensity;
+    renderer.toneMappingExposure = look.exposure;
+    grass.setClouds(look.keyColor, look.fog);
+    activeGround.visible = true; // the studio crossfade may re-hide it next frame
+  };
+  let environment: EnvironmentId = opts.environment ?? 'meadow';
+  let curEnv: EnvironmentId = 'meadow';
+  if (environment !== 'meadow') applyEnv(environment), (curEnv = environment);
+
   // ---- bloom (matches the web viewer's UnrealBloomPass). expo-gl reports no
   // EXT_color_buffer_float, so every render target in the chain is forced to
   // 8-bit — slight banding in the glow, but renderable. OutputPass applies the
   // ACES/sRGB output transform the direct path gets from rendering to screen.
+  //
+  // samples:4 → MSAA on the composer's render target. Without it the scene is
+  // rendered to a non-multisampled FBO (the context's own antialias:true only
+  // covers the DEFAULT framebuffer, which the composer bypasses), so thin grass
+  // blades aliased into hard dark-gapped spikes and read far darker/sparser than
+  // web's direct antialiased render. WebGL2 caps at MAX_SAMPLES (4 here).
   const composer = new EffectComposer(
     renderer,
-    new THREE.WebGLRenderTarget(width, height, { type: THREE.UnsignedByteType }),
+    new THREE.WebGLRenderTarget(width, height, { type: THREE.UnsignedByteType, samples: 4 }),
   );
   composer.addPass(new RenderPass(scene, camera));
   const bloomPass = new UnrealBloomPass(
@@ -461,6 +611,7 @@ export function createSidekickRenderer(
   const wantTgt = new THREE.Vector3();
   const camOff = new THREE.Vector3();
   const camSph = new THREE.Spherical();
+  const overheadV = new THREE.Vector3(); // scratch for head→screen projection
   const lerp = THREE.MathUtils.lerp;
   let phoneBlend = 0;
   let phoneShown = false;
@@ -470,12 +621,107 @@ export function createSidekickRenderer(
   const studioMat = studioSphere.material as THREE.MeshBasicMaterial;
   const shadowMat = contactShadow.material as THREE.MeshBasicMaterial;
 
+  // ---- daily loot chest (world prop; the RN GroundBox owns the tap target) ----
+  // Ported from web sidekick-canvas.tsx: a GLB chest at the ground anchor,
+  // tinted per tier, that idle-rattles then (on popDailyBox) swings its lid and
+  // pours an additive light beam + a real point light.
+  const DAILY_BOX_POS = new THREE.Vector3(0.1, 0, 0.75);
+  const DAILY_BOX_SCALE = 0.34;
+  const BOX_PALETTES: Record<BoxTier, Record<string, string>> = {
+    base: { Chest_Body: '#FFD65C', Chest_Trim: '#FF5B4D', Chest_Emblem: '#FFF2DC' },
+    silver: { Chest_Body: '#DCE6F5', Chest_Trim: '#7C5CFF', Chest_Emblem: '#FFFFFF' },
+    gold: { Chest_Body: '#FFC93D', Chest_Trim: '#7C5CFF', Chest_Emblem: '#FFF6D8' },
+  };
+  const boxGroup = new THREE.Group();
+  boxGroup.position.copy(DAILY_BOX_POS);
+  boxGroup.rotation.y = -0.3;
+  boxGroup.visible = false;
+  scene.add(boxGroup);
+  const groundV = new THREE.Vector3(); // scratch for chest→screen projection
+  let boxMeshes: THREE.Mesh[] = [];
+  let boxLidNodes: THREE.Object3D[] = [];
+  let boxTint: BoxTier | null = null;
+  let boxLoading = false;
+  let boxSpawn = -1;
+  let boxPop = -1;
+  let beamOpacity: { value: number } | null = null;
+  let beam: THREE.Mesh | null = null;
+  let boxLight: THREE.PointLight | null = null;
+  let dailyBox: BoxTier | null = opts.dailyBox ?? null;
+  const tintBox = (tier: BoxTier) => {
+    const pal = BOX_PALETTES[tier];
+    for (const m of boxMeshes) {
+      (m.material as THREE.Material).dispose?.();
+      m.material = makeItemMaterial(s, {
+        color: pal[m.userData.matName as string] ?? pal.Chest_Body,
+        map: null,
+      });
+    }
+    boxTint = tier;
+  };
+  const loadBox = () => {
+    boxLoading = true;
+    loadGLB(LOOTBOX_GLB)
+      .then((g) => {
+        if (disposed) return;
+        const meshes: THREE.Mesh[] = [];
+        g.scene.traverse((o) => {
+          const mesh = o as THREE.Mesh;
+          if ((mesh as unknown as { isMesh?: boolean }).isMesh) {
+            deinterleaveGeometry(mesh.geometry);
+            meshes.push(mesh);
+          }
+        });
+        for (const mesh of meshes) {
+          mesh.userData.matName = (mesh.material as THREE.Material).name;
+          const ink = new THREE.Mesh(
+            mesh.geometry,
+            makeOutlineMaterial({ ...s, outlineWidth: (s.outlineWidth * 5) / DAILY_BOX_SCALE }),
+          );
+          mesh.add(ink);
+        }
+        boxMeshes = meshes;
+        boxLidNodes = meshes.filter((m) => m.name.startsWith('LootLid'));
+        // additive beam cone rising from the mouth (fresnel edge + vertical fade)
+        const beamUniforms = { uColor: { value: new THREE.Color(0xfff2b8) }, uOpacity: { value: 0 } };
+        beamOpacity = beamUniforms.uOpacity;
+        const beamMat = new THREE.ShaderMaterial({
+          uniforms: beamUniforms,
+          vertexShader:
+            'varying vec3 vN; varying vec3 vV; varying float vY;\n' +
+            'void main() { vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position,1.0); vV = normalize(-mv.xyz); vY = position.y; gl_Position = projectionMatrix * mv; }',
+          fragmentShader:
+            'uniform vec3 uColor; uniform float uOpacity; varying vec3 vN; varying vec3 vV; varying float vY;\n' +
+            'void main() { float edge = pow(abs(dot(normalize(vN), normalize(vV))), 1.6); float fade = smoothstep(0.85, -0.55, vY); gl_FragColor = vec4(uColor, uOpacity * edge * fade); }',
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+        beam = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.3, 1.7, 24, 1, true), beamMat);
+        beam.position.y = 0.5 + 0.85;
+        boxGroup.add(beam);
+        boxLight = new THREE.PointLight(0xffe9b0, 0, 5, 1.6);
+        boxLight.position.y = 0.7;
+        boxGroup.add(boxLight);
+        boxGroup.add(g.scene);
+        boxSpawn = clock.getElapsedTime();
+        if (dailyBox) tintBox(dailyBox);
+      })
+      .catch((e) => console.warn('[sidekick] lootbox load failed', e));
+  };
+
   const animate = () => {
     if (disposed) return;
     raf = requestAnimationFrame(animate);
     const now = clock.getElapsedTime();
     const fr = interact.update(now);
 
+    // swap the world environment when travel changes it (masked by the map cover)
+    if (environment !== curEnv) {
+      curEnv = environment;
+      applyEnv(curEnv);
+    }
     // crossfade the meadow out / studio in when the Shop opens (and back)
     const targetT = studio ? 1 : 0;
     studioT += (targetT - studioT) * 0.3;
@@ -485,8 +731,16 @@ export function createSidekickRenderer(
     studioMat.opacity = studioT;
     contactShadow.visible = inStudio;
     shadowMat.opacity = studioT;
-    grass.setOpacity(1 - studioT);
-    scene.fog = inStudio ? null : meadowFog;
+    // the meadow grass crossfades by opacity; a biome ground hard-toggles.
+    // Once fully in studio the grass is invisible (opacity 0) but was still
+    // being drawn every frame (~20k instanced blades) — skip that draw entirely
+    // while the Shop/Closet covers the meadow, which is most of the studio cost.
+    if (activeGround === grass.group) {
+      const grassVisible = studioT < 0.999;
+      grass.group.visible = grassVisible;
+      if (grassVisible) grass.setOpacity(1 - studioT);
+    } else activeGround.visible = !inStudio;
+    scene.fog = inStudio ? null : envFog;
 
     // body-drag lean/offset/squash (springs home to rest on release)
     pull.position.set(fr.bodyX, 0, fr.bodyZ);
@@ -561,12 +815,68 @@ export function createSidekickRenderer(
     camera.lookAt(camBaseTarget);
 
     grass.update(now, pull.position);
+
+    // ---- daily loot chest: spawn spring → idle rattle → (pop) lid + light ----
+    const wantBox = dailyBox;
+    if (wantBox && !boxMeshes.length && !boxLoading) loadBox();
+    if (wantBox && boxMeshes.length && boxTint !== wantBox) tintBox(wantBox);
+    if (!wantBox && boxPop >= 0) {
+      boxPop = -1;
+      for (const n of boxLidNodes) n.rotation.x = 0;
+      if (beamOpacity) beamOpacity.value = 0;
+      if (boxLight) boxLight.intensity = 0;
+    }
+    const popT = boxPop >= 0 ? now - boxPop : -1;
+    boxGroup.visible = !!wantBox && !inStudio && boxMeshes.length > 0;
+    if (boxGroup.visible) {
+      const ts = Math.min(1, (now - boxSpawn) / 0.55);
+      const spring = 1 - Math.pow(1 - ts, 3) * Math.cos(ts * 9); // overshoot
+      boxGroup.scale.setScalar(Math.max(0.0001, DAILY_BOX_SCALE * spring));
+      if (popT < 0) {
+        const cycle = (now - boxSpawn) % 1.7; // rattle burst every ~1.7s
+        let rattle = 0;
+        if (cycle < 0.55) {
+          const env = Math.sin((cycle / 0.55) * Math.PI);
+          rattle = Math.sin(cycle * 50) * 0.09 * env;
+        }
+        boxGroup.rotation.z = rattle;
+        boxGroup.position.y = DAILY_BOX_POS.y + Math.abs(rattle) * 0.14;
+      } else {
+        boxGroup.rotation.z = popT < 0.35 ? Math.sin(popT * 46) * 0.13 * (0.5 + popT * 2) : 0;
+        boxGroup.position.y = DAILY_BOX_POS.y;
+        const lt = Math.min(1, Math.max(0, (popT - 0.35) / 0.4));
+        const k = 1.9; // ease-out-back
+        const swing = 1 + (k + 1) * Math.pow(lt - 1, 3) + k * Math.pow(lt - 1, 2);
+        for (const n of boxLidNodes) n.rotation.x = -1.75 * swing;
+        const lightT = Math.min(1, Math.max(0, (popT - 0.62) / 0.18));
+        if (beamOpacity && beam) {
+          beamOpacity.value = lightT * (0.85 + 0.08 * Math.sin(now * 6.5));
+          beam.scale.set(1, 0.35 + 0.65 * lightT, 1);
+        }
+        if (boxLight) boxLight.intensity = lightT * 6 * (0.9 + 0.1 * Math.sin(now * 5.7));
+      }
+      // ground-anchor projection for the RN tap-target overlay
+      if (opts.onGround) {
+        groundV.copy(DAILY_BOX_POS);
+        groundV.project(camera);
+        opts.onGround(groundV.x, groundV.y, groundV.z < 1);
+      }
+    } else if (opts.onGround) {
+      opts.onGround(0, 0, false);
+    }
+
     if (faceCtl) {
       faceCtl.setTalking(talking);
       faceCtl.update(now);
       if (faceMat && faceSheet) syncCelMapTransform(faceMat, faceSheet);
     }
-    if (s.bloomEnabled && !bloomBroken) {
+    // Direct render, matching web /home5 (sidekick-canvas.tsx), which renders
+    // straight to the antialiased default framebuffer with NO post-processing.
+    // The bloom composer is kept wired (for the /sidekick-3d look-dev editor and
+    // future effects) but the production home does NOT bloom — its UnrealBloom
+    // added a flower glow /home5 never had, and its non-MSAA render target
+    // aliased the grass. HOME_BLOOM flips it back on if ever wanted.
+    if (HOME_BLOOM && s.bloomEnabled && !bloomBroken) {
       try {
         composer.render();
       } catch (err) {
@@ -576,6 +886,15 @@ export function createSidekickRenderer(
       }
     } else {
       renderer.render(scene, camera);
+    }
+    // pin head-tracked overlays (bond badge / speech bubble): project the head
+    // bone (lifted +0.55) to NDC; the canvas maps NDC→layout px. Web does the
+    // same via overheadRef (sidekick-canvas.tsx).
+    if (opts.onOverhead && ready && bones.head) {
+      bones.head.getWorldPosition(overheadV);
+      overheadV.y += 0.55;
+      overheadV.project(camera);
+      opts.onOverhead(overheadV.x, overheadV.y, overheadV.z < 1);
     }
     // NOTE: no in-app pixel readback here — every readback path (takeSnapshotAsync,
     // gl.readPixels on the default framebuffer, readRenderTargetPixels on an FBO)
@@ -602,6 +921,15 @@ export function createSidekickRenderer(
     setStudio: (v) => {
       studio = v;
     },
+    setEnvironment: (id) => {
+      environment = id;
+    },
+    setDailyBox: (tier) => {
+      dailyBox = tier;
+    },
+    popDailyBox: () => {
+      if (boxPop < 0) boxPop = clock.getElapsedTime();
+    },
     applySettings: (next) => {
       const prevHeight = s.grassHeight;
       const prevClumping = s.grassClumping;
@@ -626,7 +954,7 @@ export function createSidekickRenderer(
       renderer.toneMappingExposure = nsc.exposure;
       // meadow
       grass.setColors(nsc.grassHill, nsc.grassBase, nsc.grassTip, nsc.rock);
-      grass.setLights(nsc);
+      grass.setClouds(nsc.keyColor, nsc.fog);
       if (next.grassHeight !== prevHeight || next.grassClumping !== prevClumping) {
         grass.relayout(next.grassHeight, next.grassClumping); // 20k matrices — only on change
       }

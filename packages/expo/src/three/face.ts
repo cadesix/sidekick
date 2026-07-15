@@ -7,7 +7,7 @@ import * as THREE from 'three';
 
 const GRID = 4;
 
-// name → [col, row]; keep in sync with face-sheet-v3.png
+// name → [col, row]; keep in sync with face-sheet-v6.png
 export const FACE_CELLS = {
   neutral: [0, 0],
   blink: [2, 0],

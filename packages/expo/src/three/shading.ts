@@ -67,6 +67,7 @@ const CEL_VERT = /* glsl */ `
 #include <skinning_pars_vertex>
 #include <fog_pars_vertex>
 varying vec3 vWorldNormal;
+varying vec3 vWorldPos;
 #ifdef SK_USE_MAP
 uniform mat3 uMapTransform;
 varying vec2 vSkUv;
@@ -78,6 +79,7 @@ void main() {
 	vWorldNormal = normalize( mat3( modelMatrix ) * objectNormal );
 	#include <begin_vertex>
 	#include <skinning_vertex>
+	vWorldPos = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;
 	#include <project_vertex>
 	#include <fog_vertex>
 	#ifdef SK_USE_MAP
@@ -94,7 +96,11 @@ uniform vec3 uKeyDir;
 uniform float uCelSoft;
 uniform vec3 uCelShadow;
 uniform float uCelAmt;
+uniform vec3 uRimColor;
+uniform float uRimStrength;
+uniform float uRimWidth;
 varying vec3 vWorldNormal;
+varying vec3 vWorldPos;
 #ifdef SK_USE_MAP
 uniform sampler2D uMap;
 varying vec2 vSkUv;
@@ -113,7 +119,14 @@ void main() {
 	float ndl = dot( N, uKeyDir );
 	float t = smoothstep( -uCelSoft, uCelSoft, ndl );
 	vec3 celTint = mix( vec3( 1.0 ), uCelShadow, uCelAmt );
-	gl_FragColor = vec4( diffuseColor.rgb * mix( celTint, vec3( 1.0 ), t ), diffuseColor.a );
+	vec3 rgb = diffuseColor.rgb * mix( celTint, vec3( 1.0 ), t );
+	// cel rim: a crisp fresnel edge band, brighter on the lit side so it reads
+	// as backlight rather than a uniform glow (verbatim from web makeCelMaterial)
+	vec3 V = normalize( cameraPosition - vWorldPos );
+	float rimF = 1.0 - clamp( dot( V, N ), 0.0, 1.0 );
+	float rimBand = smoothstep( 1.0 - uRimWidth, min( 1.0, 1.0 - uRimWidth + 0.14 ), rimF );
+	rgb += uRimColor * ( uRimStrength * rimBand * ( 0.35 + 0.65 * t ) );
+	gl_FragColor = vec4( rgb, diffuseColor.a );
 	#include <tonemapping_fragment>
 	#include <colorspace_fragment>
 	#include <fog_fragment>
@@ -146,6 +159,9 @@ export function makeCelMaterial(
       uCelSoft: { value: 0.015 + 0.6 * THREE.MathUtils.clamp(s.celSoftness, 0, 1) },
       uCelShadow: { value: new THREE.Color(scene.shadeColor).multiply(envTint) },
       uCelAmt: { value: s.celShadowAmt },
+      uRimColor: { value: new THREE.Color(s.celRimColor).multiply(envTint) },
+      uRimStrength: { value: s.celRimStrength },
+      uRimWidth: { value: s.celRimWidth },
     },
   ]) as Record<string, THREE.IUniform>;
   if (map) {
@@ -197,6 +213,11 @@ export function retintCelMaterial(
   u.uCelSoft.value = 0.015 + 0.6 * THREE.MathUtils.clamp(s.celSoftness, 0, 1);
   (u.uCelShadow.value as THREE.Color).set(scene.shadeColor).multiply(envTint);
   u.uCelAmt.value = s.celShadowAmt;
+  if (u.uRimColor) {
+    (u.uRimColor.value as THREE.Color).set(s.celRimColor).multiply(envTint);
+    u.uRimStrength.value = s.celRimStrength;
+    u.uRimWidth.value = s.celRimWidth;
+  }
 }
 
 export function retintOutlineMaterial(mat: THREE.Material, s: SidekickSettings): void {
