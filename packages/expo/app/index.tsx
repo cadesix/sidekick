@@ -2,10 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { Dimensions, Pressable, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BondBadge } from '../src/components/BondBadge';
 import { Chat } from '../src/components/Chat';
+import { SpeechBubble } from '../src/components/SpeechBubble';
+import { StreakPill } from '../src/components/StreakPill';
 import { HomeDock } from '../src/components/HomeDock';
+import { useStreak } from '../src/store/streak';
 import { SettingsSheet } from '../src/components/SettingsSheet';
 import { ShopSheet } from '../src/components/ShopSheet';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
@@ -72,6 +76,15 @@ export default function Home() {
     hydrateSettings().then(() => setSettings(loadSettings()));
   }, []);
   const loading = useChat((s) => s.loading);
+  const unread = useChat((s) => s.unread);
+  const clearUnread = useChat((s) => s.clearUnread);
+  const insets = useSafeAreaInsets();
+
+  // count today's streak once the store has hydrated (idempotent per local day)
+  const streakHydrated = useStreak((s) => s.hydrated);
+  useEffect(() => {
+    if (streakHydrated) useStreak.getState().touch();
+  }, [streakHydrated]);
 
   // 0 = closed (drawer off-screen), 1 = open
   const progress = useSharedValue(0);
@@ -85,6 +98,7 @@ export default function Home() {
 
   const openDrawer = () => {
     setOpen(true);
+    clearUnread();
     progress.value = withTiming(1, { duration: 380 });
   };
   const closeDrawer = () => {
@@ -135,7 +149,19 @@ export default function Home() {
       {/* bond score floating over the character's head (hidden while a full
           surface covers the scene) */}
       {settings ? (
-        <BondBadge overhead={overhead} hidden={mapShown || shopOpen || open || settingsOpen} />
+        <BondBadge overhead={overhead} hidden={mapShown || shopOpen || open || settingsOpen}>
+          <SpeechBubble />
+        </BondBadge>
+      ) : null}
+
+      {/* top-right streak pill (hidden while a full surface covers the scene) */}
+      {!mapShown && !shopOpen && !open ? (
+        <View
+          style={{ position: 'absolute', top: insets.top + 8, right: 16, zIndex: 25 }}
+          pointerEvents="box-none"
+        >
+          <StreakPill />
+        </View>
       ) : null}
 
       {/* Tap the character band above the drawer to close */}
@@ -150,6 +176,7 @@ export default function Home() {
           full-screen map reveal hides it */}
       <HomeDock
         hidden={mapShown}
+        unread={unread}
         onMessages={openDrawer}
         onShop={() => setShopOpen(true)}
         onMap={openMap}

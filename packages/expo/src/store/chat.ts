@@ -17,7 +17,13 @@ const GREETING: Msg = {
 type ChatState = {
   messages: Msg[];
   loading: boolean;
+  // sidekick-initiated pushes (map arrivals etc.) bump this; the dock Messages
+  // tile badges it until the chat is opened. Mirrors sidekick-inbox.ts.
+  unread: number;
   send: (text: string) => Promise<void>;
+  // append a sidekick line outside a live chat + bump unread
+  pushSidekickMessage: (text: string) => void;
+  clearUnread: () => void;
   reset: () => void;
 };
 
@@ -26,6 +32,7 @@ export const useChat = create<ChatState>()(
     (set, get) => ({
       messages: [GREETING],
       loading: false,
+      unread: 0,
       send: async (text: string) => {
         const trimmed = text.trim();
         if (!trimmed || get().loading) return;
@@ -34,13 +41,19 @@ export const useChat = create<ChatState>()(
         const reply = await fetchReply(next);
         set((st) => ({ messages: [...st.messages, { role: 'assistant', content: reply }], loading: false }));
       },
-      reset: () => set({ messages: [GREETING], loading: false }),
+      pushSidekickMessage: (text: string) =>
+        set((st) => ({
+          messages: [...st.messages, { role: 'assistant', content: text }],
+          unread: st.unread + 1,
+        })),
+      clearUnread: () => set((st) => (st.unread === 0 ? st : { unread: 0 })),
+      reset: () => set({ messages: [GREETING], loading: false, unread: 0 }),
     }),
     {
       name: 'sidekick_chat_v1',
       storage: createJSONStorage(() => AsyncStorage),
       // don't persist the transient loading flag
-      partialize: (st) => ({ messages: st.messages }),
+      partialize: (st) => ({ messages: st.messages, unread: st.unread }),
     },
   ),
 );

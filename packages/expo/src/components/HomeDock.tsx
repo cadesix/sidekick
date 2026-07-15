@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type DockProps = {
   hidden?: boolean;
+  unread?: number;
   onMessages: () => void;
   onShop?: () => void;
   onMap?: () => void;
@@ -55,7 +56,7 @@ function AppTile({
   );
 }
 
-export function HomeDock({ hidden, onMessages, onShop, onMap, onSettings }: DockProps) {
+export function HomeDock({ hidden, unread = 0, onMessages, onShop, onMap, onSettings }: DockProps) {
   const insets = useSafeAreaInsets();
   const shown = useSharedValue(hidden ? 0 : 1);
 
@@ -101,10 +102,18 @@ export function HomeDock({ hidden, onMessages, onShop, onMap, onSettings }: Dock
           elevation: 8,
         }}
       >
-        {/* Messages — opens the chat sheet */}
-        <AppTile label="Messages" color="#2BD14E" onPress={onMessages}>
-          <Ionicons name="chatbubble" size={30} color="#fff" />
-        </AppTile>
+        {/* Messages — opens the chat sheet. Unread badge sits on an OUTER
+            wrapper (the tile itself is overflow:hidden). */}
+        <View>
+          <AppTile label="Messages" color="#2BD14E" onPress={onMessages}>
+            <Ionicons name="chatbubble" size={30} color="#fff" />
+          </AppTile>
+          {unread > 0 ? (
+            <View style={styles.badge} pointerEvents="none">
+              <Text style={styles.badgeText}>{unread > 9 ? '9+' : unread}</Text>
+            </View>
+          ) : null}
+        </View>
 
         {/* Shop — shopping bag */}
         <AppTile label="Shop" color="#FF7A48" onPress={onShop}>
@@ -124,3 +133,21 @@ export function HomeDock({ hidden, onMessages, onShop, onMap, onSettings }: Dock
     </Animated.View>
   );
 }
+
+const styles = StyleSheet.create({
+  badge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    minWidth: 21,
+    height: 21,
+    paddingHorizontal: 5,
+    borderRadius: 11,
+    backgroundColor: '#FF3B30',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+});
