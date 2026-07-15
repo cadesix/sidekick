@@ -136,6 +136,9 @@ export type SidekickSettings = {
   celShadowColor: string;
   celSoftness: number;
   celShadowAmt: number;
+  celRimColor: string;
+  celRimStrength: number;
+  celRimWidth: number;
   goochCool: string;
   goochWarm: string;
   halftoneScale: number;
@@ -206,10 +209,13 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
   toonShadowAmt: 0.506,
   rampMid: '#ffb061',
   rampLight: '#ffedc4',
-  celBodyColor: '#ffbb29',
-  celShadowColor: '#c98f52',
+  celBodyColor: '#a988e0',
+  celShadowColor: '#7d63b0',
   celSoftness: 0,
-  celShadowAmt: 0.501,
+  celShadowAmt: 0.463,
+  celRimColor: '#ffffff',
+  celRimStrength: 1,
+  celRimWidth: 0.32455,
   goochCool: '#7a86b8',
   goochWarm: '#fff1d6',
   halftoneScale: 7.432,
@@ -218,7 +224,7 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
   outline: false,
   outlineWidth: 0.00722,
   outlineColor: '#b77d1a',
-  faceZoom: 0.9,
+  faceZoom: 1.07,
   faceHeight: 0.185,
   shirtEnabled: true,
   shirtColor: '#5c8ad6',
