@@ -78,6 +78,10 @@ export type SidekickController = {
   setHoldingPhone: (v: boolean) => void;
   setTalking: (v: boolean) => void;
   setStudio: (v: boolean) => void;
+  // guided-session night sky: crossfade the meadow → dark starfield
+  setCosmos: (v: boolean) => void;
+  // reveal the first `lit` constellation nodes (driven by beat progress)
+  setConstellation: (lit: number, total: number) => void;
   // swap the world environment (map travel): 'meadow' | biome id
   setEnvironment: (id: EnvironmentId) => void;
   // daily loot chest: spawn/hide (tier or null) + trigger the open animation
@@ -95,7 +99,7 @@ export type SidekickController = {
 // Bump on every edit — logged at context creation so the debug loop can verify
 // the bundle it launched is actually the code it just changed (Metro sometimes
 // serves stale bundles; see scripts/sim-snap.sh).
-export const BUILD_MARKER = 'build-035';
+export const BUILD_MARKER = 'build-041-constellation';
 
 // Whether the production home renders through the bloom composer. Off: web
 // /home5 renders direct (no post) with antialias, so we match it. Flip on only
@@ -148,6 +152,7 @@ export function createSidekickRenderer(
     framing: Framing;
     holdingPhone?: boolean;
     studio?: boolean;
+    cosmos?: boolean;
     environment?: EnvironmentId;
     // daily loot chest tier (or null to hide); read live like the flags above
     dailyBox?: BoxTier | null;
@@ -231,6 +236,144 @@ export function createSidekickRenderer(
   contactShadow.renderOrder = -1;
   contactShadow.visible = false;
   scene.add(contactShadow);
+
+  // ---- Guided-session "cosmos": a dark-purple night sky with a twinkling
+  // starfield and a constellation that draws itself as the chat progresses.
+  // Crossfaded in by `cosmos` (like `studio`); the camera pans up to the sky
+  // (COSMOS_FRAMING) so the character sits out of frame below. Everything hangs
+  // off `cosmosGroup` so it fades together with `cosmosT`.
+  const cosmosGroup = new THREE.Group();
+  cosmosGroup.visible = false;
+  scene.add(cosmosGroup);
+
+  // dark-purple vertical gradient backdrop (bottom faintly lit → top near-black)
+  const nightTex = makeGradientTexture([
+    { at: 0, color: '#241640' },
+    { at: 0.5, color: '#140b2b' },
+    { at: 1, color: '#080418' },
+  ]);
+  const nightSphere = new THREE.Mesh(
+    new THREE.SphereGeometry(80, 32, 20),
+    new THREE.MeshBasicMaterial({ map: nightTex, side: THREE.BackSide, transparent: true, opacity: 0, depthWrite: false, fog: false }),
+  );
+  nightSphere.renderOrder = -3; // behind everything
+  cosmosGroup.add(nightSphere);
+  const nightMat = nightSphere.material as THREE.MeshBasicMaterial;
+
+  // twinkling starfield — tiny additive points over the upper sky dome
+  const STAR_COUNT = 320;
+  const starPos = new Float32Array(STAR_COUNT * 3);
+  const starPhase = new Float32Array(STAR_COUNT);
+  const starSize = new Float32Array(STAR_COUNT);
+  {
+    let placed = 0;
+    const v = new THREE.Vector3();
+    while (placed < STAR_COUNT) {
+      v.set(Math.random() * 2 - 1, Math.random() * 1.3 - 0.15, Math.random() * 2 - 1);
+      if (v.y < 0.12) continue; // keep the upper dome
+      v.normalize().multiplyScalar(66);
+      starPos[placed * 3] = v.x;
+      starPos[placed * 3 + 1] = v.y + 6;
+      starPos[placed * 3 + 2] = v.z;
+      starPhase[placed] = Math.random() * Math.PI * 2;
+      starSize[placed] = 0.6 + Math.random() * 1.8;
+      placed++;
+    }
+  }
+  const starUniforms = { uTime: { value: 0 }, uOpacity: { value: 0 }, uColor: { value: new THREE.Color('#cdbfff') } };
+  const starMat = new THREE.ShaderMaterial({
+    uniforms: starUniforms,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexShader:
+      'attribute float aPhase; attribute float aSize; uniform float uTime; varying float vTw;\n' +
+      'void main(){ vTw = 0.5 + 0.5*sin(uTime*1.6 + aPhase); vec4 mv = modelViewMatrix * vec4(position,1.0);\n' +
+      '  gl_PointSize = aSize * (1.0 + vTw*0.8) * (300.0 / -mv.z); gl_Position = projectionMatrix * mv; }',
+    fragmentShader:
+      'uniform float uOpacity; uniform vec3 uColor; varying float vTw;\n' +
+      'void main(){ float r = length(gl_PointCoord - 0.5); float a = smoothstep(0.5, 0.0, r);\n' +
+      '  gl_FragColor = vec4(uColor, a * uOpacity * (0.35 + vTw*0.65)); }',
+  });
+  const starGeo = new THREE.BufferGeometry();
+  starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+  starGeo.setAttribute('aPhase', new THREE.BufferAttribute(starPhase, 1));
+  starGeo.setAttribute('aSize', new THREE.BufferAttribute(starSize, 1));
+  const starPoints = new THREE.Points(starGeo, starMat);
+  starPoints.renderOrder = -2;
+  cosmosGroup.add(starPoints);
+
+  // constellation — up to 8 nodes in the upper-forward sky that light one by one
+  // as beats complete (uLit ∈ [0,total]; node j lights over uLit j→j+1, and the
+  // edge into it draws with it). Only the first `total` nodes are ever revealed,
+  // so a session's constellation completes at its own beat count.
+  const CONSTELLATION: [number, number, number][] = [
+    [-6.5, 23, -26],
+    [-4, 28, -30],
+    [-0.5, 25, -28],
+    [2.5, 29, -31],
+    [5, 25.5, -27],
+    [7, 30, -30],
+    [3, 32.5, -33],
+    [-2, 31.5, -32],
+  ];
+  const conUniforms = { uTime: { value: 0 }, uOpacity: { value: 0 }, uLit: { value: 0 } };
+  // node markers (brighter glowing points)
+  const nodePos = new Float32Array(CONSTELLATION.length * 3);
+  const nodeIdx = new Float32Array(CONSTELLATION.length);
+  CONSTELLATION.forEach((p, i) => {
+    nodePos[i * 3] = p[0];
+    nodePos[i * 3 + 1] = p[1];
+    nodePos[i * 3 + 2] = p[2];
+    nodeIdx[i] = i;
+  });
+  const nodeMat = new THREE.ShaderMaterial({
+    uniforms: conUniforms,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexShader:
+      'attribute float aIndex; uniform float uTime; uniform float uLit; varying float vB;\n' +
+      'void main(){ vB = clamp(uLit - aIndex, 0.0, 1.0); float tw = 0.75 + 0.25*sin(uTime*2.2 + aIndex*1.7);\n' +
+      // base grows with vB, plus a subtle pop that peaks mid-ignite so the star
+      // flares as it lights, then settles
+      '  float pop = 1.0 + 3.0 * vB * (1.0 - vB);\n' +
+      '  vec4 mv = modelViewMatrix * vec4(position,1.0); gl_PointSize = (1.2 + 2.8*vB) * pop * tw * (200.0 / -mv.z);\n' +
+      '  gl_Position = projectionMatrix * mv; }',
+    fragmentShader:
+      // bright crisp core + soft halo → a star, not a fuzzy blob
+      'uniform float uOpacity; varying float vB;\n' +
+      'void main(){ float r = length(gl_PointCoord - 0.5);\n' +
+      '  float core = smoothstep(0.18, 0.0, r); float glow = smoothstep(0.5, 0.1, r) * 0.45;\n' +
+      '  float a = min(1.0, core + glow); gl_FragColor = vec4(0.92, 0.9, 1.0, a * vB * uOpacity); }',
+  });
+  const nodeGeo = new THREE.BufferGeometry();
+  nodeGeo.setAttribute('position', new THREE.BufferAttribute(nodePos, 3));
+  nodeGeo.setAttribute('aIndex', new THREE.BufferAttribute(nodeIdx, 1));
+  const conNodes = new THREE.Points(nodeGeo, nodeMat);
+  conNodes.renderOrder = -1;
+  cosmosGroup.add(conNodes);
+  // connecting lines: segment i joins node i→i+1, drawing in with node i+1
+  const segCount = CONSTELLATION.length - 1;
+  const linePos = new Float32Array(segCount * 2 * 3); // filled per-frame by the draw
+  const lineMat = new THREE.ShaderMaterial({
+    uniforms: conUniforms,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    // brightness is constant along the drawn portion — the *reveal* is done by
+    // extending the segment geometry each frame (see the animate loop), so the
+    // line visibly draws from star to star rather than just fading in
+    vertexShader:
+      'void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+    fragmentShader:
+      'uniform float uOpacity; void main(){ gl_FragColor = vec4(0.72, 0.68, 1.0, uOpacity * 0.8); }',
+  });
+  const lineGeo = new THREE.BufferGeometry();
+  lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
+  const conLines = new THREE.LineSegments(lineGeo, lineMat);
+  conLines.renderOrder = -2;
+  cosmosGroup.add(conLines);
 
   // Camera
   let framing = opts.framing;
@@ -398,6 +541,7 @@ export function createSidekickRenderer(
   let holdingPhone = !!opts.holdingPhone;
   let talking = false;
   let studio = !!opts.studio;
+  let cosmos = !!opts.cosmos;
   let disposed = false;
   let cos: CosmeticsHandle | null = null;
   // rebuilds the character materials from the CURRENT `s`; set once the GLB is
@@ -616,6 +760,9 @@ export function createSidekickRenderer(
   let phoneBlend = 0;
   let phoneShown = false;
   let studioT = 0; // eased meadow→studio blend (0 meadow, 1 studio)
+  let cosmosT = 0; // eased meadow→night-sky blend (guided session)
+  let conLit = 0; // eased constellation reveal (0..total lit nodes)
+  let conLitTarget = 0;
   let raf = 0;
   let snapFrame = 0;
   const studioMat = studioSphere.material as THREE.MeshBasicMaterial;
@@ -731,16 +878,48 @@ export function createSidekickRenderer(
     studioMat.opacity = studioT;
     contactShadow.visible = inStudio;
     shadowMat.opacity = studioT;
-    // the meadow grass crossfades by opacity; a biome ground hard-toggles.
-    // Once fully in studio the grass is invisible (opacity 0) but was still
-    // being drawn every frame (~20k instanced blades) — skip that draw entirely
-    // while the Shop/Closet covers the meadow, which is most of the studio cost.
+
+    // guided-session night sky crossfade — mirrors the studio blend, but slower
+    // so it eases in under the camera's pan up to the sky
+    cosmosT += ((cosmos ? 1 : 0) - cosmosT) * 0.06;
+    if (Math.abs((cosmos ? 1 : 0) - cosmosT) < 0.002) cosmosT = cosmos ? 1 : 0;
+    const inCosmos = cosmosT > 0.001;
+    cosmosGroup.visible = inCosmos;
+    nightMat.opacity = cosmosT;
+    starUniforms.uOpacity.value = cosmosT;
+    starUniforms.uTime.value = now;
+    conUniforms.uOpacity.value = cosmosT;
+    conUniforms.uTime.value = now;
+    conLit += (conLitTarget - conLit) * 0.08; // smooth star-by-star reveal
+    conUniforms.uLit.value = conLit;
+    // draw the constellation lines: segment i extends from node i toward node
+    // i+1 as node i+1 lights (conLit crossing i+1), so the line grows star→star
+    if (inCosmos) {
+      for (let i = 0; i < segCount; i++) {
+        const a = CONSTELLATION[i];
+        const b = CONSTELLATION[i + 1];
+        const prog = Math.min(1, Math.max(0, conLit - (i + 1)));
+        linePos[i * 6] = a[0];
+        linePos[i * 6 + 1] = a[1];
+        linePos[i * 6 + 2] = a[2];
+        linePos[i * 6 + 3] = a[0] + (b[0] - a[0]) * prog;
+        linePos[i * 6 + 4] = a[1] + (b[1] - a[1]) * prog;
+        linePos[i * 6 + 5] = a[2] + (b[2] - a[2]) * prog;
+      }
+      lineGeo.attributes.position.needsUpdate = true;
+    }
+    // the character sits out of frame under the up-pan; drop it entirely once in
+    pull.visible = cosmosT < 0.9;
+
+    // meadow grass crossfades by opacity; skip its ~20k-blade draw entirely once
+    // either the studio OR the night sky fully covers it (biome ground toggles)
+    const coverT = Math.max(studioT, cosmosT);
     if (activeGround === grass.group) {
-      const grassVisible = studioT < 0.999;
+      const grassVisible = coverT < 0.999;
       grass.group.visible = grassVisible;
-      if (grassVisible) grass.setOpacity(1 - studioT);
-    } else activeGround.visible = !inStudio;
-    scene.fog = inStudio ? null : envFog;
+      if (grassVisible) grass.setOpacity(1 - coverT);
+    } else activeGround.visible = !inStudio && !inCosmos;
+    scene.fog = inStudio || inCosmos ? null : envFog;
 
     // body-drag lean/offset/squash (springs home to rest on release)
     pull.position.set(fr.bodyX, 0, fr.bodyZ);
@@ -787,7 +966,10 @@ export function createSidekickRenderer(
       );
       bones.armL.scale.setScalar(1 + fr.armL.stretch);
       bones.armR.scale.setScalar(1 + fr.armR.stretch);
-      setBone('head', fr.headPitch + PHONE_POSE.headPitch * pb, fr.headYaw + PHONE_POSE.headYaw * pb, 0);
+      // tilt the head up to gaze at the sky as the night crossfades in (peaks
+      // just before the character slides out of frame under the camera pan)
+      const cosmosLook = Math.min(1, cosmosT / 0.8) * 0.6;
+      setBone('head', fr.headPitch + PHONE_POSE.headPitch * pb - cosmosLook, fr.headYaw + PHONE_POSE.headYaw * pb, 0);
       // body-drag bend splits across waist + spine (arc toward the grab
       // point); the trailing leg lifts and its knee curls when off balance
       setBone('waist', fr.bendX * 0.5, 0, fr.bendZ * 0.5);
@@ -798,12 +980,15 @@ export function createSidekickRenderer(
       setBone('calfR', fr.legR.curl, 0, 0);
     }
 
-    // ease camera toward the current framing (smooth zoom on chat open)
-    camBasePos.lerp(wantPos.fromArray(framing.pos), 0.07);
-    camBaseTarget.lerp(wantTgt.fromArray(framing.target), 0.07);
+    // ease camera toward the current framing (smooth zoom on chat open). The
+    // guided-session pan up to the sky uses a slower rate so the tilt reads as a
+    // deliberate, felt move rather than a snap.
+    const camK = cosmos ? 0.032 : 0.07;
+    camBasePos.lerp(wantPos.fromArray(framing.pos), camK);
+    camBaseTarget.lerp(wantTgt.fromArray(framing.target), camK);
     const wantFov = framing.fov ?? camera.fov;
     if (Math.abs(wantFov - camera.fov) > 0.02) {
-      camera.fov += (wantFov - camera.fov) * 0.07;
+      camera.fov += (wantFov - camera.fov) * camK;
       camera.updateProjectionMatrix();
     }
     // springy orbit offset around the framing; snaps back on release
@@ -920,6 +1105,12 @@ export function createSidekickRenderer(
     },
     setStudio: (v) => {
       studio = v;
+    },
+    setCosmos: (v) => {
+      cosmos = v;
+    },
+    setConstellation: (lit) => {
+      conLitTarget = Math.max(0, Math.min(lit, CONSTELLATION.length));
     },
     setEnvironment: (id) => {
       environment = id;
