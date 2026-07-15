@@ -132,12 +132,15 @@ score, so it stays honest. Ad-relevance transparency lives here too (§5).
 
 ## 2. Content: one session per island
 
-Six islands, six sessions, ordered shallow → deep (self-disclosure
-reciprocity: earn the right to ask). Frostpeak starts unlocked; its session is
-the first bond builder. Each session below lists its beats (all free-text
-asks) and the fields the extraction pass targets.
+Six islands, six sessions, ordered by CONVERSATIONAL VALUE — collect the
+context that makes every future chat richer first (who you are, what you're
+into, where you're from), then wiring, goals, and the deep stuff. Order:
+About You → Taste Check → Where You're From → How You're Wired → Goals &
+Dreams → The Deep Stuff. On the map, locked islands show a topic card (title +
+one-line tease + time/reward) that taps straight into the session; islands
+later in the sequence sit dimmed with their order number.
 
-### Frostpeak · "The Basics" — available day 1
+### Frostpeak · "About You" — available day 1
 
 *(covers the starting-point "About you": school/job + daily life)*
 - "morning person or night owl? be honest"
@@ -149,7 +152,7 @@ asks) and the fields the extraction pass targets.
 - Extract: `chronotype`, `occupation_type`, `occupation`, `field`,
   `locale_type`, `household` + `weekday_note`
 
-### Pinewood · "Your World" — unlocked by its session
+### Pinewood · "Taste Check" — unlocked by its session
 
 *(people + tastes: high ad relevance, low intimacy)*
 - "who do you actually talk to most?"

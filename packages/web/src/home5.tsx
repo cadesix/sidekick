@@ -116,7 +116,7 @@ export default function Home5() {
 			setCanvasPaused(false);
 			return;
 		}
-		const t = window.setTimeout(() => setCanvasPaused(true), 450);
+		const t = window.setTimeout(() => setCanvasPaused(true), 320);
 		return () => window.clearTimeout(t);
 	}, [shopOpen]);
 	// imperative handle the canvas fills once cosmetics are ready; the Shop uses
@@ -160,9 +160,9 @@ export default function Home5() {
 			    to CHAT_FRAMING (zoomed out) when the chat drawer opens. */}
 			<SidekickCanvas
 				className="absolute inset-0"
-				framing={mapOpen ? MAP_FRAMING : shopOpen || appearanceOpen ? SHOP_FRAMING : chatOpen || sessionIsland ? CHAT_FRAMING : HERO_FRAMING}
+				framing={mapOpen ? MAP_FRAMING : appearanceOpen ? SHOP_FRAMING : chatOpen || sessionIsland ? CHAT_FRAMING : HERO_FRAMING}
 				holdingPhone={chatOpen || !!sessionIsland}
-				studio={shopOpen || appearanceOpen}
+				studio={appearanceOpen}
 				environment={environment}
 				controlsRef={controlsRef}
 				overheadRef={bondRef}
@@ -280,14 +280,7 @@ export default function Home5() {
 			) : null}
 
 			{/* Shop sheet (Shop dock icon) — covers the lower half; the character is
-			    lifted into the band above so you can see the outfit change live */}
-			{shopOpen ? (
-				<button
-					onClick={() => setShopOpen(false)}
-					aria-label="Close shop"
-					className="absolute inset-x-0 top-0 bottom-[92%] z-20"
-				/>
-			) : null}
+			    a full-screen takeover with the live dressing preview at the top */}
 			<ShopSheet open={shopOpen} onClose={() => setShopOpen(false)} controlsRef={controlsRef} />
 
 			{/* Goals sheet (Goals dock icon) — the user's goals with this week's

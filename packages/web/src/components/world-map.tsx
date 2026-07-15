@@ -3,13 +3,26 @@ import { LuLock, LuX } from "react-icons/lu";
 import { SidekickAvatar } from "./sidekick-avatar";
 import { BOND_MAX, loadBond, subscribeBond } from "./sidekick-bond";
 import { isSessionDone, isSessionStartable, nextSession, sessionFor, CONTEXT_EVENT } from "./sidekick-sessions";
+import { loadSettings } from "./sidekick-settings";
 import type { EnvironmentId } from "./sidekick-biomes";
 
-// A single static map for the world page. The art is a tall ~9:16 island chain —
-// it fills the viewport height (cover) over a sky→sea gradient that backs the
+// The world map has a day / evening / night variant, keyed off the same
+// time-of-day setting the 3D scene uses, so the map matches the world the
+// character is standing in. Art is a tall ~9:16 island chain, all three the
+// same 941×1672 so marker positions carry over. The gradient backs the
 // letterbox bands while the art loads.
-const MAP_SRC = "/world-map-quests.webp";
-const MAP_BG = "linear-gradient(#b795c9, #3e97d9)";
+const MAP_ART: Record<string, { src: string; bg: string }> = {
+	day: { src: "/world-map-quests.webp", bg: "linear-gradient(#b795c9, #3e97d9)" },
+	evening: { src: "/world-map-quests-evening.webp", bg: "linear-gradient(#6a4a7a, #c07a6a)" },
+	night: { src: "/world-map-quests-night.webp", bg: "linear-gradient(#1a1f45, #2a3560)" },
+};
+function mapArt() {
+	try {
+		return MAP_ART[loadSettings().timeOfDay] ?? MAP_ART.day;
+	} catch {
+		return MAP_ART.day;
+	}
+}
 
 // Circle-mask reveal. The radius eases out (fast → settle) so the *area* revealed
 // (∝ r²) doesn't accelerate as it grows. Target 74% ≈ just enough to reach the
@@ -109,6 +122,9 @@ export function WorldMap({
 		if (el) el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
 	};
 
+	// day/evening/night art, resolved each time the map opens (matches the scene)
+	const [art, setArt] = useState(mapArt);
+
 	// the bottom promo card pops in only after the circle mask finishes expanding
 	const [cardIn, setCardIn] = useState(false);
 	useEffect(() => {
@@ -117,6 +133,7 @@ export function WorldMap({
 			setSelId(null); // never reopen onto a stale destination modal
 			return;
 		}
+		setArt(mapArt());
 		requestAnimationFrame(centerScroll); // recenter in case the art was cached
 		const t = window.setTimeout(() => setCardIn(true), CARD_DELAY);
 		return () => window.clearTimeout(t);
@@ -126,7 +143,7 @@ export function WorldMap({
 		<div
 			className={`absolute inset-0 z-40 overflow-hidden ${open ? "" : "pointer-events-none"}`}
 			style={{
-				background: MAP_BG,
+				background: art.bg,
 				clipPath: open ? "circle(74% at 50% 50%)" : "circle(0% at 50% 50%)",
 				transition: `clip-path ${REVEAL_MS}ms ${REVEAL_EASE}`,
 			}}
@@ -141,7 +158,7 @@ export function WorldMap({
 			>
 				<div className="relative h-full w-max">
 					<img
-						src={MAP_SRC}
+						src={art.src}
 						alt="World map"
 						onLoad={centerScroll}
 						className="block h-full w-auto max-w-none select-none"
