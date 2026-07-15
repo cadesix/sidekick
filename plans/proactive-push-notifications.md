@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed implementation plan for iOS-first launch. Expo Push Service is the push provider. The design keeps the provider behind an interface so Android and a future direct APNs/FCM provider do not require rewriting product logic.
+Implemented for the iOS-first launch on 2026-07-14. Expo Push Service is the push provider, behind a provider-neutral interface. Server policy, per-device registration, outbox delivery, receipts, iOS observers, settings, and the Notification Service Extension are in place. Simulator build and synthetic APNs delivery are verified; real APNs delivery on a physical iPhone remains a release QA requirement because Apple does not issue a usable remote push token to iOS Simulator.
 
 ## Product outcome
 

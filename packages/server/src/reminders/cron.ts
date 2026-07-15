@@ -14,7 +14,6 @@ export function buildRemindersCron(services: Services): Hono {
   const deps: ReminderDeps = {
     db: services.db,
     model: services.model,
-    expoAccessToken: process.env.EXPO_ACCESS_TOKEN,
   };
   app.get("/reminders/fire", async (c) => {
     const result = await fireDueReminders(deps, new Date());

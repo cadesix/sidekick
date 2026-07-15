@@ -1,6 +1,13 @@
 import { and, desc, eq, lte, sql } from "drizzle-orm";
 import { generateText, type LanguageModel } from "ai";
-import { type Database, memories, messages, reminders, users } from "@sidekick/db";
+import {
+  type Database,
+  memories,
+  messages,
+  notificationPreferences,
+  reminders,
+  users,
+} from "@sidekick/db";
 import {
   bumpMemoryVersion,
   computeNextFireAt,
@@ -10,7 +17,7 @@ import {
   renderReminderDeliveryUser,
 } from "@sidekick/shared";
 import { ensureMainConversation } from "../chat/turn";
-import { sendPush, type PushIntent } from "../checkins/push";
+import { enqueueNotification } from "../notifications/outbox";
 
 type ReminderRow = typeof reminders.$inferSelect;
 type UserRow = typeof users.$inferSelect;
@@ -19,7 +26,6 @@ type UserRow = typeof users.$inferSelect;
 export type ReminderDeps = {
   db: Database;
   model: LanguageModel;
-  expoAccessToken?: string;
 };
 
 /** How many due reminders one cron tick will attempt (10: "limit 500"). */
@@ -37,7 +43,14 @@ export async function selectDueReminders(db: Database, now: Date): Promise<DueRe
     .select({ reminder: reminders, user: users })
     .from(reminders)
     .innerJoin(users, eq(reminders.userId, users.id))
-    .where(and(eq(reminders.status, "active"), lte(reminders.nextFireAt, now)))
+    .innerJoin(notificationPreferences, eq(notificationPreferences.userId, users.id))
+    .where(
+      and(
+        eq(reminders.status, "active"),
+        lte(reminders.nextFireAt, now),
+        eq(notificationPreferences.remindersEnabled, true),
+      ),
+    )
     .orderBy(reminders.nextFireAt)
     .limit(FIRE_LIMIT);
   return rows.map((r) => ({ reminder: r.reminder, user: r.user }));
@@ -86,7 +99,7 @@ async function phraseReminder(
 
 export type FireOutcome =
   | { fired: false; reason: "claimed" }
-  | { fired: true; messageId: number; text: string; pushIntent: PushIntent };
+  | { fired: true; messageId: number; text: string };
 
 /**
  * Deliver one due reminder, idempotently (10 §delivery). The row is *claimed*
@@ -145,15 +158,22 @@ export async function fireReminder(
 
   await bumpMemoryVersion(db, user.id);
 
-  const pushIntent: PushIntent = {
-    token: user.pushToken ?? null,
+  await enqueueNotification(db, {
+    userId: user.id,
+    messageId: message.id,
+    kind: "reminder",
     title: user.sidekickName ?? "Sidekick",
     body: text,
-    data: { type: "reminder", conversationId: conversation.id, reminderId: reminder.id },
-  };
-  await sendPush(deps.expoAccessToken, pushIntent);
+    data: {
+      type: "reminder",
+      conversationId: conversation.id,
+      reminderId: reminder.id,
+      messageId: message.id,
+    },
+    availableAt: now,
+  });
 
-  return { fired: true, messageId: message.id, text, pushIntent };
+  return { fired: true, messageId: message.id, text };
 }
 
 /** Fire every due reminder for a tick; returns how many were selected and delivered. */

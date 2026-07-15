@@ -8,6 +8,7 @@ import {
   goals,
   memories,
   messages,
+  notificationPreferences,
   progressEvents,
   users,
 } from "@sidekick/db";
@@ -47,7 +48,8 @@ type PersistedOpenerCall = {
   result: unknown;
 };
 import { getWeather } from "./weather";
-import { sendPush, type PushIntent } from "./push";
+import { enqueueNotification } from "../notifications/outbox";
+import { GENERIC_PROACTIVE_BODY } from "../notifications/policy";
 
 type UserRow = typeof users.$inferSelect;
 
@@ -56,7 +58,6 @@ export type CheckinDeps = {
   db: Database;
   model: LanguageModel;
   weatherApiKey?: string;
-  expoAccessToken?: string;
 };
 
 /** Local hour after which the quiet-failure follow-up is allowed to fire. */
@@ -81,7 +82,12 @@ function reminderHour(user: UserRow): number {
  * sharding that's robust to minute drift between ticks.
  */
 export async function selectDueUsers(db: Database, now: Date): Promise<UserRow[]> {
-  const all = await db.select().from(users);
+  const rows = await db
+    .select({ user: users })
+    .from(users)
+    .innerJoin(notificationPreferences, eq(notificationPreferences.userId, users.id))
+    .where(eq(notificationPreferences.checkinsEnabled, true));
+  const all = rows.map((row) => row.user);
   return all.filter((user) => localHour(user.timezone, now) === reminderHour(user));
 }
 
@@ -94,7 +100,13 @@ export async function selectFollowUpCandidates(db: Database, now: Date): Promise
     .select({ user: users, date: checkIns.date })
     .from(checkIns)
     .innerJoin(users, eq(checkIns.userId, users.id))
-    .where(eq(checkIns.status, "opened"));
+    .innerJoin(notificationPreferences, eq(notificationPreferences.userId, users.id))
+    .where(
+      and(
+        eq(checkIns.status, "opened"),
+        eq(notificationPreferences.checkinsEnabled, true),
+      ),
+    );
   return rows
     .filter(
       (r) =>
@@ -298,7 +310,7 @@ export async function generateOpener(
 
 export type OpenOutcome =
   | { created: false; reason: "already-open" }
-  | { created: true; checkInId: string; messageId: number; pushIntent: PushIntent };
+  | { created: true; checkInId: string; messageId: number };
 
 /**
  * Generate and insert today's opener for one user, idempotently (03 step 3).
@@ -347,20 +359,23 @@ export async function openCheckin(
     .where(eq(checkIns.id, claimed.id));
   await bumpMemoryVersion(db, user.id);
 
-  const pushIntent: PushIntent = {
-    token: user.pushToken ?? null,
+  await enqueueNotification(db, {
+    userId: user.id,
+    messageId: message.id,
+    kind: "checkin",
     title: user.sidekickName ?? "Sidekick",
-    body: text,
-    data: { type: "checkin", conversationId: conversation.id, date },
-  };
-  await sendPush(deps.expoAccessToken, pushIntent);
+    body: GENERIC_PROACTIVE_BODY,
+    data: { type: "checkin", conversationId: conversation.id, date, messageId: message.id },
+    availableAt: now,
+    expiresAt: new Date(now.getTime() + 6 * 60 * 60_000),
+  });
 
-  return { created: true, checkInId: claimed.id, messageId: message.id, pushIntent };
+  return { created: true, checkInId: claimed.id, messageId: message.id };
 }
 
 export type FollowUpOutcome =
   | { sent: false; reason: "too-early" | "no-open-checkin" | "closed" | "engaged" | "already-nudged" }
-  | { sent: true; messageId: number; pushIntent: PushIntent };
+  | { sent: true; messageId: number };
 
 /**
  * The single soft evening follow-up (03 step 4, "never more than 2 pushes/day").
@@ -424,15 +439,23 @@ export async function followUpCheckin(
     throw new Error("failed to persist follow-up message");
   }
 
-  const pushIntent: PushIntent = {
-    token: user.pushToken ?? null,
+  await enqueueNotification(db, {
+    userId: user.id,
+    messageId: message.id,
+    kind: "checkin-followup",
     title: user.sidekickName ?? "Sidekick",
-    body: text,
-    data: { type: "checkin-followup", conversationId: conversation.id, date },
-  };
-  await sendPush(deps.expoAccessToken, pushIntent);
+    body: GENERIC_PROACTIVE_BODY,
+    data: {
+      type: "checkin-followup",
+      conversationId: conversation.id,
+      date,
+      messageId: message.id,
+    },
+    availableAt: now,
+    expiresAt: new Date(now.getTime() + 6 * 60 * 60_000),
+  });
 
-  return { sent: true, messageId: message.id, pushIntent };
+  return { sent: true, messageId: message.id };
 }
 
 /**

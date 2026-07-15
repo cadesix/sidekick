@@ -25,6 +25,7 @@ import {
 	locationAccess,
 } from "~/lib/location";
 import { colors } from "../theme";
+import { enablePushNotifications } from "~/lib/notifications/registration";
 
 /** An iOS-style grouped field: label on the left, editable value on the right. */
 function Field({
@@ -173,6 +174,10 @@ export function SettingsScreen() {
 		queryKey: HEALTH_CONNECTION_QUERY_KEY,
 		queryFn: loadHealthConnection,
 	});
+	const notifications = useQuery({
+		queryKey: ["notifications", "preferences"],
+		queryFn: () => trpc.notifications.preferences.query(),
+	});
 
 	const save = useMutation({
 		mutationFn: (patch: { name?: string; sidekickName?: string }) =>
@@ -202,6 +207,40 @@ export function SettingsScreen() {
 		onSettled: () => {
 			void queryClient.invalidateQueries({ queryKey: ["location", "setting"] });
 		},
+	});
+
+	const updateNotifications = useMutation({
+		mutationFn: async (patch: {
+			proactiveEnabled?: boolean;
+			checkinsEnabled?: boolean;
+			remindersEnabled?: boolean;
+			awakeStart?: string;
+			awakeEnd?: string;
+		}) => {
+			await trpc.notifications.updatePreferences.mutate(patch);
+			if (patch.proactiveEnabled) {
+				try {
+					const enabled = await enablePushNotifications();
+					if (!enabled) {
+						Alert.alert(
+							"Notifications are off",
+							"Sidekick can still leave messages in chat. You can turn alerts on in iOS Settings.",
+							[
+								{ text: "Not now", style: "cancel" },
+								{ text: "Open Settings", onPress: () => void Linking.openSettings() },
+							],
+						);
+					}
+				} catch {
+					Alert.alert(
+						"Couldn’t register this device",
+						"Your preference was saved. Sidekick will try notifications again when the app reconnects.",
+					);
+				}
+			}
+		},
+		onSuccess: () =>
+			queryClient.invalidateQueries({ queryKey: ["notifications", "preferences"] }),
 	});
 
 	const locationEnabled = location.data?.access.enabled ?? false;
@@ -250,6 +289,62 @@ export function SettingsScreen() {
 							<Text style={styles.rowValue}>{me.data.timezone ?? "—"}</Text>
 						</View>
 					</Group>
+					{notifications.data ? (
+						<Group
+							title="Notifications"
+							footer="Proactive messages wait until you’ve been away for 12 hours and arrive at a varied time inside your awake window."
+						>
+							<View style={styles.row}>
+								<Text style={styles.rowLabel}>Messages from Sidekick</Text>
+								<Switch
+									value={notifications.data.proactiveEnabled}
+									disabled={updateNotifications.isPending}
+									onValueChange={(proactiveEnabled) =>
+										updateNotifications.mutate({ proactiveEnabled })
+									}
+									trackColor={{ false: colors.gray4, true: colors.green }}
+								/>
+							</View>
+							<View style={styles.divider} />
+							<View style={styles.row}>
+								<Text style={styles.rowLabel}>Goal check-ins</Text>
+								<Switch
+									value={notifications.data.checkinsEnabled}
+									disabled={updateNotifications.isPending}
+									onValueChange={(checkinsEnabled) =>
+										updateNotifications.mutate({ checkinsEnabled })
+									}
+									trackColor={{ false: colors.gray4, true: colors.green }}
+								/>
+							</View>
+							<View style={styles.divider} />
+							<View style={styles.row}>
+								<Text style={styles.rowLabel}>Reminders</Text>
+								<Switch
+									value={notifications.data.remindersEnabled}
+									disabled={updateNotifications.isPending}
+									onValueChange={(remindersEnabled) =>
+										updateNotifications.mutate({ remindersEnabled })
+									}
+									trackColor={{ false: colors.gray4, true: colors.green }}
+								/>
+							</View>
+							<View style={styles.divider} />
+							<Field
+								label="Awake from"
+								value={notifications.data.awakeStart}
+								placeholder="09:00"
+								onCommit={(awakeStart) => updateNotifications.mutate({ awakeStart })}
+							/>
+							<View style={styles.divider} />
+							<Field
+								label="Until"
+								value={notifications.data.awakeEnd}
+								placeholder="21:30"
+								onCommit={(awakeEnd) => updateNotifications.mutate({ awakeEnd })}
+							/>
+						</Group>
+					) : null}
 					<Group
 						title="Connected"
 						footer="Each connection explains what stays on your iPhone and what Sidekick can use. You can review or disconnect it anytime."

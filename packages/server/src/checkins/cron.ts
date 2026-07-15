@@ -20,7 +20,6 @@ export function buildCheckinCron(services: Services): Hono {
     db: services.db,
     model: services.model,
     weatherApiKey: process.env.WEATHER_API_KEY,
-    expoAccessToken: process.env.EXPO_ACCESS_TOKEN,
   };
   app.get("/checkins/open", async (c) => {
     const now = new Date();

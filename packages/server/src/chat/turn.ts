@@ -8,7 +8,14 @@ import {
   stepCountIs,
   streamText,
 } from "ai";
-import { type Database, attachments, conversations, messages, users } from "@sidekick/db";
+import {
+  type Database,
+  attachments,
+  conversations,
+  messages,
+  proactiveTurns,
+  users,
+} from "@sidekick/db";
 import { modelName } from "../model";
 import type { Storage } from "../storage";
 import { markMessagesSensitive } from "../memory/ad-window";
@@ -379,6 +386,21 @@ export async function beginTurn(
   if (userMessageId === undefined) {
     throw new Error("failed to persist user message");
   }
+  const userMessageAt = new Date();
+  await db
+    .update(conversations)
+    .set({ lastUserMessageAt: userMessageAt })
+    .where(eq(conversations.id, input.conversationId));
+  await db
+    .update(proactiveTurns)
+    .set({ repliedAt: userMessageAt, updatedAt: userMessageAt })
+    .where(
+      and(
+        eq(proactiveTurns.userId, userId),
+        eq(proactiveTurns.status, "delivered"),
+        isNull(proactiveTurns.repliedAt),
+      ),
+    );
   if (input.attachmentIds && input.attachmentIds.length > 0) {
     await attachAndWaitForReady(db, userId, userMessageId, input.attachmentIds);
     /**

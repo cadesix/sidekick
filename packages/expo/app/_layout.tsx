@@ -17,6 +17,7 @@ import { maybeRefreshFocusShield } from '~/lib/focus';
 import { readHealthDays } from '~/lib/health';
 import { HEALTH_CONNECTION_QUERY_KEY } from '~/lib/health-connection';
 import { maybeUpdateLocation } from '~/lib/location';
+import { NotificationObserver } from '~/lib/notifications/observer';
 
 const queryClient = new QueryClient();
 
@@ -67,6 +68,7 @@ function ConnectedApp() {
 
   return (
     <>
+      <NotificationObserver />
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#fff' } }}>
         <Stack.Screen name="index" />

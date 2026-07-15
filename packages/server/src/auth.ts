@@ -1,6 +1,6 @@
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
-import { type Database, devices, users } from "@sidekick/db";
+import { type Database, devices, notificationPreferences, users } from "@sidekick/db";
 import type { RegisterInput } from "@sidekick/shared";
 
 export type RegisterResult = { userId: string; token: string };
@@ -65,6 +65,7 @@ export async function registerDevice(db: Database, input: RegisterInput): Promis
     publicKey: input.publicKey,
     token,
   });
+  await db.insert(notificationPreferences).values({ userId: user.id });
   return { userId: user.id, token };
 }
 

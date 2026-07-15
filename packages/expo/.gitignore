@@ -43,4 +43,6 @@ app-example
 /android
 
 # targets/ is copied from react-native-device-activity on every prebuild (withCopyTargetFolder)
-targets/
+targets/*
+!targets/NotificationService/
+!targets/NotificationService/**

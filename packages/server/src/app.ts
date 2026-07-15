@@ -9,6 +9,8 @@ import { beginTurn, continueTurn } from "./chat/turn";
 import { buildCheckinCron } from "./checkins/cron";
 import { buildRemindersCron } from "./reminders/cron";
 import { buildRewardsCron } from "./rewards/cron";
+import { buildNotificationsCron } from "./notifications/cron";
+import { buildProactivityCron } from "./proactivity/cron";
 import { runAdDecision } from "./ads/decision";
 import { deviceSignalsFromHeaders } from "./ads/gravity";
 import { type Services, createRequestContext } from "./context";
@@ -95,6 +97,7 @@ export function buildApp(services: Services) {
           services,
           c.req.header("authorization") ?? null,
           deviceSignalsFromHeaders((name) => c.req.header(name)),
+          c.req.header("x-sidekick-device-id"),
         ),
     }),
   );
@@ -271,6 +274,8 @@ export function buildApp(services: Services) {
   app.route("/cron", buildCheckinCron(services));
   app.route("/cron", buildRemindersCron(services));
   app.route("/cron", buildRewardsCron(services));
+  app.route("/cron", buildNotificationsCron(services));
+  app.route("/cron", buildProactivityCron(services));
 
   return app;
 }

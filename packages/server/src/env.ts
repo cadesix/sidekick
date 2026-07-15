@@ -26,6 +26,7 @@ export type ServerEnv = {
   GRAVITY_API_URL?: string;
   /** Paid inventory is opt-in; absent/false keeps Gravity in test mode. */
   GRAVITY_PRODUCTION?: string;
+  EXPO_ACCESS_TOKEN?: string;
 };
 
 export function readEnv(): ServerEnv {
@@ -44,5 +45,6 @@ export function readEnv(): ServerEnv {
     GRAVITY_API_KEY: env.GRAVITY_API_KEY,
     GRAVITY_API_URL: env.GRAVITY_API_URL,
     GRAVITY_PRODUCTION: env.GRAVITY_PRODUCTION,
+    EXPO_ACCESS_TOKEN: env.EXPO_ACCESS_TOKEN,
   };
 }

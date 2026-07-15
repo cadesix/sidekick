@@ -129,8 +129,83 @@ export const conversations = pgTable("conversations", {
     .references(() => users.id),
   kind: text("kind").notNull().default("main"),
   lastExtractedMessageId: bigint("last_extracted_message_id", { mode: "number" }),
+  lastUserMessageAt: timestamp("last_user_message_at", { withTimezone: true, mode: "date" }),
   createdAt: now(),
 });
+
+export const notificationPreferences = pgTable("notification_preferences", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  proactiveEnabled: boolean("proactive_enabled").notNull().default(false),
+  checkinsEnabled: boolean("checkins_enabled").notNull().default(true),
+  remindersEnabled: boolean("reminders_enabled").notNull().default(true),
+  awakeStart: text("awake_start").notNull().default("09:00"),
+  awakeEnd: text("awake_end").notNull().default("21:30"),
+  createdAt: now(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+});
+
+export const devicePushTokens = pgTable(
+  "device_push_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    deviceId: uuid("device_id")
+      .notNull()
+      .references(() => devices.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expoToken: text("expo_token").notNull().unique(),
+    platform: text("platform").notNull(),
+    projectId: text("project_id").notNull(),
+    permissionStatus: text("permission_status").notNull(),
+    status: text("status").notNull().default("active"),
+    lastRegisteredAt: timestamp("last_registered_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+    invalidatedAt: timestamp("invalidated_at", { withTimezone: true, mode: "date" }),
+    lastError: text("last_error"),
+    createdAt: now(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("device_push_tokens_user_status_idx").on(t.userId, t.status),
+    uniqueIndex("device_push_tokens_device_project_idx").on(t.deviceId, t.projectId),
+  ],
+);
+
+export const proactiveTurns = pgTable(
+  "proactive_turns",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull().default("friend"),
+    localSlotDate: date("local_slot_date").notNull(),
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true, mode: "date" }).notNull(),
+    eligibilityUserMessageAt: timestamp("eligibility_user_message_at", {
+      withTimezone: true,
+      mode: "date",
+    }).notNull(),
+    status: text("status").notNull().default("scheduled"),
+    cancellationReason: text("cancellation_reason"),
+    promptVersion: text("prompt_version"),
+    model: text("model"),
+    openedAt: timestamp("opened_at", { withTimezone: true, mode: "date" }),
+    repliedAt: timestamp("replied_at", { withTimezone: true, mode: "date" }),
+    createdAt: now(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("proactive_turns_user_slot_kind_idx").on(t.userId, t.localSlotDate, t.kind),
+    index("proactive_turns_status_scheduled_idx").on(t.status, t.scheduledFor),
+  ],
+);
 
 /**
  * Append-only, immutable message log (08 invariant 1). `id` is a monotonic
@@ -159,6 +234,10 @@ export const messages = pgTable(
     tokensIn: integer("tokens_in"),
     tokensOut: integer("tokens_out"),
     sensitive: boolean("sensitive").notNull().default(false),
+    proactiveTurnId: uuid("proactive_turn_id").references(() => proactiveTurns.id, {
+      onDelete: "set null",
+    }),
+    proactiveSequence: integer("proactive_sequence"),
     createdAt: now(),
     /**
      * Full-text index of `content` (08 §message search). A stored generated
@@ -172,6 +251,47 @@ export const messages = pgTable(
   (t) => [
     index("messages_conversation_id_idx").on(t.conversationId, t.id),
     index("messages_content_tsv_idx").using("gin", t.contentTsv),
+    uniqueIndex("messages_proactive_turn_sequence_idx").on(
+      t.proactiveTurnId,
+      t.proactiveSequence,
+    ),
+  ],
+);
+
+export const notificationOutbox = pgTable(
+  "notification_outbox",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    devicePushTokenId: uuid("device_push_token_id")
+      .notNull()
+      .references(() => devicePushTokens.id, { onDelete: "cascade" }),
+    messageId: bigint("message_id", { mode: "number" }).references(() => messages.id, {
+      onDelete: "cascade",
+    }),
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    data: jsonb("data").$type<Record<string, unknown>>().notNull(),
+    availableAt: timestamp("available_at", { withTimezone: true, mode: "date" }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }),
+    status: text("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    expoTicketId: text("expo_ticket_id"),
+    lastError: text("last_error"),
+    sentAt: timestamp("sent_at", { withTimezone: true, mode: "date" }),
+    createdAt: now(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("notification_outbox_token_message_kind_idx").on(
+      t.devicePushTokenId,
+      t.messageId,
+      t.kind,
+    ),
+    index("notification_outbox_status_available_idx").on(t.status, t.availableAt),
   ],
 );
 

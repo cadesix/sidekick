@@ -140,6 +140,14 @@ export {
   AD_MIN_TURNS_APART,
 } from "./ads";
 export { ingestMusicTaste } from "./music/taste";
+export { ExpoPushProvider } from "./notifications/expo-provider";
+export { enqueueNotification, sendPendingNotifications, checkNotificationReceipts } from "./notifications/outbox";
+export { GENERIC_PROACTIVE_BODY, notificationBody } from "./notifications/policy";
+export { registerPushToken, unregisterPushToken } from "./notifications/register";
+export type { PushMessage, PushProvider, PushReceipt, PushTicket } from "./notifications/provider";
+export { nextProactiveTime, insideAwakeWindow } from "./proactivity/timing";
+export { scheduleProactiveTurns, proactiveCancellationReason } from "./proactivity/scheduler";
+export { dispatchProactiveTurn, dispatchDueProactiveTurns } from "./proactivity/delivery";
 export { encryptToken, decryptToken } from "./music/encryption";
 export {
   mintDeveloperToken,

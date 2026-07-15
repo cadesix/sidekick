@@ -11,6 +11,7 @@ import { locationRouter } from "./location";
 import { memoryRouter } from "./memory";
 import { musicRouter } from "./music";
 import { onboardingRouter } from "./onboarding";
+import { notificationsRouter } from "./notifications";
 import { remindersRouter } from "./reminders";
 import { usersRouter } from "./users";
 
@@ -27,6 +28,7 @@ export const appRouter = router({
   memory: memoryRouter,
   music: musicRouter,
   onboarding: onboardingRouter,
+  notifications: notificationsRouter,
   reminders: remindersRouter,
   users: usersRouter,
 });

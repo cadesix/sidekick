@@ -82,6 +82,7 @@ export type CallerOverrides = {
   transcriptionModel?: TranscriptionModel;
   adNetwork?: AdNetworkClient | null;
   device?: AdDeviceSignals;
+  installationId?: string;
 };
 
 export function makeCaller(
@@ -103,6 +104,7 @@ export function makeCaller(
     transcriptionModel: opts.transcriptionModel,
     adNetwork: opts.adNetwork ?? null,
     device: opts.device,
+    installationId: opts.installationId,
   });
 }
 

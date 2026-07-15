@@ -32,6 +32,7 @@ export type Services = {
 /** Per-request tRPC context. `userId` is null until the caller is authenticated. */
 export type AppContext = Services & {
   userId: string | null;
+  installationId?: string;
   /** Real client device signals from the request headers, for ad requests (05). */
   device?: AdDeviceSignals;
 };
@@ -51,7 +52,8 @@ export async function createRequestContext(
   services: Services,
   authorization: string | null,
   device?: AdDeviceSignals,
+  installationId?: string,
 ): Promise<AppContext> {
   const userId = await resolveUserId(services.db, parseBearer(authorization));
-  return { ...services, userId, device };
+  return { ...services, userId, device, installationId };
 }
