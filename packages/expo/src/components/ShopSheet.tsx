@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useMemo, useState } from 'react';
 import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Circle } from 'react-native-svg';
 
 import {
   buildProducts,
@@ -25,19 +27,30 @@ import {
   type WardrobeSlot,
 } from '../three/wardrobe';
 
-// Full-screen RN "Shop", rebuilt to parity with the web (packages/web/src/
-// components/shop-sheet.tsx). A date-seeded "Today's Shop" (2 featured + a daily
-// row that restocks at local midnight, with a countdown) sits above the full
-// catalog, which is one horizontal shelf per slot ("Browse all"). Rarity tiers
-// are price-derived and give each card its color identity. Tapping a product
-// opens a detail modal: Buy (deducts coins → inventory) when unowned, else
-// Equip / Take off, which drive the live 3D character via CosmeticsControls.
+// Full-screen RN "Shop", restyled to visual parity with the web reference
+// (packages/web/src/components/shop-sheet.tsx). A date-seeded "Today's Shop"
+// (2 featured + a daily row that restocks at local midnight, with a countdown)
+// sits above the full catalog, which is one horizontal shelf per slot
+// ("Browse all"). Rarity tiers are price-derived and give each card its color
+// identity — the web's CSS `linear-gradient(160deg, …)` card/modal fills are
+// reproduced here with expo-linear-gradient (RARITIES.grad is a 2-stop tuple).
+// Tapping a product opens a detail modal: Buy (deducts coins → inventory) when
+// unowned, else Equip / Take off, which drive the live 3D character.
 //
-// MVP note vs web: product art is a STATIC pre-rendered PNG (from
-// three/shop-renders). The web's live spinning ItemTurntable is deferred — a
-// static render reads fine and avoids a second GL context inside the sheet.
+// Parity notes vs web (things RN can't 1:1):
+//  - Product art is a STATIC pre-rendered PNG (from three/shop-renders). The
+//    web's live spinning ItemTurntable (featured cards + detail modal) is a
+//    static render here — reads fine and avoids a second GL context in the sheet.
+//  - Web's sticky header also hosts a live spinning CharacterPreview "dressing
+//    mirror" (h-190). That needs a GL/preview handle this component isn't given
+//    (props are {open, onClose, controls}), so it's omitted here.
 
 const { height: SCREEN_H } = Dimensions.get('window');
+
+// CSS `linear-gradient(160deg, …)` → expo-linear-gradient start/end. 160deg
+// points mostly down, tilted slightly right (matches the web card fills).
+const GRAD_START = { x: 0.33, y: 0.03 } as const;
+const GRAD_END = { x: 0.67, y: 0.97 } as const;
 
 // ---- product art: pre-rendered PNG, else a tinted / neutral placeholder ------
 function ProductArt({ p, size, radius = 16 }: { p: Product; size: number; radius?: number }) {
@@ -60,19 +73,14 @@ function ProductArt({ p, size, radius = 16 }: { p: Product; size: number; radius
   return <View style={{ width: size, height: size, borderRadius: radius, backgroundColor: '#e9edf1' }} />;
 }
 
-// small gold coin glyph (the web uses an inline SVG)
+// exact replica of the web inline-SVG coin (gold disc + two concentric rings)
 function Coin({ size = 16 }: { size?: number }) {
   return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        backgroundColor: '#f4c634',
-        borderWidth: Math.max(1.4, size * 0.09),
-        borderColor: '#d99e1b',
-      }}
-    />
+    <Svg width={size} height={size} viewBox="0 0 16 16">
+      <Circle cx={8} cy={8} r={7} fill="#f4c634" />
+      <Circle cx={8} cy={8} r={7} fill="none" stroke="#d99e1b" strokeWidth={1.6} />
+      <Circle cx={8} cy={8} r={4.2} fill="none" stroke="#d99e1b" strokeWidth={1.2} />
+    </Svg>
   );
 }
 
@@ -174,7 +182,7 @@ export function ShopSheet({
       <Text style={styles.ownedText}>Owned</Text>
     ) : (
       <View style={styles.priceRow}>
-        <Coin size={13} />
+        <Coin size={14} />
         <Text style={styles.priceText}>{p.cost}</Text>
       </View>
     );
@@ -185,49 +193,57 @@ export function ShopSheet({
     </View>
   );
 
-  // a featured/daily card
+  // a featured (big) / daily card. Featured carries the rarity chip; the daily
+  // row omits it (matching web). Gradient fill + hard "0 4px 0" bottom shadow
+  // give the squishy card look; press depresses it toward the shadow.
   const RotationCard = ({ p, big }: { p: Product; big?: boolean }) => {
     const r = rarityOf(p.cost);
     return (
       <Pressable
         onPress={() => setDetail(p)}
-        style={[
-          big ? styles.featuredCard : styles.dailyCard,
-          { backgroundColor: r.grad[0] },
-        ]}
+        style={({ pressed }) => [pressed && styles.pressed2]}
       >
-        <View style={[styles.rarityChip, { backgroundColor: r.chip }]}>
-          <Text style={styles.rarityChipText}>{r.label.toUpperCase()}</Text>
-        </View>
-        <View style={{ alignItems: 'center', marginTop: big ? 4 : 2 }}>
-          <ProductArt p={p} size={big ? 132 : 92} />
-        </View>
-        <Text numberOfLines={1} style={big ? styles.featuredName : styles.dailyName}>
-          {p.name}
-        </Text>
-        <PriceOrOwned p={p} />
+        <LinearGradient
+          colors={r.grad}
+          start={GRAD_START}
+          end={GRAD_END}
+          style={big ? styles.featuredCard : styles.dailyCard}
+        >
+          {big ? (
+            <View style={[styles.rarityChip, { backgroundColor: r.chip }]}>
+              <Text style={styles.rarityChipText}>{r.label.toUpperCase()}</Text>
+            </View>
+          ) : null}
+          <View style={{ alignItems: 'center', marginTop: big ? 4 : 0 }}>
+            <ProductArt p={p} size={big ? 144 : 96} />
+          </View>
+          <Text numberOfLines={1} style={big ? styles.featuredName : styles.dailyName}>
+            {p.name}
+          </Text>
+          <PriceOrOwned p={p} />
+        </LinearGradient>
         {isWorn(p) ? <WornBadge small={!big} /> : null}
       </Pressable>
     );
   };
 
-  // a per-slot horizontal shelf
+  // a per-slot horizontal shelf (art bleeds to the screen edge, then re-pads)
   const Shelf = ({ slot }: { slot: WardrobeSlot }) => {
     const items = products.filter((p) => p.slot === slot);
     if (!items.length) return null;
     return (
-      <View style={{ paddingTop: 24 }}>
+      <View style={{ paddingTop: 32 }}>
         <Text style={styles.shelfTitle}>{SLOT_LABEL[slot]}</Text>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 14, paddingHorizontal: 20 }}
-          style={{ marginHorizontal: -20 }}
+          contentContainerStyle={{ gap: 16, paddingHorizontal: 24 }}
+          style={{ marginHorizontal: -24 }}
         >
           {items.map((p) => (
             <Pressable key={p.renderKey} onPress={() => setDetail(p)} style={styles.shelfItem}>
               <View>
-                <ProductArt p={p} size={112} />
+                <ProductArt p={p} size={128} />
                 {isWorn(p) ? <WornBadge small /> : null}
               </View>
               <Text numberOfLines={1} style={styles.shelfItemName}>
@@ -256,7 +272,7 @@ export function ShopSheet({
         <Text style={styles.title}>Shop</Text>
         <View style={styles.headerRight}>
           <View style={styles.coinPill}>
-            <Coin size={15} />
+            <Coin size={16} />
             <Text style={styles.coinPillText}>{coins}</Text>
           </View>
           <Pressable onPress={onClose} accessibilityLabel="Close shop" style={styles.closeBtn}>
@@ -268,17 +284,17 @@ export function ShopSheet({
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
-          paddingHorizontal: 20,
-          paddingTop: 12,
+          paddingHorizontal: 24,
+          paddingTop: 8,
           paddingBottom: Math.max(insets.bottom, 20) + 12,
         }}
         showsVerticalScrollIndicator={false}
       >
         {/* Today's Shop header + restock countdown */}
         <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Today's Shop</Text>
+          <Text style={styles.sectionTitle}>Today&apos;s Shop</Text>
           <View style={styles.restockPill}>
-            <Ionicons name="time-outline" size={13} color="#ff7a3d" />
+            <Ionicons name="time-outline" size={14} color="#ff7a3d" />
             <Text style={styles.restockText}>New stock in {restockIn}</Text>
           </View>
         </View>
@@ -313,23 +329,34 @@ export function ShopSheet({
         <Pressable style={styles.modalBackdrop} onPress={() => setDetail(null)}>
           {detail && detailRarity ? (
             <Pressable style={styles.modalCard} onPress={() => {}}>
-              <View style={[styles.modalArt, { backgroundColor: detailRarity.grad[0] }]}>
+              <LinearGradient
+                colors={detailRarity.grad}
+                start={GRAD_START}
+                end={GRAD_END}
+                style={styles.modalArt}
+              >
                 <View style={[styles.rarityChip, { backgroundColor: detailRarity.chip }]}>
                   <Text style={styles.rarityChipText}>{detailRarity.label.toUpperCase()}</Text>
                 </View>
                 <View style={{ alignItems: 'center', marginTop: 6 }}>
-                  <ProductArt p={detail} size={176} />
+                  <ProductArt p={detail} size={208} />
                 </View>
-              </View>
+              </LinearGradient>
               <Text style={styles.modalName}>{detail.name}</Text>
 
               {detailOwned ? (
                 detailWorn ? (
-                  <Pressable style={styles.btnNeutral} onPress={() => takeOff(detail)}>
+                  <Pressable
+                    onPress={() => takeOff(detail)}
+                    style={({ pressed }) => [styles.btnNeutral, pressed && styles.pressed3]}
+                  >
                     <Text style={styles.btnNeutralText}>Take off</Text>
                   </Pressable>
                 ) : (
-                  <Pressable style={styles.btnEquip} onPress={() => wear(detail)}>
+                  <Pressable
+                    onPress={() => wear(detail)}
+                    style={({ pressed }) => [styles.btnEquip, pressed && styles.pressed3]}
+                  >
                     <Text style={styles.btnEquipText}>Equip</Text>
                   </Pressable>
                 )
@@ -337,7 +364,11 @@ export function ShopSheet({
                 <Pressable
                   disabled={!canAfford}
                   onPress={() => buy(detail)}
-                  style={[styles.btnBuy, !canAfford && styles.btnDisabled]}
+                  style={({ pressed }) => [
+                    styles.btnBuy,
+                    !canAfford && styles.btnDisabled,
+                    pressed && canAfford && styles.pressed3,
+                  ]}
                 >
                   <Coin size={16} />
                   <Text style={[styles.btnBuyText, !canAfford && styles.btnDisabledText]}>
@@ -354,6 +385,15 @@ export function ShopSheet({
     </Animated.View>
   );
 }
+
+// hard "0 Npx 0" bottom shadows (the squishy-card / 3D-button look on web)
+const hardShadow = (height: number, color: string, opacity: number) => ({
+  shadowColor: color,
+  shadowOffset: { width: 0, height },
+  shadowOpacity: opacity,
+  shadowRadius: 0,
+  elevation: height,
+});
 
 const styles = StyleSheet.create({
   takeover: {
@@ -382,8 +422,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
+    ...hardShadow(2, '#000', 0.08),
   },
-  coinPillText: { fontSize: 14, fontWeight: '800', color: '#404040' },
+  coinPillText: { fontSize: 14, fontWeight: '800', color: '#262626' },
   closeBtn: {
     width: 36,
     height: 36,
@@ -397,13 +438,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 4,
+    marginTop: 12,
   },
   sectionTitle: { fontSize: 16, fontWeight: '800', color: '#171717' },
   restockPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
     backgroundColor: '#fff1e6',
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -414,17 +455,20 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 12, marginHorizontal: -7 },
   gridCell: { width: '50%', paddingHorizontal: 7, marginBottom: 14 },
 
-  featuredCard: { borderRadius: 24, padding: 16 },
+  featuredCard: { borderRadius: 24, padding: 16, ...hardShadow(4, '#000', 0.1) },
   featuredName: { marginTop: 8, fontSize: 14, fontWeight: '700', color: '#171717' },
-  dailyCard: { borderRadius: 20, padding: 12 },
+  dailyCard: { borderRadius: 20, padding: 12, ...hardShadow(3, '#000', 0.08) },
   dailyName: { marginTop: 6, fontSize: 12, fontWeight: '700', color: '#262626' },
+
+  pressed2: { transform: [{ translateY: 2 }] },
+  pressed3: { transform: [{ translateY: 3 }] },
 
   rarityChip: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
   rarityChipText: { fontSize: 10, fontWeight: '800', color: '#fff', letterSpacing: 0.6 },
 
   priceRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   priceText: { fontSize: 12, fontWeight: '700', color: '#525252' },
-  ownedText: { fontSize: 12, fontWeight: '800', color: '#059669', marginTop: 2 },
+  ownedText: { fontSize: 12, fontWeight: '700', color: '#059669', marginTop: 2 },
 
   wornBadge: {
     position: 'absolute',
@@ -439,9 +483,9 @@ const styles = StyleSheet.create({
   },
   wornBadgeSmall: { right: 4, top: 4, width: 20, height: 20, borderRadius: 10 },
 
-  browseAll: { marginTop: 32, fontSize: 20, fontWeight: '800', color: '#171717' },
-  shelfTitle: { marginBottom: 10, fontSize: 17, fontWeight: '800', color: '#171717' },
-  shelfItem: { width: 112 },
+  browseAll: { marginTop: 36, fontSize: 20, fontWeight: '800', color: '#171717' },
+  shelfTitle: { marginBottom: 12, fontSize: 17, fontWeight: '800', color: '#171717' },
+  shelfItem: { width: 128 },
   shelfItemName: { marginTop: 6, fontSize: 12, fontWeight: '600', color: '#404040' },
 
   modalBackdrop: {
@@ -453,10 +497,15 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: '100%',
-    maxWidth: 380,
+    maxWidth: 384,
     borderRadius: 28,
     backgroundColor: '#fff',
     padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.35,
+    shadowRadius: 60,
+    elevation: 24,
   },
   modalArt: { borderRadius: 22, padding: 12 },
   modalName: { marginTop: 16, textAlign: 'center', fontSize: 20, fontWeight: '800', color: '#171717' },
@@ -470,9 +519,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingVertical: 14,
     backgroundColor: '#7A5AF8',
+    ...hardShadow(4, '#5638c6', 1),
   },
   btnBuyText: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  btnDisabled: { backgroundColor: '#f5f5f5' },
+  btnDisabled: { backgroundColor: '#f5f5f5', shadowOpacity: 0, elevation: 0 },
   btnDisabledText: { color: '#a3a3a3' },
   btnEquip: {
     marginTop: 16,
@@ -481,6 +531,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingVertical: 14,
     backgroundColor: '#0a84ff',
+    ...hardShadow(4, '#0868c8', 1),
   },
   btnEquipText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   btnNeutral: {
@@ -490,6 +541,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingVertical: 14,
     backgroundColor: '#f5f5f5',
+    ...hardShadow(4, '#000', 0.1),
   },
   btnNeutralText: { fontSize: 15, fontWeight: '700', color: '#525252' },
 });

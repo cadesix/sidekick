@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import {
+  Image,
   Keyboard,
   Pressable,
   ScrollView,
@@ -12,39 +13,47 @@ import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
-  withRepeat,
   withTiming,
 } from 'react-native-reanimated';
 
 import { useChat } from '../store/chat';
 
 // RN port of sidekick/src/chat.tsx. Same conversation UI (assistant/user
-// bubbles, avatar, typing dots, pill input) rebuilt in RN primitives; state and
-// persistence live in the zustand store.
+// bubbles, avatar, animated ellipsis, pill input) rebuilt in RN primitives;
+// state and persistence live in the zustand store. Visuals mirror the web
+// reference class-for-class via nativewind.
 //
 // Keyboard: the input bar rides on top of the keyboard via animated bottom
 // padding driven by keyboardWillShow/Hide. (KeyboardAvoidingView can't measure
 // itself inside the translated absolute-positioned chat drawer, so it left the
 // input buried under the keyboard.)
 
-function Dot({ delay }: { delay: number }) {
-  const v = useSharedValue(0.3);
-  useEffect(() => {
-    v.value = withDelay(delay, withRepeat(withTiming(1, { duration: 500 }), -1, true));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const style = useAnimatedStyle(() => ({ opacity: v.value }));
-  return <Animated.View style={style} className="w-2 h-2 rounded-full bg-black/30" />;
+// Sidekick head avatar — mirrors web's <SidekickAvatar> (a live 3D head
+// snapshot on web; the static pfp art here), sized `w-8 h-8 object-contain`.
+const AVATAR = require('../../assets/images/sidekick-pfp.webp');
+
+function Avatar() {
+  return <Image source={AVATAR} resizeMode="contain" className="w-8 h-8" />;
 }
 
-function TypingDots() {
+// Web renders a CSS `.ellipsis-dots` span: a 1.6s steps(1) cycle through
+// "", ".", "..", "..." at 40% black, in a fixed-width (w-7 = 28px) slot so the
+// bubble doesn't jitter. Reproduced here with a 400ms interval.
+const DOT_FRAMES = ['', '.', '..', '...'];
+
+function EllipsisDots() {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setI((n) => (n + 1) % DOT_FRAMES.length), 400);
+    return () => clearInterval(id);
+  }, []);
   return (
-    <View className="flex-row gap-1 py-1">
-      <Dot delay={0} />
-      <Dot delay={160} />
-      <Dot delay={320} />
-    </View>
+    <Text
+      className="text-[15px] leading-[21px]"
+      style={{ width: 28, color: 'rgba(17,17,17,0.4)' }}
+    >
+      {DOT_FRAMES[i]}
+    </Text>
   );
 }
 
@@ -85,8 +94,11 @@ export function Chat({ transparentTop = false }: { transparentTop?: boolean }) {
     void send(text);
   };
 
+  const canSend = !!input.trim() && !loading;
+
   return (
     <View className={`flex-1 ${transparentTop ? '' : 'bg-[#FBEFC9]'}`}>
+      {/* White chat container with rounded top corners */}
       <Animated.View style={kbPad} className="flex-1 bg-white rounded-t-[32px] overflow-hidden">
         <ScrollView
           ref={scrollRef}
@@ -97,34 +109,31 @@ export function Chat({ transparentTop = false }: { transparentTop?: boolean }) {
           {messages.map((m, i) =>
             m.role === 'assistant' ? (
               <View key={i} className="flex-row items-end gap-2 max-w-[85%]">
-                <View className="w-8 h-8 rounded-full bg-[#F2C94C] items-center justify-center">
-                  <Ionicons name="happy" size={18} color="#fff" />
-                </View>
+                <Avatar />
                 <View className="rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-2.5">
-                  <Text className="text-[15px] leading-5 text-[#111]">{m.content}</Text>
+                  <Text className="text-[15px] leading-[21px] text-[#111]">{m.content}</Text>
                 </View>
               </View>
             ) : (
               <View key={i} className="self-end max-w-[80%]">
                 <View className="rounded-3xl rounded-br-md bg-[#E9E9EC] px-4 py-2.5">
-                  <Text className="text-[15px] leading-5 text-[#111]">{m.content}</Text>
+                  <Text className="text-[15px] leading-[21px] text-[#111]">{m.content}</Text>
                 </View>
               </View>
             ),
           )}
           {loading ? (
             <View className="flex-row items-end gap-2">
-              <View className="w-8 h-8 rounded-full bg-[#F2C94C] items-center justify-center">
-                <Ionicons name="happy" size={18} color="#fff" />
-              </View>
+              <Avatar />
+              {/* Sized exactly like a one-line message bubble so the swap to text doesn't shift the list. */}
               <View className="rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-2.5">
-                <TypingDots />
+                <EllipsisDots />
               </View>
             </View>
           ) : null}
         </ScrollView>
 
-        <View className="px-3 pt-2 pb-3 border-t border-black/10 flex-row items-center gap-2">
+        <View className="px-3 pt-2 pb-3 border-t border-[#111]/10 flex-row items-center gap-2">
           <TextInput
             value={input}
             onChangeText={setInput}
@@ -136,9 +145,9 @@ export function Chat({ transparentTop = false }: { transparentTop?: boolean }) {
           />
           <Pressable
             onPress={onSend}
-            disabled={!input.trim() || loading}
+            disabled={!canSend}
             className={`w-11 h-11 rounded-full bg-[#F2C94C] items-center justify-center ${
-              !input.trim() || loading ? 'opacity-40' : ''
+              canSend ? '' : 'opacity-40'
             }`}
           >
             <Ionicons name="arrow-up" size={20} color="#fff" />
