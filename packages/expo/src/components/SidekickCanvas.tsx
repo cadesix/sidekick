@@ -6,6 +6,7 @@ import type { SharedValue } from 'react-native-reanimated';
 
 import type { BoxTier } from '@sidekick/core';
 
+import { NO_BROWSER_PAN } from '../lib/web-style';
 import type { EnvironmentId } from '../three/biomes';
 import { createSidekickRenderer, type Framing, type SidekickController } from '../three/renderer';
 import type { CosmeticsControls } from '../three/wardrobe';
@@ -36,11 +37,16 @@ export function SidekickCanvas({
   talking,
   studio,
   environment,
+  hidden,
+  disableInput,
   onControls,
   onController,
   overhead,
   dailyBox,
   ground,
+  cosmos,
+  constellationLit,
+  constellationTotal,
 }: {
   style?: ViewStyle;
   framing: Framing;
@@ -48,8 +54,15 @@ export function SidekickCanvas({
   talking?: boolean;
   // Shop "studio": hide the meadow and show the character on a clean backdrop
   studio?: boolean;
+  // Guided session: crossfade the meadow → night sky + a progress constellation
+  cosmos?: boolean;
+  constellationLit?: number;
+  constellationTotal?: number;
   // world environment (map travel): 'meadow' | biome id
   environment?: EnvironmentId;
+  // onboarding: park the character below-frame until jumpIn(); freeze camera drag
+  hidden?: boolean;
+  disableInput?: boolean;
   onControls?: (c: CosmeticsControls | null) => void;
   // the raw scene controller (Settings sheet uses applySettings for live look-dev)
   onController?: (c: SidekickController | null) => void;
@@ -83,7 +96,9 @@ export function SidekickCanvas({
     controller.current = createSidekickRenderer(gl, {
       framing,
       holdingPhone,
+      hidden,
       studio,
+      cosmos,
       environment,
       dailyBox,
       onControls: (c) => onControlsRef.current?.(c),
@@ -111,6 +126,10 @@ export function SidekickCanvas({
   }, [holdingPhone]);
 
   useEffect(() => {
+    controller.current?.setHidden(!!hidden);
+  }, [hidden]);
+
+  useEffect(() => {
     controller.current?.setTalking(!!talking);
   }, [talking]);
 
@@ -121,6 +140,14 @@ export function SidekickCanvas({
   useEffect(() => {
     controller.current?.setStudio(!!studio);
   }, [studio]);
+
+  useEffect(() => {
+    controller.current?.setCosmos(!!cosmos);
+  }, [cosmos]);
+
+  useEffect(() => {
+    controller.current?.setConstellation(constellationLit ?? 0, constellationTotal ?? 0);
+  }, [constellationLit, constellationTotal]);
 
   useEffect(() => {
     controller.current?.setDailyBox(dailyBox ?? null);
@@ -135,15 +162,17 @@ export function SidekickCanvas({
 
   return (
     <View
-      style={[styles.fill, style]}
+      // NO_BROWSER_PAN: on web this drag orbits the camera, so the browser must
+      // not also read it as a page pan/zoom
+      style={[styles.fill, NO_BROWSER_PAN, style]}
       onLayout={(e) => {
         size.current = { w: e.nativeEvent.layout.width || 1, h: e.nativeEvent.layout.height || 1 };
       }}
-      onStartShouldSetResponder={() => true}
-      onResponderGrant={(e) => controller.current?.pointerDown(...toNdc(e))}
-      onResponderMove={(e) => controller.current?.pointerMove(...toNdc(e))}
-      onResponderRelease={(e) => controller.current?.pointerUp(...toNdc(e))}
-      onResponderTerminate={(e) => controller.current?.pointerUp(...toNdc(e))}
+      onStartShouldSetResponder={() => !disableInput}
+      onResponderGrant={(e) => !disableInput && controller.current?.pointerDown(...toNdc(e))}
+      onResponderMove={(e) => !disableInput && controller.current?.pointerMove(...toNdc(e))}
+      onResponderRelease={(e) => !disableInput && controller.current?.pointerUp(...toNdc(e))}
+      onResponderTerminate={(e) => !disableInput && controller.current?.pointerUp(...toNdc(e))}
     >
       {/* MSAA on real hardware (matches the web's antialias:true); 0 on the
           simulator, whose MSAA resolve intermittently drops skinned draws */}

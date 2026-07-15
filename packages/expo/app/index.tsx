@@ -4,6 +4,9 @@ import { Dimensions, Pressable, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Onboarding } from '../src/components/Onboarding';
+import { useProfile } from '../src/store/profile';
+
 import { AppearanceSheet } from '../src/components/AppearanceSheet';
 import { BondBadge } from '../src/components/BondBadge';
 import { BoxRewardsModal, GroundBox, StreakSplash } from '../src/components/DailyBox';
@@ -65,6 +68,15 @@ const SHOP_FRAMING: Framing = {
   fov: 26,
 };
 
+// Guided session: the camera tilts UP off the character to face the night sky
+// (which crossfades in via `cosmos`), so the character slides out of frame below
+// and the chat floats over the stars.
+const COSMOS_FRAMING: Framing = {
+  pos: [0, 1.1, 6],
+  target: [0, 8.5, -9],
+  fov: 52,
+};
+
 // arrival line spoken/pushed when travelling to each world (verbatim from home5)
 const TRAVEL_LINES: Record<EnvironmentId, string> = {
   meadow: 'ahh home sweet meadow 🌼',
@@ -80,6 +92,11 @@ const { height: SCREEN_H } = Dimensions.get('window');
 const DRAWER_TOP = SCREEN_H * 0.2; // chat drawer covers the lower 80% (web: top-[20%])
 
 export default function Home() {
+  // first-run gate: play the 3D cinematic onboarding until it's done. Wait for
+  // the profile store to hydrate so we don't flash home before we know.
+  const onboarded = useProfile((st) => st.onboarded);
+  const profileHydrated = useProfile((st) => st.hydrated);
+
   const [open, setOpen] = useState(false);
   // mapOpen drives the camera pull-back; mapShown drives the map's circle
   // reveal, a beat later, so the camera starts flying out before the map grows.
@@ -90,6 +107,29 @@ export default function Home() {
   // world environment (map travel) + the active guided session (if any)
   const [environment, setEnvironment] = useState<EnvironmentId>('meadow');
   const [sessionId, setSessionId] = useState<string | null>(null);
+  // guided-session constellation reveal: how many nodes are lit / the total for
+  // this session (the night sky draws it as beats complete)
+  const [constellation, setConstellation] = useState({ lit: 0, total: 0 });
+
+  // Session entry choreography (cinematic, staged):
+  //  1. land on HOME with the sidekick — no interface yet (~1.1s)
+  //  2. `cosmosPanned` → slow pan up + day→night crossfade + head looks up
+  //  3. `chatReady` → the message interface fades in once we're in the sky
+  const [cosmosPanned, setCosmosPanned] = useState(false);
+  const [chatReady, setChatReady] = useState(false);
+  useEffect(() => {
+    if (!sessionId) {
+      setCosmosPanned(false);
+      setChatReady(false);
+      return;
+    }
+    const t1 = setTimeout(() => setCosmosPanned(true), 1100); // land home, then pan up
+    const t2 = setTimeout(() => setChatReady(true), 2900); // pan mostly done → chat in
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [sessionId]);
   // daily-box flow: streak splash → ground chest → rewards modal → done
   const [boxStage, setBoxStage] = useState<'init' | 'streak' | 'ground' | 'rewards' | 'done'>('init');
   const [boxReward, setBoxReward] = useState<BoxReward | null>(null);
@@ -180,6 +220,9 @@ export default function Home() {
     opacity: progress.value < 0.02 ? 0 : 1,
   }));
 
+  if (!profileHydrated) return <View className="flex-1 bg-white" />;
+  if (!onboarded) return <Onboarding />;
+
   return (
     <View className="flex-1 bg-white">
       {/* Full-viewport 3D scene (mounted once saved look-dev state hydrates).
@@ -189,17 +232,24 @@ export default function Home() {
         <SidekickCanvas
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           framing={
-            mapOpen
-              ? MAP_FRAMING
-              : shopOpen || appearanceOpen
-                ? SHOP_FRAMING
-                : open || settingsOpen
-                  ? CHAT_FRAMING
-                  : HERO_FRAMING
+            sessionId
+              ? cosmosPanned
+                ? COSMOS_FRAMING // pan up to the sky (after the home beat)
+                : HERO_FRAMING // land on home first
+              : mapOpen
+                ? MAP_FRAMING
+                : shopOpen || appearanceOpen
+                  ? SHOP_FRAMING
+                  : open || settingsOpen
+                    ? CHAT_FRAMING
+                    : HERO_FRAMING
           }
           holdingPhone={open}
           talking={loading}
           studio={shopOpen || appearanceOpen}
+          cosmos={cosmosPanned}
+          constellationLit={constellation.lit}
+          constellationTotal={constellation.total}
           environment={environment}
           onControls={setControls}
           onController={setController}
@@ -212,13 +262,13 @@ export default function Home() {
       {/* bond score floating over the character's head (hidden while a full
           surface covers the scene) */}
       {settings ? (
-        <BondBadge overhead={overhead} hidden={mapShown || shopOpen || open || settingsOpen}>
+        <BondBadge overhead={overhead} hidden={mapShown || shopOpen || open || settingsOpen || !!sessionId}>
           <SpeechBubble />
         </BondBadge>
       ) : null}
 
       {/* top-right cluster: appearance + goals + streak (hidden under surfaces) */}
-      {!mapShown && !shopOpen && !open ? (
+      {!mapShown && !shopOpen && !open && !sessionId ? (
         <View
           style={{ position: 'absolute', top: insets.top + 8, right: 16, zIndex: 25, flexDirection: 'row', gap: 8, alignItems: 'center' }}
           pointerEvents="box-none"
@@ -248,7 +298,7 @@ export default function Home() {
       {/* iOS-style home dock — the sheets slide up OVER it; only the
           full-screen map reveal hides it */}
       <HomeDock
-        hidden={mapShown}
+        hidden={mapShown || !!sessionId}
         unread={unread}
         onMessages={openDrawer}
         onShop={() => setShopOpen(true)}
@@ -272,15 +322,22 @@ export default function Home() {
         }}
       />
 
-      {/* Guided session — full overlay; on completion travel to its island */}
-      {sessionId ? (
+      {/* Guided session — the interface only mounts once the pan up to the sky
+          has settled (chatReady), so the transition is pure scene: home → pan up
+          → THEN the chat fades in */}
+      {sessionId && chatReady ? (
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 60 }}>
           <SessionChat
             sessionId={sessionId}
-            onClose={() => setSessionId(null)}
+            onConstellation={(lit, total) => setConstellation({ lit, total })}
+            onClose={() => {
+              setSessionId(null);
+              setConstellation({ lit: 0, total: 0 });
+            }}
             onDone={() => {
               const biome = AREA_BIOME[sessionId];
               setSessionId(null);
+              setConstellation({ lit: 0, total: 0 });
               if (biome) travelTo(biome);
             }}
           />

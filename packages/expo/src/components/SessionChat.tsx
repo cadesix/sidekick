@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useRef, useState } from 'react';
 import {
+  Dimensions,
   Keyboard,
   Pressable,
   ScrollView,
@@ -16,10 +18,14 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { sessionFor, type SessionDef } from '@sidekick/core';
 
+import { SidekickAvatar } from './SidekickAvatar';
 import { useSidekickContext } from '../store/context';
+
+const { height: SCREEN_H } = Dimensions.get('window');
 
 // RN port of the web guided-session runner (packages/web/src/components/
 // session-chat.tsx): a session's OWN chat surface. Scripted asks, free-form
@@ -37,6 +43,11 @@ type Phase = 'asking' | 'answer' | 'probe' | 'extracting' | 'confirm' | 'done';
 
 const KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
 const NAME = 'sidekick';
+
+// the opening bot message — sets the mystical framing: the stars overhead are a
+// living map of how aligned you two are, and truly opening up lights them.
+const INTRO_EXPLAINER =
+  'the stars up there are ours ✦ the more i truly know you, the more of them light up — it\'s how we find our alignment. let\'s draw a little of the sky tonight 🌙';
 
 // one OpenAI turn with a custom inline system prompt → the reply text (or null
 // on no-key / error, so callers can fall back to a scripted line)
@@ -111,8 +122,9 @@ function Dot({ delay }: { delay: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const style = useAnimatedStyle(() => ({ opacity: v.value }));
-  return <Animated.View style={style} className="w-2 h-2 rounded-full bg-black/30" />;
+  return <Animated.View style={style} className="w-2 h-2 rounded-full bg-white/70" />;
 }
+
 
 function TypingDots() {
   return (
@@ -128,13 +140,17 @@ export function SessionChat({
   sessionId,
   onClose,
   onDone,
+  onConstellation,
 }: {
   sessionId: string;
   // dive out mid-session (progress is already saved per beat)
   onClose: () => void;
   // completed: host closes the window and may offer travel
   onDone: () => void;
+  // report constellation progress → the night sky lights `lit` of `total` stars
+  onConstellation?: (lit: number, total: number) => void;
 }) {
+  const insets = useSafeAreaInsets();
   const def = sessionFor(sessionId);
   const saveSessionProgress = useSidekickContext((s) => s.saveSessionProgress);
   const completeSession = useSidekickContext((s) => s.completeSession);
@@ -179,6 +195,13 @@ export function SessionChat({
   }, [kb]);
   const kbPad = useAnimatedStyle(() => ({ paddingBottom: kb.value }));
 
+  // fade the whole surface in over ~0.8s so it arrives with the sky darkening
+  const enter = useSharedValue(0);
+  useEffect(() => {
+    enter.value = withTiming(1, { duration: 800, easing: Easing.out(Easing.cubic) });
+  }, [enter]);
+  const rootStyle = useAnimatedStyle(() => ({ opacity: enter.value }));
+
   const later = (fn: () => void, ms: number) => {
     const t = setTimeout(fn, ms);
     timers.current.push(t);
@@ -203,6 +226,8 @@ export function SessionChat({
     if (!def) return;
     beatIdx.current = idx;
     setPhase('asking');
+    // a star lights for each beat already behind us (beats 0..idx-1 are done)
+    onConstellation?.(idx, def.beats.length);
     showBotThen(def.beats[idx].ask, () => setPhase('answer'));
   };
 
@@ -215,7 +240,7 @@ export function SessionChat({
     if (resuming) {
       showBotThen(['oh hey, you\'re back!!', 'where were we… right:'], () => askBeat(st.beat));
     } else {
-      showBotThen(def.intro, () => askBeat(0));
+      showBotThen([INTRO_EXPLAINER, ...def.intro], () => askBeat(0));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [def?.id]);
@@ -228,6 +253,7 @@ export function SessionChat({
 
   const finish = async () => {
     if (!def) return;
+    onConstellation?.(def.beats.length, def.beats.length); // all beats in → full constellation
     setPhase('extracting');
     setTyping(true);
     const ex = await fetchExtraction(def, transcript());
@@ -301,104 +327,96 @@ export function SessionChat({
     }
   };
 
-  const skip = () => {
-    if (!def || typing || phase === 'asking' || phase === 'extracting' || phase === 'confirm' || phase === 'done') return;
-    answers.current[beatIdx.current] = '(skipped)';
-    saveSessionProgress(def.id, beatIdx.current, answers.current);
-    setMsgs((m) => [...m, { role: 'user', text: 'skip' }]);
-    showBotThen([def.sensitive ? 'all good 🤍' : 'skipping, no stress'], nextBeat);
-  };
-
   if (!def) return null;
   const progress = Math.min(beatIdx.current + 1, def.beats.length);
   const sendDisabled = !input.trim() || typing || phase === 'asking' || phase === 'extracting';
 
   return (
-    // purple wash (expo-linear-gradient isn't installed, so a solid purple View)
-    <View className="flex-1 bg-[#EDE7FF]">
-      {/* header: a distinct "guided chat" badge, the session title, progress, dive-out */}
+    // Transparent over the 3D night sky (rendered by the main canvas behind).
+    // Explicit height (NOT flex-1) so the input pins to the bottom on RN-web,
+    // where a top/bottom-only absolute parent doesn't size flex children.
+    // Fades in over ~0.8s as the sky darkens under the camera's pan up.
+    <Animated.View style={[{ height: SCREEN_H, paddingTop: insets.top }, rootStyle]}>
+      {/* header: the live sidekick head (mounted once here — never remounts, so
+          no flash), the session title + progress, and the dive-out chevron */}
       <View className="items-center px-4 pb-2.5 pt-3">
         <Pressable
           onPress={onClose}
           accessibilityLabel="Leave session"
-          className="absolute right-3 top-2.5 w-9 h-9 rounded-full bg-white/70 items-center justify-center"
+          className="absolute right-3 top-2.5 w-9 h-9 rounded-full bg-white/15 items-center justify-center"
         >
-          <Ionicons name="chevron-down" size={20} color="#737373" />
+          <Ionicons name="chevron-down" size={20} color="rgba(255,255,255,0.8)" />
         </Pressable>
-        <View className="rounded-full bg-[#7A5AF8] px-3 py-1">
-          <Text className="text-[11px] font-extrabold uppercase tracking-wide text-white">✦ a guided chat</Text>
-        </View>
-        <Text className="mt-1.5 text-[14px] font-extrabold text-neutral-900">{def.title}</Text>
-        <Text className="text-[11px] font-semibold text-[#7A5AF8]">
+        <SidekickAvatar size={44} style={{ marginBottom: 4 }} />
+        <Text className="text-[16px] font-extrabold text-white">{def.title}</Text>
+        <Text className="mt-0.5 text-[11px] font-semibold text-[#C9BCFF]">
           {phase === 'done' ? 'complete!' : `${progress} of ${def.beats.length}`}
         </Text>
       </View>
 
-      <Animated.View style={kbPad} className="flex-1">
+      {/* clear focal zone up top — the constellation + stars live here, nothing
+          covers them (the messages sit in the panel below) */}
+      <View style={{ height: SCREEN_H * 0.32 }} pointerEvents="none" />
+
+      {/* lower panel: a semi-transparent night-glass container holding the
+          scrolling messages + input, so the sky stays the focal point above */}
+      <Animated.View
+        style={[
+          {
+            flex: 1,
+            backgroundColor: 'rgba(12,8,28,0.55)',
+            borderTopLeftRadius: 28,
+            borderTopRightRadius: 28,
+            borderTopWidth: 1,
+            borderColor: 'rgba(255,255,255,0.08)',
+            overflow: 'hidden',
+          },
+          kbPad,
+        ]}
+      >
         <ScrollView
           ref={scrollRef}
-          className="flex-1 px-4 pt-4"
+          style={{ flex: 1 }}
+          className="px-4 pt-4"
           contentContainerStyle={{ paddingBottom: 12, gap: 12 }}
           showsVerticalScrollIndicator={false}
         >
-          {/* the first card: what a guided chat is and why it's worth doing */}
-          <View className="w-full rounded-[22px] border border-[#7A5AF8]/15 bg-white/75 p-4">
-            <View className="mb-1.5 flex-row items-center gap-1.5">
-              <Text className="text-[15px]">💬</Text>
-              <Text className="text-[13px] font-extrabold text-[#7A5AF8]">what's a guided chat?</Text>
-            </View>
-            <Text className="text-[13.5px] font-medium leading-5 text-neutral-600">
-              a quick back-and-forth where i actually get to know you. the more i get what makes you tick, the more useful
-              i can be. plus every one opens up a new place in the world for us to explore together.
-            </Text>
-          </View>
-
+          {/* no bubbles — just white text. bot lines left, user lines right. the
+              sidekick's head lives once in the header (no per-line GL contexts) */}
           {msgs.map((m, i) =>
             m.role === 'bot' ? (
-              <View key={i} className="flex-row items-end gap-2 max-w-[85%]">
-                <View className="w-8 h-8 rounded-full bg-[#F2C94C] items-center justify-center">
-                  <Ionicons name="happy" size={18} color="#fff" />
-                </View>
-                <View className="rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-2.5">
-                  <Text className="text-[15px] leading-5 text-[#111]">{m.text}</Text>
-                </View>
+              <View key={i} style={{ maxWidth: '90%' }} className="self-start">
+                <Text className="text-[15px] leading-[22px] text-white">{m.text}</Text>
               </View>
             ) : (
-              <View key={i} className="self-end max-w-[80%]">
-                <View className="rounded-3xl rounded-br-md bg-[#7A5AF8] px-4 py-2.5">
-                  <Text className="text-[15px] leading-5 text-white">{m.text}</Text>
-                </View>
+              <View key={i} style={{ maxWidth: '84%' }} className="self-end">
+                <Text className="text-[15px] leading-[22px] text-white text-right">{m.text}</Text>
               </View>
             ),
           )}
           {typing ? (
-            <View className="flex-row items-end gap-2">
-              <View className="w-8 h-8 rounded-full bg-[#F2C94C] items-center justify-center">
-                <Ionicons name="happy" size={18} color="#fff" />
-              </View>
-              <View className="rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-2.5">
-                <TypingDots />
-              </View>
+            <View className="self-start">
+              <TypingDots />
             </View>
           ) : null}
         </ScrollView>
 
-        <View className="px-3 pt-2 pb-7 border-t border-[#7A5AF8]/10 bg-white/40">
+        <View
+          className="px-3 pt-2 border-t border-white/10"
+          style={{ paddingBottom: Math.max(insets.bottom, 12) + 8 }}
+        >
           {phase === 'done' ? (
             <Pressable onPress={onDone} className="rounded-full bg-[#7A5AF8] py-3.5 items-center">
               <Text className="text-[16px] font-bold text-white">See the island</Text>
             </Pressable>
           ) : (
             <View className="flex-row items-center gap-2">
-              <Pressable onPress={skip} className="px-2.5 py-2">
-                <Text className="text-[13px] font-semibold text-[#111]/35">skip</Text>
-              </Pressable>
               <TextInput
                 value={input}
                 onChangeText={setInput}
                 placeholder={phase === 'confirm' ? 'yep / fix something…' : 'message'}
                 placeholderTextColor="rgba(17,17,17,0.4)"
-                className="flex-1 rounded-full bg-[#F0F0F2] px-5 py-3 text-[15px] text-[#111]"
+                className="flex-1 rounded-full bg-white/90 px-5 py-3 text-[15px] text-[#111]"
                 onSubmitEditing={() => void submit()}
                 returnKeyType="send"
               />
@@ -412,7 +430,16 @@ export function SessionChat({
             </View>
           )}
         </View>
+
+        {/* soft gradient fade at the top of the message list, so messages
+            dissolve into the sky/constellation zone above instead of hard-cutting
+            at the panel edge (pointerEvents none so it never blocks scroll) */}
+        <LinearGradient
+          colors={['rgba(14,9,30,0.95)', 'rgba(14,9,30,0)']}
+          pointerEvents="none"
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 72 }}
+        />
       </Animated.View>
-    </View>
+    </Animated.View>
   );
 }
