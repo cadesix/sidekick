@@ -1,5 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -35,11 +35,16 @@ function AppTile({
   gradient?: [string, string];
   children: React.ReactNode;
 }) {
+  // NativeWind drops function-form Pressable `style`, which silently zeroes the
+  // tile; track the press with state and keep `style` an array instead.
+  const [pressed, setPressed] = useState(false);
   return (
     <Pressable
       accessibilityLabel={label}
       onPress={onPress}
-      style={({ pressed }) => [styles.tile, { transform: [{ scale: pressed ? 0.9 : 1 }] }]}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      style={[styles.tile, { transform: [{ scale: pressed ? 0.9 : 1 }] }]}
     >
       {gradient ? (
         <LinearGradient colors={gradient} style={StyleSheet.absoluteFill} />

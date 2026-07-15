@@ -9,6 +9,8 @@ import type { BoxTier } from '@sidekick/core';
 import type { EnvironmentId } from '../three/biomes';
 import { createSidekickRenderer, type Framing, type SidekickController } from '../three/renderer';
 import type { CosmeticsControls } from '../three/wardrobe';
+import { SCENE_3D_ENABLED } from '../three/enabled';
+import { SceneFallback } from './SceneFallback';
 
 // Head-tracked overlay target: the canvas writes the head-bone's on-screen
 // position (layout px) + visibility into these SharedValues every frame; a
@@ -132,6 +134,11 @@ export function SidekickCanvas({
       controller.current?.dispose();
     };
   }, []);
+
+  // Simulators (and the EXPO_PUBLIC_DISABLE_3D escape hatch) stay on the
+  // lightweight fallback — expo-gl's software renderer misbehaves there and a
+  // scene failure can take down unrelated app flows.
+  if (!SCENE_3D_ENABLED) return <SceneFallback style={StyleSheet.flatten([styles.fill, style])} />;
 
   return (
     <View

@@ -1,10 +1,12 @@
 import Constants from 'expo-constants';
+import { Image } from 'expo-image';
 import { GLView, type ExpoWebGLRenderingContext } from 'expo-gl';
 import { useEffect, useRef } from 'react';
 import { StyleSheet, View, type ViewStyle } from 'react-native';
 
 import { useCosmeticVersion } from '../store/cosmeticVersion';
 import { createAvatarRenderer, type AvatarController } from '../three/avatar';
+import { SCENE_3D_ENABLED } from '../three/enabled';
 
 // Drop-in live head avatar — RN analog of web's <SidekickAvatar>. A small GLView
 // rendering just the character's head (cel-shaded body color, smiling face, worn
@@ -47,6 +49,15 @@ export function SidekickAvatar({
       controller.current = null;
     };
   }, []);
+
+  // Simulator / 3D-disabled: the static mascot pfp stands in for the live head.
+  if (!SCENE_3D_ENABLED) {
+    return (
+      <View style={[{ width: size, height: size }, style]} pointerEvents="none">
+        <Image source={require('../../assets/sidekick-pfp.webp')} style={StyleSheet.absoluteFill} contentFit="contain" />
+      </View>
+    );
+  }
 
   return (
     <View style={[{ width: size, height: size }, style]} pointerEvents="none">
