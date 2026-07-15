@@ -125,9 +125,6 @@ export function SidekickCanvas({
     controller.current?.setHoldingPhone(!!holdingPhone);
   }, [holdingPhone]);
 
-  useEffect(() => {
-    controller.current?.setHidden(!!hidden);
-  }, [hidden]);
 
   useEffect(() => {
     controller.current?.setTalking(!!talking);
@@ -169,10 +166,10 @@ export function SidekickCanvas({
         size.current = { w: e.nativeEvent.layout.width || 1, h: e.nativeEvent.layout.height || 1 };
       }}
       onStartShouldSetResponder={() => !disableInput}
-      onResponderGrant={(e) => !disableInput && controller.current?.pointerDown(...toNdc(e))}
-      onResponderMove={(e) => !disableInput && controller.current?.pointerMove(...toNdc(e))}
-      onResponderRelease={(e) => !disableInput && controller.current?.pointerUp(...toNdc(e))}
-      onResponderTerminate={(e) => !disableInput && controller.current?.pointerUp(...toNdc(e))}
+      onResponderGrant={(e) => controller.current?.pointerDown(...toNdc(e))}
+      onResponderMove={(e) => controller.current?.pointerMove(...toNdc(e))}
+      onResponderRelease={(e) => controller.current?.pointerUp(...toNdc(e))}
+      onResponderTerminate={(e) => controller.current?.pointerUp(...toNdc(e))}
     >
       {/* MSAA on real hardware (matches the web's antialias:true); 0 on the
           simulator, whose MSAA resolve intermittently drops skinned draws */}

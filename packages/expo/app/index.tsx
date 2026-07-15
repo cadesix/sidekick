@@ -29,6 +29,7 @@ import { ShopSheet } from '../src/components/ShopSheet';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { WorldMap } from '../src/components/WorldMap';
 import type { Framing, SidekickController } from '../src/three/renderer';
+import { CHAT_FRAMING, HERO_FRAMING } from '../src/three/framing';
 import { hydrateSettings, loadSettings, type SidekickSettings } from '../src/three/settings';
 import type { CosmeticsControls } from '../src/three/wardrobe';
 import { useChat } from '../src/store/chat';
@@ -38,18 +39,6 @@ import { useChat } from '../src/store/chat';
 // CHAT_FRAMING, mascot holds its phone), Shop swaps the meadow for a studio and
 // opens the wardrobe sheet, Map rockets the camera up while the world map
 // circle-reveals over it.
-
-const HERO_FRAMING: Framing = {
-  pos: [0, 0.66, 4.2],
-  target: [0, 0.56, 0],
-  fov: 41.1,
-};
-
-const CHAT_FRAMING: Framing = {
-  pos: [0, 1.6, 13],
-  target: [0, -2.0, 0],
-  fov: 30,
-};
 
 // Opening the map: the camera rapidly rockets up + back (pull away from the
 // meadow) while the world map scales in over it from the centre.

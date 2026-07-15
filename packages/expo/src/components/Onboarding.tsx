@@ -9,6 +9,7 @@ import { SidekickCanvas } from './SidekickCanvas';
 import { SKIN_COLORS, applySkin } from '../store/skin';
 import { useProfile } from '../store/profile';
 import { hydrateSettings, loadSettings, type SidekickSettings } from '../three/settings';
+import { CHAT_FRAMING, HERO_FRAMING } from '../three/framing';
 import type { Framing, SidekickController } from '../three/renderer';
 
 // RN port of the web 3D cinematic onboarding (packages/web/src/onboarding.tsx):
@@ -26,11 +27,13 @@ import type { Framing, SidekickController } from '../three/renderer';
 
 const SCREEN_H = Dimensions.get('window').height;
 
+// white headline/subtitle styling, shared so the 6 overlay texts don't drift.
+// width+textAlign force rn-web to center long titles instead of overflowing.
+const TITLE_SHADOW = { width: '100%', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.4)', textShadowRadius: 10, textShadowOffset: { width: 0, height: 2 } } as const;
+const SUBTITLE_SHADOW = { width: '100%', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 8, textShadowOffset: { width: 0, height: 2 } } as const;
+
 const WIDE_FRAMING: Framing = { pos: [0, 1.9, 9.5], target: [0, 0.5, 0], fov: 43 };
 const NAME_FRAMING: Framing = { pos: [0, 1.2, 7.2], target: [0, 0.5, 0], fov: 39 };
-const HERO_FRAMING: Framing = { pos: [0, 0.66, 4.2], target: [0, 0.56, 0], fov: 41.1 };
-// chat: sheet covers ~80%, so pull way back + aim low — whole body in the sliver
-const SLIVER_FRAMING: Framing = { pos: [0, 1.6, 13], target: [0, -2.0, 0], fov: 30 };
 
 type Phase = 'welcome' | 'askName' | 'reveal' | 'customize' | 'nameSidekick' | 'notif' | 'chat';
 
@@ -41,7 +44,7 @@ const PHASE_FRAMING: Record<Phase, Framing> = {
   customize: HERO_FRAMING,
   nameSidekick: HERO_FRAMING,
   notif: HERO_FRAMING,
-  chat: SLIVER_FRAMING,
+  chat: CHAT_FRAMING,
 };
 
 // chunky purple CTA with a hard drop shadow (matches web's BTN)
@@ -86,7 +89,7 @@ function NameEntry({
         className="flex-1 items-center justify-center px-8"
       >
         <View className="w-full max-w-md">
-        <Text className="text-center text-[40px] font-extrabold tracking-tight text-white" style={{ width: '100%', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 8, textShadowOffset: { width: 0, height: 2 } }}>
+        <Text className="text-center text-[40px] font-extrabold tracking-tight text-white" style={SUBTITLE_SHADOW}>
           {title}
         </Text>
         <TextInput
@@ -140,8 +143,55 @@ function NotificationBanner({ sender, onPress }: { sender: string; onPress: () =
   );
 }
 
-export function Onboarding() {
+// One overlay skeleton for the welcome/reveal/customize phases: a top header
+// (title + optional subtitle) and a bottom CTA, with optional content (the
+// color row) stacked above the CTA. Replaces three near-identical blocks.
+function PhaseOverlay({
+  topInset,
+  titleSize,
+  title,
+  subtitle,
+  ctaLabel,
+  onContinue,
+  children,
+}: {
+  topInset: number;
+  titleSize: number;
+  title: string;
+  subtitle?: string;
+  ctaLabel: string;
+  onContinue: () => void;
+  children?: React.ReactNode;
+}) {
   const insets = useSafeAreaInsets();
+  return (
+    <>
+      <Animated.View
+        entering={FadeInUp.duration(500)}
+        className="absolute inset-x-0 z-20 items-center px-8"
+        style={{ top: insets.top + topInset }}
+        pointerEvents="none"
+      >
+        <Text className="text-center font-extrabold tracking-tight text-white" style={{ fontSize: titleSize, ...TITLE_SHADOW }}>
+          {title}
+        </Text>
+        {subtitle ? (
+          <Text className="mt-2 text-center text-[18px] leading-snug text-white/85" style={SUBTITLE_SHADOW}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </Animated.View>
+      <View className="absolute inset-x-0 z-20 px-7" style={{ bottom: insets.bottom + 24 }}>
+        <View className="w-full max-w-md self-center">
+          {children}
+          <Cta label={ctaLabel} onPress={onContinue} />
+        </View>
+      </View>
+    </>
+  );
+}
+
+export function Onboarding() {
   const controllerRef = useRef<SidekickController | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const later = (fn: () => void, ms: number) => {
@@ -165,7 +215,7 @@ export function Onboarding() {
   const [sidekickName, setSidekickName] = useState('');
   const [color, setColor] = useState(SKIN_COLORS[0].id);
   // static: park the character below-frame until the reveal jump (matches web)
-  const [hidden] = useState(true);
+  const hidden = true;
   const [framing, setFraming] = useState<Framing>(WIDE_FRAMING);
   const [chatMounted, setChatMounted] = useState(false);
 
@@ -200,8 +250,8 @@ export function Onboarding() {
   // 4 → 4b
   const pickColor = (c: (typeof SKIN_COLORS)[number]) => {
     setColor(c.id);
-    controllerRef.current?.setColors(c.body, c.shadow); // live recolor
-    applySkin(c.id); // persist (setColors already updated the running scene)
+    // same live-recolor path as the Appearance sheet: persist, push to the scene
+    controllerRef.current?.applySettings(applySkin(c.id));
   };
 
   // 5 → 6
@@ -243,24 +293,7 @@ export function Onboarding() {
 
       {/* 1. Welcome */}
       {phase === 'welcome' && !animating ? (
-        <>
-          <Animated.View
-            entering={FadeInUp.duration(500)}
-            className="absolute inset-x-0 z-20 items-center px-8"
-            style={{ top: insets.top + 60 }}
-            pointerEvents="none"
-          >
-            <Text className="text-center text-[52px] font-extrabold tracking-tight text-white" style={{ width: '100%', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.4)', textShadowRadius: 10, textShadowOffset: { width: 0, height: 2 } }}>
-              Welcome!
-            </Text>
-            <Text className="mt-3 text-center text-[20px] leading-snug text-white/85" style={{ width: '100%', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 8, textShadowOffset: { width: 0, height: 2 } }}>
-              Ready to meet your sidekick?
-            </Text>
-          </Animated.View>
-          <View className="absolute inset-x-0 z-20 px-7" style={{ bottom: insets.bottom + 24 }}>
-            <Cta label="let's go" disabled={animating} onPress={startNaming} />
-          </View>
-        </>
+        <PhaseOverlay topInset={60} titleSize={52} title="Welcome!" subtitle="Ready to meet your sidekick?" ctaLabel="let's go" onContinue={startNaming} />
       ) : null}
 
       {/* 2. What's your name? */}
@@ -270,59 +303,23 @@ export function Onboarding() {
 
       {/* 3+4. Reveal */}
       {phase === 'reveal' && !animating ? (
-        <>
-          <Animated.View
-            entering={FadeInUp.duration(500)}
-            className="absolute inset-x-0 z-20 items-center px-8"
-            style={{ top: insets.top + 30 }}
-            pointerEvents="none"
-          >
-            <Text className="text-center text-[38px] font-extrabold tracking-tight text-white" style={{ width: '100%', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.4)', textShadowRadius: 10, textShadowOffset: { width: 0, height: 2 } }}>
-              Hey {userName || 'there'}, meet your sidekick!
-            </Text>
-          </Animated.View>
-          <View className="absolute inset-x-0 z-20 px-7" style={{ bottom: insets.bottom + 24 }}>
-            <Cta label="continue" onPress={() => goTo('customize')} />
-          </View>
-        </>
+        <PhaseOverlay topInset={30} titleSize={38} title={`Hey ${userName || 'there'}, meet your sidekick!`} ctaLabel="continue" onContinue={() => goTo('customize')} />
       ) : null}
 
       {/* 4b. Customize */}
       {phase === 'customize' && !animating ? (
-        <>
-          <Animated.View
-            entering={FadeInUp.duration(500)}
-            className="absolute inset-x-0 z-20 items-center px-8"
-            style={{ top: insets.top + 26 }}
-            pointerEvents="none"
-          >
-            <Text className="text-center text-[36px] font-extrabold tracking-tight text-white" style={{ width: '100%', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.4)', textShadowRadius: 10, textShadowOffset: { width: 0, height: 2 } }}>
-              Customize your sidekick
-            </Text>
-            <Text className="mt-2 text-center text-[17px] text-white/85" style={{ width: '100%', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 8, textShadowOffset: { width: 0, height: 2 } }}>
-              pick a color
-            </Text>
-          </Animated.View>
-          <View className="absolute inset-x-0 z-20 px-7" style={{ bottom: insets.bottom + 24 }}>
-            <View className="w-full max-w-md self-center">
-              <View className="mb-6 flex-row justify-center gap-3.5">
-                {SKIN_COLORS.map((c) => (
-                  <Pressable
-                    key={c.id}
-                    onPress={() => pickColor(c)}
-                    className="h-11 w-11 rounded-full"
-                    style={{
-                      backgroundColor: c.body,
-                      borderWidth: color === c.id ? 4 : 2,
-                      borderColor: color === c.id ? '#ffffff' : 'rgba(255,255,255,0.7)',
-                    }}
-                  />
-                ))}
-              </View>
-              <Cta label="continue" onPress={() => goTo('nameSidekick')} />
-            </View>
+        <PhaseOverlay topInset={26} titleSize={36} title="Customize your sidekick" subtitle="pick a color" ctaLabel="continue" onContinue={() => goTo('nameSidekick')}>
+          <View className="mb-6 flex-row justify-center gap-3.5">
+            {SKIN_COLORS.map((c) => (
+              <Pressable
+                key={c.id}
+                onPress={() => pickColor(c)}
+                className="h-11 w-11 rounded-full"
+                style={{ backgroundColor: c.body, borderWidth: color === c.id ? 4 : 2, borderColor: color === c.id ? '#ffffff' : 'rgba(255,255,255,0.7)' }}
+              />
+            ))}
           </View>
-        </>
+        </PhaseOverlay>
       ) : null}
 
       {/* 5. What's his name? */}

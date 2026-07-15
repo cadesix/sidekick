@@ -33,10 +33,14 @@ export const useProfile = create<ProfileState>()(
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (st) => ({ userName: st.userName, sidekickName: st.sidekickName, onboarded: st.onboarded }),
       // flip `hydrated` once AsyncStorage has loaded so the gate can wait and
-      // not flash home. Must go through setState — mutating state in place
-      // wouldn't notify the useProfile(s => s.hydrated) selector (verified
-      // against zustand's persist, which sets before invoking this callback).
-      onRehydrateStorage: () => () => useProfile.setState({ hydrated: true }),
+      // not flash home. Must go through setState (an in-place mutation wouldn't
+      // notify the useProfile(s => s.hydrated) selector) — but setState on a
+      // persisted store triggers a write, and AsyncStorage.setItem touches
+      // `window`, which is undefined during Expo's Node static render (SSR).
+      // Skip it there: SSR renders the blank gate, then the client re-runs this.
+      onRehydrateStorage: () => () => {
+        if (typeof window !== 'undefined') useProfile.setState({ hydrated: true });
+      },
     },
   ),
 );

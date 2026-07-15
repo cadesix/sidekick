@@ -97,8 +97,6 @@ export type SidekickController = {
   // recolor, and parking the character below-frame until the reveal jump
   jumpIn: (opts?: { duration?: number }) => void;
   shake: (opts?: { amp?: number; duration?: number; mode?: 'impact' | 'build' }) => void;
-  setColors: (body: string, shadow?: string) => void;
-  setHidden: (v: boolean) => void;
   dispose: () => void;
 };
 
@@ -547,7 +545,8 @@ export function createSidekickRenderer(
   let faceSheet: THREE.Texture | null = null;
   let holdingPhone = !!opts.holdingPhone;
   let talking = false;
-  // onboarding entrance/shake (no-ops unless jumpIn/shake/setHidden are called)
+  // onboarding entrance/shake (no-ops unless jumpIn/shake are called; the
+  // parked start comes from the `hidden` opt below)
   const HIDDEN_Y = -3.8;
   let hiddenPark = !!opts.hidden;
   let entranceY = hiddenPark ? HIDDEN_Y : 0;
@@ -937,8 +936,9 @@ export function createSidekickRenderer(
 
     // onboarding jump-into-frame: launch from HIDDEN_Y with an eased rise + a
     // short arc overshoot; fire the impact shake at touchdown
+    const jumpP = jump ? THREE.MathUtils.clamp((now - jump.start) / jump.dur, 0, 1) : 0;
     if (jump) {
-      const p = THREE.MathUtils.clamp((now - jump.start) / jump.dur, 0, 1);
+      const p = jumpP;
       const rise = 1 - Math.pow(1 - p, 3);
       const hop = Math.sin(p * Math.PI) * 0.65;
       entranceY = THREE.MathUtils.lerp(HIDDEN_Y, 0, rise) + hop;
@@ -965,10 +965,7 @@ export function createSidekickRenderer(
       const breath = 1 + Math.sin(now * 2.2) * 0.012;
       // touchdown squash during the last quarter of the jump
       let land = 1;
-      if (jump) {
-        const p = THREE.MathUtils.clamp((now - jump.start) / jump.dur, 0, 1);
-        if (p > 0.72) land = 1 - Math.sin(((p - 0.72) / 0.28) * Math.PI) * 0.24;
-      }
+      if (jump && jumpP > 0.72) land = 1 - Math.sin(((jumpP - 0.72) / 0.28) * Math.PI) * 0.24;
       const ys = breath * land;
       rig.scale.set(1 / Math.sqrt(ys), ys, 1 / Math.sqrt(ys));
       const sway = Math.sin(now * 2.2) * 0.04;
@@ -1154,9 +1151,6 @@ export function createSidekickRenderer(
     setHoldingPhone: (v) => {
       holdingPhone = v;
     },
-    setHidden: (v) => {
-      hiddenPark = v;
-    },
     jumpIn: (o) => {
       jump = { start: clock.getElapsedTime(), dur: (o?.duration ?? 800) / 1000 };
       landed = false;
@@ -1169,11 +1163,6 @@ export function createSidekickRenderer(
         amp: o?.amp ?? 0.1,
         mode: o?.mode ?? 'impact',
       };
-    },
-    setColors: (body, shadow) => {
-      s.celBodyColor = body;
-      if (shadow) s.celShadowColor = shadow;
-      retintShading?.();
     },
     setTalking: (v) => {
       talking = v;
