@@ -1,7 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { GlassView } from "expo-glass-effect";
-import { SymbolView } from "expo-symbols";
 import { StatusBar } from "expo-status-bar";
 import { type ReactNode, useState } from "react";
 import {
@@ -25,6 +23,8 @@ import {
 	locationAccess,
 } from "~/lib/location";
 import { colors } from "../theme";
+import { Glass } from "../components/Glass";
+import { Icon, type IconName } from "../components/Icon";
 import { enablePushNotifications } from "~/lib/notifications/registration";
 
 /** An iOS-style grouped field: label on the left, editable value on the right. */
@@ -72,7 +72,7 @@ function LinkRow({ label, onPress }: { label: string; onPress: () => void }) {
 		<Pressable style={styles.row} onPress={onPress}>
 			<Text style={styles.rowLabel}>{label}</Text>
 			<View style={styles.rowChevron}>
-				<SymbolView name="chevron.right" size={14} weight="semibold" tintColor={colors.gray3} />
+				<Icon name="chevronRight" size={14} color={colors.gray3} strokeWidth={2.5} />
 			</View>
 		</Pressable>
 	);
@@ -142,7 +142,7 @@ function IntegrationLinkRow({
 	description,
 	onPress,
 }: {
-	icon: "shield.lefthalf.filled" | "heart.fill";
+	icon: IconName;
 	iconColor: string;
 	iconBackground: string;
 	title: string;
@@ -152,13 +152,13 @@ function IntegrationLinkRow({
 	return (
 		<Pressable style={styles.integrationRow} onPress={onPress}>
 			<View style={[styles.integrationIcon, { backgroundColor: iconBackground }]}>
-				<SymbolView name={icon} size={21} weight="semibold" tintColor={iconColor} />
+				<Icon name={icon} size={21} color={iconColor} filled />
 			</View>
 			<View style={styles.integrationCopy}>
 				<Text style={styles.rowLabel}>{title}</Text>
 				<Text style={styles.integrationDescription}>{description}</Text>
 			</View>
-			<SymbolView name="chevron.right" size={14} weight="semibold" tintColor={colors.gray3} />
+			<Icon name="chevronRight" size={14} color={colors.gray3} strokeWidth={2.5} />
 		</Pressable>
 	);
 }
@@ -249,16 +249,11 @@ export function SettingsScreen() {
 		<View style={styles.screen}>
 			<StatusBar style="dark" />
 			<View style={[styles.header, { paddingTop: insets.top + 6 }]}>
-				<GlassView isInteractive glassEffectStyle="regular" style={styles.glassButton}>
+				<Glass style={styles.glassButton}>
 					<Pressable hitSlop={12} onPress={() => router.back()} style={styles.glassPressable}>
-						<SymbolView
-							name="chevron.left"
-							size={20}
-							weight="semibold"
-							tintColor={colors.blue}
-						/>
+						<Icon name="chevronLeft" size={20} color={colors.blue} strokeWidth={2.5} />
 					</Pressable>
-				</GlassView>
+				</Glass>
 				<Text style={styles.title}>Settings</Text>
 				<View style={styles.glassButton} />
 			</View>
@@ -351,7 +346,7 @@ export function SettingsScreen() {
 					>
 						<View style={styles.integrationRow}>
 							<View style={styles.integrationIcon}>
-								<SymbolView name="location.fill" size={21} weight="semibold" tintColor="#FFFFFF" />
+								<Icon name="location" size={21} color="#FFFFFF" filled />
 							</View>
 							<View style={styles.integrationCopy}>
 								<Text style={styles.rowLabel}>Location</Text>
@@ -366,7 +361,7 @@ export function SettingsScreen() {
 						</View>
 						<View style={styles.integrationDivider} />
 						<IntegrationLinkRow
-							icon="shield.lefthalf.filled"
+							icon="shield"
 							iconColor={colors.blue}
 							iconBackground="#E5F2FF"
 							title="Focus"
@@ -375,7 +370,7 @@ export function SettingsScreen() {
 						/>
 						<View style={styles.integrationDivider} />
 						<IntegrationLinkRow
-							icon="heart.fill"
+							icon="heart"
 							iconColor="#FF375F"
 							iconBackground="#FFE8EE"
 							title="Apple Health"
@@ -410,6 +405,8 @@ const styles = StyleSheet.create({
 		width: 42,
 		height: 42,
 		borderRadius: 21,
+		borderCurve: "continuous",
+		overflow: "hidden",
 	},
 	glassPressable: {
 		flex: 1,

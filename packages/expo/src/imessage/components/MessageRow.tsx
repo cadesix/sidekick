@@ -12,13 +12,13 @@ import Animated, {
 	withSpring,
 	withTiming,
 } from "react-native-reanimated";
-import { SymbolView } from "expo-symbols";
 import { formatClockTime } from "../lib/time";
 import type { MessageItem } from "../lib/transcript";
 import { isEmojiOnly } from "../lib/emoji";
 import { bubble, colors, type } from "../theme";
 import type { Message } from "../types";
 import { AudioBubble } from "./AudioBubble";
+import { Icon } from "./Icon";
 import { MessageBubble } from "./MessageBubble";
 import { TapbackBadge } from "./TapbackBadge";
 
@@ -165,11 +165,7 @@ export function MessageRow({
 					style={[styles.bubbleHolder, hidden ? styles.hiddenBubble : null]}
 				>
 					<Animated.View pointerEvents="none" style={[styles.replyArrow, replyArrowStyle]}>
-						<SymbolView
-							name="arrowshape.turn.up.left.fill"
-							size={15}
-							tintColor={colors.gray}
-						/>
+						<Icon name="reply" size={15} color={colors.gray} filled />
 					</Animated.View>
 					{emojiOnly ? (
 						<Text style={styles.bigEmoji}>{message.text}</Text>

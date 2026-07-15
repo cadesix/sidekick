@@ -12,10 +12,10 @@ import Animated, {
 	useSharedValue,
 	withTiming,
 } from "react-native-reanimated";
-import { SymbolView } from "expo-symbols";
 import { formatDuration } from "../lib/time";
 import { colors } from "../theme";
 import type { AudioAttachment } from "../types";
+import { Icon } from "./Icon";
 
 export const WAVEFORM_BAR_COUNT = 36;
 export const WAVEFORM_BAR_WIDTH = 2.5;
@@ -220,11 +220,7 @@ export function AudioBubble({ audio, sent }: AudioBubbleProps) {
 	return (
 		<View style={styles.container}>
 			<Pressable onPress={toggle} hitSlop={8}>
-				<SymbolView
-					name={playing ? "pause.fill" : "play.fill"}
-					size={20}
-					tintColor={tint}
-				/>
+				<Icon name={playing ? "pause" : "play"} size={20} color={tint} filled />
 			</Pressable>
 			<Waveform
 				samples={audio.waveform}

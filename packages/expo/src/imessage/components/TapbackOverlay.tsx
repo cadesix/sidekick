@@ -1,6 +1,5 @@
 import * as Haptics from "expo-haptics";
 import { BlurView } from "expo-blur";
-import { GlassView } from "expo-glass-effect";
 import { useEffect, useRef, useState } from "react";
 import { Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, {
@@ -14,11 +13,12 @@ import Animated, {
 	withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { SymbolView, type SFSymbol } from "expo-symbols";
 import { isEmojiOnly } from "../lib/emoji";
 import { colors } from "../theme";
+import { Glass } from "./Glass";
 import type { Message, ReactionType } from "../types";
 import { AudioBubble } from "./AudioBubble";
+import { Icon, type IconName } from "./Icon";
 import type { BubbleLayout } from "./MessageRow";
 import { MessageBubble } from "./MessageBubble";
 import { TAPBACK_ORDER, TapbackBadge, TapbackGlyph } from "./TapbackBadge";
@@ -55,7 +55,7 @@ const QUICK_EMOJI = [
 interface MenuAction {
 	key: string;
 	label: string;
-	symbol: SFSymbol;
+	icon: IconName;
 }
 
 // NativeWind's css-interop drops FUNCTION-form Pressable styles, so the pressed
@@ -81,7 +81,7 @@ function MenuRow({
 				pressed ? styles.menuRowPressed : null,
 			]}
 		>
-			<SymbolView name={action.symbol} size={19} tintColor={colors.label} />
+			<Icon name={action.icon} size={19} color={colors.label} />
 			<Text style={styles.menuLabel}>{action.label}</Text>
 		</Pressable>
 	);
@@ -109,15 +109,15 @@ export function TapbackOverlay({
 
 	// iOS 26 menu grouping: Reply | Undo Send | Copy, Select, Translate, More.
 	const groups: MenuAction[][] = [
-		[{ key: "reply", label: "Reply", symbol: "arrowshape.turn.up.left" }],
+		[{ key: "reply", label: "Reply", icon: "reply" }],
 		...(sent
-			? [[{ key: "undoSend", label: "Undo Send", symbol: "arrow.uturn.backward" as SFSymbol }]]
+			? [[{ key: "undoSend", label: "Undo Send", icon: "undo" as IconName }]]
 			: []),
 		[
-			{ key: "copy", label: "Copy", symbol: "doc.on.doc" },
-			{ key: "select", label: "Select", symbol: "selection.pin.in.out" },
-			{ key: "translate", label: "Translate", symbol: "translate" },
-			{ key: "more", label: "More…", symbol: "ellipsis.circle" },
+			{ key: "copy", label: "Copy", icon: "copy" },
+			{ key: "select", label: "Select", icon: "select" },
+			{ key: "translate", label: "Translate", icon: "translate" },
+			{ key: "more", label: "More…", icon: "more" },
 		],
 	];
 
@@ -241,7 +241,7 @@ export function TapbackOverlay({
 					popoverStyle,
 				]}
 			>
-				<GlassView glassEffectStyle="regular" style={styles.pillInner}>
+				<Glass style={styles.pillInner}>
 					{emojiRow ? (
 						<ScrollView
 							horizontal
@@ -296,12 +296,12 @@ export function TapbackOverlay({
 								{mine?.type.startsWith("emoji:") ? (
 									<TapbackGlyph type={mine.type} size={26} />
 								) : (
-									<SymbolView name="face.smiling" size={24} tintColor={colors.gray} />
+									<Icon name="smile" size={24} color={colors.gray} />
 								)}
 							</Pressable>
 						</>
 					)}
-				</GlassView>
+				</Glass>
 			</Animated.View>
 
 			<Animated.View
@@ -315,9 +315,8 @@ export function TapbackOverlay({
 				]}
 			>
 				{groups.map((group, groupIndex) => (
-					<GlassView
+					<Glass
 						key={group[0]?.key}
-						glassEffectStyle="regular"
 						style={[styles.menuGroup, groupIndex > 0 ? { marginTop: MENU_GROUP_GAP } : null]}
 					>
 						{group.map((action, index) => (
@@ -328,7 +327,7 @@ export function TapbackOverlay({
 								onPress={() => close(() => onAction(action.key))}
 							/>
 						))}
-					</GlassView>
+					</Glass>
 				))}
 			</Animated.View>
 		</View>
@@ -364,6 +363,8 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		height: "100%",
 		borderRadius: PILL_HEIGHT / 2,
+		borderCurve: "continuous",
+		overflow: "hidden",
 		paddingHorizontal: 6,
 		gap: 1,
 	},
@@ -392,6 +393,7 @@ const styles = StyleSheet.create({
 	menuGroup: {
 		borderRadius: 16,
 		borderCurve: "continuous",
+		overflow: "hidden",
 		shadowColor: "#000000",
 		shadowOpacity: 0.1,
 		shadowRadius: 20,

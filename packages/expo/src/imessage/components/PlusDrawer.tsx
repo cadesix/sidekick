@@ -1,5 +1,4 @@
 import * as Haptics from "expo-haptics";
-import { GlassView } from "expo-glass-effect";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text } from "react-native";
 import Animated, {
@@ -8,22 +7,23 @@ import Animated, {
 	withSpring,
 	withTiming,
 } from "react-native-reanimated";
-import { SymbolView, type SFSymbol } from "expo-symbols";
 import { colors } from "../theme";
+import { Glass } from "./Glass";
+import { Icon, type IconName } from "./Icon";
 
 interface DrawerItem {
 	key: string;
 	label: string;
-	symbol: SFSymbol;
+	icon: IconName;
 }
 
 const ITEMS: DrawerItem[] = [
-	{ key: "camera", label: "Camera", symbol: "camera" },
-	{ key: "photos", label: "Photos", symbol: "photo" },
-	{ key: "stickers", label: "Stickers", symbol: "face.smiling" },
-	{ key: "audio", label: "Audio", symbol: "waveform" },
-	{ key: "location", label: "Location", symbol: "location" },
-	{ key: "more", label: "More", symbol: "ellipsis" },
+	{ key: "camera", label: "Camera", icon: "camera" },
+	{ key: "photos", label: "Photos", icon: "photo" },
+	{ key: "stickers", label: "Stickers", icon: "smile" },
+	{ key: "audio", label: "Audio", icon: "audio" },
+	{ key: "location", label: "Location", icon: "location" },
+	{ key: "more", label: "More", icon: "ellipsis" },
 ];
 
 interface PlusDrawerProps {
@@ -78,7 +78,7 @@ function DrawerRow({ item, onPress }: { item: DrawerItem; onPress: () => void })
 			onPressOut={() => setPressed(false)}
 			onPress={onPress}
 		>
-			<SymbolView name={item.symbol} size={22} tintColor={colors.label} />
+			<Icon name={item.icon} size={22} color={colors.label} />
 			<Text style={styles.label}>{item.label}</Text>
 		</Pressable>
 	);
@@ -89,7 +89,7 @@ function DrawerRow({ item, onPress }: { item: DrawerItem; onPress: () => void })
 export function PlusDrawer({ onSelectAudio, onClose }: PlusDrawerProps) {
 	return (
 		<Animated.View entering={drawerEnter} exiting={drawerExit} style={styles.container}>
-			<GlassView glassEffectStyle="regular" style={styles.panel}>
+			<Glass style={styles.panel}>
 				{ITEMS.map((item) => (
 					<DrawerRow
 						key={item.key}
@@ -104,7 +104,7 @@ export function PlusDrawer({ onSelectAudio, onClose }: PlusDrawerProps) {
 						}}
 					/>
 				))}
-			</GlassView>
+			</Glass>
 		</Animated.View>
 	);
 }
@@ -128,6 +128,7 @@ const styles = StyleSheet.create({
 		minWidth: 218,
 		borderRadius: 26,
 		borderCurve: "continuous",
+		overflow: "hidden",
 	},
 	item: {
 		flexDirection: "row",

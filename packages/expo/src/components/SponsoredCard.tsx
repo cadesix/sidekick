@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
-import { SymbolView } from "expo-symbols";
 import type { AdView } from "~/lib/chat-thread";
 import { dismissAd, recordAdClick, recordAdImpression } from "~/lib/api";
 import { colors } from "~/imessage/theme";
+import { Icon } from "~/imessage/components/Icon";
 import { GravityBrowser } from "./GravityBrowser";
 
 /**
@@ -84,7 +84,7 @@ export function SponsoredCard({ ad }: { ad: AdView }) {
             {ad.body ? ad.body : ad.title}
           </Text>
         </View>
-        <SymbolView name="chevron.right" size={14} weight="semibold" tintColor={colors.gray3} />
+        <Icon name="chevronRight" size={14} color={colors.gray3} strokeWidth={2.5} />
         </Pressable>
       </View>
       <GravityBrowser

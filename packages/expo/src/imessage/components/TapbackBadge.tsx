@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from "react-native";
-import { SymbolView, type SFSymbol } from "expo-symbols";
 import { colors } from "../theme";
 import type { Reaction, ReactionType } from "../types";
+import { Icon, type IconName } from "./Icon";
 
 export const TAPBACK_ORDER: ReactionType[] = [
 	"heart",
@@ -12,13 +12,12 @@ export const TAPBACK_ORDER: ReactionType[] = [
 	"question",
 ];
 
-// Tinted SF Symbols stand in for Apple's emoji-style tapback art (the iOS 26
+// Tinted glyphs stand in for Apple's emoji-style tapback art (the iOS 26
 // simulator renders raw emoji as tofu boxes — facebook/react-native#56183).
-const SYMBOL_ART: Partial<Record<ReactionType, { name: SFSymbol; color: string }>> = {
-	heart: { name: "heart.fill", color: "#FF4D8D" },
-	thumbsUp: { name: "hand.thumbsup.fill", color: "#FFC83D" },
-	thumbsDown: { name: "hand.thumbsdown.fill", color: "#FFAA33" },
-	exclamation: { name: "exclamationmark.2", color: "#FF3B30" },
+const GLYPH_ART: Partial<Record<ReactionType, { name: IconName; color: string }>> = {
+	heart: { name: "heart", color: "#FF4D8D" },
+	thumbsUp: { name: "thumbsUp", color: "#FFC83D" },
+	thumbsDown: { name: "thumbsDown", color: "#FFAA33" },
 };
 
 // Since iOS 18 the tapback glyphs are always colorful, in the pill and in the
@@ -31,10 +30,18 @@ export function TapbackGlyph({ type, size }: { type: ReactionType; size: number 
 			</Text>
 		);
 	}
-	const art = SYMBOL_ART[type];
+	const art = GLYPH_ART[type];
 	if (art) {
+		return <Icon name={art.name} size={size * 0.82} color={art.color} filled />;
+	}
+	if (type === "exclamation") {
 		return (
-			<SymbolView name={art.name} size={size * 0.82} weight="bold" tintColor={art.color} />
+			<Text
+				allowFontScaling={false}
+				style={[styles.textGlyph, { color: "#FF3B30", fontSize: size * 0.85 }]}
+			>
+				!!
+			</Text>
 		);
 	}
 	if (type === "haha") {

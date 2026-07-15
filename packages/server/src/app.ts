@@ -4,6 +4,7 @@ import { attachments } from "@sidekick/db";
 import { chatContinueInput, chatSendInput } from "@sidekick/shared";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { stream } from "hono/streaming";
 import { beginTurn, continueTurn } from "./chat/turn";
 import { buildCheckinCron } from "./checkins/cron";
@@ -87,6 +88,10 @@ async function serveTurnAd(
  */
 export function buildApp(services: Services) {
   const app = new Hono();
+
+  // Bearer-token auth (no cookies), so a permissive CORS policy is safe; it
+  // lets the Expo Web preview call the API from its own dev origin.
+  app.use("*", cors());
 
   app.use(
     "/trpc/*",

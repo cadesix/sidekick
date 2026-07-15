@@ -61,25 +61,6 @@ export function registerDevice(deviceId: string): Promise<{ userId: string; toke
   return trpc.auth.register.mutate({ deviceId });
 }
 
-export function authStatus(): Promise<{ email: string | null }> {
-  return trpc.auth.status.query();
-}
-
-export function createEmailAccount(input: {
-  email: string;
-  password: string;
-}): Promise<{ email: string }> {
-  return trpc.auth.createEmailAccount.mutate(input);
-}
-
-export function signInWithEmail(input: {
-  deviceId: string;
-  email: string;
-  password: string;
-}): Promise<{ userId: string; token: string }> {
-  return trpc.auth.signIn.mutate(input);
-}
-
 
 /**
  * Consume one chat SSE stream to completion: prose → `onDelta`, control frames →

@@ -30,3 +30,4 @@ packages/web/.illustrate/studio/
 tools/char-pipeline/renders/
 tools/char-pipeline/.wip/
 __pycache__/
+.playwright-mcp

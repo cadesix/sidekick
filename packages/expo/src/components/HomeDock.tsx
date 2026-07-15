@@ -1,10 +1,11 @@
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
+
+import { Glass } from '~/imessage/components/Glass';
 
 // iOS-home-screen-style dock — exact port of sidekick/src/components/home-dock.tsx.
 // Frosted glass panel with four squircle app tiles (Messages / Shop / Map /
@@ -72,7 +73,7 @@ export function HomeDock({ hidden, unread = 0, onMessages, onShop, onMap, onGoal
       ]}
       pointerEvents={hidden ? 'none' : 'box-none'}
     >
-      <BlurView intensity={40} tint="light" style={styles.panel}>
+      <Glass style={styles.panel}>
         {/* Messages — chat bubble on a green gradient; red unread badge */}
         <View>
           <AppTile label="Messages" onPress={onMessages} gradient={['#5BF76B', '#12C93E']}>
@@ -124,7 +125,7 @@ export function HomeDock({ hidden, unread = 0, onMessages, onShop, onMap, onGoal
             <Circle cx="12" cy="12" r="1.6" fill="#fff" />
           </Svg>
         </AppTile>
-      </BlurView>
+      </Glass>
     </Animated.View>
   );
 }

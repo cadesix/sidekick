@@ -6,13 +6,13 @@ import {
 	useAudioRecorderState,
 } from "expo-audio";
 import * as Haptics from "expo-haptics";
-import { GlassView } from "expo-glass-effect";
 import { type ReactNode, useEffect, useState } from "react";
 import { type LayoutChangeEvent, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { Easing, useAnimatedStyle, withTiming } from "react-native-reanimated";
-import { SymbolView } from "expo-symbols";
 import { formatDuration } from "../lib/time";
 import { colors } from "../theme";
+import { Glass } from "./Glass";
+import { Icon } from "./Icon";
 import type { AudioAttachment } from "../types";
 import {
 	WAVEFORM_BAR_COUNT,
@@ -107,13 +107,9 @@ function PreviewBar({
 	const { playing, currentTime, toggle, seek } = usePlayback(preview.uri, preview.durationSec);
 
 	return (
-		<GlassView glassEffectStyle="regular" style={styles.bar}>
+		<Glass style={styles.bar}>
 			<Pressable hitSlop={8} onPress={toggle} style={styles.playButton}>
-				<SymbolView
-					name={playing ? "pause.fill" : "play.fill"}
-					size={19}
-					tintColor={colors.blue}
-				/>
+				<Icon name={playing ? "pause" : "play"} size={19} color={colors.blue} filled />
 			</Pressable>
 			<MeasuredWaveform>
 				{(bars) => (
@@ -131,9 +127,9 @@ function PreviewBar({
 			</MeasuredWaveform>
 			<Text style={styles.timer}>{formatDuration(preview.durationSec)}</Text>
 			<Pressable onPress={onSend} style={styles.sendButton} hitSlop={6}>
-				<SymbolView name="arrow.up" size={16} weight="bold" tintColor="#FFFFFF" />
+				<Icon name="arrowUp" size={16} color="#FFFFFF" strokeWidth={3} />
 			</Pressable>
-		</GlassView>
+		</Glass>
 	);
 }
 
@@ -226,7 +222,7 @@ export function VoiceRecorder({ onCancel, onSend }: VoiceRecorderProps) {
 	}
 
 	return (
-		<GlassView glassEffectStyle="regular" style={styles.bar}>
+		<Glass style={styles.bar}>
 			<MeasuredWaveform>
 				{(bars) =>
 					padToWidth(samples, bars).map((level, index) => (
@@ -240,7 +236,7 @@ export function VoiceRecorder({ onCancel, onSend }: VoiceRecorderProps) {
 			<Pressable onPress={stop} style={styles.stopButton} hitSlop={6}>
 				<View style={styles.stopSquare} />
 			</Pressable>
-		</GlassView>
+		</Glass>
 	);
 }
 
@@ -255,6 +251,7 @@ const styles = StyleSheet.create({
 		borderCurve: "continuous",
 		paddingLeft: 14,
 		paddingRight: 4,
+		overflow: "hidden",
 	},
 	playButton: {
 		width: 24,

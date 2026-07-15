@@ -1,14 +1,9 @@
-import { TrueSheet } from "@lodev09/react-native-true-sheet";
 import { BlurView } from "expo-blur";
 import * as Clipboard from "expo-clipboard";
-import { GlassView } from "expo-glass-effect";
 import * as Haptics from "expo-haptics";
-import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
-import { SymbolView } from "expo-symbols";
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { FlatList, Pressable, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, {
@@ -16,6 +11,7 @@ import Animated, {
 	interpolate,
 	useAnimatedProps,
 	useAnimatedStyle,
+	useDerivedValue,
 	useSharedValue,
 	withSpring,
 	withTiming,
@@ -42,7 +38,6 @@ const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
 
 const TYPING_ITEM = "typing";
 const ENTRY_ANIMATION_WINDOW = 1200;
-const SHEET_HEADER_HEIGHT = 126;
 
 /** Fraction of the screen the chat sheet covers; the mascot lives in the band above. */
 export const CHAT_SHEET_DETENT = 0.75;
@@ -53,23 +48,13 @@ interface OverlayState {
 }
 
 /**
- * The chat, presented as a native bottom sheet over the home screen (the
- * mascot above the sheet stays visible while a compact Sidekick identity sits
- * between the sheet's glass settings and close buttons. The composer stack
- * renders through the sheet's `footer` so it's
- * natively pinned to the visible sheet bottom and rides the keyboard — RN-side
- * layout can't reach the sheet bottom because the content is laid out at full
- * screen height.
+ * The chat, hosted inside the home screen's slide-up drawer (plain RN views,
+ * so it renders on web too). Headerless: the mascot in the band above the
+ * drawer IS the conversation identity. The composer stack is pinned to the
+ * drawer bottom and rides the keyboard via the keyboard-controller translate.
  */
-export function ChatScreen({
-	sheetRef,
-	onWillDismiss,
-}: {
-	sheetRef: RefObject<TrueSheet | null>;
-	onWillDismiss: () => void;
-}) {
+export function ChatScreen() {
 	const insets = useSafeAreaInsets();
-	const router = useRouter();
 	const { thread, messages, composerAd, typing, send, addReaction, removeMessage } =
 		useSidekickChat();
 
@@ -118,12 +103,13 @@ export function ChatScreen({
 
 	// Blur ramps in with the transcript instead of the whole layer fading, so
 	// entering/leaving reply focus reads as a smooth defocus.
-	useEffect(() => {
-		replyProgress.value = withTiming(replyTo ? 1 : 0, {
-			duration: replyTo ? 280 : 220,
+	const replyActive = replyTo !== undefined;
+	useDerivedValue(() => {
+		replyProgress.value = withTiming(replyActive ? 1 : 0, {
+			duration: replyActive ? 280 : 220,
 			easing: Easing.out(Easing.cubic),
 		});
-	}, [replyTo, replyProgress]);
+	}, [replyActive]);
 
 	const scrimBlurProps = useAnimatedProps(() => ({
 		intensity: replyProgress.value * 28,
@@ -132,9 +118,12 @@ export function ChatScreen({
 		opacity: replyProgress.value,
 	}));
 
-	// The hosting native sheet rides the keyboard itself, so the input bar just
-	// stays pinned to the sheet bottom; only the home-indicator padding swaps
+	// keyboard.height runs 0 → -keyboardHeight, so this lifts the composer
+	// exactly onto the keyboard's top edge; the home-indicator padding swaps
 	// out while the keyboard is up.
+	const footerStyle = useAnimatedStyle(() => ({
+		transform: [{ translateY: keyboard.height.value }],
+	}));
 	const inputBarPaddingStyle = useAnimatedStyle(() => ({
 		paddingBottom: interpolate(
 			keyboard.progress.value,
@@ -143,9 +132,9 @@ export function ChatScreen({
 		),
 	}));
 	// In an inverted list the header renders at the visual bottom; it reserves
-	// room for the input bar.
+	// room for the input bar plus however far the keyboard lifted it.
 	const bottomSpacerStyle = useAnimatedStyle(() => ({
-		height: inputBarHeight.value,
+		height: inputBarHeight.value - keyboard.height.value,
 	}));
 
 	const timeRevealPan = Gesture.Pan()
@@ -177,15 +166,8 @@ export function ChatScreen({
 		[send],
 	);
 
-	// UIKit silently drops a modal presented while the sheet's own view
-	// controller is presenting, so the sheet has to come down first.
-	const openSettings = async () => {
-		await sheetRef.current?.dismiss();
-		router.push("/settings");
-	};
-
 	// Bubbles are measured in window coordinates, but the overlay fills this
-	// screen, which sits inside a sheet offset from the window's top.
+	// screen, which sits inside a drawer offset from the window's top.
 	const handleLongPress = useCallback((message: Message, layout: BubbleLayout) => {
 		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 		containerRef.current?.measureInWindow((containerX, containerY) => {
@@ -250,196 +232,110 @@ export function ChatScreen({
 		);
 	};
 
-	// The footer is a native layer above the content view, so the tapback
-	// overlay (inside the content) can't cover it — hide it while focused.
-	const footer = (
-		<View
-			pointerEvents={overlay ? "none" : "box-none"}
-			style={overlay ? styles.footerHidden : null}
-		>
-			<LinearGradient
-				colors={["rgba(255,255,255,0)", colors.background]}
-				locations={[0, 1]}
-				style={styles.inputFade}
-				pointerEvents="none"
-			/>
-			{plusOpen ? (
-				<PlusDrawer
-					onSelectAudio={() => {
-						setPlusOpen(false);
-						setRecording(true);
-					}}
-					onClose={() => setPlusOpen(false)}
-				/>
-			) : null}
-			<Animated.View
-				style={inputBarPaddingStyle}
-				onLayout={(event) => {
-					inputBarHeight.value = withTiming(event.nativeEvent.layout.height, {
-						duration: 200,
-					});
-				}}
-			>
-				{replyTo ? <ReplyChain messages={replyChain} /> : null}
-				{composerAd ? <SponsoredCard ad={composerAd} /> : null}
-				<ChatInputBar
-					replyActive={replyTo !== undefined}
-					onSendText={handleSendText}
-					onSendAudio={handleSendAudio}
-					onTogglePlusMenu={() => setPlusOpen((open) => !open)}
-					plusMenuOpen={plusOpen}
-					recording={recording}
-					onRecordingChange={setRecording}
-				/>
-			</Animated.View>
-		</View>
-	);
+	if (!thread) {
+		return null;
+	}
 
 	return (
-		<TrueSheet
-			ref={sheetRef}
-			detents={[CHAT_SHEET_DETENT]}
-			dimmed={false}
-			cornerRadius={28}
-			backgroundColor={colors.background}
-			scrollable
-			scrollableOptions={{ topScrollEdgeEffect: "soft" }}
-			insetAdjustment="never"
-			onWillDismiss={onWillDismiss}
-			footer={thread ? footer : undefined}
-		>
-			{thread ? (
-				<View ref={containerRef} style={styles.container}>
-					<GestureDetector gesture={timeRevealPan}>
-						<FlatList
-							inverted
-							data={data}
-							keyExtractor={(item) => (item === TYPING_ITEM ? TYPING_ITEM : item.id)}
-							renderItem={renderItem}
-							keyboardDismissMode="interactive"
-							showsVerticalScrollIndicator
-							contentContainerStyle={{
-								paddingTop: 8,
-							}}
-							ListHeaderComponent={<Animated.View style={bottomSpacerStyle} />}
-							ListFooterComponent={<View style={{ height: SHEET_HEADER_HEIGHT + 16 }} />}
-							style={styles.list}
-						/>
-					</GestureDetector>
+		<View ref={containerRef} style={styles.container}>
+			<GestureDetector gesture={timeRevealPan}>
+				<FlatList
+					inverted
+					data={data}
+					keyExtractor={(item) => (item === TYPING_ITEM ? TYPING_ITEM : item.id)}
+					renderItem={renderItem}
+					keyboardDismissMode="interactive"
+					showsVerticalScrollIndicator
+					contentContainerStyle={{
+						paddingTop: 8,
+					}}
+					ListHeaderComponent={<Animated.View style={bottomSpacerStyle} />}
+					ListFooterComponent={<View style={styles.topSpacer} />}
+					style={styles.list}
+				/>
+			</GestureDetector>
 
-					<AnimatedBlurView
-						tint="light"
-						pointerEvents="none"
-						animatedProps={scrimBlurProps}
-						style={StyleSheet.absoluteFill}
-					/>
-					<Animated.View
-						pointerEvents="none"
-						style={[StyleSheet.absoluteFill, styles.replyScrim, scrimTintStyle]}
-					/>
-					{replyTo ? (
-						<Pressable
-							style={StyleSheet.absoluteFill}
-							onPress={() => setReplyTo(undefined)}
-						/>
-					) : null}
-
-					<View style={styles.header} pointerEvents="box-none">
-						<LinearGradient
-							colors={["rgba(255,255,255,0.96)", "rgba(255,255,255,0.82)", "rgba(255,255,255,0)"]}
-							locations={[0, 0.55, 1]}
-							style={styles.headerFade}
-							pointerEvents="none"
-						/>
-						<View style={styles.headerRow} pointerEvents="box-none">
-							<GlassView isInteractive glassEffectStyle="regular" style={styles.glassButton}>
-								{replyTo ? (
-									<Pressable
-										hitSlop={12}
-										onPress={() => setReplyTo(undefined)}
-										style={styles.glassPressable}
-									>
-										<SymbolView name="xmark" size={18} weight="semibold" tintColor={colors.blue} />
-									</Pressable>
-								) : (
-									<Pressable
-										hitSlop={12}
-										onPress={() => void openSettings()}
-										style={styles.glassPressable}
-									>
-										<SymbolView name="ellipsis" size={20} weight="semibold" tintColor={colors.blue} />
-									</Pressable>
-								)}
-							</GlassView>
-							<Pressable
-								accessibilityRole="button"
-								accessibilityLabel={`${thread.name}, ${thread.subtitle}`}
-								hitSlop={8}
-								onPress={() => void openSettings()}
-								style={styles.contactIdentity}
-							>
-								<Image
-									source={require("../../../assets/images/sidekick-contact-avatar.png")}
-									contentFit="cover"
-									style={styles.contactAvatar}
-								/>
-								<GlassView glassEffectStyle="regular" style={styles.contactCard}>
-									<View style={styles.contactNameRow}>
-										<Text numberOfLines={1} style={styles.contactName}>
-											{thread.name}
-										</Text>
-										<SymbolView
-											name="chevron.right"
-											size={10}
-											weight="bold"
-											tintColor={colors.gray}
-										/>
-									</View>
-									<Text numberOfLines={1} style={styles.contactSubtitle}>
-										{thread.subtitle}
-									</Text>
-								</GlassView>
-							</Pressable>
-							<GlassView isInteractive glassEffectStyle="regular" style={styles.glassButton}>
-								<Pressable
-									hitSlop={12}
-									onPress={() => void sheetRef.current?.dismiss()}
-									style={styles.glassPressable}
-								>
-									<SymbolView name="chevron.down" size={20} weight="semibold" tintColor={colors.blue} />
-								</Pressable>
-							</GlassView>
-						</View>
-					</View>
-
-					{plusOpen ? (
-						<Pressable
-							style={StyleSheet.absoluteFill}
-							onPress={() => setPlusOpen(false)}
-						/>
-					) : null}
-
-					{overlay ? (
-						<TapbackOverlay
-							message={
-								messages.find((candidate) => candidate.id === overlay.message.id) ??
-								overlay.message
-							}
-							layout={overlay.layout}
-							onSelectReaction={handleReaction}
-							onAction={handleOverlayAction}
-							onDismiss={() => setOverlay(null)}
-						/>
-					) : null}
-				</View>
+			<AnimatedBlurView
+				tint="light"
+				pointerEvents="none"
+				animatedProps={scrimBlurProps}
+				style={StyleSheet.absoluteFill}
+			/>
+			<Animated.View
+				pointerEvents="none"
+				style={[StyleSheet.absoluteFill, styles.replyScrim, scrimTintStyle]}
+			/>
+			{replyTo ? (
+				<Pressable
+					style={StyleSheet.absoluteFill}
+					onPress={() => setReplyTo(undefined)}
+				/>
 			) : null}
-		</TrueSheet>
+
+			{plusOpen ? (
+				<Pressable
+					style={StyleSheet.absoluteFill}
+					onPress={() => setPlusOpen(false)}
+				/>
+			) : null}
+
+			<Animated.View style={[styles.footer, footerStyle]} pointerEvents="box-none">
+				<LinearGradient
+					colors={["rgba(255,255,255,0)", colors.background]}
+					locations={[0, 1]}
+					style={styles.inputFade}
+					pointerEvents="none"
+				/>
+				{plusOpen ? (
+					<PlusDrawer
+						onSelectAudio={() => {
+							setPlusOpen(false);
+							setRecording(true);
+						}}
+						onClose={() => setPlusOpen(false)}
+					/>
+				) : null}
+				<Animated.View
+					style={inputBarPaddingStyle}
+					onLayout={(event) => {
+						inputBarHeight.value = withTiming(event.nativeEvent.layout.height, {
+							duration: 200,
+						});
+					}}
+				>
+					{replyTo ? <ReplyChain messages={replyChain} /> : null}
+					{composerAd ? <SponsoredCard ad={composerAd} /> : null}
+					<ChatInputBar
+						replyActive={replyTo !== undefined}
+						onSendText={handleSendText}
+						onSendAudio={handleSendAudio}
+						onTogglePlusMenu={() => setPlusOpen((open) => !open)}
+						plusMenuOpen={plusOpen}
+						recording={recording}
+						onRecordingChange={setRecording}
+					/>
+				</Animated.View>
+			</Animated.View>
+
+			{overlay ? (
+				<TapbackOverlay
+					message={
+						messages.find((candidate) => candidate.id === overlay.message.id) ??
+						overlay.message
+					}
+					layout={overlay.layout}
+					onSelectReaction={handleReaction}
+					onAction={handleOverlayAction}
+					onDismiss={() => setOverlay(null)}
+				/>
+			) : null}
+		</View>
 	);
 }
 
 const styles = StyleSheet.create({
-	// Clipped to the sheet's rounded top so scrolled bubbles can't paint over
-	// the corner notches or the sheet's top edge.
+	// Clipped to the drawer's rounded top so scrolled bubbles can't paint over
+	// the corner notches or the drawer's top edge.
 	container: {
 		flex: 1,
 		backgroundColor: colors.background,
@@ -453,7 +349,10 @@ const styles = StyleSheet.create({
 	typingRow: {
 		paddingHorizontal: 16,
 	},
-	inputBarWrapper: {
+	topSpacer: {
+		height: 28,
+	},
+	footer: {
 		position: "absolute",
 		left: 0,
 		right: 0,
@@ -466,79 +365,7 @@ const styles = StyleSheet.create({
 		bottom: 0,
 		height: 130,
 	},
-	footerHidden: {
-		opacity: 0,
-	},
 	replyScrim: {
 		backgroundColor: "rgba(255,255,255,0.5)",
-	},
-	header: {
-		position: "absolute",
-		top: 0,
-		left: 0,
-		right: 0,
-		zIndex: 10,
-	},
-	headerFade: {
-		position: "absolute",
-		top: 0,
-		left: 0,
-		right: 0,
-		height: SHEET_HEADER_HEIGHT + 30,
-	},
-	headerRow: {
-		height: SHEET_HEADER_HEIGHT,
-		flexDirection: "row",
-		alignItems: "flex-start",
-		justifyContent: "space-between",
-		paddingHorizontal: 12,
-		paddingTop: 18,
-	},
-	contactIdentity: {
-		alignItems: "center",
-		gap: 5,
-	},
-	contactAvatar: {
-		width: 54,
-		height: 54,
-		borderRadius: 27,
-		backgroundColor: colors.background,
-		borderWidth: 2,
-		borderColor: colors.background,
-	},
-	contactCard: {
-		maxWidth: 210,
-		paddingHorizontal: 14,
-		paddingVertical: 6,
-		alignItems: "center",
-		borderRadius: 16,
-		borderCurve: "continuous",
-	},
-	contactNameRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 3,
-	},
-	contactName: {
-		fontSize: 16,
-		lineHeight: 18,
-		fontWeight: "700",
-		color: colors.label,
-	},
-	contactSubtitle: {
-		fontSize: 13,
-		lineHeight: 15,
-		color: colors.secondaryLabel,
-	},
-	glassButton: {
-		width: 42,
-		height: 42,
-		borderRadius: 21,
-		marginTop: 2,
-	},
-	glassPressable: {
-		flex: 1,
-		alignItems: "center",
-		justifyContent: "center",
 	},
 });

@@ -85,7 +85,11 @@ export function useSidekickChat(): SidekickChat {
   });
 
   function patchTranscript(update: (messages: Message[]) => Message[]): void {
-    queryClient.setQueryData<Message[]>(transcriptKey, (current) => update(current ?? []));
+    queryClient.setQueryData<Awaited<ReturnType<typeof fetchTranscript>>>(
+      transcriptKey,
+      (current) =>
+        current === undefined ? current : { ...current, messages: update(current.messages) },
+    );
   }
 
   const turn = useMutation({

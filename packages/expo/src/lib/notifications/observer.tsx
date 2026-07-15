@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
 import { useEffect } from "react";
+import { Platform } from "react-native";
 import { trpc } from "../api";
 import { parseNotificationPayload } from "./payload";
 import { clearConversationNotifications } from "./presented";
@@ -21,6 +22,11 @@ export function NotificationObserver(): null {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    // Push notifications are native-only; expo-notifications throws on web
+    // (e.g. getLastNotificationResponseAsync), so the observer no-ops there.
+    if (Platform.OS === "web") {
+      return;
+    }
     function received(notification: Notifications.Notification): void {
       const payload = parseNotificationPayload(notification.request.content.data);
       if (!payload) {

@@ -1,8 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { GlassView } from "expo-glass-effect";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { SymbolView } from "expo-symbols";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,8 +8,10 @@ import { SponsoredCard } from "~/components/SponsoredCard";
 import { trpc } from "~/lib/api";
 import type { AdView } from "~/lib/chat-thread";
 import { ChatInputBar } from "../components/ChatInputBar";
+import { Icon } from "../components/Icon";
 import { MessageBubble } from "../components/MessageBubble";
 import { colors, type } from "../theme";
+import { Glass } from "../components/Glass";
 
 /**
  * Dev-only (linked from Settings behind __DEV__): renders a `SponsoredCard`
@@ -84,11 +84,11 @@ export function AdPreviewScreen() {
 	return (
 		<View style={styles.screen}>
 			<View style={[styles.header, { paddingTop: insets.top + 6 }]}>
-				<GlassView isInteractive glassEffectStyle="regular" style={styles.glassButton}>
+				<Glass style={styles.glassButton}>
 					<Pressable hitSlop={12} onPress={() => router.back()} style={styles.glassPressable}>
-						<SymbolView name="chevron.left" size={20} weight="semibold" tintColor={colors.blue} />
+						<Icon name="chevronLeft" size={20} color={colors.blue} strokeWidth={2.5} />
 					</Pressable>
-				</GlassView>
+				</Glass>
 				<Text style={styles.title}>Ad Preview</Text>
 				<View style={styles.glassButton} />
 			</View>
@@ -176,6 +176,8 @@ const styles = StyleSheet.create({
 		width: 42,
 		height: 42,
 		borderRadius: 21,
+		borderCurve: "continuous",
+		overflow: "hidden",
 	},
 	glassPressable: {
 		flex: 1,

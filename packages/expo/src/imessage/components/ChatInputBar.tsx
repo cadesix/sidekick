@@ -1,10 +1,10 @@
 import * as Haptics from "expo-haptics";
-import { GlassView } from "expo-glass-effect";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import Animated, { ZoomIn, ZoomOut } from "react-native-reanimated";
-import { SymbolView } from "expo-symbols";
 import { colors } from "../theme";
+import { Glass } from "./Glass";
+import { Icon } from "./Icon";
 import type { AudioAttachment } from "../types";
 import { VoiceRecorder } from "./VoiceRecorder";
 
@@ -68,16 +68,15 @@ export function ChatInputBar({
 	return (
 		<View style={styles.container}>
 			<View style={styles.row}>
-				<GlassView isInteractive glassEffectStyle="regular" style={styles.plusButton}>
+				<Glass style={styles.plusButton}>
 					<Pressable onPress={handleLeftButton} style={styles.plusPressable} hitSlop={6}>
-						<SymbolView
+						<Icon
 							name={recording || plusMenuOpen ? "xmark" : "plus"}
 							size={19}
-							weight="medium"
-							tintColor={colors.label}
+							color={colors.label}
 						/>
 					</Pressable>
-				</GlassView>
+				</Glass>
 				{recording ? (
 					<VoiceRecorder
 						onCancel={() => onRecordingChange(false)}
@@ -87,14 +86,15 @@ export function ChatInputBar({
 						}}
 					/>
 				) : (
-					<GlassView glassEffectStyle="regular" style={styles.field}>
+					<Glass style={styles.field}>
 						<TextInput
 							ref={inputRef}
 							value={text}
 							onChangeText={setText}
-							placeholder={replyActive ? "Reply" : "iMessage"}
+							placeholder={replyActive ? "Reply" : "Message"}
 							placeholderTextColor={colors.tertiaryLabel}
 							multiline
+							numberOfLines={1}
 							style={styles.input}
 							keyboardAppearance="light"
 						/>
@@ -105,15 +105,15 @@ export function ChatInputBar({
 								style={styles.sendWrapper}
 							>
 								<Pressable onPress={send} style={styles.sendButton} hitSlop={6}>
-									<SymbolView name="arrow.up" size={16} weight="bold" tintColor="#FFFFFF" />
+									<Icon name="arrowUp" size={16} color="#FFFFFF" strokeWidth={3} />
 								</Pressable>
 							</Animated.View>
 						) : (
 							<Pressable onPress={startRecording} style={styles.micButton} hitSlop={8}>
-								<SymbolView name="waveform" size={22} tintColor={colors.gray} />
+								<Icon name="audio" size={22} color={colors.gray} />
 							</Pressable>
 						)}
-					</GlassView>
+					</Glass>
 				)}
 			</View>
 		</View>
@@ -135,6 +135,7 @@ const styles = StyleSheet.create({
 		width: 40,
 		height: 40,
 		borderRadius: 20,
+		overflow: "hidden",
 	},
 	plusPressable: {
 		flex: 1,
@@ -149,6 +150,7 @@ const styles = StyleSheet.create({
 		maxHeight: 132,
 		borderRadius: 20,
 		borderCurve: "continuous",
+		overflow: "hidden",
 	},
 	input: {
 		flex: 1,

@@ -1,12 +1,5 @@
 export { appRouter, type AppRouter } from "./routers";
-export {
-  accountStatus,
-  createEmailAccount,
-  normalizeEmail,
-  registerDevice,
-  resolveUserId,
-  signInWithEmail,
-} from "./auth";
+export { registerDevice, resolveUserId } from "./auth";
 export type { AppContext, Services, BackgroundScheduler } from "./context";
 export {
   beginTurn,
