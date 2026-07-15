@@ -4,15 +4,21 @@ import { Dimensions, Pressable, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AppearanceSheet } from '../src/components/AppearanceSheet';
 import { BondBadge } from '../src/components/BondBadge';
+import { BoxRewardsModal, GroundBox, StreakSplash } from '../src/components/DailyBox';
 import { Chat } from '../src/components/Chat';
+import { GoalsSheet } from '../src/components/GoalsSheet';
+import { StreakModal } from '../src/components/StreakModal';
 import { SessionChat } from '../src/components/SessionChat';
 import { SpeechBubble } from '../src/components/SpeechBubble';
 import { StreakPill } from '../src/components/StreakPill';
 import { HomeDock } from '../src/components/HomeDock';
 import { AREA_BIOME, type EnvironmentId } from '../src/three/biomes';
+import { useDailyBox } from '../src/store/dailyBox';
 import { speak } from '../src/store/speech';
 import { useStreak } from '../src/store/streak';
+import type { BoxReward } from '@sidekick/core';
 import { SettingsSheet } from '../src/components/SettingsSheet';
 import { ShopSheet } from '../src/components/ShopSheet';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
@@ -82,6 +88,12 @@ export default function Home() {
   // world environment (map travel) + the active guided session (if any)
   const [environment, setEnvironment] = useState<EnvironmentId>('meadow');
   const [sessionId, setSessionId] = useState<string | null>(null);
+  // daily-box flow: streak splash → ground chest → rewards modal → done
+  const [boxStage, setBoxStage] = useState<'init' | 'streak' | 'ground' | 'rewards' | 'done'>('init');
+  const [boxReward, setBoxReward] = useState<BoxReward | null>(null);
+  const [goalsOpen, setGoalsOpen] = useState(false);
+  const [streakModalOpen, setStreakModalOpen] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   // imperative handle the canvas publishes once cosmetics are ready; the Shop
   // uses it to dress the live character
   const [controls, setControls] = useState<CosmeticsControls | null>(null);
@@ -113,9 +125,17 @@ export default function Home() {
 
   // count today's streak once the store has hydrated (idempotent per local day)
   const streakHydrated = useStreak((s) => s.hydrated);
+  const streakCount = useStreak((s) => s.count);
+  const dailyBoxHydrated = useDailyBox((s) => s.hydrated);
   useEffect(() => {
     if (streakHydrated) useStreak.getState().touch();
   }, [streakHydrated]);
+  // once streak + box have hydrated, open the daily flow if today's box is unclaimed
+  useEffect(() => {
+    if (boxStage === 'init' && streakHydrated && dailyBoxHydrated) {
+      setBoxStage(useDailyBox.getState().hasBox() ? 'streak' : 'done');
+    }
+  }, [boxStage, streakHydrated, dailyBoxHydrated]);
 
   // 0 = closed (drawer off-screen), 1 = open
   const progress = useSharedValue(0);
@@ -186,13 +206,27 @@ export default function Home() {
         </BondBadge>
       ) : null}
 
-      {/* top-right streak pill (hidden while a full surface covers the scene) */}
+      {/* top-right cluster: appearance + goals + streak (hidden under surfaces) */}
       {!mapShown && !shopOpen && !open ? (
         <View
-          style={{ position: 'absolute', top: insets.top + 8, right: 16, zIndex: 25 }}
+          style={{ position: 'absolute', top: insets.top + 8, right: 16, zIndex: 25, flexDirection: 'row', gap: 8, alignItems: 'center' }}
           pointerEvents="box-none"
         >
-          <StreakPill />
+          <Pressable
+            onPress={() => setAppearanceOpen(true)}
+            accessibilityLabel="Appearance"
+            style={{ height: 40, width: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Ionicons name="shirt" size={20} color="#7A5AF8" />
+          </Pressable>
+          <Pressable
+            onPress={() => setGoalsOpen(true)}
+            accessibilityLabel="Goals"
+            style={{ height: 40, width: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Ionicons name="disc" size={22} color="#0a84ff" />
+          </Pressable>
+          <StreakPill onPress={() => setStreakModalOpen(true)} />
         </View>
       ) : null}
 
@@ -246,6 +280,32 @@ export default function Home() {
         </View>
       ) : null}
 
+      {/* Daily-box flow (home only): streak splash → ground chest → rewards */}
+      {settings && !mapShown && !shopOpen && !open && !settingsOpen && !sessionId ? (
+        <>
+          {boxStage === 'streak' ? (
+            <StreakSplash streak={streakCount} onDone={() => setBoxStage('ground')} />
+          ) : null}
+          {boxStage === 'ground' ? (
+            <View
+              style={{ position: 'absolute', left: 0, right: 0, top: SCREEN_H * 0.5, alignItems: 'center', zIndex: 30 }}
+              pointerEvents="box-none"
+            >
+              <GroundBox
+                onOpened={() => {
+                  const db = useDailyBox.getState();
+                  setBoxReward(db.claim(streakCount) ?? db.preview(streakCount));
+                  setBoxStage('rewards');
+                }}
+              />
+            </View>
+          ) : null}
+          {boxStage === 'rewards' && boxReward ? (
+            <BoxRewardsModal reward={boxReward} onCollect={() => setBoxStage('done')} />
+          ) : null}
+        </>
+      ) : null}
+
       {/* Shop sheet — covers the lower half; tap the character band above to
           close */}
       {shopOpen ? (
@@ -256,6 +316,28 @@ export default function Home() {
         />
       ) : null}
       <ShopSheet open={shopOpen} onClose={() => setShopOpen(false)} controls={controls} />
+
+      {/* goals, streak ladder, appearance/closet */}
+      <GoalsSheet
+        open={goalsOpen}
+        onClose={() => setGoalsOpen(false)}
+        onTalk={() => {
+          setGoalsOpen(false);
+          openDrawer();
+        }}
+      />
+      <StreakModal open={streakModalOpen} onClose={() => setStreakModalOpen(false)} />
+      {settings ? (
+        <AppearanceSheet
+          open={appearanceOpen}
+          onClose={() => setAppearanceOpen(false)}
+          controls={controls}
+          onSkinChange={(next) => {
+            setSettings(next);
+            controller?.applySettings(next);
+          }}
+        />
+      ) : null}
 
       {/* Look-dev settings sheet — compact so the scene stays visible above it;
           every control tick applies to the live scene */}
