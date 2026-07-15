@@ -100,10 +100,12 @@ export function Chat({ transparentTop = false }: { transparentTop?: boolean }) {
     // explicit flex:1 (not just className) so the white panel fills the drawer
     // reliably on RN-web, where nativewind flex-1 in an absolute parent is flaky
     <View style={{ flex: 1 }} className={transparentTop ? '' : 'bg-[#FBEFC9]'}>
-      {/* White chat container with rounded top corners — fills the drawer */}
+      {/* White chat container — explicit white bg (nativewind bg-white on an
+          Animated.View with a style array wasn't applying, so the cream drawer
+          showed through; web is a WHITE panel with cream bubbles) */}
       <Animated.View
-        style={[{ flex: 1 }, kbPad]}
-        className="bg-white rounded-t-[32px] overflow-hidden"
+        style={[{ flex: 1, backgroundColor: '#ffffff' }, kbPad]}
+        className="rounded-t-[32px] overflow-hidden"
       >
         <ScrollView
           ref={scrollRef}
