@@ -129,7 +129,7 @@ th { font-weight: 600; color: var(--muted); font-size: 12.5px; text-transform: u
       <a class="navlink" data-slug="token-economy" href="#token-economy">Token Economy Spec</a>
       <a class="navlink" data-slug="guided-sessions" href="#guided-sessions">Guided Sessions — UX + Content Design</a>
       <a class="navlink" data-slug="monorepo" href="#monorepo">The Sidekick monorepo</a>
-      <a class="navlink" data-slug="sync-plan" href="#sync-plan">Web ↔ iOS sync plan</a>
+      <a class="navlink" data-slug="sync-plan" href="#sync-plan">Web ↔ iOS sync plan (HISTORICAL — superseded)</a>
     <p class="foot">Generated snapshot — after editing docs, rerun<br><code>node docs/build-index.mjs</code></p>
   </nav>
   <main>
@@ -154,13 +154,13 @@ th { font-weight: 600; color: var(--muted); font-size: 12.5px; text-transform: u
       </a>
       <a class="card" href="#monorepo">
         <h2>The Sidekick monorepo</h2>
-        <p>Sidekick is a cel-shaded 3D mascot buddy — a full-screen three.js character with a chat drawer, cosmetics shop, and world map. This repo holds two apps that render the same prod…</p>
-        <span class="meta">MONOREPO.md · 5 min read · updated Jul 12, 2026</span>
+        <p>Sidekick is a cel-shaded 3D mascot buddy — a full-screen three.js character with a chat drawer, cosmetics shop, guided sessions, and world map.</p>
+        <span class="meta">MONOREPO.md · 5 min read · updated Jul 15, 2026</span>
       </a>
       <a class="card" href="#sync-plan">
-        <h2>Web ↔ iOS sync plan</h2>
-        <p>Intent: develop and tweak in the web app (packages/web, fast iteration, look-dev editor), then port to the RN app (packages/expo) for prod. This doc is the pipeline for making t…</p>
-        <span class="meta">SYNC-PLAN.md · 5 min read · updated Jul 12, 2026</span>
+        <h2>Web ↔ iOS sync plan (HISTORICAL — superseded)</h2>
+        <p>Original intent (obsolete): develop and tweak in the web app (packages/web), then port to the RN app (packages/expo) for prod.</p>
+        <span class="meta">SYNC-PLAN.md · 5 min read · updated Jul 15, 2026</span>
       </a>
       </div>
     </section>
@@ -295,10 +295,10 @@ th { font-weight: 600; color: var(--muted); font-size: 12.5px; text-transform: u
 <hr>
 <h2 id="guided-sessions--2-content-one-session-per-island">2. Content: one session per island</h2>
 <p>Six islands, six sessions, ordered by CONVERSATIONAL VALUE — collect the context that makes every future chat richer first (who you are, what you're into, where you're from), then wiring, goals, and the deep stuff. Order: About You → Taste Check → Where You're From → How You're Wired → Goals &amp; Dreams → The Deep Stuff. On the map, locked islands show a topic card (title + one-line tease + time/reward) that taps straight into the session; islands later in the sequence sit dimmed with their order number.</p>
-<h3 id="guided-sessions--frostpeak-the-basics-available-day-1">Frostpeak · "The Basics" — available day 1</h3>
+<h3 id="guided-sessions--frostpeak-about-you-available-day-1">Frostpeak · "About You" — available day 1</h3>
 <p><em>(covers the starting-point "About you": school/job + daily life)</em></p>
 <ul><li>"morning person or night owl? be honest"</li><li>"what's your weekday situation — school, work, both, figuring it out?"</li><li>"so what do you do? and like, what do you actually DO day to day"</li><li>"where do you live — big city, suburbs, small town?"</li><li>"who's at home — roommates, family, partner, just you?"</li><li>"walk me through a random tuesday, speedrun version"</li><li>Extract: <code>chronotype</code>, <code>occupation_type</code>, <code>occupation</code>, <code>field</code>, <code>locale_type</code>, <code>household</code> + <code>weekday_note</code></li></ul>
-<h3 id="guided-sessions--pinewood-your-world-unlocked-by-its-session">Pinewood · "Your World" — unlocked by its session</h3>
+<h3 id="guided-sessions--pinewood-taste-check-unlocked-by-its-session">Pinewood · "Taste Check" — unlocked by its session</h3>
 <p><em>(people + tastes: high ad relevance, low intimacy)</em></p>
 <ul><li>"who do you actually talk to most?"</li><li>"does being around people fill you up or drain you?"</li><li>"seeing anyone / married / gloriously single? (skip if you want)"</li><li>"what's on repeat right now — music, shows, games, whatever"</li><li>"how do you actually unwind, honest version"</li><li>"any app you open way too much?"</li><li>Extract: <code>closest_tie</code>, <code>social_energy</code>, <code>relationship</code>, <code>media_note</code>, <code>unwind</code>, <code>screen_apps</code> + <code>people_note</code></li></ul>
 <h3 id="guided-sessions--blossom-vale-where-you-re-from">Blossom Vale · "Where You're From"</h3>
@@ -343,81 +343,81 @@ th { font-weight: 600; color: var(--muted); font-size: 12.5px; text-transform: u
       <header class="dochead">
         <a class="back" href="#">← All docs</a>
         <h1>The Sidekick monorepo</h1>
-        <div class="meta">5 min read · updated Jul 12, 2026 · <a href="MONOREPO.md">open MONOREPO.md</a></div>
-        <nav class="toc"><a href="#monorepo--the-core-idea-develop-on-web-ship-on-native">The core idea: develop on web, ship on native</a><a href="#monorepo--repo-structure">Repo structure</a><a href="#monorepo--how-the-two-apps-relate-file-by-file">How the two apps relate, file by file</a><a href="#monorepo--assets-flow-one-way-web-expo">Assets flow one way: web → expo</a><a href="#monorepo--tooling-conventions-don-t-fight-these">Tooling conventions (don't fight these)</a><a href="#monorepo--running-things">Running things</a><a href="#monorepo--roadmap-from-mirrored-files-to-shared-packages">Roadmap: from mirrored files to shared packages</a></nav>
+        <div class="meta">5 min read · updated Jul 15, 2026 · <a href="MONOREPO.md">open MONOREPO.md</a></div>
+        <nav class="toc"><a href="#monorepo--the-core-idea-one-universal-expo-app">The core idea: ONE universal Expo app</a><a href="#monorepo--repo-structure">Repo structure</a><a href="#monorepo--running-things">Running things</a><a href="#monorepo--assets-canonical-source-is-still-packages-web-public-for-now">Assets — canonical source is still `packages/web/public/` (for now)</a><a href="#monorepo--retiring-packages-web-what-actually-blocks-deletion">Retiring `packages/web` — what actually blocks deletion</a><a href="#monorepo--tooling-conventions-don-t-fight-these">Tooling conventions (don't fight these)</a></nav>
       </header>
-      <p>Sidekick is a cel-shaded 3D mascot buddy — a full-screen three.js character with a chat drawer, cosmetics shop, and world map. This repo holds <strong>two apps that render the same product on different platforms</strong>, plus the shared packages that keep them from drifting apart.</p>
-<h2 id="monorepo--the-core-idea-develop-on-web-ship-on-native">The core idea: develop on web, ship on native</h2>
-<pre><code>   packages/web  (dev surface)              packages/expo  (prod surface)
-  ┌─────────────────────────────┐          ┌──────────────────────────────┐
-  │ Vite + React + three.js     │  port →  │ Expo + RN + expo-gl + three  │
-  │ instant HMR, look-dev editor│          │ dev-client builds, App Store │
-  │ every experiment lives here │          │ only proven features arrive  │
-  └─────────────────────────────┘          └──────────────────────────────┘</code></pre>
-<ul><li><strong><code>@sidekick/web</code> is where development happens.</strong> Iteration is fast (Vite HMR), and the look-dev tooling lives here: <code>/sidekick-3d</code> (live scene editor with lil-gui), <code>/pose</code> (pose studio), <code>/biomes</code> (biome preview). New features, new cosmetics, new scenes, and all visual tuning land on web first. Web is also the <strong>canonical home of art assets</strong> (<code>public/cosmetics/</code>, face sheets, world maps).</li><li><strong><code>@sidekick/expo</code> is what ships to users.</strong> It is a deliberate <em>port</em> of web's <code>/home4</code> experience to React Native — same scene, same cosmetics engine, same chat — rebuilt on <code>expo-gl</code> + <code>expo-three</code> because RN has no DOM. Features arrive here only after they've been proven on web.</li><li><strong>Parity is a maintained contract, not an accident.</strong> The two renderers are currently parallel implementations of the same logic (see the mapping table below). Anything that changes on one side either gets ported in the same cycle or logged as pending. The long-term fix is extracting the duplicated logic into <code>@sidekick/core</code> so most of it is literally the same file.</li></ul>
-<p>The full porting playbook (port protocol, config baking, asset pipeline, verification) is <code>docs/SYNC-PLAN.md</code>. The hard-won expo-gl platform gotchas are in <code>packages/expo/README.md</code> — read both before porting anything.</p>
+      <p>Sidekick is a cel-shaded 3D mascot buddy — a full-screen three.js character with a chat drawer, cosmetics shop, guided sessions, and world map.</p>
+<h2 id="monorepo--the-core-idea-one-universal-expo-app">The core idea: ONE universal Expo app</h2>
+<pre><code>              packages/expo  (THE app — universal)
+  ┌──────────────────────────────────────────────────────┐
+  │  Expo SDK 54 + React Native + expo-gl + three        │
+  │                                                      │
+  │   iOS (dev client / App Store)   ←── same code ──→   │
+  │   Browser (Expo Web / react-native-web)              │
+  └──────────────────────────────────────────────────────┘
+              ▲ imports
+  ┌──────────────────────────────┐   ┌────────────────────────────┐
+  │ @sidekick/core               │   │ packages/web (DEPRECATED)  │
+  │ platform-agnostic logic:     │   │ Vite reference app — port  │
+  │ economy, shop, sessions,     │   │ FROM it, never develop IN  │
+  │ goals, streak, bond, rng     │   │ it; deleted after Phase 4  │
+  └──────────────────────────────┘   └────────────────────────────┘</code></pre>
+<ul><li><strong><code>@sidekick/expo</code> is the product and the dev surface.</strong> It ships to iOS users AND is what you run in the browser day-to-day. "Run it in web" always means Expo Web from this package — never the Vite app. All new features land here (or in <code>@sidekick/core</code>), full stop.</li><li><strong><code>@sidekick/core</code> is where platform-agnostic logic lives</strong> — pure functions and data with zero DOM/RN/expo imports (economy, shop catalog, guided sessions, goals, streaks, bond, daily box, seeded rng). App layers own persistence (AsyncStorage/localStorage) and UI; core owns the numbers.</li><li><strong><code>@sidekick/web</code> is a deprecated reference implementation.</strong> It's the pre-refactor Vite + React DOM app, kept only so remaining unported behavior and look-dev values can be read off it. It receives no new features. It is retired (deleted) once its last real dependencies are migrated — see the checklist below.</li><li><strong><code>@sidekick/three</code> (planned)</strong> — the imperative three.js scene currently lives in <code>packages/expo/src/three/</code> (renderer, shading, cosmetics, grass, face, interact, biomes). Extracting it into a shared package is the intended end state; until that lands, treat <code>packages/expo/src/three/</code> as its home.</li></ul>
+<p>The hard rules (from the root <code>CLAUDE.md</code>, which every agent must read first): <strong>never hand-port or reimplement features between the two apps, and never duplicate logic/state/3D code across them.</strong> Porting from the deprecated reference is one-way and terminal — once behavior lives in expo/core, the web copy is dead code awaiting deletion.</p>
 <h2 id="monorepo--repo-structure">Repo structure</h2>
 <pre><code>sidekick/
-├── package.json            workspace root — orchestration scripts + pnpm.overrides
+├── package.json            workspace root — pnpm dev = Expo Web; pnpm.overrides pins three
 ├── pnpm-workspace.yaml     packages/*, packages/config/*, packages/shared/*
 ├── .npmrc                  node-linker=hoisted (required for Expo/Metro)
-├── pnpm-lock.yaml          single lockfile for everything
-├── docs/                   this file, SYNC-PLAN.md, creative-brief.md
+├── docs/                   this file, creative-brief, token-economy, guided-sessions
+├── tools/char-pipeline/    Blender cosmetics authoring pipeline (writes into web/public — see Assets)
 └── packages/
-    ├── web/                @sidekick/web — Vite web app (dev surface, Vercel deploy)
-    │   ├── src/components/sidekick-*.ts   imperative three.js scene modules
-    │   ├── src/*.tsx                      routes (home4, sidekick-3d, funnel, …)
-    │   ├── public/cosmetics/              CANONICAL cosmetics GLBs + manifest.json
-    │   ├── api/chat.js                    Vercel serverless chat endpoint
-    │   └── vite-plugin-sidekick.ts        /sidekick-3d studio dev plugin
-    ├── expo/               @sidekick/expo — RN app (prod surface)
-    │   ├── app/                           expo-router routes
-    │   ├── src/three/                     ported three.js scene (see mapping below)
-    │   ├── src/components/                RN UI (dock, chat, shop, map)
-    │   ├── assets/                        stripped GLBs + PNG variants (derived from web)
-    │   └── scripts/strip-glb.mjs          GLB texture stripper
+    ├── expo/               @sidekick/expo — THE app (iOS + web from one codebase)
+    │   ├── app/                           expo-router routes (index = home, sidekick-3d = look-dev)
+    │   ├── src/three/                     imperative three.js scene (future @sidekick/three)
+    │   ├── src/components/                RN UI (dock, chat, shop, map, sessions, …)
+    │   ├── src/store/                     zustand stores (persistence via AsyncStorage)
+    │   ├── assets/                        bundled GLBs/textures (DERIVED — see Assets)
+    │   └── scripts/                       strip-glb.mjs, sync-cosmetics.mjs
     ├── shared/
-    │   └── core/           @sidekick/core — platform-agnostic shared logic
-    │                       (being populated incrementally; see "Roadmap")
+    │   └── core/           @sidekick/core — platform-agnostic logic + tables
+    ├── web/                @sidekick/web — DEPRECATED Vite reference (do not develop here)
+    │   ├── src/components/sidekick-*.ts   pre-refactor three.js scene (reference)
+    │   ├── public/cosmetics/              still the CANONICAL asset source (see Assets)
+    │   └── api/chat.js                    Vercel serverless chat endpoint (legacy deploy)
+    ├── landing/            marketing site (Next.js) — independent of everything above
     └── config/
         ├── tsconfig/       @sidekick/tsconfig — shared TS configs
         └── tailwind/       @sidekick/tailwind-config — shared Tailwind preset (brand tokens)</code></pre>
-<h2 id="monorepo--how-the-two-apps-relate-file-by-file">How the two apps relate, file by file</h2>
-<p>The expo renderer is a hand-ported mirror of web's. Until extraction into <code>@sidekick/core</code> is done, these pairs must be kept in sync manually:</p>
-<div class="tablewrap"><table><thead><tr><th>Concern</th><th>Web (canonical)</th><th>Expo (port)</th></tr></thead><tbody><tr><td>Scene build + render loop</td><td><code>src/components/sidekick-canvas.tsx</code>, <code>sidekick-scene.ts</code></td><td><code>src/three/renderer.ts</code>, <code>src/components/SidekickCanvas.tsx</code></td></tr><tr><td>Cel shading + outline + item materials</td><td><code>sidekick-shading.ts</code></td><td><code>src/three/shading.ts</code></td></tr><tr><td>Cosmetics/equipment engine</td><td><code>sidekick-equipment.ts</code></td><td><code>src/three/cosmetics.ts</code></td></tr><tr><td>Cosmetics manifest</td><td><code>public/cosmetics/manifest.json</code></td><td><code>src/three/cosmetics-manifest.ts</code> (hand-mirrored TS)</td></tr><tr><td>Wardrobe state + persistence</td><td><code>sidekick-wardrobe.ts</code></td><td><code>src/three/wardrobe.ts</code></td></tr><tr><td>Face expression atlas</td><td><code>sidekick-face.ts</code></td><td><code>src/three/face.ts</code></td></tr><tr><td>Settings + scene presets</td><td><code>sidekick-settings.ts</code> / <code>sidekick-scene.ts</code></td><td><code>src/three/settings.ts</code></td></tr><tr><td>Poke/drag interaction springs</td><td><code>sidekick-interact.ts</code></td><td><code>src/three/interact.ts</code></td></tr><tr><td>Grass field</td><td><code>sidekick-grass.ts</code></td><td><code>src/three/grass.ts</code></td></tr><tr><td>Chat UI + API</td><td><code>chat.tsx</code>, <code>api/chat.js</code></td><td><code>src/components/Chat.tsx</code>, <code>src/lib/chat-api.ts</code></td></tr><tr><td>Home dock / shop / map</td><td><code>home-dock.tsx</code>, <code>shop-sheet.tsx</code>, <code>world-map.tsx</code></td><td><code>HomeDock.tsx</code>, <code>ShopSheet.tsx</code>, <code>WorldMap.tsx</code></td></tr></tbody></table></div>
-<p>Deliberately shared runtime contracts (same key, same shape, on both platforms — a tuned look or outfit from either side works on the other):</p>
-<ul><li><code>sidekick-wardrobe-v1</code> — equipped outfit (localStorage / AsyncStorage)</li><li><code>sidekick3d-settings-v2</code> — look-dev settings blob</li></ul>
-<p>Web-only (not ported, by design): the onboarding funnel, look-dev editor routes, design-system pages. Expo-only until back-ported: check <code>docs/SYNC-PLAN.md</code> §2's reverse-flow note (e.g. the world-anchored fog patch).</p>
-<h2 id="monorepo--assets-flow-one-way-web-expo">Assets flow one way: web → expo</h2>
-<p>Canonical art lives in <code>packages/web/public/</code>. The expo copies in <code>packages/expo/assets/</code> are <strong>derived</strong>:</p>
-<ol><li>GLBs are texture-stripped (<code>pnpm --filter @sidekick/expo strip-glb</code>) because three's GLTFLoader can't decode embedded GLB images in RN.</li><li>Cosmetic variant <code>.webp</code> textures are converted to <code>.png</code>.</li><li>Face sheets / world maps are copied.</li><li><code>src/three/cosmetics-manifest.ts</code> mirrors <code>manifest.json</code> by hand (codegen for this is planned — it's the worst drift hazard).</li></ol>
-<p>Never edit expo's derived assets directly; regenerate from web's.</p>
-<h2 id="monorepo--tooling-conventions-don-t-fight-these">Tooling conventions (don't fight these)</h2>
-<ul><li><strong>pnpm workspace, <code>node-linker=hoisted</code></strong> (<code>.npmrc</code>). Hoisting is what makes Expo/Metro work in a monorepo — Metro auto-detects the workspace (SDK 52+) and resolves everything from the root <code>node_modules</code>. Don't switch to symlinked node_modules casually.</li><li><strong><code>three</code> is pinned workspace-wide</strong> to one exact version via root <code>pnpm.overrides</code> (<code>three</code> + <code>@types/three</code>). Nineteen releases of drift between the apps was the biggest "same code, different pixels" risk — bump the override, never a per-package range. After any three bump, verify rendering on a <strong>physical device</strong> (simulator GL lies; see expo README).</li><li><strong><code>react</code>/<code>react-dom</code> are pinned exact</strong> and identical in both apps so hoisting yields a single copy.</li><li><strong>Workspace deps use <code>workspace:*</code></strong> — which means <code>npm install</code> no longer works anywhere in this repo. Always <code>pnpm install</code> at the root.</li><li>Shared config packages: app tsconfigs extend <code>@sidekick/tsconfig</code> (web) or <code>expo/tsconfig.base</code> (expo — Expo's own base is correct there); both tailwind configs consume the <code>@sidekick/tailwind-config</code> preset for brand tokens.</li></ul>
 <h2 id="monorepo--running-things">Running things</h2>
 <pre><code>pnpm install                          # once, at the root
-pnpm dev                              # web dev server
-pnpm --filter @sidekick/expo ios      # build + run the expo dev client (NOT Expo Go — expo-gl is native)
+pnpm dev                              # Expo Web — browser preview of the real app
+pnpm --filter @sidekick/expo ios      # iOS dev client (NOT Expo Go — expo-gl is native)
 pnpm --filter @sidekick/expo start    # Metro for an existing dev client
 pnpm typecheck                        # all packages
-pnpm build                            # production web build</code></pre>
-<p>Web deploys to Vercel with the project's <strong>Root Directory set to <code>packages/web</code></strong> ("Include source files outside of Root Directory" enabled so the root lockfile is visible). The serverless chat endpoint is <code>packages/web/api/chat.js</code>; chat needs <code>OPENAI_API_KEY</code> (web <code>.env.local</code> / Vercel env). Expo uses <code>EXPO_PUBLIC_OPENAI_API_KEY</code> (see <code>packages/expo/.env.example</code>) or falls back to canned replies.</p>
-<h2 id="monorepo--roadmap-from-mirrored-files-to-shared-packages">Roadmap: from mirrored files to shared packages</h2>
-<p>The mapping table above is the debt. The plan (SYNC-PLAN §1, now via real workspace packages instead of copy scripts) is to move everything that is "a number, a color, a table, a formula, or a shader string" into <code>@sidekick/core</code>, leaving only renderer plumbing (DOM canvas vs expo-gl) and UI (Tailwind DOM vs RN) platform-specific. Rough order, lowest-risk first:</p>
-<ol><li>Cosmetics manifest (typed export generated from/replacing <code>manifest.json</code>) — kills the worst hand-mirror</li><li>Settings type + DEFAULT_SETTINGS + scene presets (+ <code>bake-config</code> from the /sidekick-3d editor)</li><li>GLSL sources (cel, outline, grass blades, fog)</li><li>Interaction spring math; face/bone/pose tables</li><li>Grass layout math</li></ol>
-<p>Each extraction: move the module into <code>packages/shared/core/src</code>, point both apps at it, then verify on web <em>and</em> on a physical iOS device before the next.</p>
+pnpm dev:vite                         # deprecated Vite reference — explicit request only</code></pre>
+<p>Anything 3D must ultimately be verified on a <strong>physical iOS device</strong> — the simulator's GL stack is unreliable (blank scenes, z-fight artifacts; see <code>packages/expo/README.md</code>). Expo Web is the fast iteration loop; the device is the truth for rendering.</p>
+<p>Chat: expo uses <code>EXPO_PUBLIC_OPENAI_API_KEY</code> (see <code>packages/expo/.env.example</code>) or falls back to canned replies. The legacy Vite deploy on Vercel uses <code>packages/web/api/chat.js</code> with <code>OPENAI_API_KEY</code>.</p>
+<h2 id="monorepo--assets-canonical-source-is-still-packages-web-public-for-now">Assets — canonical source is still <code>packages/web/public/</code> (for now)</h2>
+<p>This is the one place the deprecated package is still load-bearing:</p>
+<ol><li>The Blender char-pipeline (<code>tools/char-pipeline/</code>) authors the rig and cosmetics and writes GLBs into <code>packages/web/public/cosmetics/</code> + <code>packages/web/public/sidekick-rigged.glb</code>. The asset contracts live next to them (<code>public/3d-assets/*.md</code>, <code>public/cosmetics/*.md</code>).</li><li><code>packages/expo/scripts/sync-cosmetics.mjs</code> mirrors that catalog into the expo bundle: GLBs are texture-stripped (three's GLTFLoader can't decode embedded GLB images in RN), <code>.webp</code> variants become <code>.png</code> (expo-gl can't decode webp), and <code>src/three/cosmetics-manifest.ts</code> is <strong>generated</strong> from <code>manifest.json</code>. Re-run it whenever the web catalog changes.</li><li>Never edit expo's derived assets or the generated manifest by hand.</li></ol>
+<p><strong>Before <code>packages/web</code> can be deleted, this canonical asset home (plus the <code>.md</code> contracts beside it) must move</strong> — e.g. to a top-level <code>assets/</code> or into <code>packages/expo</code> — and <code>sync-cosmetics.mjs</code> + the char-pipeline scripts repointed. Until then, deleting web deletes the art source.</p>
+<h2 id="monorepo--retiring-packages-web-what-actually-blocks-deletion">Retiring <code>packages/web</code> — what actually blocks deletion</h2>
+<ul><li>[ ] Port or consciously drop any remaining web-only behavior worth keeping (check against the reference before assuming parity).</li><li>[ ] Move the canonical asset source + asset contract docs out of <code>packages/web/public/</code> and repoint <code>sync-cosmetics.mjs</code> and <code>tools/char-pipeline</code>.</li><li>[ ] Decide the fate of the Vercel deploy (<code>packages/web</code> root directory, <code>api/chat.js</code>) — replace with an Expo Web export or shut it down.</li><li>[ ] Migrate anything still referencing web paths (docs, scripts, memory).</li></ul>
+<h2 id="monorepo--tooling-conventions-don-t-fight-these">Tooling conventions (don't fight these)</h2>
+<ul><li><strong>pnpm workspace, <code>node-linker=hoisted</code></strong> (<code>.npmrc</code>). Hoisting is what makes Expo/Metro work in a monorepo — Metro auto-detects the workspace (SDK 52+) and resolves from the root <code>node_modules</code>. Don't switch to symlinked node_modules casually.</li><li><strong><code>three</code> + <code>@types/three</code> are pinned workspace-wide</strong> via root <code>pnpm.overrides</code> — bump the override, never a per-package range. After any three bump, verify rendering on a physical device.</li><li><strong><code>react</code>/<code>react-dom</code> are pinned exact</strong> so hoisting yields a single copy.</li><li><strong>Workspace deps use <code>workspace:*</code></strong> — <code>npm install</code> does not work anywhere in this repo. Always <code>pnpm install</code> at the root.</li><li><code>@sidekick/core</code> must stay pure: zero DOM / RN / expo imports. If it needs a platform API, the app passes the value in.</li></ul>
 
     </article>
 
 <article id="doc-sync-plan" hidden>
       <header class="dochead">
         <a class="back" href="#">← All docs</a>
-        <h1>Web ↔ iOS sync plan</h1>
-        <div class="meta">5 min read · updated Jul 12, 2026 · <a href="SYNC-PLAN.md">open SYNC-PLAN.md</a></div>
+        <h1>Web ↔ iOS sync plan (HISTORICAL — superseded)</h1>
+        <div class="meta">5 min read · updated Jul 15, 2026 · <a href="SYNC-PLAN.md">open SYNC-PLAN.md</a></div>
         <nav class="toc"><a href="#sync-plan--0-prerequisites-one-time-do-first">0. Prerequisites (one-time, do first)</a><a href="#sync-plan--1-shared-core-one-source-of-truth-for-pure-logic">1. Shared core — one source of truth for pure logic</a><a href="#sync-plan--2-config-bake-from-the-editor-don-t-hand-copy">2. Config — bake from the editor, don't hand-copy</a><a href="#sync-plan--3-assets-scripted-one-way-pipeline-web-mobile">3. Assets — scripted one-way pipeline (web → mobile)</a><a href="#sync-plan--4-port-protocol-process-per-feature">4. Port protocol — process per feature</a><a href="#sync-plan--5-platform-gotchas-keep-them-executable">5. Platform gotchas — keep them executable</a><a href="#sync-plan--6-verification-trust-screenshots-not-vibes">6. Verification — trust screenshots, not vibes</a><a href="#sync-plan--sequencing">Sequencing</a></nav>
       </header>
-      <blockquote><p><strong>Status (2026-07-12):</strong> partially superseded. This doc was written when web and mobile were separate repos; both now live in this monorepo (<code>packages/web</code> + <code>packages/expo</code>), which IS the "true monorepo endgame" described in §1 — so the rsync/checksum copy-script machinery is obsolete. Shared code goes in <code>packages/shared/core</code> (<code>@sidekick/core</code>) as a real workspace dependency instead. §0's prerequisites are done (both apps committed/remoted; <code>three</code> pinned to 0.185.1 workspace-wide via root pnpm overrides). Still-relevant parts: the shared-vs-platform-specific inventory (§1's table), bake-config (§2), the asset pipeline + manifest codegen (§3), the port protocol/PARITY.md (§4), the platform gotchas (§5), and the screenshot harness (§6). Referenced scripts (<code>sync-shared</code>, <code>sync-assets</code>, <code>bake-config</code>) are still TODO, not real yet.</p></blockquote>
-<p>Intent: <strong>develop and tweak in the web app</strong> (<code>packages/web</code>, fast iteration, look-dev editor), then <strong>port to the RN app</strong> (<code>packages/expo</code>) for prod. This doc is the pipeline for making that repeatable and drift-proof.</p>
+      <blockquote><p><strong>Status (2026-07-15): SUPERSEDED.</strong> The premise of this doc — develop in the Vite web app, port to the RN app, keep two implementations in parity — is dead. The repo has collapsed to <strong>one universal Expo app</strong> (<code>packages/expo</code>, running on iOS and in the browser via Expo Web), with shared logic in <code>@sidekick/core</code>. <code>packages/web</code> is a deprecated reference being retired; there is no two-way parity contract to maintain anymore.</p><p><strong>Current model:</strong> root <code>CLAUDE.md</code> (rules) + <code>docs/MONOREPO.md</code> (architecture, asset pipeline, web-retirement checklist).</p><p>Still worth reading here, as reference only: the platform gotchas (§5 — they now live executable-form in <code>packages/expo/README.md</code>) and the shared-vs-platform-specific inventory (§1's table, useful when checking whether anything in <code>packages/web</code> remains unported). Everything else — sync scripts, PARITY.md, port protocol, screenshot parity harness — is obsolete and was never built.</p></blockquote>
+<p>Original intent (obsolete): develop and tweak in the web app (<code>packages/web</code>), then port to the RN app (<code>packages/expo</code>) for prod.</p>
 <h2 id="sync-plan--0-prerequisites-one-time-do-first">0. Prerequisites (one-time, do first)</h2>
 <ul><li>[ ] <strong>Commit + remote this repo.</strong> Everything here sits uncommitted on top of an Expo boilerplate "Initial commit" — there is no history to diff against and no way to bisect a bad port. Create a GitHub repo, commit, and require commits per port from here on.</li><li>[ ] <strong>Align three.js versions.</strong> Web is <code>three@0.185</code>, mobile is pinned to <code>0.166</code> (expo-three peer). Nineteen releases of lighting/color internals is the biggest "same code, different pixels" risk. Test expo-three against r185 in a branch; if it works, pin BOTH repos to the same version and add a CI check that the two package.jsons agree.</li></ul>
 <h2 id="sync-plan--1-shared-core-one-source-of-truth-for-pure-logic">1. Shared core — one source of truth for pure logic</h2>
