@@ -2,9 +2,19 @@ import Constants from 'expo-constants';
 import { GLView, type ExpoWebGLRenderingContext } from 'expo-gl';
 import { useEffect, useRef } from 'react';
 import { StyleSheet, View, type GestureResponderEvent, type ViewStyle } from 'react-native';
+import type { SharedValue } from 'react-native-reanimated';
 
 import { createSidekickRenderer, type Framing, type SidekickController } from '../three/renderer';
 import type { CosmeticsControls } from '../three/wardrobe';
+
+// Head-tracked overlay target: the canvas writes the head-bone's on-screen
+// position (layout px) + visibility into these SharedValues every frame; a
+// head-tracked overlay (bond badge, speech bubble) reads them via useAnimatedStyle.
+export type OverheadTarget = {
+  x: SharedValue<number>;
+  y: SharedValue<number>;
+  visible: SharedValue<number>; // 1 = in front of camera, 0 = behind/hidden
+};
 
 // RN analog of sidekick/src/components/sidekick-canvas.tsx: a GLView hosting the
 // imperative THREE scene. Props (framing, holdingPhone, studio) are pushed to
@@ -24,6 +34,7 @@ export function SidekickCanvas({
   studio,
   onControls,
   onController,
+  overhead,
 }: {
   style?: ViewStyle;
   framing: Framing;
@@ -34,6 +45,8 @@ export function SidekickCanvas({
   onControls?: (c: CosmeticsControls | null) => void;
   // the raw scene controller (Settings sheet uses applySettings for live look-dev)
   onController?: (c: SidekickController | null) => void;
+  // head-tracked overlay position sink (bond badge / speech bubble)
+  overhead?: OverheadTarget;
 }) {
   const controller = useRef<SidekickController | null>(null);
   // keep the latest callbacks without re-creating the GL scene
@@ -41,6 +54,8 @@ export function SidekickCanvas({
   onControlsRef.current = onControls;
   const onControllerRef = useRef(onController);
   onControllerRef.current = onController;
+  const overheadRef = useRef(overhead);
+  overheadRef.current = overhead;
   const size = useRef({ w: 1, h: 1 });
 
   const onContextCreate = (gl: ExpoWebGLRenderingContext) => {
@@ -49,6 +64,14 @@ export function SidekickCanvas({
       holdingPhone,
       studio,
       onControls: (c) => onControlsRef.current?.(c),
+      onOverhead: (nx, ny, visible) => {
+        const t = overheadRef.current;
+        if (!t) return;
+        // NDC (-1..1, +y up) → layout px (top-left origin)
+        t.x.value = (nx * 0.5 + 0.5) * size.current.w;
+        t.y.value = (-ny * 0.5 + 0.5) * size.current.h;
+        t.visible.value = visible ? 1 : 0;
+      },
     });
     onControllerRef.current?.(controller.current);
   };

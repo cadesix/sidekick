@@ -142,6 +142,10 @@ export function createSidekickRenderer(
     // handed the imperative dressing controls once cosmetics are ready (and
     // null on dispose) — the Shop sheet drives the live character through it
     onControls?: (c: CosmeticsControls | null) => void;
+    // per-frame head-bone screen position in NDC (-1..1, +y up) + visibility
+    // (z<1 = in front of camera). Drives head-tracked overlays (bond badge,
+    // speech bubble); the canvas converts NDC→layout px. Web: overheadRef.
+    onOverhead?: (x: number, y: number, visible: boolean) => void;
   },
 ): SidekickController {
   console.log(
@@ -524,6 +528,7 @@ export function createSidekickRenderer(
   const wantTgt = new THREE.Vector3();
   const camOff = new THREE.Vector3();
   const camSph = new THREE.Spherical();
+  const overheadV = new THREE.Vector3(); // scratch for head→screen projection
   const lerp = THREE.MathUtils.lerp;
   let phoneBlend = 0;
   let phoneShown = false;
@@ -645,6 +650,15 @@ export function createSidekickRenderer(
       }
     } else {
       renderer.render(scene, camera);
+    }
+    // pin head-tracked overlays (bond badge / speech bubble): project the head
+    // bone (lifted +0.55) to NDC; the canvas maps NDC→layout px. Web does the
+    // same via overheadRef (sidekick-canvas.tsx).
+    if (opts.onOverhead && ready && bones.head) {
+      bones.head.getWorldPosition(overheadV);
+      overheadV.y += 0.55;
+      overheadV.project(camera);
+      opts.onOverhead(overheadV.x, overheadV.y, overheadV.z < 1);
     }
     // NOTE: no in-app pixel readback here — every readback path (takeSnapshotAsync,
     // gl.readPixels on the default framebuffer, readRenderTargetPixels on an FBO)

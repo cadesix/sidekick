@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Dimensions, Pressable, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
+import { BondBadge } from '../src/components/BondBadge';
 import { Chat } from '../src/components/Chat';
 import { HomeDock } from '../src/components/HomeDock';
 import { SettingsSheet } from '../src/components/SettingsSheet';
@@ -75,6 +76,13 @@ export default function Home() {
   // 0 = closed (drawer off-screen), 1 = open
   const progress = useSharedValue(0);
 
+  // head-tracked overlay position (bond badge / speech bubble); the canvas
+  // writes these every frame from the head-bone projection
+  const overheadX = useSharedValue(0);
+  const overheadY = useSharedValue(0);
+  const overheadVisible = useSharedValue(0);
+  const overhead = { x: overheadX, y: overheadY, visible: overheadVisible };
+
   const openDrawer = () => {
     setOpen(true);
     progress.value = withTiming(1, { duration: 380 });
@@ -120,7 +128,14 @@ export default function Home() {
           studio={shopOpen}
           onControls={setControls}
           onController={setController}
+          overhead={overhead}
         />
+      ) : null}
+
+      {/* bond score floating over the character's head (hidden while a full
+          surface covers the scene) */}
+      {settings ? (
+        <BondBadge overhead={overhead} hidden={mapShown || shopOpen || open || settingsOpen} />
       ) : null}
 
       {/* Tap the character band above the drawer to close */}
