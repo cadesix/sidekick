@@ -41,9 +41,9 @@ const HERO_FRAMING: Framing = {
 };
 
 const CHAT_FRAMING: Framing = {
-  pos: [0, 1.0, 7.7],
-  target: [0, -0.55, 0],
-  fov: 31,
+  pos: [0, 1.6, 13],
+  target: [0, -2.0, 0],
+  fov: 30,
 };
 
 // Opening the map: the camera rapidly rockets up + back (pull away from the
@@ -75,7 +75,7 @@ const TRAVEL_LINES: Record<EnvironmentId, string> = {
 };
 
 const { height: SCREEN_H } = Dimensions.get('window');
-const DRAWER_TOP = SCREEN_H * 0.45; // drawer covers the lower 55%
+const DRAWER_TOP = SCREEN_H * 0.2; // chat drawer covers the lower 80% (web: top-[20%])
 
 export default function Home() {
   const [open, setOpen] = useState(false);
@@ -356,8 +356,20 @@ export default function Home() {
         style={[
           drawerStyle,
           // explicit height (not bottom:0) so the Chat's flex-1 white panel
-          // fills the drawer on RN-web (top+bottom doesn't size flex children)
-          { position: 'absolute', left: 0, right: 0, top: DRAWER_TOP, height: SCREEN_H - DRAWER_TOP, zIndex: 40 },
+          // fills the drawer on RN-web (top+bottom doesn't size flex children).
+          // cream bg + rounded top mirror web's drawer (bg-[#FBEFC9] rounded-t-[28px]).
+          {
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: DRAWER_TOP,
+            height: SCREEN_H - DRAWER_TOP,
+            zIndex: 40,
+            backgroundColor: '#FBEFC9',
+            borderTopLeftRadius: 28,
+            borderTopRightRadius: 28,
+            overflow: 'hidden',
+          },
         ]}
         pointerEvents={open ? 'auto' : 'none'}
       >

@@ -97,26 +97,34 @@ export function Chat({ transparentTop = false }: { transparentTop?: boolean }) {
   const canSend = !!input.trim() && !loading;
 
   return (
-    <View className={`flex-1 ${transparentTop ? '' : 'bg-[#FBEFC9]'}`}>
-      {/* White chat container with rounded top corners */}
-      <Animated.View style={kbPad} className="flex-1 bg-white rounded-t-[32px] overflow-hidden">
+    // explicit flex:1 (not just className) so the white panel fills the drawer
+    // reliably on RN-web, where nativewind flex-1 in an absolute parent is flaky
+    <View style={{ flex: 1 }} className={transparentTop ? '' : 'bg-[#FBEFC9]'}>
+      {/* White chat container with rounded top corners — fills the drawer */}
+      <Animated.View
+        style={[{ flex: 1 }, kbPad]}
+        className="bg-white rounded-t-[32px] overflow-hidden"
+      >
         <ScrollView
           ref={scrollRef}
-          className="flex-1 px-4 pt-9"
+          style={{ flex: 1 }}
+          className="px-4 pt-9"
           contentContainerStyle={{ paddingBottom: 12, gap: 12 }}
           showsVerticalScrollIndicator={false}
         >
           {messages.map((m, i) =>
             m.role === 'assistant' ? (
-              <View key={i} className="flex-row items-end gap-2 max-w-[85%]">
+              // maxWidth on the row + shrink on the bubble so the text WRAPS
+              // within the panel instead of overflowing off the right edge
+              <View key={i} style={{ maxWidth: '85%' }} className="flex-row items-end gap-2">
                 <Avatar />
-                <View className="rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-2.5">
+                <View className="shrink rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-2.5">
                   <Text className="text-[15px] leading-[21px] text-[#111]">{m.content}</Text>
                 </View>
               </View>
             ) : (
-              <View key={i} className="self-end max-w-[80%]">
-                <View className="rounded-3xl rounded-br-md bg-[#E9E9EC] px-4 py-2.5">
+              <View key={i} style={{ maxWidth: '80%' }} className="self-end">
+                <View className="shrink rounded-3xl rounded-br-md bg-[#E9E9EC] px-4 py-2.5">
                   <Text className="text-[15px] leading-[21px] text-[#111]">{m.content}</Text>
                 </View>
               </View>
