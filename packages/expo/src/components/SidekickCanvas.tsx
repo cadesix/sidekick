@@ -4,6 +4,8 @@ import { useEffect, useRef } from 'react';
 import { StyleSheet, View, type GestureResponderEvent, type ViewStyle } from 'react-native';
 import type { SharedValue } from 'react-native-reanimated';
 
+import type { BoxTier } from '@sidekick/core';
+
 import type { EnvironmentId } from '../three/biomes';
 import { createSidekickRenderer, type Framing, type SidekickController } from '../three/renderer';
 import type { CosmeticsControls } from '../three/wardrobe';
@@ -37,6 +39,8 @@ export function SidekickCanvas({
   onControls,
   onController,
   overhead,
+  dailyBox,
+  ground,
 }: {
   style?: ViewStyle;
   framing: Framing;
@@ -51,6 +55,9 @@ export function SidekickCanvas({
   onController?: (c: SidekickController | null) => void;
   // head-tracked overlay position sink (bond badge / speech bubble)
   overhead?: OverheadTarget;
+  // daily loot chest tier (spawns the 3D chest) + its ground-anchor sink
+  dailyBox?: BoxTier | null;
+  ground?: OverheadTarget;
 }) {
   const controller = useRef<SidekickController | null>(null);
   // keep the latest callbacks without re-creating the GL scene
@@ -60,7 +67,17 @@ export function SidekickCanvas({
   onControllerRef.current = onController;
   const overheadRef = useRef(overhead);
   overheadRef.current = overhead;
+  const groundRef = useRef(ground);
+  groundRef.current = ground;
   const size = useRef({ w: 1, h: 1 });
+
+  // NDC (-1..1, +y up) → layout px (top-left origin)
+  const project = (t: OverheadTarget | undefined, nx: number, ny: number, visible: boolean) => {
+    if (!t) return;
+    t.x.value = (nx * 0.5 + 0.5) * size.current.w;
+    t.y.value = (-ny * 0.5 + 0.5) * size.current.h;
+    t.visible.value = visible ? 1 : 0;
+  };
 
   const onContextCreate = (gl: ExpoWebGLRenderingContext) => {
     controller.current = createSidekickRenderer(gl, {
@@ -68,15 +85,10 @@ export function SidekickCanvas({
       holdingPhone,
       studio,
       environment,
+      dailyBox,
       onControls: (c) => onControlsRef.current?.(c),
-      onOverhead: (nx, ny, visible) => {
-        const t = overheadRef.current;
-        if (!t) return;
-        // NDC (-1..1, +y up) → layout px (top-left origin)
-        t.x.value = (nx * 0.5 + 0.5) * size.current.w;
-        t.y.value = (-ny * 0.5 + 0.5) * size.current.h;
-        t.visible.value = visible ? 1 : 0;
-      },
+      onOverhead: (nx, ny, visible) => project(overheadRef.current, nx, ny, visible),
+      onGround: (nx, ny, visible) => project(groundRef.current, nx, ny, visible),
     });
     onControllerRef.current?.(controller.current);
   };
@@ -109,6 +121,10 @@ export function SidekickCanvas({
   useEffect(() => {
     controller.current?.setStudio(!!studio);
   }, [studio]);
+
+  useEffect(() => {
+    controller.current?.setDailyBox(dailyBox ?? null);
+  }, [dailyBox]);
 
   useEffect(() => {
     return () => {

@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 
 import type { BoxReward } from '@sidekick/core';
 
+import type { OverheadTarget } from './SidekickCanvas';
 import { shopRender } from '../three/shop-renders';
 
 // RN port of sidekick/src/components/daily-box.tsx — the daily-box flow FX:
-// StreakSplash (first session of day), GroundBox (the tap target), and
-// BoxRewardsModal (coins count-up + milestone). The 3D chest pop is deferred
-// (see task 9 spike); GroundBox is a 2D tap target for now.
+// StreakSplash (first session of day), GroundBox (the DOM layer pinned over the
+// 3D chest), and BoxRewardsModal (coins count-up + milestone). GroundBox is an
+// invisible tap target + badge/sparkles/burst pinned to the 3D chest via the
+// canvas ground projection; the tap drives the real 3D lid-swing pop.
 
 const STREAK_ICON = require('../../assets/icons/streak.png');
 
@@ -74,30 +76,117 @@ export function StreakSplash({ streak, onDone }: { streak: number; onDone: () =>
   );
 }
 
-// ---- GroundBox (2D tap target) ----------------------------------------------
-export function GroundBox({ onOpened }: { onOpened: () => void }) {
-  const scale = useSharedValue(1);
-  const opened = useRef(false);
-  const onTap = () => {
-    if (opened.current) return;
-    opened.current = true;
-    scale.value = withSequence(withTiming(1.3, { duration: 140 }), withTiming(0, { duration: 260 }));
-    setTimeout(onOpened, 500);
-  };
-  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+// ---- GroundBox: DOM layer pinned over the 3D chest --------------------------
+// A 150×150 box the canvas anchors bottom-center over the 3D chest (via the
+// `ground` projection). Invisible tap target + bouncing badge + sparkles;
+// tapping fires onTap (canvas plays the real rattle → lid-swing → light burst),
+// the confetti/flash play over it, and onOpened fires when the chest is spent.
+const BOX = 150;
+const CONFETTI_COLORS = ['#F2C94C', '#FF7A3D', '#5BF76B', '#6BB6FF', '#FF5B4D', '#B57BFF'];
+
+// deterministic scatter of chip i → outward offset (mirrors web's scatter())
+function scatter(i: number, n: number, r: number): { x: number; y: number } {
+  const a = (i / n) * Math.PI * 2 + (i % 2 ? 0.4 : 0);
+  const d = r * (0.55 + ((i * 37) % 45) / 100);
+  return { x: Math.cos(a) * d, y: Math.sin(a) * d - r * 0.15 };
+}
+
+function ConfettiChip({ i }: { i: number }) {
+  const t = useSharedValue(0);
+  useEffect(() => {
+    t.value = withDelay(700, withTiming(1, { duration: 900, easing: Easing.out(Easing.cubic) }));
+  }, [t]);
+  const { x, y } = scatter(i, 14, 118);
+  const style = useAnimatedStyle(() => ({
+    opacity: 1 - t.value,
+    transform: [
+      { translateX: x * t.value },
+      { translateY: y * t.value + t.value * t.value * 60 },
+      { rotate: `${t.value * 320}deg` },
+      { scale: 0.4 + t.value * 0.6 },
+    ],
+  }));
   return (
-    <View style={styles.groundWrap} pointerEvents="box-none">
-      <View style={styles.chestBadge}>
-        <Text style={styles.chestBadgeText}>Daily Chest!</Text>
-      </View>
-      <Pressable onPress={onTap}>
-        <Animated.View style={[styles.chest, style]}>
-          <Text style={{ fontSize: 52 }}>🎁</Text>
-        </Animated.View>
-      </Pressable>
-    </View>
+    <Animated.View
+      style={[
+        { position: 'absolute', left: BOX / 2 - 6, top: BOX / 2 - 7, width: 12, height: 14, borderRadius: 3, backgroundColor: CONFETTI_COLORS[i % CONFETTI_COLORS.length] },
+        style,
+      ]}
+    />
   );
 }
+
+export function GroundBox({
+  ground,
+  hidden,
+  onTap,
+  onOpened,
+}: {
+  ground: OverheadTarget;
+  hidden?: boolean;
+  onTap: () => void;
+  onOpened: () => void;
+}) {
+  const [burst, setBurst] = useState(false);
+  const bounce = useSharedValue(0);
+  const flash = useSharedValue(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    bounce.value = withRepeat(withTiming(1, { duration: 520, easing: Easing.inOut(Easing.quad) }), -1, true);
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, [bounce]);
+
+  const tap = () => {
+    if (burst) return;
+    setBurst(true);
+    onTap(); // canvas starts rattle → lid swing → light
+    flash.value = withDelay(620, withSequence(withTiming(1, { duration: 120 }), withTiming(0, { duration: 380 })));
+    timer.current = setTimeout(onOpened, 1200); // light pours out ~0.62s; modal rides the beam
+  };
+
+  // pin bottom-center over the projected chest ground point; hide when behind
+  // the camera / in studio (visible === 0) or while a surface covers the scene
+  const wrapStyle = useAnimatedStyle(() => ({
+    opacity: hidden || ground.visible.value < 0.5 ? 0 : 1,
+    transform: [
+      { translateX: ground.x.value - BOX / 2 },
+      { translateY: ground.y.value - BOX },
+    ],
+  }));
+  const badgeStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -6 - bounce.value * 6 }] }));
+  const flashStyle = useAnimatedStyle(() => ({ opacity: flash.value }));
+
+  return (
+    <Animated.View
+      pointerEvents={hidden ? 'none' : 'box-none'}
+      style={[{ position: 'absolute', left: 0, top: 0, width: BOX, height: BOX }, wrapStyle]}
+    >
+      {!burst ? (
+        <>
+          <Animated.View style={[{ position: 'absolute', top: -18, alignSelf: 'center' }, badgeStyle]}>
+            <View style={styles.chestBadge}>
+              <Text style={styles.chestBadgeText}>Daily Chest!</Text>
+            </View>
+          </Animated.View>
+          <Text style={{ position: 'absolute', left: 4, top: 36, fontSize: 18 }}>✨</Text>
+          <Text style={{ position: 'absolute', right: 8, top: 64, fontSize: 15 }}>✨</Text>
+        </>
+      ) : (
+        <>
+          <Animated.View style={[styles.flash, flashStyle]} />
+          {Array.from({ length: 14 }, (_, i) => (
+            <ConfettiChip key={i} i={i} />
+          ))}
+        </>
+      )}
+      {/* invisible tap target covering the chest */}
+      <Pressable onPress={tap} accessibilityLabel="Open daily box" style={StyleSheet.absoluteFill} />
+    </Animated.View>
+  );
+}
+
 
 // ---- BoxRewardsModal --------------------------------------------------------
 export function BoxRewardsModal({ reward, onCollect }: { reward: BoxReward; onCollect: () => void }) {
@@ -166,16 +255,26 @@ const styles = StyleSheet.create({
     textShadowRadius: 12,
   },
   splashLabel: { marginTop: 4, fontSize: 17, fontWeight: '700', color: 'rgba(255,255,255,0.9)' },
-  groundWrap: { alignItems: 'center', zIndex: 30 },
   chestBadge: {
-    marginBottom: 10,
     borderRadius: 999,
-    backgroundColor: '#111',
+    backgroundColor: 'rgba(255,255,255,0.92)',
     paddingHorizontal: 14,
     paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 0,
   },
-  chestBadgeText: { color: '#fff', fontWeight: '800', fontSize: 14 },
-  chest: { alignItems: 'center', justifyContent: 'center' },
+  chestBadgeText: { color: '#111', fontWeight: '800', fontSize: 14 },
+  flash: {
+    position: 'absolute',
+    left: BOX * 0.2,
+    top: BOX * 0.2,
+    width: BOX * 0.6,
+    height: BOX * 0.6,
+    borderRadius: BOX * 0.3,
+    backgroundColor: 'rgba(255,252,235,0.85)',
+  },
   modalRoot: {
     position: 'absolute',
     top: 0,

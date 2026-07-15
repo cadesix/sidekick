@@ -19,7 +19,7 @@ import { AREA_BIOME, type EnvironmentId } from '../src/three/biomes';
 import { useDailyBox } from '../src/store/dailyBox';
 import { speak } from '../src/store/speech';
 import { useStreak } from '../src/store/streak';
-import type { BoxReward } from '@sidekick/core';
+import { boxTier, type BoxReward } from '@sidekick/core';
 import { SettingsSheet } from '../src/components/SettingsSheet';
 import { ShopSheet } from '../src/components/ShopSheet';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
@@ -148,6 +148,13 @@ export default function Home() {
   const overheadVisible = useSharedValue(0);
   const overhead = { x: overheadX, y: overheadY, visible: overheadVisible };
 
+  // ground-anchor projection for the daily loot chest (canvas writes the chest's
+  // on-screen base every frame; GroundBox pins its tap target/FX over it)
+  const groundX = useSharedValue(0);
+  const groundY = useSharedValue(0);
+  const groundVisible = useSharedValue(0);
+  const ground = { x: groundX, y: groundY, visible: groundVisible };
+
   const openDrawer = () => {
     setOpen(true);
     clearUnread();
@@ -196,6 +203,8 @@ export default function Home() {
           onControls={setControls}
           onController={setController}
           overhead={overhead}
+          ground={ground}
+          dailyBox={boxStage === 'ground' || boxStage === 'rewards' ? boxTier(streakCount) : null}
         />
       ) : null}
 
@@ -281,11 +290,10 @@ export default function Home() {
             <StreakSplash streak={streakCount} onDone={() => setBoxStage('ground')} />
           ) : null}
           {boxStage === 'ground' ? (
-            <View
-              style={{ position: 'absolute', left: 0, right: 0, top: SCREEN_H * 0.5, alignItems: 'center', zIndex: 30 }}
-              pointerEvents="box-none"
-            >
+            <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 30 }} pointerEvents="box-none">
               <GroundBox
+                ground={ground}
+                onTap={() => controller?.popDailyBox()}
                 onOpened={() => {
                   const db = useDailyBox.getState();
                   setBoxReward(db.claim(streakCount) ?? db.preview(streakCount));

@@ -24,6 +24,7 @@ import {
 } from './wardrobe';
 import {
   makeCharacterMaterials,
+  makeItemMaterial,
   makeOutlineMaterial,
   retintCelMaterial,
   retintOutlineMaterial,
@@ -31,6 +32,7 @@ import {
   SUN_DIR,
   type TexSet,
 } from './shading';
+import type { BoxTier } from '@sidekick/core';
 
 // Ported from sidekick/src/components/sidekick-canvas.tsx. The web version ran
 // inside a React useEffect against a DOM <canvas>; here it runs against an
@@ -40,6 +42,7 @@ import {
 
 // require() the bundled, texture-stripped model (scripts/strip-glb.mjs).
 const MASCOT_GLB = require('../../assets/models/sidekick-rigged.stripped.glb');
+const LOOTBOX_GLB = require('../../assets/props/lootbox-v1.glb');
 const FACE_SHEET = require('../../assets/textures/face-sheet-v6.png');
 
 const BONE_MAP = {
@@ -77,6 +80,9 @@ export type SidekickController = {
   setStudio: (v: boolean) => void;
   // swap the world environment (map travel): 'meadow' | biome id
   setEnvironment: (id: EnvironmentId) => void;
+  // daily loot chest: spawn/hide (tier or null) + trigger the open animation
+  setDailyBox: (tier: BoxTier | null) => void;
+  popDailyBox: () => void;
   // live look-dev: re-apply a full settings object to the running scene
   applySettings: (next: SidekickSettings) => void;
   // touch input in NDC (-1..1, +y up) — fed by the canvas component
@@ -143,6 +149,11 @@ export function createSidekickRenderer(
     holdingPhone?: boolean;
     studio?: boolean;
     environment?: EnvironmentId;
+    // daily loot chest tier (or null to hide); read live like the flags above
+    dailyBox?: BoxTier | null;
+    // per-frame ground-anchor screen position (NDC + visibility) for the daily
+    // box tap-target overlay, mirroring the head overhead projection
+    onGround?: (x: number, y: number, visible: boolean) => void;
     // handed the imperative dressing controls once cosmetics are ready (and
     // null on dispose) — the Shop sheet drives the live character through it
     onControls?: (c: CosmeticsControls | null) => void;
@@ -610,6 +621,96 @@ export function createSidekickRenderer(
   const studioMat = studioSphere.material as THREE.MeshBasicMaterial;
   const shadowMat = contactShadow.material as THREE.MeshBasicMaterial;
 
+  // ---- daily loot chest (world prop; the RN GroundBox owns the tap target) ----
+  // Ported from web sidekick-canvas.tsx: a GLB chest at the ground anchor,
+  // tinted per tier, that idle-rattles then (on popDailyBox) swings its lid and
+  // pours an additive light beam + a real point light.
+  const DAILY_BOX_POS = new THREE.Vector3(0.1, 0, 0.75);
+  const DAILY_BOX_SCALE = 0.34;
+  const BOX_PALETTES: Record<BoxTier, Record<string, string>> = {
+    base: { Chest_Body: '#FFD65C', Chest_Trim: '#FF5B4D', Chest_Emblem: '#FFF2DC' },
+    silver: { Chest_Body: '#DCE6F5', Chest_Trim: '#7C5CFF', Chest_Emblem: '#FFFFFF' },
+    gold: { Chest_Body: '#FFC93D', Chest_Trim: '#7C5CFF', Chest_Emblem: '#FFF6D8' },
+  };
+  const boxGroup = new THREE.Group();
+  boxGroup.position.copy(DAILY_BOX_POS);
+  boxGroup.rotation.y = -0.3;
+  boxGroup.visible = false;
+  scene.add(boxGroup);
+  const groundV = new THREE.Vector3(); // scratch for chest→screen projection
+  let boxMeshes: THREE.Mesh[] = [];
+  let boxLidNodes: THREE.Object3D[] = [];
+  let boxTint: BoxTier | null = null;
+  let boxLoading = false;
+  let boxSpawn = -1;
+  let boxPop = -1;
+  let beamOpacity: { value: number } | null = null;
+  let beam: THREE.Mesh | null = null;
+  let boxLight: THREE.PointLight | null = null;
+  let dailyBox: BoxTier | null = opts.dailyBox ?? null;
+  const tintBox = (tier: BoxTier) => {
+    const pal = BOX_PALETTES[tier];
+    for (const m of boxMeshes) {
+      (m.material as THREE.Material).dispose?.();
+      m.material = makeItemMaterial(s, {
+        color: pal[m.userData.matName as string] ?? pal.Chest_Body,
+        map: null,
+      });
+    }
+    boxTint = tier;
+  };
+  const loadBox = () => {
+    boxLoading = true;
+    loadGLB(LOOTBOX_GLB)
+      .then((g) => {
+        if (disposed) return;
+        const meshes: THREE.Mesh[] = [];
+        g.scene.traverse((o) => {
+          const mesh = o as THREE.Mesh;
+          if ((mesh as unknown as { isMesh?: boolean }).isMesh) {
+            deinterleaveGeometry(mesh.geometry);
+            meshes.push(mesh);
+          }
+        });
+        for (const mesh of meshes) {
+          mesh.userData.matName = (mesh.material as THREE.Material).name;
+          const ink = new THREE.Mesh(
+            mesh.geometry,
+            makeOutlineMaterial({ ...s, outlineWidth: (s.outlineWidth * 5) / DAILY_BOX_SCALE }),
+          );
+          mesh.add(ink);
+        }
+        boxMeshes = meshes;
+        boxLidNodes = meshes.filter((m) => m.name.startsWith('LootLid'));
+        // additive beam cone rising from the mouth (fresnel edge + vertical fade)
+        const beamUniforms = { uColor: { value: new THREE.Color(0xfff2b8) }, uOpacity: { value: 0 } };
+        beamOpacity = beamUniforms.uOpacity;
+        const beamMat = new THREE.ShaderMaterial({
+          uniforms: beamUniforms,
+          vertexShader:
+            'varying vec3 vN; varying vec3 vV; varying float vY;\n' +
+            'void main() { vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position,1.0); vV = normalize(-mv.xyz); vY = position.y; gl_Position = projectionMatrix * mv; }',
+          fragmentShader:
+            'uniform vec3 uColor; uniform float uOpacity; varying vec3 vN; varying vec3 vV; varying float vY;\n' +
+            'void main() { float edge = pow(abs(dot(normalize(vN), normalize(vV))), 1.6); float fade = smoothstep(0.85, -0.55, vY); gl_FragColor = vec4(uColor, uOpacity * edge * fade); }',
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+        beam = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.3, 1.7, 24, 1, true), beamMat);
+        beam.position.y = 0.5 + 0.85;
+        boxGroup.add(beam);
+        boxLight = new THREE.PointLight(0xffe9b0, 0, 5, 1.6);
+        boxLight.position.y = 0.7;
+        boxGroup.add(boxLight);
+        boxGroup.add(g.scene);
+        boxSpawn = clock.getElapsedTime();
+        if (dailyBox) tintBox(dailyBox);
+      })
+      .catch((e) => console.warn('[sidekick] lootbox load failed', e));
+  };
+
   const animate = () => {
     if (disposed) return;
     raf = requestAnimationFrame(animate);
@@ -708,6 +809,56 @@ export function createSidekickRenderer(
     camera.lookAt(camBaseTarget);
 
     grass.update(now, pull.position);
+
+    // ---- daily loot chest: spawn spring → idle rattle → (pop) lid + light ----
+    const wantBox = dailyBox;
+    if (wantBox && !boxMeshes.length && !boxLoading) loadBox();
+    if (wantBox && boxMeshes.length && boxTint !== wantBox) tintBox(wantBox);
+    if (!wantBox && boxPop >= 0) {
+      boxPop = -1;
+      for (const n of boxLidNodes) n.rotation.x = 0;
+      if (beamOpacity) beamOpacity.value = 0;
+      if (boxLight) boxLight.intensity = 0;
+    }
+    const popT = boxPop >= 0 ? now - boxPop : -1;
+    boxGroup.visible = !!wantBox && !inStudio && boxMeshes.length > 0;
+    if (boxGroup.visible) {
+      const ts = Math.min(1, (now - boxSpawn) / 0.55);
+      const spring = 1 - Math.pow(1 - ts, 3) * Math.cos(ts * 9); // overshoot
+      boxGroup.scale.setScalar(Math.max(0.0001, DAILY_BOX_SCALE * spring));
+      if (popT < 0) {
+        const cycle = (now - boxSpawn) % 1.7; // rattle burst every ~1.7s
+        let rattle = 0;
+        if (cycle < 0.55) {
+          const env = Math.sin((cycle / 0.55) * Math.PI);
+          rattle = Math.sin(cycle * 50) * 0.09 * env;
+        }
+        boxGroup.rotation.z = rattle;
+        boxGroup.position.y = DAILY_BOX_POS.y + Math.abs(rattle) * 0.14;
+      } else {
+        boxGroup.rotation.z = popT < 0.35 ? Math.sin(popT * 46) * 0.13 * (0.5 + popT * 2) : 0;
+        boxGroup.position.y = DAILY_BOX_POS.y;
+        const lt = Math.min(1, Math.max(0, (popT - 0.35) / 0.4));
+        const k = 1.9; // ease-out-back
+        const swing = 1 + (k + 1) * Math.pow(lt - 1, 3) + k * Math.pow(lt - 1, 2);
+        for (const n of boxLidNodes) n.rotation.x = -1.75 * swing;
+        const lightT = Math.min(1, Math.max(0, (popT - 0.62) / 0.18));
+        if (beamOpacity && beam) {
+          beamOpacity.value = lightT * (0.85 + 0.08 * Math.sin(now * 6.5));
+          beam.scale.set(1, 0.35 + 0.65 * lightT, 1);
+        }
+        if (boxLight) boxLight.intensity = lightT * 6 * (0.9 + 0.1 * Math.sin(now * 5.7));
+      }
+      // ground-anchor projection for the RN tap-target overlay
+      if (opts.onGround) {
+        groundV.copy(DAILY_BOX_POS);
+        groundV.project(camera);
+        opts.onGround(groundV.x, groundV.y, groundV.z < 1);
+      }
+    } else if (opts.onGround) {
+      opts.onGround(0, 0, false);
+    }
+
     if (faceCtl) {
       faceCtl.setTalking(talking);
       faceCtl.update(now);
@@ -766,6 +917,12 @@ export function createSidekickRenderer(
     },
     setEnvironment: (id) => {
       environment = id;
+    },
+    setDailyBox: (tier) => {
+      dailyBox = tier;
+    },
+    popDailyBox: () => {
+      if (boxPop < 0) boxPop = clock.getElapsedTime();
     },
     applySettings: (next) => {
       const prevHeight = s.grassHeight;
