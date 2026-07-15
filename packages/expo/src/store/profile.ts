@@ -32,9 +32,11 @@ export const useProfile = create<ProfileState>()(
       name: 'sidekick_profile_v1',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (st) => ({ userName: st.userName, sidekickName: st.sidekickName, onboarded: st.onboarded }),
-      // flip `hydrated` once AsyncStorage has loaded, so the gate can wait and
-      // not flash home before we know whether onboarding is done
-      onRehydrateStorage: () => (state) => state && (state.hydrated = true),
+      // flip `hydrated` once AsyncStorage has loaded so the gate can wait and
+      // not flash home. Must go through setState — mutating state in place
+      // wouldn't notify the useProfile(s => s.hydrated) selector (verified
+      // against zustand's persist, which sets before invoking this callback).
+      onRehydrateStorage: () => () => useProfile.setState({ hydrated: true }),
     },
   ),
 );

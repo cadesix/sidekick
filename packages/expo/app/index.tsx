@@ -91,12 +91,7 @@ const TRAVEL_LINES: Record<EnvironmentId, string> = {
 const { height: SCREEN_H } = Dimensions.get('window');
 const DRAWER_TOP = SCREEN_H * 0.2; // chat drawer covers the lower 80% (web: top-[20%])
 
-export default function Home() {
-  // first-run gate: play the 3D cinematic onboarding until it's done. Wait for
-  // the profile store to hydrate so we don't flash home before we know.
-  const onboarded = useProfile((st) => st.onboarded);
-  const profileHydrated = useProfile((st) => st.hydrated);
-
+function HomeScreen() {
   const [open, setOpen] = useState(false);
   // mapOpen drives the camera pull-back; mapShown drives the map's circle
   // reveal, a beat later, so the camera starts flying out before the map grows.
@@ -219,9 +214,6 @@ export default function Home() {
     transform: [{ translateY: (1 - progress.value) * (SCREEN_H - DRAWER_TOP) }],
     opacity: progress.value < 0.02 ? 0 : 1,
   }));
-
-  if (!profileHydrated) return <View className="flex-1 bg-white" />;
-  if (!onboarded) return <Onboarding />;
 
   return (
     <View className="flex-1 bg-white">
@@ -459,4 +451,15 @@ export default function Home() {
       <DevPanel />
     </View>
   );
+}
+
+// First-run gate: mount the 3D cinematic onboarding until it's done. Keeping it
+// OUTSIDE HomeScreen means Home's effects (streak touch, daily box) don't run
+// during onboarding. Wait on profile hydration to avoid an onboarding↔home flash.
+export default function Index() {
+  const onboarded = useProfile((st) => st.onboarded);
+  const profileHydrated = useProfile((st) => st.hydrated);
+  if (!profileHydrated) return <View className="flex-1 bg-white" />;
+  if (!onboarded) return <Onboarding />;
+  return <HomeScreen />;
 }

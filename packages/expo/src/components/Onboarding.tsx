@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
-import Animated, { FadeIn, FadeInDown, FadeInUp, SlideInUp } from 'react-native-reanimated';
+import { Dimensions, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import Animated, { FadeInDown, FadeInUp, SlideInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Chat } from './Chat';
@@ -23,6 +23,8 @@ import type { Framing, SidekickController } from '../three/renderer';
 // 5. nameSidekick — "what's his name?"
 // 6. notif        — iMessage-style banner drops in
 // 7. chat         — tap → he holds the phone, chat opens → done
+
+const SCREEN_H = Dimensions.get('window').height;
 
 const WIDE_FRAMING: Framing = { pos: [0, 1.9, 9.5], target: [0, 0.5, 0], fov: 43 };
 const NAME_FRAMING: Framing = { pos: [0, 1.2, 7.2], target: [0, 0.5, 0], fov: 39 };
@@ -78,11 +80,12 @@ function NameEntry({
   const [value, setValue] = useState('');
   const can = value.trim().length > 0;
   return (
-    <Animated.View
-      entering={FadeInUp.duration(400)}
-      className="absolute inset-0 z-20 items-center justify-center px-8"
-    >
-      <View className="w-full max-w-md">
+    <Animated.View entering={FadeInUp.duration(400)} className="absolute inset-0 z-20">
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        className="flex-1 items-center justify-center px-8"
+      >
+        <View className="w-full max-w-md">
         <Text className="text-center text-[40px] font-extrabold tracking-tight text-white" style={{ width: '100%', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 8, textShadowOffset: { width: 0, height: 2 } }}>
           {title}
         </Text>
@@ -100,7 +103,8 @@ function NameEntry({
         <View className="mt-3">
           <Cta label={cta} disabled={!can} onPress={() => can && onSubmit(value.trim())} />
         </View>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     </Animated.View>
   );
 }
@@ -139,9 +143,16 @@ function NotificationBanner({ sender, onPress }: { sender: string; onPress: () =
 export function Onboarding() {
   const insets = useSafeAreaInsets();
   const controllerRef = useRef<SidekickController | null>(null);
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const later = (fn: () => void, ms: number) => {
+    const t = setTimeout(fn, ms);
+    timers.current.push(t);
+    return t;
+  };
   const [settings, setSettings] = useState<SidekickSettings | null>(null);
   useEffect(() => {
     hydrateSettings().then(() => setSettings({ ...loadSettings(), timeOfDay: 'evening' }));
+    return () => timers.current.forEach(clearTimeout);
   }, []);
 
   const setUserNameStore = useProfile((s) => s.setUserName);
@@ -168,7 +179,7 @@ export function Onboarding() {
     if (animating) return;
     setAnimating(true);
     setFraming(NAME_FRAMING);
-    setTimeout(() => {
+    later(() => {
       goTo('askName');
       setAnimating(false);
     }, 700);
@@ -182,16 +193,15 @@ export function Onboarding() {
     setAnimating(true);
     goTo('reveal');
     controllerRef.current?.shake({ amp: 0.14, duration: 1.4, mode: 'build' });
-    setTimeout(() => controllerRef.current?.jumpIn({ duration: 950 }), 1100);
-    setTimeout(() => setAnimating(false), 2100);
+    later(() => controllerRef.current?.jumpIn({ duration: 950 }), 1100);
+    later(() => setAnimating(false), 2100);
   };
 
   // 4 → 4b
   const pickColor = (c: (typeof SKIN_COLORS)[number]) => {
     setColor(c.id);
     controllerRef.current?.setColors(c.body, c.shadow); // live recolor
-    const next = applySkin(c.id); // persist
-    controllerRef.current?.applySettings({ ...next, timeOfDay: 'evening' });
+    applySkin(c.id); // persist (setColors already updated the running scene)
   };
 
   // 5 → 6
@@ -328,7 +338,7 @@ export function Onboarding() {
         <Animated.View
           entering={FadeInDown.duration(300)}
           className="absolute inset-x-0 bottom-0 z-40 overflow-hidden rounded-t-[28px] bg-white"
-          style={{ height: '80%', shadowColor: '#000', shadowOffset: { width: 0, height: -8 }, shadowOpacity: 0.22, shadowRadius: 40 }}
+          style={{ height: SCREEN_H * 0.8, shadowColor: '#000', shadowOffset: { width: 0, height: -8 }, shadowOpacity: 0.22, shadowRadius: 40 }}
         >
           <Chat transparentTop />
           <Pressable
