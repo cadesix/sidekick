@@ -395,7 +395,7 @@ export default function Home() {
         >
           <Ionicons name="chevron-down" size={20} color="rgba(17,17,17,0.6)" />
         </Pressable>
-        <Chat transparentTop />
+        <Chat transparentTop active={open} />
       </Animated.View>
 
       {/* DEV state controls (top-left chip → panel); renders nothing in prod */}

@@ -104,17 +104,36 @@ export function createAvatarRenderer(gl: ExpoWebGLRenderingContext): AvatarContr
   let raf = 0;
   let faceCtl: FaceController | null = null;
   let cos: CosmeticsHandle | null = null;
+  let faceTexture: THREE.Texture | null = null; // hoisted so dispose() can free it
   const clock = new THREE.Clock();
+
+  // dispose every geometry + material under a subtree (own GPU resources only —
+  // loadGLB re-parses per call, so nothing here is shared with other instances)
+  const freeTree = (root: THREE.Object3D) =>
+    root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      m.geometry?.dispose?.();
+      const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+      if (Array.isArray(mat)) mat.forEach((x) => x?.dispose?.());
+      else mat?.dispose?.();
+    });
 
   (async () => {
     let faceTex: THREE.Texture | null = null;
     try {
       faceTex = configureFaceTexture(await loadTexture(FACE_SHEET));
+      faceTexture = faceTex; // let dispose() free it even if we bail below
     } catch {
       // no face sheet — head renders featureless, still a valid avatar
     }
     const gltf = await loadGLB(MASCOT_GLB);
-    if (disposed) return;
+    // if we were disposed mid-load, dispose()'s traverse already ran and saw an
+    // empty scene — free what just finished loading here or it leaks
+    if (disposed) {
+      freeTree(gltf.scene);
+      faceTexture?.dispose();
+      return;
+    }
     const model = gltf.scene;
 
     let bodyMesh: THREE.SkinnedMesh | null = null;
@@ -131,7 +150,11 @@ export function createAvatarRenderer(gl: ExpoWebGLRenderingContext): AvatarContr
         child.normalizeSkinWeights();
       }
     });
-    if (!bodyMesh) return;
+    if (!bodyMesh) {
+      freeTree(model);
+      faceTexture?.dispose();
+      return;
+    }
     const body = bodyMesh as THREE.SkinnedMesh;
 
     const { body: bodyMat, face: faceMat } = makeCharacterMaterials(s, texSet, faceTex);
@@ -189,12 +212,23 @@ export function createAvatarRenderer(gl: ExpoWebGLRenderingContext): AvatarContr
     setPaused: (v) => {
       if (v === paused) return;
       paused = v;
-      if (!v && !disposed) animate(); // resume the loop
+      // cancel any frame still queued before restarting, else pause→resume
+      // inside one frame would leave two concurrent animate() loops running
+      if (!v && !disposed) {
+        cancelAnimationFrame(raf);
+        animate();
+      }
     },
     dispose: () => {
+      if (disposed) return;
       disposed = true;
       cancelAnimationFrame(raf);
-      cos?.dispose();
+      // free geometry + materials FIRST, while cosmetic meshes are still in the
+      // graph — cos.dispose() only frees cosmetic materials/textures and detaches
+      // the meshes, never their geometry, so traversing after it would miss them
+      freeTree(scene);
+      cos?.dispose(); // cosmetic textures + detach (materials already freed above)
+      faceTexture?.dispose();
       renderer.dispose();
     },
   };

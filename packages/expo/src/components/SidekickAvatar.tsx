@@ -38,6 +38,16 @@ export function SidekickAvatar({
     controller.current?.setPaused(paused);
   }, [paused]);
 
+  // tear the GL context down on unmount — without this the render loop keeps
+  // running on a dead GLView and the context is never freed, leaking toward the
+  // browser's ~16-context cap
+  useEffect(() => {
+    return () => {
+      controller.current?.dispose();
+      controller.current = null;
+    };
+  }, []);
+
   return (
     <View style={[{ width: size, height: size }, style]} pointerEvents="none">
       <GLView

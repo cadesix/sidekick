@@ -300,12 +300,26 @@ export function ShopSheet({
     opacity: progress.value < 0.001 ? 0 : 1,
   }));
 
-  // snapshot the worn outfit when the sheet opens
+  // snapshot the worn outfit when the sheet opens; clear any open detail on
+  // close so its Modal can't linger over the home screen
   useEffect(() => {
-    if (!open) return;
     setDetail(null);
-    if (controls) setWardrobe(controls.getState());
+    if (open && controls) setWardrobe(controls.getState());
   }, [open, controls]);
+
+  // This sheet is always mounted (it slides via transform), so its content —
+  // the countdown's 1s interval, the shine sweeps, the featured float — would
+  // otherwise loop forever even while closed. `active` unmounts the content once
+  // the slide-out finishes, stopping every loop when the shop isn't visible.
+  const [active, setActive] = useState(false);
+  useEffect(() => {
+    if (open) {
+      setActive(true);
+      return;
+    }
+    const t = setTimeout(() => setActive(false), 320); // after the 300ms slide-out
+    return () => clearTimeout(t);
+  }, [open]);
 
   // Trigger the card stagger just after the slide-in starts — the cards spring
   // in over the top of the slide, which also masks the PNG decode.
@@ -390,32 +404,37 @@ export function ShopSheet({
         }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Today's drop header + live restock countdown */}
-        <View style={styles.sectionRow}>
-          <View>
-            <Text style={styles.sectionTitle}>Today&apos;s Shop</Text>
-            <Text style={styles.sectionSub}>Fresh picks — gone at midnight</Text>
-          </View>
-          <Countdown />
-        </View>
-
-        {/* featured heroes (premium, larger) */}
-        <View style={styles.grid}>
-          {featured.map((p, i) => (
-            <View key={p.renderKey} style={styles.gridCell}>
-              <ShopCard p={p} big owned={owns(p)} worn={isWorn(p)} play={revealed} index={i} onPress={() => setDetail(p)} />
+        {/* content unmounts when the shop is closed so its loops don't run idle */}
+        {active ? (
+          <>
+            {/* Today's drop header + live restock countdown */}
+            <View style={styles.sectionRow}>
+              <View>
+                <Text style={styles.sectionTitle}>Today&apos;s Shop</Text>
+                <Text style={styles.sectionSub}>Fresh picks — gone at midnight</Text>
+              </View>
+              <Countdown />
             </View>
-          ))}
-        </View>
 
-        {/* daily row */}
-        <View style={[styles.grid, { marginTop: 14 }]}>
-          {daily.map((p, i) => (
-            <View key={p.renderKey} style={styles.gridCell}>
-              <ShopCard p={p} owned={owns(p)} worn={isWorn(p)} play={revealed} index={featured.length + i} onPress={() => setDetail(p)} />
+            {/* featured heroes (premium, larger) */}
+            <View style={styles.grid}>
+              {featured.map((p, i) => (
+                <View key={p.renderKey} style={styles.gridCell}>
+                  <ShopCard p={p} big owned={owns(p)} worn={isWorn(p)} play={revealed} index={i} onPress={() => setDetail(p)} />
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
+
+            {/* daily row */}
+            <View style={[styles.grid, { marginTop: 14 }]}>
+              {daily.map((p, i) => (
+                <View key={p.renderKey} style={styles.gridCell}>
+                  <ShopCard p={p} owned={owns(p)} worn={isWorn(p)} play={revealed} index={featured.length + i} onPress={() => setDetail(p)} />
+                </View>
+              ))}
+            </View>
+          </>
+        ) : null}
       </ScrollView>
 
       {/* item detail modal */}

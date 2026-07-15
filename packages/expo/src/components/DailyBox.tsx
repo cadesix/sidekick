@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { cancelAnimation, Easing, FadeIn, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 
 import type { BoxReward } from '@sidekick/core';
 
@@ -131,15 +131,18 @@ export function GroundBox({
   const bounce = useSharedValue(0);
   const flash = useSharedValue(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const opened = useRef(false); // ref guard: same-frame double-tap can't schedule twice
   useEffect(() => {
     bounce.value = withRepeat(withTiming(1, { duration: 520, easing: Easing.inOut(Easing.quad) }), -1, true);
     return () => {
+      cancelAnimation(bounce);
       if (timer.current) clearTimeout(timer.current);
     };
   }, [bounce]);
 
   const tap = () => {
-    if (burst) return;
+    if (opened.current) return;
+    opened.current = true;
     setBurst(true);
     onTap(); // canvas starts rattle → lid swing → light
     flash.value = withDelay(620, withSequence(withTiming(1, { duration: 120 }), withTiming(0, { duration: 380 })));

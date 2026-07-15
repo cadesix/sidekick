@@ -30,10 +30,13 @@ import { useChat } from '../store/chat';
 
 // Sidekick head avatar — the live 3D head (real body color, face, worn hats/
 // glasses), mirroring web's <SidekickAvatar>, sized `w-8 h-8`. Each is its own
-// GL context, so this is only viable because a chat shows a handful of assistant
-// bubbles; if that ever grows large, cap live instances to the visible run.
-function Avatar() {
-  return <SidekickAvatar size={32} />;
+// GL context (browser caps ~16), so we only mount it LIVE for the newest
+// assistant bubble + the typing row (≤2 contexts no matter how long the history
+// is); earlier bubbles reserve the same 32px slot to keep alignment. `paused`
+// freezes the loop while the drawer is closed.
+function Avatar({ live, paused }: { live: boolean; paused: boolean }) {
+  if (!live) return <View className="w-8 h-8" />;
+  return <SidekickAvatar size={32} paused={paused} />;
 }
 
 // Web renders a CSS `.ellipsis-dots` span: a 1.6s steps(1) cycle through
@@ -57,10 +60,26 @@ function EllipsisDots() {
   );
 }
 
-export function Chat({ transparentTop = false }: { transparentTop?: boolean }) {
+export function Chat({
+  transparentTop = false,
+  active = true,
+}: {
+  transparentTop?: boolean;
+  // false when the chat drawer is closed — freezes the live head avatars
+  active?: boolean;
+}) {
   const { messages, loading, send } = useChat();
   const [input, setInput] = useState('');
   const scrollRef = useRef<ScrollView>(null);
+
+  // only the newest assistant bubble carries a live GL head (see <Avatar>)
+  let lastAssistantIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'assistant') {
+      lastAssistantIdx = i;
+      break;
+    }
+  }
 
   useEffect(() => {
     const id = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
@@ -119,7 +138,7 @@ export function Chat({ transparentTop = false }: { transparentTop?: boolean }) {
               // maxWidth on the row + shrink on the bubble so the text WRAPS
               // within the panel instead of overflowing off the right edge
               <View key={i} style={{ maxWidth: '85%' }} className="flex-row items-end gap-2">
-                <Avatar />
+                <Avatar live={i === lastAssistantIdx && !loading} paused={!active} />
                 <View className="shrink rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-2.5">
                   <Text className="text-[15px] leading-[21px] text-[#111]">{m.content}</Text>
                 </View>
@@ -134,7 +153,7 @@ export function Chat({ transparentTop = false }: { transparentTop?: boolean }) {
           )}
           {loading ? (
             <View className="flex-row items-end gap-2">
-              <Avatar />
+              <Avatar live paused={!active} />
               {/* Sized exactly like a one-line message bubble so the swap to text doesn't shift the list. */}
               <View className="rounded-3xl rounded-bl-md bg-[#FBEFC9] px-4 py-2.5">
                 <EllipsisDots />
