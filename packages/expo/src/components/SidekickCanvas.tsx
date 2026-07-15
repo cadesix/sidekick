@@ -44,7 +44,6 @@ export function SidekickCanvas({
   ground,
   cosmos,
   constellationLit,
-  constellationTotal,
 }: {
   style?: ViewStyle;
   framing: Framing;
@@ -55,7 +54,6 @@ export function SidekickCanvas({
   // Guided session: crossfade the meadow → night sky + a progress constellation
   cosmos?: boolean;
   constellationLit?: number;
-  constellationTotal?: number;
   // world environment (map travel): 'meadow' | biome id
   environment?: EnvironmentId;
   onControls?: (c: CosmeticsControls | null) => void;
@@ -136,8 +134,8 @@ export function SidekickCanvas({
   }, [cosmos]);
 
   useEffect(() => {
-    controller.current?.setConstellation(constellationLit ?? 0, constellationTotal ?? 0);
-  }, [constellationLit, constellationTotal]);
+    controller.current?.setConstellation(constellationLit ?? 0);
+  }, [constellationLit]);
 
   useEffect(() => {
     controller.current?.setDailyBox(dailyBox ?? null);

@@ -184,7 +184,7 @@ export function SessionChat({
   // completed: host closes the window and may offer travel
   onDone: () => void;
   // report constellation progress → the night sky lights `lit` of `total` stars
-  onConstellation?: (lit: number, total: number) => void;
+  onConstellation?: (lit: number) => void;
 }) {
   const insets = useSafeAreaInsets();
   const def = sessionFor(sessionId);
@@ -264,7 +264,7 @@ export function SessionChat({
     beatIdx.current = idx;
     setPhase('asking');
     // a star lights for each beat already behind us (beats 0..idx-1 are done)
-    onConstellation?.(idx, def.beats.length);
+    onConstellation?.(idx);
     showBotThen(def.beats[idx].ask, () => setPhase('answer'));
   };
 
@@ -290,7 +290,7 @@ export function SessionChat({
 
   const finish = async () => {
     if (!def) return;
-    onConstellation?.(def.beats.length, def.beats.length); // all beats in → full constellation
+    onConstellation?.(def.beats.length); // all beats in → full constellation
     setPhase('extracting');
     setTyping(true);
     const ex = await fetchExtraction(def, transcript());
