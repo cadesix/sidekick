@@ -124,6 +124,20 @@ export function ShopSheet({
     if (controls) setWardrobe(controls.getState());
   }, [open, controls]);
 
+  // Defer the heavy "Browse all" grid (the whole ~400-item catalog, each a
+  // decoded thumbnail) until the slide-in has finished — otherwise mounting all
+  // those images in the same frame as the studio crossfade drops frames. The
+  // small "Today's Shop" section renders immediately so there's no empty sheet.
+  const [showCatalog, setShowCatalog] = useState(false);
+  useEffect(() => {
+    if (!open) {
+      setShowCatalog(false);
+      return;
+    }
+    const t = setTimeout(() => setShowCatalog(true), 340);
+    return () => clearTimeout(t);
+  }, [open]);
+
   // catalog is static (manifest is bundled); products/rotation derive from it
   const products = useMemo(
     () =>
@@ -319,11 +333,9 @@ export function ShopSheet({
           ))}
         </View>
 
-        {/* full catalog: one shelf per slot */}
+        {/* full catalog: one shelf per slot (deferred until the sheet settles) */}
         <Text style={styles.browseAll}>Browse all</Text>
-        {WARDROBE_SLOTS.map((slot) => (
-          <Shelf key={slot} slot={slot} />
-        ))}
+        {showCatalog ? WARDROBE_SLOTS.map((slot) => <Shelf key={slot} slot={slot} />) : null}
       </ScrollView>
 
       {/* item detail modal */}

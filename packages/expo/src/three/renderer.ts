@@ -731,9 +731,15 @@ export function createSidekickRenderer(
     studioMat.opacity = studioT;
     contactShadow.visible = inStudio;
     shadowMat.opacity = studioT;
-    // the meadow grass crossfades by opacity; a biome ground hard-toggles
-    if (activeGround === grass.group) grass.setOpacity(1 - studioT);
-    else activeGround.visible = !inStudio;
+    // the meadow grass crossfades by opacity; a biome ground hard-toggles.
+    // Once fully in studio the grass is invisible (opacity 0) but was still
+    // being drawn every frame (~20k instanced blades) — skip that draw entirely
+    // while the Shop/Closet covers the meadow, which is most of the studio cost.
+    if (activeGround === grass.group) {
+      const grassVisible = studioT < 0.999;
+      grass.group.visible = grassVisible;
+      if (grassVisible) grass.setOpacity(1 - studioT);
+    } else activeGround.visible = !inStudio;
     scene.fog = inStudio ? null : envFog;
 
     // body-drag lean/offset/squash (springs home to rest on release)

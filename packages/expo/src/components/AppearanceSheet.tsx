@@ -70,6 +70,20 @@ export function AppearanceSheet({
     if (controls) setWardrobe(controls.getState());
   }, [open, controls]);
 
+  // Defer the owned-closet shelves (each item a decoded thumbnail; the whole
+  // catalog with DEV "Own all") until the slide-in finishes, so the open frame
+  // isn't competing with the image mount + studio crossfade. The Color row
+  // renders immediately.
+  const [showCloset, setShowCloset] = useState(false);
+  useEffect(() => {
+    if (!open) {
+      setShowCloset(false);
+      return;
+    }
+    const t = setTimeout(() => setShowCloset(true), 340);
+    return () => clearTimeout(t);
+  }, [open]);
+
   // full catalog (static, manifest-derived), then keep only owned items
   const products = useMemo(
     () =>
@@ -167,9 +181,10 @@ export function AppearanceSheet({
             })}
           </View>
 
-          {/* closet: owned items, tap to wear / take off */}
+          {/* closet: owned items, tap to wear / take off (deferred until the
+              sheet settles) */}
           <Text style={[styles.sectionTitle, { marginTop: 32 }]}>Closet</Text>
-          {owned.length ? (
+          {!showCloset ? null : owned.length ? (
             WARDROBE_SLOTS.map((slot) => {
               const items = owned.filter((p) => p.slot === slot);
               if (!items.length) return null;

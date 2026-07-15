@@ -228,8 +228,10 @@ export default function Home() {
             accessibilityLabel="Appearance"
             style={{ height: 40, width: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
           >
-            {/* the live head avatar IS the closet button (mirrors web home5) */}
-            <SidekickAvatar size={40} style={{ transform: [{ scale: 1.1 }] }} />
+            {/* the live head avatar IS the closet button (mirrors web home5).
+                Freeze it while the Closet is open so its GL context isn't
+                competing with the sheet's image load + studio crossfade. */}
+            <SidekickAvatar size={40} style={{ transform: [{ scale: 1.1 }] }} paused={appearanceOpen} />
           </Pressable>
           <StreakPill onPress={() => setStreakModalOpen(true)} />
         </View>

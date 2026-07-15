@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 import { GLView, type ExpoWebGLRenderingContext } from 'expo-gl';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { StyleSheet, View, type ViewStyle } from 'react-native';
 
 import { useCosmeticVersion } from '../store/cosmeticVersion';
@@ -14,14 +14,29 @@ import { createAvatarRenderer, type AvatarController } from '../three/avatar';
 //
 // It regenerates on outfit change: the `key` is keyed to the cosmetic-version
 // counter, so equipping a hat remounts the GLView and reloads the wardrobe.
-export function SidekickAvatar({ size = 32, style }: { size?: number; style?: ViewStyle }) {
+export function SidekickAvatar({
+  size = 32,
+  style,
+  paused = false,
+}: {
+  size?: number;
+  style?: ViewStyle;
+  // freeze the render loop (the head is static) to free the GPU while a heavy
+  // sheet is open over it
+  paused?: boolean;
+}) {
   const version = useCosmeticVersion((st) => st.v);
   const controller = useRef<AvatarController | null>(null);
 
   const onContextCreate = (gl: ExpoWebGLRenderingContext) => {
     controller.current?.dispose();
     controller.current = createAvatarRenderer(gl);
+    controller.current.setPaused(paused);
   };
+
+  useEffect(() => {
+    controller.current?.setPaused(paused);
+  }, [paused]);
 
   return (
     <View style={[{ width: size, height: size }, style]} pointerEvents="none">

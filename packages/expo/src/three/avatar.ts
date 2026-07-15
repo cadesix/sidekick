@@ -29,7 +29,13 @@ const FACE_SHEET = require('../../assets/textures/face-sheet-v6.png');
 // only the head-region slots matter for a head shot (mirrors web HEAD_SLOTS)
 const HEAD_SLOTS: WardrobeSlot[] = ['hat', 'beanie', 'bucket', 'wizard', 'crown', 'glasses'];
 
-export type AvatarController = { dispose: () => void };
+export type AvatarController = {
+  // freeze/resume the render loop. The head is essentially static (only the
+  // blink animates), so pausing it while a heavy sheet is open frees the GPU
+  // with no visible change.
+  setPaused: (v: boolean) => void;
+  dispose: () => void;
+};
 
 // Collapse every vertex that isn't majority-skinned to the Head bone onto the
 // neck point inside the head shell — the same purely-geometric carve web uses
@@ -94,6 +100,7 @@ export function createAvatarRenderer(gl: ExpoWebGLRenderingContext): AvatarContr
   renderer.setClearColor(0x000000, 0); // transparent — the avatar floats on the UI
 
   let disposed = false;
+  let paused = false;
   let raf = 0;
   let faceCtl: FaceController | null = null;
   let cos: CosmeticsHandle | null = null;
@@ -170,7 +177,7 @@ export function createAvatarRenderer(gl: ExpoWebGLRenderingContext): AvatarContr
   })().catch((e) => console.warn('[sidekick] avatar load failed', e));
 
   const animate = () => {
-    if (disposed) return;
+    if (disposed || paused) return;
     raf = requestAnimationFrame(animate);
     if (faceCtl) faceCtl.update(clock.getElapsedTime());
     renderer.render(scene, camera);
@@ -179,6 +186,11 @@ export function createAvatarRenderer(gl: ExpoWebGLRenderingContext): AvatarContr
   animate();
 
   return {
+    setPaused: (v) => {
+      if (v === paused) return;
+      paused = v;
+      if (!v && !disposed) animate(); // resume the loop
+    },
     dispose: () => {
       disposed = true;
       cancelAnimationFrame(raf);
