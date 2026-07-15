@@ -10,3 +10,5 @@ export * from './bond';
 export * from './streak';
 export * from './daily-box';
 export * from './goals';
+export * from './shop';
+export * from './sessions';
