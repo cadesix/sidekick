@@ -26,6 +26,7 @@ import {
   type Rarity,
 } from '@sidekick/core';
 
+import { useDeferredFlag } from '../lib/useDeferredFlag';
 import { MANIFEST } from '../three/cosmetics-manifest';
 import { shopRender } from '../three/shop-renders';
 import { useCosmeticVersion } from '../store/cosmeticVersion';
@@ -307,31 +308,13 @@ export function ShopSheet({
     if (open && controls) setWardrobe(controls.getState());
   }, [open, controls]);
 
-  // This sheet is always mounted (it slides via transform), so its content —
-  // the countdown's 1s interval, the shine sweeps, the featured float — would
-  // otherwise loop forever even while closed. `active` unmounts the content once
-  // the slide-out finishes, stopping every loop when the shop isn't visible.
-  const [active, setActive] = useState(false);
-  useEffect(() => {
-    if (open) {
-      setActive(true);
-      return;
-    }
-    const t = setTimeout(() => setActive(false), 320); // after the 300ms slide-out
-    return () => clearTimeout(t);
-  }, [open]);
-
-  // Trigger the card stagger just after the slide-in starts — the cards spring
-  // in over the top of the slide, which also masks the PNG decode.
-  const [revealed, setRevealed] = useState(false);
-  useEffect(() => {
-    if (!open) {
-      setRevealed(false);
-      return;
-    }
-    const t = setTimeout(() => setRevealed(true), 120);
-    return () => clearTimeout(t);
-  }, [open]);
+  // This sheet is always mounted (slides via transform), so its content — the
+  // countdown's 1s interval, the shine sweeps, the featured float — would loop
+  // forever even while closed. `active` unmounts the content 320ms after the
+  // slide-out finishes; `revealed` fires the card stagger 120ms after open (over
+  // the slide-in, which also masks the PNG decode).
+  const active = useDeferredFlag(open, { offDelay: 320 });
+  const revealed = useDeferredFlag(open, { onDelay: 120 });
 
   // catalog is static (manifest is bundled); the daily drop derives from it
   const products = useMemo(

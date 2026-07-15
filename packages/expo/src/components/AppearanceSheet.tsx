@@ -10,6 +10,7 @@ import { buildProducts, type Product } from '@sidekick/core';
 import { MANIFEST } from '../three/cosmetics-manifest';
 import { shopRender } from '../three/shop-renders';
 import { loadSettings, type SidekickSettings } from '../three/settings';
+import { useDeferredFlag } from '../lib/useDeferredFlag';
 import { useCosmeticVersion } from '../store/cosmeticVersion';
 import { useEconomy } from '../store/economy';
 import { applySkin, currentSkinId, SKIN_COLORS, type SkinColor } from '../store/skin';
@@ -74,15 +75,7 @@ export function AppearanceSheet({
   // catalog with DEV "Own all") until the slide-in finishes, so the open frame
   // isn't competing with the image mount + studio crossfade. The Color row
   // renders immediately.
-  const [showCloset, setShowCloset] = useState(false);
-  useEffect(() => {
-    if (!open) {
-      setShowCloset(false);
-      return;
-    }
-    const t = setTimeout(() => setShowCloset(true), 340);
-    return () => clearTimeout(t);
-  }, [open]);
+  const showCloset = useDeferredFlag(open, { onDelay: 340 });
 
   // full catalog (static, manifest-derived), then keep only owned items
   const products = useMemo(

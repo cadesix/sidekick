@@ -118,20 +118,26 @@ export function createAvatarRenderer(gl: ExpoWebGLRenderingContext): AvatarContr
       else mat?.dispose?.();
     });
 
+  // free what just finished loading when we were disposed mid-load (dispose()'s
+  // traverse already ran and saw an empty scene, so these would otherwise leak)
+  const bail = (root: THREE.Object3D) => {
+    freeTree(root);
+    faceTexture?.dispose();
+  };
+
   (async () => {
-    let faceTex: THREE.Texture | null = null;
-    try {
-      faceTex = configureFaceTexture(await loadTexture(FACE_SHEET));
-      faceTexture = faceTex; // let dispose() free it even if we bail below
-    } catch {
-      // no face sheet — head renders featureless, still a valid avatar
-    }
-    const gltf = await loadGLB(MASCOT_GLB);
-    // if we were disposed mid-load, dispose()'s traverse already ran and saw an
-    // empty scene — free what just finished loading here or it leaks
+    // the face sheet, the character GLB, and the wardrobe are independent —
+    // load them concurrently rather than three back-to-back round-trips
+    const [faceTex, gltf, wardrobe] = await Promise.all([
+      loadTexture(FACE_SHEET)
+        .then(configureFaceTexture)
+        .catch(() => null), // no face sheet — head renders featureless, still valid
+      loadGLB(MASCOT_GLB),
+      loadWardrobe(),
+    ]);
+    faceTexture = faceTex; // let dispose()/bail free it
     if (disposed) {
-      freeTree(gltf.scene);
-      faceTexture?.dispose();
+      bail(gltf.scene);
       return;
     }
     const model = gltf.scene;
@@ -151,8 +157,7 @@ export function createAvatarRenderer(gl: ExpoWebGLRenderingContext): AvatarContr
       }
     });
     if (!bodyMesh) {
-      freeTree(model);
-      faceTexture?.dispose();
+      bail(model);
       return;
     }
     const body = bodyMesh as THREE.SkinnedMesh;
@@ -184,10 +189,8 @@ export function createAvatarRenderer(gl: ExpoWebGLRenderingContext): AvatarContr
 
     scene.add(model);
 
-    // worn head-region cosmetics, dressed from the saved wardrobe
+    // worn head-region cosmetics, dressed from the saved wardrobe (loaded above)
     cos = createCosmetics(body, s);
-    const wardrobe = await loadWardrobe();
-    if (disposed) return;
     for (const slot of HEAD_SLOTS) {
       const st = wardrobe[slot];
       if (!st?.equipped) continue;

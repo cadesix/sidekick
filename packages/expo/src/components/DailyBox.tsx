@@ -190,7 +190,6 @@ export function GroundBox({
   );
 }
 
-
 // ---- BoxRewardsModal --------------------------------------------------------
 export function BoxRewardsModal({ reward, onCollect }: { reward: BoxReward; onCollect: () => void }) {
   const coins = useCountUp(reward.coins * (reward.doubled ? 2 : 1));

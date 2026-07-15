@@ -73,13 +73,7 @@ export function Chat({
   const scrollRef = useRef<ScrollView>(null);
 
   // only the newest assistant bubble carries a live GL head (see <Avatar>)
-  let lastAssistantIdx = -1;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === 'assistant') {
-      lastAssistantIdx = i;
-      break;
-    }
-  }
+  const lastAssistantIdx = messages.map((m) => m.role).lastIndexOf('assistant');
 
   useEffect(() => {
     const id = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
