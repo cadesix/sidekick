@@ -1,10 +1,12 @@
-// @sidekick/core — platform-agnostic shared logic consumed by both apps.
-//
-// Populated incrementally (see docs/SYNC-PLAN.md). Rule of thumb: if it's a
-// number, a color, a table, a formula, or a shader string, it belongs here —
-// zero DOM / React Native imports. Renderer plumbing and UI stay in the apps.
-//
-// Planned first extractions: cosmetics manifest, settings/scene presets,
-// face/bone tables, interaction spring math, grass layout math, GLSL sources.
+// @sidekick/core — platform-agnostic logic + tables shared by the Expo app
+// (production) and the Vite web app (dev reference). ZERO DOM / RN / expo
+// imports: pure functions and data only, so both apps compute identically and
+// can never drift. App layers own persistence (localStorage vs AsyncStorage)
+// and UI; this owns the numbers.
 
-export {};
+export * from './rng';
+export * from './economy';
+export * from './bond';
+export * from './streak';
+export * from './daily-box';
+export * from './goals';
