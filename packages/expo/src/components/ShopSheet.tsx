@@ -3,7 +3,17 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useMemo, useState } from 'react';
 import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, {
+  cancelAnimation,
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 
@@ -13,6 +23,7 @@ import {
   rarityOf,
   todaysShop,
   type Product,
+  type Rarity,
 } from '@sidekick/core';
 
 import { MANIFEST } from '../three/cosmetics-manifest';
@@ -28,23 +39,18 @@ import {
   type WardrobeSlot,
 } from '../three/wardrobe';
 
-// Full-screen RN "Shop", restyled to visual parity with the web reference
-// (packages/web/src/components/shop-sheet.tsx). A date-seeded "Today's Shop"
-// (2 featured + a daily row that restocks at local midnight, with a countdown)
-// sits above the full catalog, which is one horizontal shelf per slot
-// ("Browse all"). Rarity tiers are price-derived and give each card its color
-// identity — the web's CSS `linear-gradient(160deg, …)` card/modal fills are
-// reproduced here with expo-linear-gradient (RARITIES.grad is a 2-stop tuple).
-// Tapping a product opens a detail modal: Buy (deducts coins → inventory) when
-// unowned, else Equip / Take off, which drive the live 3D character.
+// Full-screen RN "Shop" — a focused daily drop (2 featured heroes + a daily
+// row) that restocks at local midnight. Everything is gamified to reward the
+// daily open: cards spring in on a stagger (which also hides the PNG decode), a
+// live countdown ticks toward the restock (turning red + pulsing in the last
+// hour), Rare+ cards get a sweeping gloss, and the featured heroes carry a
+// rarity-tinted glow + a gentle float. Tapping a product opens the buy / equip
+// detail modal that drives the live 3D character.
 //
-// Parity notes vs web (things RN can't 1:1):
-//  - Product art is a STATIC pre-rendered PNG (from three/shop-renders). The
-//    web's live spinning ItemTurntable (featured cards + detail modal) is a
-//    static render here — reads fine and avoids a second GL context in the sheet.
-//  - Web's sticky header also hosts a live spinning CharacterPreview "dressing
-//    mirror" (h-190). That needs a GL/preview handle this component isn't given
-//    (props are {open, onClose, controls}), so it's omitted here.
+// Parity note vs web: product art is a STATIC pre-rendered PNG (three/
+// shop-renders); web's live spinning ItemTurntable would be a second GL context
+// in the sheet, which we avoid. The old "Browse all" full-catalog grid is gone
+// on purpose — the shop is the daily drop, not a store directory.
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
@@ -82,6 +88,183 @@ function Coin({ size = 16 }: { size?: number }) {
       <Circle cx={8} cy={8} r={7} fill="none" stroke="#d99e1b" strokeWidth={1.6} />
       <Circle cx={8} cy={8} r={4.2} fill="none" stroke="#d99e1b" strokeWidth={1.2} />
     </Svg>
+  );
+}
+
+function PriceOrOwned({ owned, cost }: { owned: boolean; cost: number }) {
+  return owned ? (
+    <Text style={styles.ownedText}>Owned</Text>
+  ) : (
+    <View style={styles.priceRow}>
+      <Coin size={14} />
+      <Text style={styles.priceText}>{cost}</Text>
+    </View>
+  );
+}
+
+function WornBadge({ small }: { small?: boolean }) {
+  return (
+    <View style={[styles.wornBadge, small && styles.wornBadgeSmall]}>
+      <Ionicons name="checkmark" size={small ? 13 : 15} color="#fff" />
+    </View>
+  );
+}
+
+// Sweeping diagonal gloss — the classic "shiny loot card" tell. Runs on Rare+
+// cards only. One bar clipped to the card, sweeps across (~0.85s) then rests
+// off-screen (~3s) so it reads as an occasional glint, not a strobe.
+function ShineSweep({ radius }: { radius: number }) {
+  const sx = useSharedValue(0);
+  useEffect(() => {
+    sx.value = withRepeat(
+      withSequence(
+        withDelay(400, withTiming(1, { duration: 850, easing: Easing.in(Easing.cubic) })),
+        withDelay(2800, withTiming(0, { duration: 0 })), // hold off-screen, then snap back
+      ),
+      -1,
+      false,
+    );
+    return () => cancelAnimation(sx);
+  }, [sx]);
+  const barStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: -70 + sx.value * 260 }, { rotate: '16deg' }],
+  }));
+  return (
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: radius, overflow: 'hidden' }]}>
+      <Animated.View style={[{ position: 'absolute', top: -40, bottom: -40, width: 46 }, barStyle]}>
+        <LinearGradient
+          colors={['transparent', 'rgba(255,255,255,0.5)', 'transparent']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={{ flex: 1 }}
+        />
+      </Animated.View>
+    </View>
+  );
+}
+
+// A featured (big) hero / daily card. `play` triggers the staggered spring-in
+// (per `index`); featured cards additionally carry a rarity-tinted glow and a
+// slow float. Defined at module scope so the animations survive re-renders.
+function ShopCard({
+  p,
+  big,
+  owned,
+  worn,
+  play,
+  index,
+  onPress,
+}: {
+  p: Product;
+  big?: boolean;
+  owned: boolean;
+  worn: boolean;
+  play: boolean;
+  index: number;
+  onPress: () => void;
+}) {
+  const r: Rarity = rarityOf(p.cost);
+  const shine = r.label !== 'Common';
+  const rv = useSharedValue(0); // reveal (pop-in)
+  const fl = useSharedValue(0); // idle float (featured only)
+
+  useEffect(() => {
+    if (play) rv.value = withDelay(index * 65, withSpring(1, { damping: 13, stiffness: 160, mass: 0.7 }));
+    else {
+      cancelAnimation(rv);
+      rv.value = 0;
+    }
+  }, [play, index, rv]);
+
+  useEffect(() => {
+    if (!big) return;
+    fl.value = withRepeat(withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.quad) }), -1, true);
+    return () => cancelAnimation(fl);
+  }, [big, fl]);
+
+  const aStyle = useAnimatedStyle(() => ({
+    opacity: rv.value,
+    transform: [
+      { translateY: (1 - rv.value) * 16 - (big ? fl.value * 4 : 0) },
+      { scale: 0.88 + rv.value * 0.12 },
+    ],
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        aStyle,
+        big && { borderRadius: 24, shadowColor: r.chip, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.5, shadowRadius: 16, elevation: 10 },
+      ]}
+    >
+      <Pressable onPress={onPress} style={({ pressed }) => [pressed && styles.pressed2]}>
+        <LinearGradient
+          colors={r.grad}
+          start={GRAD_START}
+          end={GRAD_END}
+          style={big ? styles.featuredCard : styles.dailyCard}
+        >
+          {big ? (
+            <View style={[styles.rarityChip, { backgroundColor: r.chip }]}>
+              <Text style={styles.rarityChipText}>{r.label.toUpperCase()}</Text>
+            </View>
+          ) : null}
+          <View style={{ alignItems: 'center', marginTop: big ? 4 : 0 }}>
+            <ProductArt p={p} size={big ? 144 : 96} />
+          </View>
+          <Text numberOfLines={1} style={big ? styles.featuredName : styles.dailyName}>
+            {p.name}
+          </Text>
+          <PriceOrOwned owned={owned} cost={p.cost} />
+          {shine ? <ShineSweep radius={big ? 24 : 20} /> : null}
+        </LinearGradient>
+        {worn ? <WornBadge small={!big} /> : null}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+const msToMidnight = () => {
+  const d = new Date();
+  d.setHours(24, 0, 0, 0);
+  return d.getTime() - Date.now();
+};
+const pad = (n: number) => String(n).padStart(2, '0');
+
+// Live restock countdown — the urgency anchor. Ticks every second (isolated so
+// only this pill re-renders) and escalates to a red, pulsing state in the final
+// hour. Own component so its 1s cadence never re-renders the whole sheet.
+function Countdown() {
+  const [ms, setMs] = useState(() => msToMidnight());
+  useEffect(() => {
+    const t = setInterval(() => setMs(msToMidnight()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const urgent = total < 3600;
+
+  const pulse = useSharedValue(0);
+  useEffect(() => {
+    pulse.value = withRepeat(withTiming(1, { duration: 850, easing: Easing.inOut(Easing.quad) }), -1, true);
+    return () => cancelAnimation(pulse);
+  }, [pulse]);
+  const iconStyle = useAnimatedStyle(() => ({
+    opacity: urgent ? 0.55 + pulse.value * 0.45 : 1,
+    transform: [{ scale: urgent ? 1 + pulse.value * 0.14 : 1 }],
+  }));
+
+  return (
+    <View style={[styles.restockPill, urgent && styles.restockPillUrgent]}>
+      <Animated.View style={iconStyle}>
+        <Ionicons name="time" size={13} color={urgent ? '#ef4444' : '#ff7a3d'} />
+      </Animated.View>
+      <Text style={[styles.restockText, urgent && styles.restockTextUrgent]}>
+        {h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`}
+      </Text>
+    </View>
   );
 }
 
@@ -124,21 +307,19 @@ export function ShopSheet({
     if (controls) setWardrobe(controls.getState());
   }, [open, controls]);
 
-  // Defer the heavy "Browse all" grid (the whole ~400-item catalog, each a
-  // decoded thumbnail) until the slide-in has finished — otherwise mounting all
-  // those images in the same frame as the studio crossfade drops frames. The
-  // small "Today's Shop" section renders immediately so there's no empty sheet.
-  const [showCatalog, setShowCatalog] = useState(false);
+  // Trigger the card stagger just after the slide-in starts — the cards spring
+  // in over the top of the slide, which also masks the PNG decode.
+  const [revealed, setRevealed] = useState(false);
   useEffect(() => {
     if (!open) {
-      setShowCatalog(false);
+      setRevealed(false);
       return;
     }
-    const t = setTimeout(() => setShowCatalog(true), 340);
+    const t = setTimeout(() => setRevealed(true), 120);
     return () => clearTimeout(t);
   }, [open]);
 
-  // catalog is static (manifest is bundled); products/rotation derive from it
+  // catalog is static (manifest is bundled); the daily drop derives from it
   const products = useMemo(
     () =>
       buildProducts({
@@ -151,19 +332,6 @@ export function ShopSheet({
   );
   const seed = localDay(Date.now());
   const { featured, daily } = useMemo(() => todaysShop(products, seed), [products, seed]);
-
-  // countdown to the local-midnight restock (ticks every 30s while open)
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!open) return;
-    setNow(Date.now());
-    const t = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(t);
-  }, [open]);
-  const midnight = new Date();
-  midnight.setHours(24, 0, 0, 0);
-  const minsLeft = Math.max(0, Math.floor((midnight.getTime() - now) / 60_000));
-  const restockIn = `${Math.floor(minsLeft / 60)}h ${String(minsLeft % 60).padStart(2, '0')}m`;
 
   const sync = () => {
     if (controls) setWardrobe(controls.getState());
@@ -192,97 +360,13 @@ export function ShopSheet({
     addToInventory(p.renderKey);
   };
 
-  // ---- little building blocks -----------------------------------------------
-  const PriceOrOwned = ({ p }: { p: Product }) =>
-    owns(p) ? (
-      <Text style={styles.ownedText}>Owned</Text>
-    ) : (
-      <View style={styles.priceRow}>
-        <Coin size={14} />
-        <Text style={styles.priceText}>{p.cost}</Text>
-      </View>
-    );
-
-  const WornBadge = ({ small }: { small?: boolean }) => (
-    <View style={[styles.wornBadge, small && styles.wornBadgeSmall]}>
-      <Ionicons name="checkmark" size={small ? 13 : 15} color="#fff" />
-    </View>
-  );
-
-  // a featured (big) / daily card. Featured carries the rarity chip; the daily
-  // row omits it (matching web). Gradient fill + hard "0 4px 0" bottom shadow
-  // give the squishy card look; press depresses it toward the shadow.
-  const RotationCard = ({ p, big }: { p: Product; big?: boolean }) => {
-    const r = rarityOf(p.cost);
-    return (
-      <Pressable
-        onPress={() => setDetail(p)}
-        style={({ pressed }) => [pressed && styles.pressed2]}
-      >
-        <LinearGradient
-          colors={r.grad}
-          start={GRAD_START}
-          end={GRAD_END}
-          style={big ? styles.featuredCard : styles.dailyCard}
-        >
-          {big ? (
-            <View style={[styles.rarityChip, { backgroundColor: r.chip }]}>
-              <Text style={styles.rarityChipText}>{r.label.toUpperCase()}</Text>
-            </View>
-          ) : null}
-          <View style={{ alignItems: 'center', marginTop: big ? 4 : 0 }}>
-            <ProductArt p={p} size={big ? 144 : 96} />
-          </View>
-          <Text numberOfLines={1} style={big ? styles.featuredName : styles.dailyName}>
-            {p.name}
-          </Text>
-          <PriceOrOwned p={p} />
-        </LinearGradient>
-        {isWorn(p) ? <WornBadge small={!big} /> : null}
-      </Pressable>
-    );
-  };
-
-  // a per-slot horizontal shelf (art bleeds to the screen edge, then re-pads)
-  const Shelf = ({ slot }: { slot: WardrobeSlot }) => {
-    const items = products.filter((p) => p.slot === slot);
-    if (!items.length) return null;
-    return (
-      <View style={{ paddingTop: 32 }}>
-        <Text style={styles.shelfTitle}>{SLOT_LABEL[slot]}</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 16, paddingHorizontal: 24 }}
-          style={{ marginHorizontal: -24 }}
-        >
-          {items.map((p) => (
-            <Pressable key={p.renderKey} onPress={() => setDetail(p)} style={styles.shelfItem}>
-              <View>
-                <ProductArt p={p} size={128} />
-                {isWorn(p) ? <WornBadge small /> : null}
-              </View>
-              <Text numberOfLines={1} style={styles.shelfItemName}>
-                {p.name}
-              </Text>
-              <PriceOrOwned p={p} />
-            </Pressable>
-          ))}
-        </ScrollView>
-      </View>
-    );
-  };
-
   const detailWorn = detail ? isWorn(detail) : false;
   const detailOwned = detail ? owns(detail) : false;
   const canAfford = detail ? coins >= detail.cost : false;
   const detailRarity = detail ? rarityOf(detail.cost) : null;
 
   return (
-    <Animated.View
-      style={[styles.takeover, sheetStyle]}
-      pointerEvents={open ? 'auto' : 'none'}
-    >
+    <Animated.View style={[styles.takeover, sheetStyle]} pointerEvents={open ? 'auto' : 'none'}>
       {/* sticky header: title + coin balance + close */}
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) }]}>
         <Text style={styles.title}>Shop</Text>
@@ -306,36 +390,32 @@ export function ShopSheet({
         }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Today's Shop header + restock countdown */}
+        {/* Today's drop header + live restock countdown */}
         <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Today&apos;s Shop</Text>
-          <View style={styles.restockPill}>
-            <Ionicons name="time-outline" size={14} color="#ff7a3d" />
-            <Text style={styles.restockText}>New stock in {restockIn}</Text>
+          <View>
+            <Text style={styles.sectionTitle}>Today&apos;s Shop</Text>
+            <Text style={styles.sectionSub}>Fresh picks — gone at midnight</Text>
           </View>
+          <Countdown />
         </View>
 
-        {/* featured (premium, larger) */}
+        {/* featured heroes (premium, larger) */}
         <View style={styles.grid}>
-          {featured.map((p) => (
+          {featured.map((p, i) => (
             <View key={p.renderKey} style={styles.gridCell}>
-              <RotationCard p={p} big />
+              <ShopCard p={p} big owned={owns(p)} worn={isWorn(p)} play={revealed} index={i} onPress={() => setDetail(p)} />
             </View>
           ))}
         </View>
 
         {/* daily row */}
         <View style={[styles.grid, { marginTop: 14 }]}>
-          {daily.map((p) => (
+          {daily.map((p, i) => (
             <View key={p.renderKey} style={styles.gridCell}>
-              <RotationCard p={p} />
+              <ShopCard p={p} owned={owns(p)} worn={isWorn(p)} play={revealed} index={featured.length + i} onPress={() => setDetail(p)} />
             </View>
           ))}
         </View>
-
-        {/* full catalog: one shelf per slot (deferred until the sheet settles) */}
-        <Text style={styles.browseAll}>Browse all</Text>
-        {showCatalog ? WARDROBE_SLOTS.map((slot) => <Shelf key={slot} slot={slot} />) : null}
       </ScrollView>
 
       {/* item detail modal */}
@@ -355,6 +435,7 @@ export function ShopSheet({
                 <View style={{ alignItems: 'center', marginTop: 6 }}>
                   <ProductArt p={detail} size={208} />
                 </View>
+                {detailRarity.label !== 'Common' ? <ShineSweep radius={22} /> : null}
               </LinearGradient>
               <Text style={styles.modalName}>{detail.name}</Text>
 
@@ -455,23 +536,26 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   sectionTitle: { fontSize: 16, fontWeight: '800', color: '#171717' },
+  sectionSub: { marginTop: 2, fontSize: 12, fontWeight: '600', color: '#a3a3a3' },
   restockPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     backgroundColor: '#fff1e6',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
     borderRadius: 999,
   },
-  restockText: { fontSize: 12, fontWeight: '700', color: '#ff7a3d' },
+  restockPillUrgent: { backgroundColor: '#fee2e2' },
+  restockText: { fontSize: 13, fontWeight: '800', color: '#ff7a3d', fontVariant: ['tabular-nums'] },
+  restockTextUrgent: { color: '#ef4444' },
 
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 12, marginHorizontal: -7 },
   gridCell: { width: '50%', paddingHorizontal: 7, marginBottom: 14 },
 
-  featuredCard: { borderRadius: 24, padding: 16, ...hardShadow(4, '#000', 0.1) },
+  featuredCard: { borderRadius: 24, padding: 16, overflow: 'hidden', ...hardShadow(4, '#000', 0.1) },
   featuredName: { marginTop: 8, fontSize: 14, fontWeight: '700', color: '#171717' },
-  dailyCard: { borderRadius: 20, padding: 12, ...hardShadow(3, '#000', 0.08) },
+  dailyCard: { borderRadius: 20, padding: 12, overflow: 'hidden', ...hardShadow(3, '#000', 0.08) },
   dailyName: { marginTop: 6, fontSize: 12, fontWeight: '700', color: '#262626' },
 
   pressed2: { transform: [{ translateY: 2 }] },
@@ -497,11 +581,6 @@ const styles = StyleSheet.create({
   },
   wornBadgeSmall: { right: 4, top: 4, width: 20, height: 20, borderRadius: 10 },
 
-  browseAll: { marginTop: 36, fontSize: 20, fontWeight: '800', color: '#171717' },
-  shelfTitle: { marginBottom: 12, fontSize: 17, fontWeight: '800', color: '#171717' },
-  shelfItem: { width: 128 },
-  shelfItemName: { marginTop: 6, fontSize: 12, fontWeight: '600', color: '#404040' },
-
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -521,7 +600,7 @@ const styles = StyleSheet.create({
     shadowRadius: 60,
     elevation: 24,
   },
-  modalArt: { borderRadius: 22, padding: 12 },
+  modalArt: { borderRadius: 22, padding: 12, overflow: 'hidden' },
   modalName: { marginTop: 16, textAlign: 'center', fontSize: 20, fontWeight: '800', color: '#171717' },
 
   btnBuy: {
