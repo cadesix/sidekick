@@ -6,9 +6,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BondBadge } from '../src/components/BondBadge';
 import { Chat } from '../src/components/Chat';
+import { SessionChat } from '../src/components/SessionChat';
 import { SpeechBubble } from '../src/components/SpeechBubble';
 import { StreakPill } from '../src/components/StreakPill';
 import { HomeDock } from '../src/components/HomeDock';
+import { AREA_BIOME, type EnvironmentId } from '../src/three/biomes';
+import { speak } from '../src/store/speech';
 import { useStreak } from '../src/store/streak';
 import { SettingsSheet } from '../src/components/SettingsSheet';
 import { ShopSheet } from '../src/components/ShopSheet';
@@ -54,6 +57,17 @@ const SHOP_FRAMING: Framing = {
   fov: 26,
 };
 
+// arrival line spoken/pushed when travelling to each world (verbatim from home5)
+const TRAVEL_LINES: Record<EnvironmentId, string> = {
+  meadow: 'ahh home sweet meadow 🌼',
+  snow: "brrr it's FREEZING up here ❄️ worth it for the view though",
+  forest: 'ooh it smells so good here 🌲 pine trees hit different',
+  blossom: 'petals everywhere!! 🌸 this might be my favorite spot',
+  desert: "oh it's HOT here 🥵 like, really hot",
+  tropical: 'beach day!!! 🌴 you can literally hear the waves',
+  volcano: 'uhh is that lava?? 🌋 this is fine. we’re fine.',
+};
+
 const { height: SCREEN_H } = Dimensions.get('window');
 const DRAWER_TOP = SCREEN_H * 0.45; // drawer covers the lower 55%
 
@@ -65,6 +79,9 @@ export default function Home() {
   const [mapShown, setMapShown] = useState(false);
   const [shopOpen, setShopOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // world environment (map travel) + the active guided session (if any)
+  const [environment, setEnvironment] = useState<EnvironmentId>('meadow');
+  const [sessionId, setSessionId] = useState<string | null>(null);
   // imperative handle the canvas publishes once cosmetics are ready; the Shop
   // uses it to dress the live character
   const [controls, setControls] = useState<CosmeticsControls | null>(null);
@@ -78,6 +95,20 @@ export default function Home() {
   const loading = useChat((s) => s.loading);
   const unread = useChat((s) => s.unread);
   const clearUnread = useChat((s) => s.clearUnread);
+  const pushMsg = useChat((s) => s.pushSidekickMessage);
+
+  // travel to a biome: swap the 3D world, close the map, and drop an arrival
+  // line (badge now, bubble after the map reveal shrinks so it pops over the
+  // visible character) — mirrors home5.tsx onTravel.
+  const travelTo = (biome: EnvironmentId) => {
+    setEnvironment(biome);
+    closeMap();
+    const line = TRAVEL_LINES[biome];
+    if (line) {
+      pushMsg(line);
+      setTimeout(() => speak(line), 650);
+    }
+  };
   const insets = useSafeAreaInsets();
 
   // count today's streak once the store has hydrated (idempotent per local day)
@@ -140,6 +171,7 @@ export default function Home() {
           holdingPhone={open}
           talking={loading}
           studio={shopOpen}
+          environment={environment}
           onControls={setControls}
           onController={setController}
           overhead={overhead}
@@ -192,7 +224,27 @@ export default function Home() {
           closeMap();
           openDrawer();
         }}
+        onTravel={travelTo}
+        onStartSession={(id) => {
+          closeMap();
+          setSessionId(id);
+        }}
       />
+
+      {/* Guided session — full overlay; on completion travel to its island */}
+      {sessionId ? (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 60 }}>
+          <SessionChat
+            sessionId={sessionId}
+            onClose={() => setSessionId(null)}
+            onDone={() => {
+              const biome = AREA_BIOME[sessionId];
+              setSessionId(null);
+              if (biome) travelTo(biome);
+            }}
+          />
+        </View>
+      ) : null}
 
       {/* Shop sheet — covers the lower half; tap the character band above to
           close */}

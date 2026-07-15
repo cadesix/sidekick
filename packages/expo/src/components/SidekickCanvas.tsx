@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { StyleSheet, View, type GestureResponderEvent, type ViewStyle } from 'react-native';
 import type { SharedValue } from 'react-native-reanimated';
 
+import type { EnvironmentId } from '../three/biomes';
 import { createSidekickRenderer, type Framing, type SidekickController } from '../three/renderer';
 import type { CosmeticsControls } from '../three/wardrobe';
 
@@ -32,6 +33,7 @@ export function SidekickCanvas({
   holdingPhone,
   talking,
   studio,
+  environment,
   onControls,
   onController,
   overhead,
@@ -42,6 +44,8 @@ export function SidekickCanvas({
   talking?: boolean;
   // Shop "studio": hide the meadow and show the character on a clean backdrop
   studio?: boolean;
+  // world environment (map travel): 'meadow' | biome id
+  environment?: EnvironmentId;
   onControls?: (c: CosmeticsControls | null) => void;
   // the raw scene controller (Settings sheet uses applySettings for live look-dev)
   onController?: (c: SidekickController | null) => void;
@@ -63,6 +67,7 @@ export function SidekickCanvas({
       framing,
       holdingPhone,
       studio,
+      environment,
       onControls: (c) => onControlsRef.current?.(c),
       onOverhead: (nx, ny, visible) => {
         const t = overheadRef.current;
@@ -96,6 +101,10 @@ export function SidekickCanvas({
   useEffect(() => {
     controller.current?.setTalking(!!talking);
   }, [talking]);
+
+  useEffect(() => {
+    if (environment) controller.current?.setEnvironment(environment);
+  }, [environment]);
 
   useEffect(() => {
     controller.current?.setStudio(!!studio);

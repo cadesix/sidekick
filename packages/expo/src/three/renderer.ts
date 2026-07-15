@@ -11,6 +11,7 @@ import { createCosmetics, type CosmeticsHandle } from './cosmetics';
 import { configureFaceTexture, createFaceController, type FaceController } from './face';
 import { patchWorldFog } from './fog-patch';
 import { fillGradientTexture, makeGradientTexture, makeRadialShadowTexture } from './gradient';
+import { BIOMES, type BiomeId, type EnvironmentId } from './biomes';
 import { makeGrassEnvironment } from './grass';
 import { createInteraction, POKE_FACE, type Interaction } from './interact';
 import { loadSettings, type SidekickSettings } from './settings';
@@ -74,6 +75,8 @@ export type SidekickController = {
   setHoldingPhone: (v: boolean) => void;
   setTalking: (v: boolean) => void;
   setStudio: (v: boolean) => void;
+  // swap the world environment (map travel): 'meadow' | biome id
+  setEnvironment: (id: EnvironmentId) => void;
   // live look-dev: re-apply a full settings object to the running scene
   applySettings: (next: SidekickSettings) => void;
   // touch input in NDC (-1..1, +y up) — fed by the canvas component
@@ -139,6 +142,7 @@ export function createSidekickRenderer(
     framing: Framing;
     holdingPhone?: boolean;
     studio?: boolean;
+    environment?: EnvironmentId;
     // handed the imperative dressing controls once cosmetics are ready (and
     // null on dispose) — the Shop sheet drives the live character through it
     onControls?: (c: CosmeticsControls | null) => void;
@@ -263,6 +267,74 @@ export function createSidekickRenderer(
   const rim = new THREE.DirectionalLight(new THREE.Color(sc.rimColor), sc.rimIntensity);
   rim.position.copy(SUN_DIR).multiplyScalar(8).setY(2.2);
   scene.add(rim);
+
+  // ---- biome environments (map travel) --------------------------------------
+  // Lazily built + cached like web's applyEnv (sidekick-canvas.tsx). Swapping the
+  // environment changes background/fog/lights/exposure/cloud tint + the raking
+  // key/rim directions, and toggles which ground group is visible. Composes with
+  // the studio crossfade below via `activeGround` + `envFog`.
+  const meadowSky = skyTex;
+  const meadowKeyPos = key.position.clone();
+  const meadowRimPos = rim.position.clone();
+  const tmpDir = new THREE.Vector3();
+  let envFog: THREE.Fog | null = meadowFog;
+  let activeGround: THREE.Object3D = grass.group;
+  type BiomeBuilt = { group: THREE.Group; sky: THREE.DataTexture; fog: THREE.Fog };
+  const biomeCache = new Map<BiomeId, BiomeBuilt>();
+  const getBiome = (id: BiomeId): BiomeBuilt => {
+    let bc = biomeCache.get(id);
+    if (!bc) {
+      const def = BIOMES[id];
+      const group = def.build();
+      group.visible = false;
+      scene.add(group);
+      const p = def.preset;
+      const sky = makeGradientTexture([
+        { at: 0, color: p.skyHorizon },
+        { at: 0.42, color: p.skyMid },
+        { at: 1, color: p.skyTop },
+      ]);
+      const fog = new THREE.Fog(p.fog, p.fogNear, p.fogFar);
+      bc = { group, sky, fog };
+      biomeCache.set(id, bc);
+    }
+    return bc;
+  };
+  const applyEnv = (id: EnvironmentId) => {
+    activeGround.visible = false;
+    let look: typeof sc | (typeof BIOMES)[BiomeId]['preset'];
+    if (id === 'meadow') {
+      look = s.scenes[s.timeOfDay];
+      scene.background = meadowSky;
+      envFog = scene.fog as THREE.Fog; // meadow fog is refilled by applySettings
+      activeGround = grass.group;
+      key.position.copy(meadowKeyPos);
+      rim.position.copy(meadowRimPos);
+    } else {
+      const bc = getBiome(id);
+      look = BIOMES[id].preset;
+      scene.background = bc.sky;
+      envFog = bc.fog;
+      activeGround = bc.group;
+      key.position.copy(tmpDir.fromArray(BIOMES[id].preset.keyDir).normalize()).multiplyScalar(16);
+      rim.position.copy(tmpDir.fromArray(BIOMES[id].preset.rimDir).normalize()).multiplyScalar(12);
+    }
+    key.color.set(look.keyColor);
+    key.intensity = look.keyIntensity;
+    fill.color.set(look.fillColor);
+    fill.intensity = look.fillIntensity;
+    rim.color.set(look.rimColor);
+    rim.intensity = look.rimIntensity;
+    hemi.color.set(look.hemiSky);
+    hemi.groundColor.set(look.hemiGround);
+    hemi.intensity = look.hemiIntensity;
+    renderer.toneMappingExposure = look.exposure;
+    grass.setClouds(look.keyColor, look.fog);
+    activeGround.visible = true; // the studio crossfade may re-hide it next frame
+  };
+  let environment: EnvironmentId = opts.environment ?? 'meadow';
+  let curEnv: EnvironmentId = 'meadow';
+  if (environment !== 'meadow') applyEnv(environment), (curEnv = environment);
 
   // ---- bloom (matches the web viewer's UnrealBloomPass). expo-gl reports no
   // EXT_color_buffer_float, so every render target in the chain is forced to
@@ -544,6 +616,11 @@ export function createSidekickRenderer(
     const now = clock.getElapsedTime();
     const fr = interact.update(now);
 
+    // swap the world environment when travel changes it (masked by the map cover)
+    if (environment !== curEnv) {
+      curEnv = environment;
+      applyEnv(curEnv);
+    }
     // crossfade the meadow out / studio in when the Shop opens (and back)
     const targetT = studio ? 1 : 0;
     studioT += (targetT - studioT) * 0.3;
@@ -553,8 +630,10 @@ export function createSidekickRenderer(
     studioMat.opacity = studioT;
     contactShadow.visible = inStudio;
     shadowMat.opacity = studioT;
-    grass.setOpacity(1 - studioT);
-    scene.fog = inStudio ? null : meadowFog;
+    // the meadow grass crossfades by opacity; a biome ground hard-toggles
+    if (activeGround === grass.group) grass.setOpacity(1 - studioT);
+    else activeGround.visible = !inStudio;
+    scene.fog = inStudio ? null : envFog;
 
     // body-drag lean/offset/squash (springs home to rest on release)
     pull.position.set(fr.bodyX, 0, fr.bodyZ);
@@ -684,6 +763,9 @@ export function createSidekickRenderer(
     },
     setStudio: (v) => {
       studio = v;
+    },
+    setEnvironment: (id) => {
+      environment = id;
     },
     applySettings: (next) => {
       const prevHeight = s.grassHeight;

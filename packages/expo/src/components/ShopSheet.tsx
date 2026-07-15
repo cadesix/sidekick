@@ -1,10 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
-import { Dimensions, Image, Pressable, ScrollView, Text, View } from 'react-native';
+import { Image } from 'expo-image';
+import { useEffect, useMemo, useState } from 'react';
+import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import type { Manifest } from '../three/cosmetics-manifest';
+import {
+  buildProducts,
+  localDay,
+  rarityOf,
+  todaysShop,
+  type Product,
+} from '@sidekick/core';
+
+import { MANIFEST } from '../three/cosmetics-manifest';
+import { shopRender } from '../three/shop-renders';
+import { useEconomy } from '../store/economy';
 import {
   SHOP_COLORS,
   SLOT_LABEL,
@@ -14,16 +25,56 @@ import {
   type WardrobeSlot,
 } from '../three/wardrobe';
 
-// RN port of sidekick/src/components/shop-sheet.tsx: a bottom-sheet "Shop"
-// (really a wardrobe) — pick which shirt / pants / hat / shoes are worn and
-// recolor each one. It drives the live character behind it through the
-// canvas's imperative CosmeticsControls, so every tap updates the 3D model
-// immediately. The sheet covers the lower half; the character is framed above
-// it (studio mode) so you can see the outfit change. Delta from the web: the
-// controls arrive as a prop (state from onControls) instead of a ref.
+// Full-screen RN "Shop", rebuilt to parity with the web (packages/web/src/
+// components/shop-sheet.tsx). A date-seeded "Today's Shop" (2 featured + a daily
+// row that restocks at local midnight, with a countdown) sits above the full
+// catalog, which is one horizontal shelf per slot ("Browse all"). Rarity tiers
+// are price-derived and give each card its color identity. Tapping a product
+// opens a detail modal: Buy (deducts coins → inventory) when unowned, else
+// Equip / Take off, which drive the live 3D character via CosmeticsControls.
+//
+// MVP note vs web: product art is a STATIC pre-rendered PNG (from
+// three/shop-renders). The web's live spinning ItemTurntable is deferred — a
+// static render reads fine and avoids a second GL context inside the sheet.
 
-const SHEET_H = Dimensions.get('window').height * 0.52;
-const TILE = 66;
+const { height: SCREEN_H } = Dimensions.get('window');
+
+// ---- product art: pre-rendered PNG, else a tinted / neutral placeholder ------
+function ProductArt({ p, size, radius = 16 }: { p: Product; size: number; radius?: number }) {
+  const render = shopRender(p.renderKey);
+  if (render != null) {
+    return <Image source={render} style={{ width: size, height: size }} contentFit="contain" />;
+  }
+  if (p.tint) {
+    return <View style={{ width: size, height: size, borderRadius: radius, backgroundColor: p.tint }} />;
+  }
+  if (p.tex != null) {
+    return (
+      <Image
+        source={p.tex as number}
+        style={{ width: size, height: size, borderRadius: radius }}
+        contentFit="cover"
+      />
+    );
+  }
+  return <View style={{ width: size, height: size, borderRadius: radius, backgroundColor: '#e9edf1' }} />;
+}
+
+// small gold coin glyph (the web uses an inline SVG)
+function Coin({ size = 16 }: { size?: number }) {
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: '#f4c634',
+        borderWidth: Math.max(1.4, size * 0.09),
+        borderColor: '#d99e1b',
+      }}
+    />
+  );
+}
 
 export function ShopSheet({
   open,
@@ -35,212 +86,410 @@ export function ShopSheet({
   controls: CosmeticsControls | null;
 }) {
   const insets = useSafeAreaInsets();
-  const [slot, setSlot] = useState<WardrobeSlot>('shirt');
-  const [wardrobe, setWardrobe] = useState<Wardrobe | null>(null);
-  const [manifest, setManifest] = useState<Manifest | null>(null);
 
+  // economy store (reactive: reading coins + inventory re-renders on change)
+  const coins = useEconomy((s) => s.coins);
+  const inventory = useEconomy((s) => s.inventory);
+  const spendCoins = useEconomy((s) => s.spendCoins);
+  const addToInventory = useEconomy((s) => s.addToInventory);
+
+  const [detail, setDetail] = useState<Product | null>(null);
+  const [wardrobe, setWardrobe] = useState<Wardrobe | null>(null);
+
+  // slide the whole takeover up from the bottom
   const progress = useSharedValue(0);
   useEffect(() => {
     progress.value = withTiming(open ? 1 : 0, { duration: 300 });
   }, [open, progress]);
   const sheetStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: (1 - progress.value) * SHEET_H }],
+    transform: [{ translateY: (1 - progress.value) * SCREEN_H }],
+    // fully hide when closed (RN-web root can be taller than SCREEN_H, so the
+    // slide alone leaves a peeking sliver)
+    opacity: progress.value < 0.001 ? 0 : 1,
   }));
 
-  // snapshot the current outfit + catalog when the sheet opens
+  // snapshot the worn outfit when the sheet opens
   useEffect(() => {
-    if (!open || !controls) return;
-    setWardrobe(controls.getState());
-    setManifest(controls.manifest());
+    if (!open) return;
+    setDetail(null);
+    if (controls) setWardrobe(controls.getState());
   }, [open, controls]);
 
-  const st = wardrobe?.[slot];
-  const variants = manifest?.[slot]?.variants ?? [];
+  // catalog is static (manifest is bundled); products/rotation derive from it
+  const products = useMemo(
+    () =>
+      buildProducts({
+        slots: WARDROBE_SLOTS,
+        slotLabel: SLOT_LABEL,
+        colors: SHOP_COLORS,
+        manifest: MANIFEST,
+      }),
+    [],
+  );
+  const seed = localDay(Date.now());
+  const { featured, daily } = useMemo(() => todaysShop(products, seed), [products, seed]);
+
+  // countdown to the local-midnight restock (ticks every 30s while open)
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!open) return;
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, [open]);
+  const midnight = new Date();
+  midnight.setHours(24, 0, 0, 0);
+  const minsLeft = Math.max(0, Math.floor((midnight.getTime() - now) / 60_000));
+  const restockIn = `${Math.floor(minsLeft / 60)}h ${String(minsLeft % 60).padStart(2, '0')}m`;
+
   const sync = () => {
     if (controls) setWardrobe(controls.getState());
   };
-
-  const pickVariant = (id: string) => {
-    controls?.equipVariant(slot, id);
+  const isWorn = (p: Product) => {
+    const st = wardrobe?.[p.slot as WardrobeSlot];
+    if (!st?.equipped) return false;
+    return p.variantId
+      ? st.variantId === p.variantId && !st.color
+      : st.color?.toLowerCase() === p.color?.toLowerCase();
+  };
+  const owns = (p: Product) => inventory.includes(p.renderKey);
+  const wear = (p: Product) => {
+    if (!controls) return;
+    if (p.variantId) controls.equipVariant(p.slot as WardrobeSlot, p.variantId);
+    else if (p.color) controls.setColor(p.slot as WardrobeSlot, p.color);
     sync();
   };
-  const pickColor = (color: string) => {
-    controls?.setColor(slot, color);
+  const takeOff = (p: Product) => {
+    controls?.remove(p.slot as WardrobeSlot);
     sync();
   };
-  const removeSlot = () => {
-    controls?.remove(slot);
-    sync();
+  const buy = (p: Product) => {
+    if (!spendCoins(p.cost)) return;
+    addToInventory(p.renderKey);
   };
 
-  // which choice is currently active, for the highlight rings
-  const activeColor = st?.equipped ? st.color : undefined;
-  const activeVariant = st?.equipped && !st.color ? st.variantId : undefined;
-  const isOff = !st?.equipped;
+  // ---- little building blocks -----------------------------------------------
+  const PriceOrOwned = ({ p }: { p: Product }) =>
+    owns(p) ? (
+      <Text style={styles.ownedText}>Owned</Text>
+    ) : (
+      <View style={styles.priceRow}>
+        <Coin size={13} />
+        <Text style={styles.priceText}>{p.cost}</Text>
+      </View>
+    );
 
-  return (
-    <Animated.View
-      style={[
-        sheetStyle,
-        { position: 'absolute', left: 0, right: 0, bottom: 0, height: SHEET_H, zIndex: 40 },
-      ]}
-      pointerEvents={open ? 'auto' : 'none'}
-    >
-      <View
-        className="flex-1 bg-white"
-        style={{
-          borderTopLeftRadius: 28,
-          borderTopRightRadius: 28,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -8 },
-          shadowOpacity: 0.22,
-          shadowRadius: 20,
-          elevation: 12,
-        }}
+  const WornBadge = ({ small }: { small?: boolean }) => (
+    <View style={[styles.wornBadge, small && styles.wornBadgeSmall]}>
+      <Ionicons name="checkmark" size={small ? 13 : 15} color="#fff" />
+    </View>
+  );
+
+  // a featured/daily card
+  const RotationCard = ({ p, big }: { p: Product; big?: boolean }) => {
+    const r = rarityOf(p.cost);
+    return (
+      <Pressable
+        onPress={() => setDetail(p)}
+        style={[
+          big ? styles.featuredCard : styles.dailyCard,
+          { backgroundColor: r.grad[0] },
+        ]}
       >
-        {/* grabber + header */}
-        <View className="px-5 pt-3">
-          <View className="self-center h-1.5 w-10 rounded-full bg-neutral-200" />
-          <View className="mt-2 flex-row items-center justify-between">
-            <Text className="text-[22px] font-extrabold text-neutral-900">Shop</Text>
-            <Pressable
-              onPress={onClose}
-              accessibilityLabel="Close shop"
-              className="h-9 w-9 rounded-full bg-neutral-100 items-center justify-center"
-            >
-              <Ionicons name="close" size={20} color="#737373" />
-            </Pressable>
-          </View>
+        <View style={[styles.rarityChip, { backgroundColor: r.chip }]}>
+          <Text style={styles.rarityChipText}>{r.label.toUpperCase()}</Text>
         </View>
+        <View style={{ alignItems: 'center', marginTop: big ? 4 : 2 }}>
+          <ProductArt p={p} size={big ? 132 : 92} />
+        </View>
+        <Text numberOfLines={1} style={big ? styles.featuredName : styles.dailyName}>
+          {p.name}
+        </Text>
+        <PriceOrOwned p={p} />
+        {isWorn(p) ? <WornBadge small={!big} /> : null}
+      </Pressable>
+    );
+  };
 
-        {/* slot tabs */}
+  // a per-slot horizontal shelf
+  const Shelf = ({ slot }: { slot: WardrobeSlot }) => {
+    const items = products.filter((p) => p.slot === slot);
+    if (!items.length) return null;
+    return (
+      <View style={{ paddingTop: 24 }}>
+        <Text style={styles.shelfTitle}>{SLOT_LABEL[slot]}</Text>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          className="mt-3 shrink-0 grow-0"
-          contentContainerStyle={{ gap: 8, paddingHorizontal: 20 }}
+          contentContainerStyle={{ gap: 14, paddingHorizontal: 20 }}
+          style={{ marginHorizontal: -20 }}
         >
-          {WARDROBE_SLOTS.map((s) => {
-            const on = wardrobe?.[s]?.equipped;
-            const active = slot === s;
-            return (
-              <Pressable
-                key={s}
-                onPress={() => setSlot(s)}
-                className={`rounded-full px-4 py-2 ${active ? 'bg-neutral-900' : 'bg-neutral-100'}`}
-              >
-                <Text
-                  className={`text-[15px] font-bold ${active ? 'text-white' : 'text-neutral-600'}`}
-                >
-                  {SLOT_LABEL[s]}
-                </Text>
-                {on ? (
-                  <View
-                    className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full"
-                    style={{ backgroundColor: active ? '#34d399' : '#10b981' }}
-                  />
-                ) : null}
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-
-        {/* scrolling content: styles then colors */}
-        <ScrollView
-          className="flex-1 px-5 pt-4"
-          contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Styles */}
-          <Text className="mb-1.5 text-[13px] font-semibold uppercase tracking-wide text-neutral-400">
-            Style
-          </Text>
-          <View className="flex-row flex-wrap" style={{ gap: 10 }}>
-            {/* None / take off */}
-            <Pressable
-              onPress={removeSlot}
-              accessibilityLabel={`Remove ${SLOT_LABEL[slot]}`}
-              className="items-center justify-center rounded-2xl bg-neutral-50"
-              style={{
-                width: TILE,
-                height: TILE,
-                borderWidth: 2,
-                borderColor: isOff ? '#171717' : 'transparent',
-              }}
-            >
-              <Ionicons name="ban" size={24} color="#a3a3a3" />
+          {items.map((p) => (
+            <Pressable key={p.renderKey} onPress={() => setDetail(p)} style={styles.shelfItem}>
+              <View>
+                <ProductArt p={p} size={112} />
+                {isWorn(p) ? <WornBadge small /> : null}
+              </View>
+              <Text numberOfLines={1} style={styles.shelfItemName}>
+                {p.name}
+              </Text>
+              <PriceOrOwned p={p} />
             </Pressable>
-            {variants.map((v) => {
-              const selected = activeVariant === v.id;
-              return (
-                <Pressable
-                  key={v.id}
-                  onPress={() => pickVariant(v.id)}
-                  accessibilityLabel={v.name}
-                  className="overflow-hidden rounded-2xl"
-                  style={{
-                    width: TILE,
-                    height: TILE,
-                    borderWidth: 2,
-                    borderColor: selected ? '#171717' : 'transparent',
-                    backgroundColor: v.color ?? '#e9edf1',
-                  }}
-                >
-                  {v.tex ? (
-                    <Image
-                      source={v.tex}
-                      resizeMode="cover"
-                      style={{ width: '100%', height: '100%' }}
-                    />
-                  ) : null}
-                  {selected ? (
-                    <View className="absolute right-1 top-1 h-5 w-5 items-center justify-center rounded-full bg-neutral-900">
-                      <Ionicons name="checkmark" size={13} color="#fff" />
-                    </View>
-                  ) : null}
-                </Pressable>
-              );
-            })}
-          </View>
-
-          {/* Colors */}
-          <Text className="mb-1.5 mt-5 text-[13px] font-semibold uppercase tracking-wide text-neutral-400">
-            Color
-          </Text>
-          <View className="flex-row flex-wrap" style={{ gap: 10 }}>
-            {SHOP_COLORS.map((c) => {
-              const selected = activeColor?.toLowerCase() === c.toLowerCase();
-              return (
-                <Pressable
-                  key={c}
-                  onPress={() => pickColor(c)}
-                  accessibilityLabel={`Color ${c}`}
-                  className="h-10 w-10 items-center justify-center rounded-full"
-                  style={{
-                    backgroundColor: c,
-                    borderWidth: 2,
-                    borderColor: selected ? '#171717' : 'rgba(0,0,0,0.05)',
-                  }}
-                >
-                  {selected ? (
-                    <Ionicons name="checkmark" size={20} color={pickTextColor(c)} />
-                  ) : null}
-                </Pressable>
-              );
-            })}
-          </View>
+          ))}
         </ScrollView>
       </View>
+    );
+  };
+
+  const detailWorn = detail ? isWorn(detail) : false;
+  const detailOwned = detail ? owns(detail) : false;
+  const canAfford = detail ? coins >= detail.cost : false;
+  const detailRarity = detail ? rarityOf(detail.cost) : null;
+
+  return (
+    <Animated.View
+      style={[styles.takeover, sheetStyle]}
+      pointerEvents={open ? 'auto' : 'none'}
+    >
+      {/* sticky header: title + coin balance + close */}
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) }]}>
+        <Text style={styles.title}>Shop</Text>
+        <View style={styles.headerRight}>
+          <View style={styles.coinPill}>
+            <Coin size={15} />
+            <Text style={styles.coinPillText}>{coins}</Text>
+          </View>
+          <Pressable onPress={onClose} accessibilityLabel="Close shop" style={styles.closeBtn}>
+            <Ionicons name="close" size={20} color="#737373" />
+          </Pressable>
+        </View>
+      </View>
+
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingHorizontal: 20,
+          paddingTop: 12,
+          paddingBottom: Math.max(insets.bottom, 20) + 12,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Today's Shop header + restock countdown */}
+        <View style={styles.sectionRow}>
+          <Text style={styles.sectionTitle}>Today's Shop</Text>
+          <View style={styles.restockPill}>
+            <Ionicons name="time-outline" size={13} color="#ff7a3d" />
+            <Text style={styles.restockText}>New stock in {restockIn}</Text>
+          </View>
+        </View>
+
+        {/* featured (premium, larger) */}
+        <View style={styles.grid}>
+          {featured.map((p) => (
+            <View key={p.renderKey} style={styles.gridCell}>
+              <RotationCard p={p} big />
+            </View>
+          ))}
+        </View>
+
+        {/* daily row */}
+        <View style={[styles.grid, { marginTop: 14 }]}>
+          {daily.map((p) => (
+            <View key={p.renderKey} style={styles.gridCell}>
+              <RotationCard p={p} />
+            </View>
+          ))}
+        </View>
+
+        {/* full catalog: one shelf per slot */}
+        <Text style={styles.browseAll}>Browse all</Text>
+        {WARDROBE_SLOTS.map((slot) => (
+          <Shelf key={slot} slot={slot} />
+        ))}
+      </ScrollView>
+
+      {/* item detail modal */}
+      <Modal visible={detail != null} transparent animationType="fade" onRequestClose={() => setDetail(null)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setDetail(null)}>
+          {detail && detailRarity ? (
+            <Pressable style={styles.modalCard} onPress={() => {}}>
+              <View style={[styles.modalArt, { backgroundColor: detailRarity.grad[0] }]}>
+                <View style={[styles.rarityChip, { backgroundColor: detailRarity.chip }]}>
+                  <Text style={styles.rarityChipText}>{detailRarity.label.toUpperCase()}</Text>
+                </View>
+                <View style={{ alignItems: 'center', marginTop: 6 }}>
+                  <ProductArt p={detail} size={176} />
+                </View>
+              </View>
+              <Text style={styles.modalName}>{detail.name}</Text>
+
+              {detailOwned ? (
+                detailWorn ? (
+                  <Pressable style={styles.btnNeutral} onPress={() => takeOff(detail)}>
+                    <Text style={styles.btnNeutralText}>Take off</Text>
+                  </Pressable>
+                ) : (
+                  <Pressable style={styles.btnEquip} onPress={() => wear(detail)}>
+                    <Text style={styles.btnEquipText}>Equip</Text>
+                  </Pressable>
+                )
+              ) : (
+                <Pressable
+                  disabled={!canAfford}
+                  onPress={() => buy(detail)}
+                  style={[styles.btnBuy, !canAfford && styles.btnDisabled]}
+                >
+                  <Coin size={16} />
+                  <Text style={[styles.btnBuyText, !canAfford && styles.btnDisabledText]}>
+                    Buy for {detail.cost}
+                  </Text>
+                </Pressable>
+              )}
+            </Pressable>
+          ) : (
+            <View />
+          )}
+        </Pressable>
+      </Modal>
     </Animated.View>
   );
 }
 
-// black or white check depending on swatch luminance
-function pickTextColor(hex: string): string {
-  const h = hex.replace('#', '');
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return lum > 0.6 ? '#111' : '#fff';
-}
+const styles = StyleSheet.create({
+  takeover: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 50,
+    backgroundColor: '#fff',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+  },
+  title: { fontSize: 22, fontWeight: '800', color: '#171717' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  coinPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  coinPillText: { fontSize: 14, fontWeight: '800', color: '#404040' },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f5f5f5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#171717' },
+  restockPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#fff1e6',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  restockText: { fontSize: 12, fontWeight: '700', color: '#ff7a3d' },
+
+  grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 12, marginHorizontal: -7 },
+  gridCell: { width: '50%', paddingHorizontal: 7, marginBottom: 14 },
+
+  featuredCard: { borderRadius: 24, padding: 16 },
+  featuredName: { marginTop: 8, fontSize: 14, fontWeight: '700', color: '#171717' },
+  dailyCard: { borderRadius: 20, padding: 12 },
+  dailyName: { marginTop: 6, fontSize: 12, fontWeight: '700', color: '#262626' },
+
+  rarityChip: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  rarityChipText: { fontSize: 10, fontWeight: '800', color: '#fff', letterSpacing: 0.6 },
+
+  priceRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  priceText: { fontSize: 12, fontWeight: '700', color: '#525252' },
+  ownedText: { fontSize: 12, fontWeight: '800', color: '#059669', marginTop: 2 },
+
+  wornBadge: {
+    position: 'absolute',
+    right: 8,
+    top: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#171717',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  wornBadgeSmall: { right: 4, top: 4, width: 20, height: 20, borderRadius: 10 },
+
+  browseAll: { marginTop: 32, fontSize: 20, fontWeight: '800', color: '#171717' },
+  shelfTitle: { marginBottom: 10, fontSize: 17, fontWeight: '800', color: '#171717' },
+  shelfItem: { width: 112 },
+  shelfItemName: { marginTop: 6, fontSize: 12, fontWeight: '600', color: '#404040' },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 380,
+    borderRadius: 28,
+    backgroundColor: '#fff',
+    padding: 20,
+  },
+  modalArt: { borderRadius: 22, padding: 12 },
+  modalName: { marginTop: 16, textAlign: 'center', fontSize: 20, fontWeight: '800', color: '#171717' },
+
+  btnBuy: {
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 999,
+    paddingVertical: 14,
+    backgroundColor: '#7A5AF8',
+  },
+  btnBuyText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  btnDisabled: { backgroundColor: '#f5f5f5' },
+  btnDisabledText: { color: '#a3a3a3' },
+  btnEquip: {
+    marginTop: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    paddingVertical: 14,
+    backgroundColor: '#0a84ff',
+  },
+  btnEquipText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  btnNeutral: {
+    marginTop: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    paddingVertical: 14,
+    backgroundColor: '#f5f5f5',
+  },
+  btnNeutralText: { fontSize: 15, fontWeight: '700', color: '#525252' },
+});

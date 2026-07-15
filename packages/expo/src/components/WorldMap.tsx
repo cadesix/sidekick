@@ -10,6 +10,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AREA_BIOME, type EnvironmentId } from '../three/biomes';
+import { useSidekickContext } from '../store/context';
+
 // RN port of sidekick/src/components/world-map.tsx: the full-screen "world map"
 // the dock's Map icon opens. A static 3:4 map fills the viewport height (cover)
 // and pans horizontally; each area is an unlockable region with an emoji pin;
@@ -33,18 +36,18 @@ type Area = {
   color: string; // marker badge background
   left: number; // fraction of the map image
   top: number;
-  unlocked: boolean;
+  biome: EnvironmentId; // 3D world this island travels to
   blurb: string;
 };
 
 // positions are fractions of the world-map-*.webp image (matches the web's %)
 const AREAS: Area[] = [
-  { id: 'frostpeak', name: 'Frostpeak', emoji: '❄️', color: '#cfe6ff', left: 0.28, top: 0.26, unlocked: true, blurb: 'Snow-capped summit' },
-  { id: 'pinewood', name: 'Pinewood', emoji: '🌲', color: '#8fd18f', left: 0.74, top: 0.32, unlocked: true, blurb: 'Evergreen forest' },
-  { id: 'blossom', name: 'Blossom Vale', emoji: '🌸', color: '#ffc1dd', left: 0.29, top: 0.55, unlocked: false, blurb: 'Cherry-blossom groves' },
-  { id: 'dunes', name: 'Sandy Dunes', emoji: '🏜️', color: '#f2c98a', left: 0.8, top: 0.64, unlocked: false, blurb: 'Golden desert canyon' },
-  { id: 'palmcove', name: 'Palm Cove', emoji: '🌴', color: '#7fd6b0', left: 0.18, top: 0.79, unlocked: false, blurb: 'Tropical palm shore' },
-  { id: 'ember', name: 'Mount Ember', emoji: '🌋', color: '#ff8a5b', left: 0.58, top: 0.86, unlocked: false, blurb: 'Smouldering volcano' },
+  { id: 'frostpeak', name: 'Frostpeak', emoji: '❄️', color: '#cfe6ff', left: 0.28, top: 0.26, biome: AREA_BIOME.frostpeak, blurb: 'Snow-capped summit' },
+  { id: 'pinewood', name: 'Pinewood', emoji: '🌲', color: '#8fd18f', left: 0.74, top: 0.32, biome: AREA_BIOME.pinewood, blurb: 'Evergreen forest' },
+  { id: 'blossom', name: 'Blossom Vale', emoji: '🌸', color: '#ffc1dd', left: 0.29, top: 0.55, biome: AREA_BIOME.blossom, blurb: 'Cherry-blossom groves' },
+  { id: 'dunes', name: 'Sandy Dunes', emoji: '🏜️', color: '#f2c98a', left: 0.8, top: 0.64, biome: AREA_BIOME.dunes, blurb: 'Golden desert canyon' },
+  { id: 'palmcove', name: 'Palm Cove', emoji: '🌴', color: '#7fd6b0', left: 0.18, top: 0.79, biome: AREA_BIOME.palmcove, blurb: 'Tropical palm shore' },
+  { id: 'ember', name: 'Mount Ember', emoji: '🌋', color: '#ff8a5b', left: 0.58, top: 0.86, biome: AREA_BIOME.ember, blurb: 'Smouldering volcano' },
 ];
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -57,14 +60,23 @@ export function WorldMap({
   open,
   onClose,
   onChat,
+  onTravel,
+  onStartSession,
 }: {
   open: boolean;
   onClose: () => void;
   onChat?: () => void;
+  onTravel?: (biome: EnvironmentId) => void;
+  onStartSession?: (islandId: string) => void;
 }) {
   const insets = useSafeAreaInsets();
   const [selId, setSelId] = useState<string | null>(null);
   const selected = AREAS.find((a) => a.id === selId) ?? null;
+
+  // real gating: Frostpeak is always open; every other island unlocks by
+  // completing its guided session (mirrors web isUnlocked)
+  const sessions = useSidekickContext((s) => s.sessions);
+  const isUnlocked = (id: string) => id === 'frostpeak' || !!sessions[id]?.done;
 
   // the bottom promo card pops in only after the circle mask finishes expanding
   const [cardIn, setCardIn] = useState(false);
@@ -168,7 +180,7 @@ export function WorldMap({
                       justifyContent: 'center',
                       borderWidth: 2,
                       borderColor: '#fff',
-                      opacity: a.unlocked ? 1 : 0.8,
+                      opacity: isUnlocked(a.id) ? 1 : 0.8,
                       shadowColor: '#000',
                       shadowOffset: { width: 0, height: 2 },
                       shadowOpacity: 0.4,
@@ -177,7 +189,7 @@ export function WorldMap({
                     }}
                   >
                     <Text style={{ fontSize: 17 }}>{a.emoji}</Text>
-                    {!a.unlocked ? (
+                    {!isUnlocked(a.id) ? (
                       <View
                         style={{
                           position: 'absolute',
@@ -201,7 +213,7 @@ export function WorldMap({
                     numberOfLines={1}
                     className="rounded-full px-2 py-0.5 text-[11px] font-semibold overflow-hidden"
                     style={
-                      a.unlocked
+                      isUnlocked(a.id)
                         ? { backgroundColor: 'rgba(255,255,255,0.95)', color: '#262626' }
                         : { backgroundColor: 'rgba(0,0,0,0.5)', color: 'rgba(255,255,255,0.8)' }
                     }
@@ -300,7 +312,7 @@ export function WorldMap({
                       {selected.name}
                     </Text>
                     <Text numberOfLines={1} className="text-sm text-neutral-500">
-                      {selected.blurb} · {selected.unlocked ? 'Unlocked' : 'Locked'}
+                      {selected.blurb} · {isUnlocked(selected.id) ? 'Unlocked' : 'Locked'}
                     </Text>
                   </View>
                   <Pressable
@@ -312,20 +324,21 @@ export function WorldMap({
                   </Pressable>
                 </View>
                 <Pressable
-                  disabled={!selected.unlocked}
+                  onPress={() => {
+                    const unlocked = isUnlocked(selected.id);
+                    setSelId(null);
+                    if (unlocked) onTravel?.(selected.biome);
+                    else onStartSession?.(selected.id);
+                  }}
                   className={`mt-4 flex-row items-center justify-center gap-2 rounded-2xl py-3 ${
-                    selected.unlocked ? 'bg-[#0a84ff]' : 'bg-neutral-100'
+                    isUnlocked(selected.id) ? 'bg-[#0a84ff]' : 'bg-[#7A5AF8]'
                   }`}
                 >
-                  {!selected.unlocked ? (
-                    <Ionicons name="lock-closed" size={16} color="#a3a3a3" />
+                  {!isUnlocked(selected.id) ? (
+                    <Ionicons name="lock-closed" size={16} color="#fff" />
                   ) : null}
-                  <Text
-                    className={`text-[15px] font-semibold ${
-                      selected.unlocked ? 'text-white' : 'text-neutral-400'
-                    }`}
-                  >
-                    {selected.unlocked ? 'Explore' : 'Locked'}
+                  <Text className="text-[15px] font-semibold text-white">
+                    {isUnlocked(selected.id) ? `Travel to ${selected.name}` : 'Chat to unlock'}
                   </Text>
                 </Pressable>
               </View>
