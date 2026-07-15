@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -44,14 +43,44 @@ type Phase = 'asking' | 'answer' | 'probe' | 'extracting' | 'confirm' | 'done';
 const KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
 const NAME = 'sidekick';
 
-// the opening bot message — sets the mystical framing: the stars overhead are a
-// living map of how aligned you two are, and truly opening up lights them.
-const INTRO_EXPLAINER =
-  'the stars up there are ours ✦ the more i truly know you, the more of them light up — it\'s how we find our alignment. let\'s draw a little of the sky tonight 🌙';
+// the opening bot messages — frame the "star chat": every alignment builds a
+// star chart of who you are, ending in an astral analysis.
+const STAR_CHAT_INTRO = [
+  'this is our star chat, where i get to know you better',
+  'as you answer, your star chart will come together',
+  'the better i know you, the better i can help',
+  'and at the end you can see your astral analysis!',
+];
+
+// the end-of-session payoff: a short "astral reading" the AI writes from the
+// transcript. `archetype` is a poetic title, `traits` are quick descriptors.
+type Analysis = { archetype: string; reading: string; traits: string[] };
+// shown when there's no AI key or the model's analysis didn't parse
+const FALLBACK_ANALYSIS: Analysis = {
+  archetype: 'a sky still forming',
+  reading:
+    "i'm still learning your constellation, but i can already tell there's a lot up there worth mapping. the more we talk, the brighter it all gets. ✦",
+  traits: ['curious', 'open', 'worth knowing'],
+};
+
+function parseAnalysis(a: unknown): Analysis {
+  if (!a || typeof a !== 'object') return FALLBACK_ANALYSIS;
+  const o = a as Record<string, unknown>;
+  const traits = Array.isArray(o.traits) ? o.traits.filter((t): t is string => typeof t === 'string').slice(0, 4) : [];
+  return {
+    archetype: typeof o.archetype === 'string' && o.archetype.trim() ? o.archetype.trim() : FALLBACK_ANALYSIS.archetype,
+    reading: typeof o.reading === 'string' && o.reading.trim() ? o.reading.trim() : FALLBACK_ANALYSIS.reading,
+    traits: traits.length ? traits : FALLBACK_ANALYSIS.traits,
+  };
+}
 
 // one OpenAI turn with a custom inline system prompt → the reply text (or null
-// on no-key / error, so callers can fall back to a scripted line)
-async function llm(system: string, user: string): Promise<string | null> {
+// on no-key / error, so callers can fall back to a scripted line). `maxTokens`
+// defaults small (acks are one line); the extraction pass needs more room since
+// its JSON now carries fields + notes + recap + the astral analysis — too tight
+// and the JSON truncates mid-object, JSON.parse throws, and the whole
+// extraction (incl. the session's profile data) is silently lost.
+async function llm(system: string, user: string, maxTokens = 200): Promise<string | null> {
   if (!KEY) return null;
   try {
     const r = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -63,7 +92,7 @@ async function llm(system: string, user: string): Promise<string | null> {
           { role: 'system', content: system },
           { role: 'user', content: user },
         ],
-        max_tokens: 400,
+        max_tokens: maxTokens,
       }),
     });
     const data = await r.json();
@@ -90,14 +119,20 @@ async function fetchAck(def: SessionDef, ask: string, answer: string, probe: boo
 async function fetchExtraction(
   def: SessionDef,
   transcript: string,
-): Promise<{ fields: Record<string, string>; notes: { tag: string; text: string }[]; recap: string } | null> {
+): Promise<{ fields: Record<string, string>; notes: { tag: string; text: string }[]; recap: string; analysis: Analysis } | null> {
   const system =
     `you extract structured profile data from a get-to-know-you chat transcript. respond with ONLY valid JSON, no fences, in this shape:\n` +
-    `{"fields": {…}, "notes": [{"tag": "…", "text": "…"}], "recap": "…"}\n` +
+    `{"fields": {…}, "notes": [{"tag": "…", "text": "…"}], "recap": "…", "analysis": {"archetype": "…", "reading": "…", "traits": ["…"]}}\n` +
     `- "fields" keys MUST be from: ${def.schema.fields.join(', ') || '(none)'} — short lowercase values, omit anything the user didn't clearly say\n` +
     `- "notes" tags MUST be from: ${def.schema.notes.join(', ')} — text is a short quote-like capture of the user's own words\n` +
-    `- "recap" is a 1-2 sentence playful readback of what you learned, as a lowercase internet-native friend, ending with "locked in 🔒". no em-dash.`;
-  const reply = await llm(system, transcript);
+    `- "recap" is a 1-2 sentence playful readback of what you learned, as a lowercase internet-native friend, ending with "locked in 🔒". no em-dash.\n` +
+    `- "analysis" is a warm "astral reading" of this person built ONLY from what they shared:\n` +
+    `  - "archetype": a poetic 2-4 word lowercase title capturing their vibe (e.g. "the midnight builder")\n` +
+    `  - "reading": a warm, slightly mystical 2-3 sentence read of who they are — like a personalized horoscope grounded in what they actually said. lowercase, no em-dash, no clichés\n` +
+    `  - "traits": 3-4 short lowercase trait words drawn from the chat`;
+  // extraction JSON is the biggest payload (fields + notes + recap + analysis) —
+  // give it real headroom so it never truncates mid-object
+  const reply = await llm(system, transcript, 900);
   if (!reply) return null;
   try {
     const raw = reply
@@ -109,6 +144,7 @@ async function fetchExtraction(
       fields: parsed.fields ?? {},
       notes: Array.isArray(parsed.notes) ? parsed.notes : [],
       recap: typeof parsed.recap === 'string' ? parsed.recap : 'ok, got all of that. locked in 🔒',
+      analysis: parseAnalysis(parsed.analysis),
     };
   } catch {
     return null;
@@ -148,7 +184,7 @@ export function SessionChat({
   // completed: host closes the window and may offer travel
   onDone: () => void;
   // report constellation progress → the night sky lights `lit` of `total` stars
-  onConstellation?: (lit: number, total: number) => void;
+  onConstellation?: (lit: number) => void;
 }) {
   const insets = useSafeAreaInsets();
   const def = sessionFor(sessionId);
@@ -164,6 +200,7 @@ export function SessionChat({
   const answers = useRef<string[]>([]);
   const transcriptExtra = useRef(''); // recap corrections appended for re-extraction
   const extraction = useRef<{ fields: Record<string, string>; notes: { tag: string; text: string }[] } | null>(null);
+  const [analysis, setAnalysis] = useState<Analysis>(FALLBACK_ANALYSIS);
   const confirmedOnce = useRef(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -227,7 +264,7 @@ export function SessionChat({
     beatIdx.current = idx;
     setPhase('asking');
     // a star lights for each beat already behind us (beats 0..idx-1 are done)
-    onConstellation?.(idx, def.beats.length);
+    onConstellation?.(idx);
     showBotThen(def.beats[idx].ask, () => setPhase('answer'));
   };
 
@@ -240,7 +277,7 @@ export function SessionChat({
     if (resuming) {
       showBotThen(['oh hey, you\'re back!!', 'where were we… right:'], () => askBeat(st.beat));
     } else {
-      showBotThen([INTRO_EXPLAINER, ...def.intro], () => askBeat(0));
+      showBotThen(STAR_CHAT_INTRO, () => askBeat(0));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [def?.id]);
@@ -253,12 +290,13 @@ export function SessionChat({
 
   const finish = async () => {
     if (!def) return;
-    onConstellation?.(def.beats.length, def.beats.length); // all beats in → full constellation
+    onConstellation?.(def.beats.length); // all beats in → full constellation
     setPhase('extracting');
     setTyping(true);
     const ex = await fetchExtraction(def, transcript());
     setTyping(false);
     extraction.current = ex ? { fields: ex.fields, notes: ex.notes } : { fields: {}, notes: [] };
+    setAnalysis(ex?.analysis ?? FALLBACK_ANALYSIS);
     showBotThen([ex?.recap ?? 'ok, got all of that. locked in 🔒', 'did i get that right?'], () => setPhase('confirm'));
   };
 
@@ -293,7 +331,10 @@ export function SessionChat({
       setTyping(true);
       const ex = await fetchExtraction(def, transcript());
       setTyping(false);
-      if (ex) extraction.current = { fields: ex.fields, notes: ex.notes };
+      if (ex) {
+        extraction.current = { fields: ex.fields, notes: ex.notes };
+        setAnalysis(ex.analysis);
+      }
       showBotThen([ex ? `ok fixed. ${ex.recap}` : 'ok noted!!', 'good now?'], () => setPhase('confirm'));
       return;
     }
@@ -399,6 +440,30 @@ export function SessionChat({
               <TypingDots />
             </View>
           ) : null}
+
+          {/* end-of-session payoff: the astral analysis card (the constellation
+              is fully formed in the sky above by now) */}
+          {phase === 'done' ? (
+            <View className="mt-2 rounded-3xl border border-[#C9BCFF]/25 bg-[#170f2e]/80 p-5">
+              <View className="flex-row items-center gap-1.5">
+                <Text className="text-[12px] text-[#C9BCFF]">✦</Text>
+                <Text className="text-[11px] font-extrabold uppercase tracking-[2px] text-[#C9BCFF]">
+                  your astral analysis
+                </Text>
+              </View>
+              <Text className="mt-2 text-[21px] font-extrabold leading-[26px] text-white">{analysis.archetype}</Text>
+              {analysis.traits.length ? (
+                <View className="mt-2.5 flex-row flex-wrap gap-1.5">
+                  {analysis.traits.map((t, i) => (
+                    <View key={i} className="rounded-full border border-white/10 bg-white/10 px-2.5 py-1">
+                      <Text className="text-[12px] font-semibold text-[#E7E0FF]">{t}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+              <Text className="mt-3.5 text-[14.5px] leading-[22px] text-[#E7E0FF]/90">{analysis.reading}</Text>
+            </View>
+          ) : null}
         </ScrollView>
 
         <View
@@ -430,15 +495,6 @@ export function SessionChat({
             </View>
           )}
         </View>
-
-        {/* soft gradient fade at the top of the message list, so messages
-            dissolve into the sky/constellation zone above instead of hard-cutting
-            at the panel edge (pointerEvents none so it never blocks scroll) */}
-        <LinearGradient
-          colors={['rgba(14,9,30,0.95)', 'rgba(14,9,30,0)']}
-          pointerEvents="none"
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 72 }}
-        />
       </Animated.View>
     </Animated.View>
   );

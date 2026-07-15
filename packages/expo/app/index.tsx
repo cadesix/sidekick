@@ -32,6 +32,7 @@ import type { Framing, SidekickController } from '../src/three/renderer';
 import { CHAT_FRAMING, HERO_FRAMING } from '../src/three/framing';
 import { hydrateSettings, loadSettings, type SidekickSettings } from '../src/three/settings';
 import type { CosmeticsControls } from '../src/three/wardrobe';
+import { useDeferredFlag } from '../src/lib/useDeferredFlag';
 import { useChat } from '../src/store/chat';
 
 // RN port of sidekick/src/home4.tsx: full-viewport 3D mascot with an iOS-style
@@ -91,29 +92,16 @@ function HomeScreen() {
   // world environment (map travel) + the active guided session (if any)
   const [environment, setEnvironment] = useState<EnvironmentId>('meadow');
   const [sessionId, setSessionId] = useState<string | null>(null);
-  // guided-session constellation reveal: how many nodes are lit / the total for
-  // this session (the night sky draws it as beats complete)
-  const [constellation, setConstellation] = useState({ lit: 0, total: 0 });
+  // guided-session constellation reveal: how many nodes are lit (the night sky
+  // draws it as beats complete)
+  const [constellationLit, setConstellationLit] = useState(0);
 
-  // Session entry choreography (cinematic, staged):
-  //  1. land on HOME with the sidekick — no interface yet (~1.1s)
-  //  2. `cosmosPanned` → slow pan up + day→night crossfade + head looks up
-  //  3. `chatReady` → the message interface fades in once we're in the sky
-  const [cosmosPanned, setCosmosPanned] = useState(false);
-  const [chatReady, setChatReady] = useState(false);
-  useEffect(() => {
-    if (!sessionId) {
-      setCosmosPanned(false);
-      setChatReady(false);
-      return;
-    }
-    const t1 = setTimeout(() => setCosmosPanned(true), 1100); // land home, then pan up
-    const t2 = setTimeout(() => setChatReady(true), 2900); // pan mostly done → chat in
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
-  }, [sessionId]);
+  // Session entry choreography (cinematic, staged): land on HOME with the
+  // sidekick (~1.1s), then `cosmosPanned` → pan up + night crossfade + head
+  // look-up, then `chatReady` → the interface fades in once we're in the sky.
+  // Both flip false immediately when the session ends (useDeferredFlag offDelay 0).
+  const cosmosPanned = useDeferredFlag(!!sessionId, { onDelay: 1100 });
+  const chatReady = useDeferredFlag(!!sessionId, { onDelay: 2900 });
   // daily-box flow: streak splash → ground chest → rewards modal → done
   const [boxStage, setBoxStage] = useState<'init' | 'streak' | 'ground' | 'rewards' | 'done'>('init');
   const [boxReward, setBoxReward] = useState<BoxReward | null>(null);
@@ -229,8 +217,7 @@ function HomeScreen() {
           talking={loading}
           studio={shopOpen || appearanceOpen}
           cosmos={cosmosPanned}
-          constellationLit={constellation.lit}
-          constellationTotal={constellation.total}
+          constellationLit={constellationLit}
           environment={environment}
           onControls={setControls}
           onController={setController}
@@ -310,15 +297,15 @@ function HomeScreen() {
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 60 }}>
           <SessionChat
             sessionId={sessionId}
-            onConstellation={(lit, total) => setConstellation({ lit, total })}
+            onConstellation={setConstellationLit}
             onClose={() => {
               setSessionId(null);
-              setConstellation({ lit: 0, total: 0 });
+              setConstellationLit(0);
             }}
             onDone={() => {
               const biome = AREA_BIOME[sessionId];
               setSessionId(null);
-              setConstellation({ lit: 0, total: 0 });
+              setConstellationLit(0);
               if (biome) travelTo(biome);
             }}
           />

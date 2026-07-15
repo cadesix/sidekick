@@ -46,7 +46,6 @@ export function SidekickCanvas({
   ground,
   cosmos,
   constellationLit,
-  constellationTotal,
 }: {
   style?: ViewStyle;
   framing: Framing;
@@ -57,7 +56,6 @@ export function SidekickCanvas({
   // Guided session: crossfade the meadow → night sky + a progress constellation
   cosmos?: boolean;
   constellationLit?: number;
-  constellationTotal?: number;
   // world environment (map travel): 'meadow' | biome id
   environment?: EnvironmentId;
   // onboarding: park the character below-frame until jumpIn(); freeze camera drag
@@ -143,8 +141,8 @@ export function SidekickCanvas({
   }, [cosmos]);
 
   useEffect(() => {
-    controller.current?.setConstellation(constellationLit ?? 0, constellationTotal ?? 0);
-  }, [constellationLit, constellationTotal]);
+    controller.current?.setConstellation(constellationLit ?? 0);
+  }, [constellationLit]);
 
   useEffect(() => {
     controller.current?.setDailyBox(dailyBox ?? null);

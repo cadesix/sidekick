@@ -81,7 +81,7 @@ export type SidekickController = {
   // guided-session night sky: crossfade the meadow → dark starfield
   setCosmos: (v: boolean) => void;
   // reveal the first `lit` constellation nodes (driven by beat progress)
-  setConstellation: (lit: number, total: number) => void;
+  setConstellation: (lit: number) => void;
   // swap the world environment (map travel): 'meadow' | biome id
   setEnvironment: (id: EnvironmentId) => void;
   // daily loot chest: spawn/hide (tier or null) + trigger the open animation
@@ -309,9 +309,8 @@ export function createSidekickRenderer(
   cosmosGroup.add(starPoints);
 
   // constellation — up to 8 nodes in the upper-forward sky that light one by one
-  // as beats complete (uLit ∈ [0,total]; node j lights over uLit j→j+1, and the
-  // edge into it draws with it). Only the first `total` nodes are ever revealed,
-  // so a session's constellation completes at its own beat count.
+  // as beats complete (conLit eases toward the lit count; node j lights over
+  // conLit j→j+1, and the edge into it draws with it).
   const CONSTELLATION: [number, number, number][] = [
     [-6.5, 23, -26],
     [-4, 28, -30],
@@ -897,6 +896,8 @@ export function createSidekickRenderer(
     cosmosT += ((cosmos ? 1 : 0) - cosmosT) * 0.06;
     if (Math.abs((cosmos ? 1 : 0) - cosmosT) < 0.002) cosmosT = cosmos ? 1 : 0;
     const inCosmos = cosmosT > 0.001;
+    // studio backdrop or the night sky — either one fully hides the meadow
+    const inCover = inStudio || inCosmos;
     cosmosGroup.visible = inCosmos;
     nightMat.opacity = cosmosT;
     starUniforms.uOpacity.value = cosmosT;
@@ -931,8 +932,8 @@ export function createSidekickRenderer(
       const grassVisible = coverT < 0.999;
       grass.group.visible = grassVisible;
       if (grassVisible) grass.setOpacity(1 - coverT);
-    } else activeGround.visible = !inStudio && !inCosmos;
-    scene.fog = inStudio || inCosmos ? null : envFog;
+    } else activeGround.visible = !inCover;
+    scene.fog = inCover ? null : envFog;
 
     // onboarding jump-into-frame: launch from HIDDEN_Y with an eased rise + a
     // short arc overshoot; fire the impact shake at touchdown
