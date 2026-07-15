@@ -3,6 +3,8 @@ import { useRef, useState } from 'react';
 import { Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { NO_BROWSER_PAN } from '../lib/web-style';
+
 // Shared look-dev controls used by both the compact SettingsSheet and the full
 // /sidekick-3d editor route: a dependency-free slider, a color row that opens a
 // lil-gui-style HSV picker in a bottom-anchored modal, and a section header.
@@ -44,7 +46,7 @@ export function SliderRow({
       <Text className="w-[86px] text-[13px] text-neutral-600">{label}</Text>
       <View
         className="flex-1 justify-center"
-        style={{ height: 36 }}
+        style={[{ height: 36 }, NO_BROWSER_PAN]}
         onLayout={(e) => (width.current = e.nativeEvent.layout.width || 1)}
         onStartShouldSetResponder={() => true}
         onMoveShouldSetResponder={() => true}
