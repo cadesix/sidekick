@@ -65,9 +65,10 @@ export function HomeDock({ hidden, unread = 0, onMessages, onShop, onMap, onGoal
   useEffect(() => {
     shown.value = withTiming(hidden ? 0 : 1, { duration: 300 });
   }, [hidden, shown]);
+  // Slides fully off-screen rather than fading: animating a parent's opacity
+  // permanently kills descendant UIGlassEffect views (expo/expo#41024).
   const dockStyle = useAnimatedStyle(() => ({
-    opacity: shown.value,
-    transform: [{ translateY: (1 - shown.value) * 24 }],
+    transform: [{ translateY: (1 - shown.value) * 200 }],
   }));
 
   return (

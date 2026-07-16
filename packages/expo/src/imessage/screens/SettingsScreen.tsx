@@ -248,7 +248,7 @@ export function SettingsScreen() {
 	return (
 		<View style={styles.screen}>
 			<StatusBar style="dark" />
-			<View style={[styles.header, { paddingTop: insets.top + 6 }]}>
+			<View style={styles.header}>
 				<Glass isInteractive style={styles.glassButton}>
 					<Pressable hitSlop={12} onPress={() => router.back()} style={styles.glassPressable}>
 						<Icon name="chevronLeft" size={20} color={colors.blue} strokeWidth={2.5} />
@@ -399,6 +399,10 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "space-between",
 		paddingHorizontal: 12,
+		// Fixed padding, not insets.top: this screen always presents as a modal
+		// sheet, which starts below the status bar (the root window inset would
+		// double up as a huge blank band).
+		paddingTop: 12,
 		paddingBottom: 10,
 	},
 	glassButton: {
@@ -446,6 +450,8 @@ const styles = StyleSheet.create({
 	row: {
 		flexDirection: "row",
 		alignItems: "center",
+		// HIG: the label leads, the control (switch/value) sits at the trailing edge
+		justifyContent: "space-between",
 		gap: 12,
 		paddingHorizontal: 16,
 		height: 52,

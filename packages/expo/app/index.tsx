@@ -166,9 +166,11 @@ export default function Home() {
     setMapOpen(false); // …while the camera flies back to the meadow
   };
 
+  // No opacity here: animating a parent's opacity permanently breaks descendant
+  // UIGlassEffect views (expo/expo#41024) — the closed drawer is already fully
+  // off-screen via the translate.
   const drawerStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: (1 - chatProgress.value) * (SCREEN_H - DRAWER_TOP) }],
-    opacity: chatProgress.value < 0.02 ? 0 : 1,
   }));
 
   return (

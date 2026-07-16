@@ -83,7 +83,7 @@ export function AdPreviewScreen() {
 
 	return (
 		<View style={styles.screen}>
-			<View style={[styles.header, { paddingTop: insets.top + 6 }]}>
+			<View style={styles.header}>
 				<Glass isInteractive style={styles.glassButton}>
 					<Pressable hitSlop={12} onPress={() => router.back()} style={styles.glassPressable}>
 						<Icon name="chevronLeft" size={20} color={colors.blue} strokeWidth={2.5} />
@@ -170,6 +170,8 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "space-between",
 		paddingHorizontal: 12,
+		// Fixed, not insets.top: modal sheets start below the status bar
+		paddingTop: 12,
 		paddingBottom: 10,
 	},
 	glassButton: {

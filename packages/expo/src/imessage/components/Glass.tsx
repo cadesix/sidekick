@@ -1,21 +1,10 @@
-import Constants from "expo-constants";
 import { BlurView, type BlurViewProps } from "expo-blur";
 import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from "expo-glass-effect";
 import { createElement, type ReactNode } from "react";
 import { StyleSheet, type StyleProp, type ViewStyle } from "react-native";
 
-// The simulator reports the host CPU arch as the model identifier instead of a
-// real "iPhone17,3"-style id. (`Constants.isDevice` no longer exists — using it
-// made this gate false on real devices too, silently disabling glass everywhere;
-// the `[key: string]: any` on NativeConstants let it typecheck.)
-const modelId = Constants.platform?.ios?.platform ?? "";
-const onDevice = modelId !== "" && !["arm64", "x86_64", "i386"].includes(modelId);
-
-// True on iOS 26+ devices only. The simulator technically supports UIGlassEffect
-// but draws it as an almost fully transparent wash — chrome like the composer or
-// menus disappears entirely (re-verified 2026-07 with the createElement fix in
-// place, so it is NOT the css-interop prop bug) — frosted-blur fallback instead.
-const liquidGlass = isLiquidGlassAvailable() && isGlassEffectAPIAvailable() && onDevice;
+// True on iOS 26+; false on older iOS, Android, and web.
+const liquidGlass = isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
 
 interface GlassProps {
   style?: StyleProp<ViewStyle>;

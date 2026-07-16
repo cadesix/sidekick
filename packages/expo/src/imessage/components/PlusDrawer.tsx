@@ -32,16 +32,16 @@ interface PlusDrawerProps {
 }
 
 // The whole panel grows out of the plus button as one piece, rather than the
-// rows animating in one by one.
+// rows animating in one by one. No opacity in either direction: animating a
+// parent's opacity permanently kills descendant UIGlassEffect views
+// (expo/expo#41024), so the panel scales without fading.
 const drawerEnter = (_values: EntryAnimationsValues) => {
 	"worklet";
 	return {
 		initialValues: {
-			opacity: 0,
 			transform: [{ scale: 0.82 }, { translateY: 10 }],
 		},
 		animations: {
-			opacity: withTiming(1, { duration: 140 }),
 			transform: [
 				{ scale: withSpring(1, { duration: 420, dampingRatio: 0.72 }) },
 				{ translateY: withSpring(0, { duration: 420, dampingRatio: 0.72 }) },
@@ -54,11 +54,9 @@ const drawerExit = (_values: ExitAnimationsValues) => {
 	"worklet";
 	return {
 		initialValues: {
-			opacity: 1,
 			transform: [{ scale: 1 }, { translateY: 0 }],
 		},
 		animations: {
-			opacity: withTiming(0, { duration: 130 }),
 			transform: [
 				{ scale: withTiming(0.9, { duration: 130 }) },
 				{ translateY: withTiming(8, { duration: 130 }) },

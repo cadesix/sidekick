@@ -180,8 +180,9 @@ export function TapbackOverlay({
 			{ scale: 1 + progress.value * 0.03 },
 		],
 	}));
+	// No opacity: animating a parent's opacity permanently kills descendant
+	// UIGlassEffect views (expo/expo#41024), so the popovers scale in at full alpha.
 	const popoverStyle = useAnimatedStyle(() => ({
-		opacity: progress.value,
 		transform: [{ scale: interpolate(progress.value, [0, 1], [0.86, 1]) }],
 	}));
 	const scrimBlurProps = useAnimatedProps(() => ({ intensity: progress.value * 20 }));

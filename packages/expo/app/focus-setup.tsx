@@ -287,7 +287,7 @@ export default function FocusSetup() {
   return (
     <View style={styles.screen}>
       <StatusBar style="dark" />
-      <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
+      <View style={styles.header}>
         <Pressable accessibilityLabel="Back" onPress={goBack} style={styles.headerButton}>
           <SymbolView name="chevron.left" size={20} weight="semibold" tintColor="#0A84FF" />
         </Pressable>
@@ -618,6 +618,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 12,
+    // Fixed, not insets.top: modal sheets start below the status bar
+    paddingTop: 12,
     paddingBottom: 10,
     backgroundColor: "#F2F2F7",
   },

@@ -140,7 +140,7 @@ export default function HealthSetup() {
   return (
     <View style={styles.screen}>
       <StatusBar style="dark" />
-      <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
+      <View style={styles.header}>
         <Pressable accessibilityLabel="Back" onPress={() => router.back()} style={styles.headerButton}>
           <SymbolView name="chevron.left" size={20} weight="semibold" tintColor="#0A84FF" />
         </Pressable>
@@ -260,7 +260,8 @@ export default function HealthSetup() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#F2F2F7" },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingBottom: 10 },
+  // paddingTop is fixed, not insets.top: modal sheets start below the status bar
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingTop: 12, paddingBottom: 10 },
   headerButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   headerTitle: { fontSize: 17, fontWeight: "700", color: "#000000" },
   content: { paddingHorizontal: 20, paddingTop: 10 },
