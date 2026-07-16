@@ -7,6 +7,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 
 import { deinterleaveGeometry, loadGLB, loadTexture } from './assets';
+import STAR_FACE from './star-face.json';
 import { createCosmetics, type CosmeticsHandle } from './cosmetics';
 import { configureFaceTexture, createFaceController, type FaceController } from './face';
 import { patchWorldFog } from './fog-patch';
@@ -80,8 +81,22 @@ export type SidekickController = {
   setStudio: (v: boolean) => void;
   // guided-session night sky: crossfade the meadow → dark starfield
   setCosmos: (v: boolean) => void;
-  // reveal the first `lit` constellation nodes (driven by beat progress)
-  setConstellation: (lit: number) => void;
+  // TEMPORARY: live look-dev for the sky's star constellation (see
+  // store/starFaceConfig.ts). Goes away once the numbers are baked in.
+  setStarFace: (c: {
+    lineAlpha: number;
+    dustWeight: number;
+    starSize: number;
+    shineSpeed: number;
+    shineDepth: number;
+    size: number;
+    height: number;
+    depth: number;
+    pitch: number;
+    pulseAmt: number;
+    pulseDepth: number;
+    pulseHz: number;
+  }) => void;
   // swap the world environment (map travel): 'meadow' | biome id
   setEnvironment: (id: EnvironmentId) => void;
   // daily loot chest: spawn/hide (tier or null) + trigger the open animation
@@ -99,7 +114,51 @@ export type SidekickController = {
 // Bump on every edit — logged at context creation so the debug loop can verify
 // the bundle it launched is actually the code it just changed (Metro sometimes
 // serves stale bundles; see scripts/sim-snap.sh).
-export const BUILD_MARKER = 'build-041-constellation';
+export const BUILD_MARKER = 'build-052-unlock-news';
+
+// ---- star head ---------------------------------------------------------------
+// The constellation of the sidekick that hangs in the guided-session night sky.
+//
+// The geometry is PRECOMPUTED — scripts/build-star-face.mjs carves the head off
+// the body, contour-traces its silhouette, wraps the face-sheet's eyes and mouth
+// onto the dome, and scatters volume dust over the surface. Re-run that script
+// if the model or face sheet changes; nothing here derives shape at runtime.
+//
+// star-face.json is in constellation space: centred on the head, 1 unit across,
+// +z toward the viewer.
+const STAR_HEAD_AT = new THREE.Vector3(0, 29.82, -29);
+const STAR_HEAD_SIZE = 14.08; // world units across
+// pan-up view axis is ~26° above horizontal, so pitch the head by the same to
+// face back down it (atan2 of COSMOS_FRAMING's target-minus-pos)
+const STAR_HEAD_PITCH = Math.atan2(7.4, 15);
+// The cloud doesn't move — a travelling shine does the work instead, brightening
+// it in slow bands so it feels alive without spinning. SPEED is radians/sec of
+// the sweep; DEPTH is how much of a star's brightness it swings (0 = steady).
+const STAR_SHINE_SPEED = 1.379;
+const STAR_SHINE_DEPTH = 0.45;
+// how loud the joins are. Low: they hint at the contour, the stars carry it.
+const STAR_LINE_ALPHA = 0.323;
+// A very slow breath — it rocks a couple of degrees on pitch and drifts in and
+// out a little. Not the yaw drift this used to have (that read as a turning
+// head); this is small enough to feel like the sky itself moving.
+const STAR_PULSE_AMT = 0.035; // radians of pitch
+const STAR_PULSE_DEPTH = 0.9; // world units in/out
+const STAR_PULSE_HZ = 0.05; // ~20s a breath
+// dust brightness relative to a contour star — atmosphere, not structure
+const STAR_DUST_WEIGHT = 0.571;
+// point-size multiplier for every star in the cloud
+const STAR_SIZE = 1.251;
+
+function toStarPositions(list: number[][]): Float32Array {
+  const out = new Float32Array(list.length * 3);
+  list.forEach((p, i) => {
+    out[i * 3] = p[0] * STAR_HEAD_SIZE;
+    out[i * 3 + 1] = p[1] * STAR_HEAD_SIZE;
+    out[i * 3 + 2] = p[2] * STAR_HEAD_SIZE;
+  });
+  return out;
+}
+
 
 // Whether the production home renders through the bloom composer. Off: web
 // /home5 renders direct (no post) with antialias, so we match it. Flip on only
@@ -303,76 +362,131 @@ export function createSidekickRenderer(
   starPoints.renderOrder = -2;
   cosmosGroup.add(starPoints);
 
-  // constellation — up to 8 nodes in the upper-forward sky that light one by one
-  // as beats complete (conLit eases toward the lit count; node j lights over
-  // conLit j→j+1, and the edge into it draws with it).
-  const CONSTELLATION: [number, number, number][] = [
-    [-6.5, 23, -26],
-    [-4, 28, -30],
-    [-0.5, 25, -28],
-    [2.5, 29, -31],
-    [5, 25.5, -27],
-    [7, 30, -30],
-    [3, 32.5, -33],
-    [-2, 31.5, -32],
-  ];
-  const conUniforms = { uTime: { value: 0 }, uOpacity: { value: 0 }, uLit: { value: 0 } };
-  // node markers (brighter glowing points)
-  const nodePos = new Float32Array(CONSTELLATION.length * 3);
-  const nodeIdx = new Float32Array(CONSTELLATION.length);
-  CONSTELLATION.forEach((p, i) => {
-    nodePos[i * 3] = p[0];
-    nodePos[i * 3 + 1] = p[1];
-    nodePos[i * 3 + 2] = p[2];
-    nodeIdx[i] = i;
-  });
-  const nodeMat = new THREE.ShaderMaterial({
-    uniforms: conUniforms,
+  // star head — the sidekick, drawn in stars, hanging in the night sky. The
+  // silhouette and the eyes/mouth are traced contours joined by faint lines,
+  // sitting inside a cloud of volume dust (stars in front AND behind) so it
+  // never reads as a flat decal. It's simply THERE: no beat-driven assembly, it
+  // just fades up with the pan into the sky.
+  // Geometry is precomputed; see scripts/build-star-face.mjs.
+  // uShine*/uStarSize/uLineAlpha are uniforms (not baked constants) so the
+  // temporary tuning sliders can drive them without a shader rebuild
+  const headUniforms = {
+    uTime: { value: 0 },
+    uOpacity: { value: 0 },
+    uShineSpeed: { value: STAR_SHINE_SPEED },
+    uShineDepth: { value: STAR_SHINE_DEPTH },
+    uStarSize: { value: STAR_SIZE },
+    uLineAlpha: { value: STAR_LINE_ALPHA },
+    // half-depth of the cloud in world units — drives the near/far fade. Passed
+    // in rather than read off modelMatrix, whose diagonal isn't the scale once
+    // the group is pitched.
+    uHalfSpan: { value: STAR_HEAD_SIZE * 0.35 },
+    uDustW: { value: STAR_DUST_WEIGHT },
+  };
+  const starHeadGroup = new THREE.Group();
+  starHeadGroup.position.copy(STAR_HEAD_AT);
+  // pitch it down the camera's pan-up axis so it faces the user
+  starHeadGroup.rotation.x = STAR_HEAD_PITCH;
+  cosmosGroup.add(starHeadGroup);
+  // the pose the slow breath oscillates around (setStarFace moves the rest pose;
+  // the animate loop adds the breath, so the two never fight over the transform)
+  const starRest = {
+    height: STAR_HEAD_AT.y,
+    depth: STAR_HEAD_AT.z,
+    pitch: STAR_HEAD_PITCH,
+    pulseAmt: STAR_PULSE_AMT,
+    pulseDepth: STAR_PULSE_DEPTH,
+    pulseHz: STAR_PULSE_HZ,
+  };
+
+  const headMat = new THREE.ShaderMaterial({
+    uniforms: headUniforms,
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     vertexShader:
-      'attribute float aIndex; uniform float uTime; uniform float uLit; varying float vB;\n' +
-      'void main(){ vB = clamp(uLit - aIndex, 0.0, 1.0); float tw = 0.75 + 0.25*sin(uTime*2.2 + aIndex*1.7);\n' +
-      // base grows with vB, plus a subtle pop that peaks mid-ignite so the star
-      // flares as it lights, then settles
-      '  float pop = 1.0 + 3.0 * vB * (1.0 - vB);\n' +
-      '  vec4 mv = modelViewMatrix * vec4(position,1.0); gl_PointSize = (1.2 + 2.8*vB) * pop * tw * (200.0 / -mv.z);\n' +
+      'attribute float aPhase; attribute float aW;\n' +
+      'uniform float uTime; uniform float uShineSpeed; uniform float uShineDepth;\n' +
+      'uniform float uStarSize; uniform float uHalfSpan; uniform float uDustW;\n' +
+      'varying float vB;\n' +
+      'void main(){ vec4 mv = modelViewMatrix * vec4(position,1.0);\n' +
+      '  vec4 c = modelViewMatrix * vec4(0.0,0.0,0.0,1.0);\n' +
+      // +z is toward the camera in view space, so a bigger mv.z is nearer. Depth
+      // is measured against the cloud's OWN centre (and scaled by its own size)
+      // so it holds under any framing or scale.
+      '  float near = clamp((mv.z - c.z) / max(0.001, uHalfSpan) + 0.5, 0.0, 1.0);\n' +
+      '  float w = mix(uDustW, 1.0, aW);\n' +
+      '  float tw = 0.74 + 0.26*sin(uTime*1.6 + aPhase);\n' +
+      // a slow shine drifting across the cloud, so the head brightens in bands
+      // instead of pulsing as one lump — this is what replaces rotating it
+      '  float sweep = 0.5 + 0.5*sin(uTime*uShineSpeed - (position.x*0.3 + position.y*0.17));\n' +
+      '  vB = w * tw * ((1.0 - uShineDepth) + uShineDepth*sweep) * (0.25 + 0.75*near);\n' +
+      '  gl_PointSize = uStarSize * (0.7 + 1.5*near) * (0.55 + 0.45*w) * tw * (200.0 / -mv.z);\n' +
       '  gl_Position = projectionMatrix * mv; }',
     fragmentShader:
-      // bright crisp core + soft halo → a star, not a fuzzy blob
       'uniform float uOpacity; varying float vB;\n' +
       'void main(){ float r = length(gl_PointCoord - 0.5);\n' +
-      '  float core = smoothstep(0.18, 0.0, r); float glow = smoothstep(0.5, 0.1, r) * 0.45;\n' +
-      '  float a = min(1.0, core + glow); gl_FragColor = vec4(0.92, 0.9, 1.0, a * vB * uOpacity); }',
+      '  float core = smoothstep(0.2, 0.0, r); float glow = smoothstep(0.5, 0.1, r) * 0.45;\n' +
+      '  float a = min(1.0, core + glow);\n' +
+      '  gl_FragColor = vec4(0.92, 0.9, 1.0, a * vB * uOpacity); }',
   });
-  const nodeGeo = new THREE.BufferGeometry();
-  nodeGeo.setAttribute('position', new THREE.BufferAttribute(nodePos, 3));
-  nodeGeo.setAttribute('aIndex', new THREE.BufferAttribute(nodeIdx, 1));
-  const conNodes = new THREE.Points(nodeGeo, nodeMat);
-  conNodes.renderOrder = -1;
-  cosmosGroup.add(conNodes);
-  // connecting lines: segment i joins node i→i+1, drawing in with node i+1
-  const segCount = CONSTELLATION.length - 1;
-  const linePos = new Float32Array(segCount * 2 * 3); // filled per-frame by the draw
-  const lineMat = new THREE.ShaderMaterial({
-    uniforms: conUniforms,
+  const starHead = new THREE.Points(new THREE.BufferGeometry(), headMat);
+  // culling against a swapped-in geometry's bounds drops the object outright on
+  // expo-gl — same reason every character mesh here does it
+  starHead.frustumCulled = false;
+  starHead.renderOrder = -1;
+  starHeadGroup.add(starHead);
+
+  // the joins. Faint on purpose — they should suggest the contour, not draw the
+  // character; the stars are the thing you look at. One LineSegments for all
+  // four loops: a LineLoop can only close a single ring.
+  const headLineMat = new THREE.ShaderMaterial({
+    uniforms: headUniforms,
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
-    // brightness is constant along the drawn portion — the *reveal* is done by
-    // extending the segment geometry each frame (see the animate loop), so the
-    // line visibly draws from star to star rather than just fading in
-    vertexShader:
-      'void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+    vertexShader: 'void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
     fragmentShader:
-      'uniform float uOpacity; void main(){ gl_FragColor = vec4(0.72, 0.68, 1.0, uOpacity * 0.8); }',
+      'uniform float uOpacity; uniform float uLineAlpha;\n' +
+      'void main(){ gl_FragColor = vec4(0.62, 0.58, 0.95, uOpacity * uLineAlpha); }',
   });
-  const lineGeo = new THREE.BufferGeometry();
-  lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
-  const conLines = new THREE.LineSegments(lineGeo, lineMat);
-  conLines.renderOrder = -2;
-  cosmosGroup.add(conLines);
+  const starHeadLines = new THREE.LineSegments(new THREE.BufferGeometry(), headLineMat);
+  starHeadLines.frustumCulled = false;
+  starHeadLines.renderOrder = -2;
+  starHeadGroup.add(starHeadLines);
+
+  {
+    // one cloud: contour stars at full weight, dust at a fraction, so the drawn
+    // shape stays the thing your eye lands on
+    const loopPts: number[][] = STAR_FACE.loops.flatMap((l) => l.points);
+    const all = [...loopPts, ...STAR_FACE.dust.positions];
+    const phase = new Float32Array(all.length);
+    const weight = new Float32Array(all.length);
+    for (let i = 0; i < all.length; i++) {
+      phase[i] = (i * 2.399) % (Math.PI * 2); // deterministic twinkle spread
+      weight[i] = i < loopPts.length ? 1 : 0; // 1 = contour, 0 = dust; uDustW mixes
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(toStarPositions(all), 3));
+    g.setAttribute('aPhase', new THREE.BufferAttribute(phase, 1));
+    g.setAttribute('aW', new THREE.BufferAttribute(weight, 1));
+    starHead.geometry = g;
+
+    // close each loop on itself
+    const segs: number[] = [];
+    for (const loop of STAR_FACE.loops) {
+      const pts = loop.points;
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i];
+        const b = pts[(i + 1) % pts.length];
+        segs.push(a[0] * STAR_HEAD_SIZE, a[1] * STAR_HEAD_SIZE, a[2] * STAR_HEAD_SIZE);
+        segs.push(b[0] * STAR_HEAD_SIZE, b[1] * STAR_HEAD_SIZE, b[2] * STAR_HEAD_SIZE);
+      }
+    }
+    const lg = new THREE.BufferGeometry();
+    lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(segs), 3));
+    starHeadLines.geometry = lg;
+  }
 
   // Camera
   let framing = opts.framing;
@@ -760,8 +874,6 @@ export function createSidekickRenderer(
   let phoneShown = false;
   let studioT = 0; // eased meadow→studio blend (0 meadow, 1 studio)
   let cosmosT = 0; // eased meadow→night-sky blend (guided session)
-  let conLit = 0; // eased constellation reveal (0..total lit nodes)
-  let conLitTarget = 0;
   let raf = 0;
   let snapFrame = 0;
   const studioMat = studioSphere.material as THREE.MeshBasicMaterial;
@@ -889,26 +1001,19 @@ export function createSidekickRenderer(
     nightMat.opacity = cosmosT;
     starUniforms.uOpacity.value = cosmosT;
     starUniforms.uTime.value = now;
-    conUniforms.uOpacity.value = cosmosT;
-    conUniforms.uTime.value = now;
-    conLit += (conLitTarget - conLit) * 0.08; // smooth star-by-star reveal
-    conUniforms.uLit.value = conLit;
-    // draw the constellation lines: segment i extends from node i toward node
-    // i+1 as node i+1 lights (conLit crossing i+1), so the line grows star→star
-    if (inCosmos) {
-      for (let i = 0; i < segCount; i++) {
-        const a = CONSTELLATION[i];
-        const b = CONSTELLATION[i + 1];
-        const prog = Math.min(1, Math.max(0, conLit - (i + 1)));
-        linePos[i * 6] = a[0];
-        linePos[i * 6 + 1] = a[1];
-        linePos[i * 6 + 2] = a[2];
-        linePos[i * 6 + 3] = a[0] + (b[0] - a[0]) * prog;
-        linePos[i * 6 + 4] = a[1] + (b[1] - a[1]) * prog;
-        linePos[i * 6 + 5] = a[2] + (b[2] - a[2]) * prog;
-      }
-      lineGeo.attributes.position.needsUpdate = true;
-    }
+    // the star head rides the same crossfade — it's simply there, assembling
+    // nothing; it just resolves out of the dark as the camera reaches the sky.
+    // Lag it slightly behind cosmosT so the sky arrives first and the head
+    // settles into it rather than flying up with the camera.
+    headUniforms.uOpacity.value = Math.max(0, cosmosT * 1.35 - 0.35);
+    headUniforms.uTime.value = now;
+    // the slow breath: a couple of degrees of pitch and a small drift in/out,
+    // offset a quarter-cycle so the rock and the drift don't peak together (that
+    // reads as one lump moving; out of phase it reads as something alive)
+    const breathT = now * Math.PI * 2 * starRest.pulseHz;
+    starHeadGroup.rotation.x = starRest.pitch + Math.sin(breathT) * starRest.pulseAmt;
+    starHeadGroup.position.y = starRest.height;
+    starHeadGroup.position.z = starRest.depth + Math.sin(breathT + Math.PI / 2) * starRest.pulseDepth;
     // the character sits out of frame under the up-pan; drop it entirely once in
     pull.visible = cosmosT < 0.9;
 
@@ -1110,8 +1215,22 @@ export function createSidekickRenderer(
     setCosmos: (v) => {
       cosmos = v;
     },
-    setConstellation: (lit) => {
-      conLitTarget = Math.max(0, Math.min(lit, CONSTELLATION.length));
+    setStarFace: (c) => {
+      headUniforms.uLineAlpha.value = c.lineAlpha;
+      headUniforms.uDustW.value = c.dustWeight;
+      headUniforms.uStarSize.value = c.starSize;
+      headUniforms.uShineSpeed.value = c.shineSpeed;
+      headUniforms.uShineDepth.value = c.shineDepth;
+      headUniforms.uHalfSpan.value = c.size * 0.35;
+      // the JSON is 1 unit across, so scale IS the size in world units
+      starHeadGroup.scale.setScalar(c.size / STAR_HEAD_SIZE);
+      // the animate loop adds the breath on top of this rest pose
+      starRest.height = c.height;
+      starRest.depth = c.depth;
+      starRest.pitch = c.pitch;
+      starRest.pulseAmt = c.pulseAmt;
+      starRest.pulseDepth = c.pulseDepth;
+      starRest.pulseHz = c.pulseHz;
     },
     setEnvironment: (id) => {
       environment = id;

@@ -14,6 +14,8 @@ import Svg, { Circle, Path, Rect } from 'react-native-svg';
 type DockProps = {
   hidden?: boolean;
   unread?: number;
+  // an island unlocked but not yet seen — a dot on the map icon
+  mapDot?: boolean;
   onMessages: () => void;
   onShop?: () => void;
   onMap?: () => void;
@@ -53,7 +55,7 @@ function AppTile({
 const ICON = Math.round(TILE * 0.62);
 const BAG = Math.round(TILE * 0.56);
 
-export function HomeDock({ hidden, unread = 0, onMessages, onShop, onMap, onGoals }: DockProps) {
+export function HomeDock({ hidden, unread = 0, mapDot, onMessages, onShop, onMap, onGoals }: DockProps) {
   const insets = useSafeAreaInsets();
   const shown = useSharedValue(hidden ? 0 : 1);
   useEffect(() => {
@@ -114,6 +116,8 @@ export function HomeDock({ hidden, unread = 0, onMessages, onShop, onMap, onGoal
             <Path d="M36 22c0-3.3-2.7-6-6-6s-6 2.7-6 6c0 4.5 6 11 6 11s6-6.5 6-11z" fill="#ff5b4d" />
             <Circle cx="30" cy="22" r="2.2" fill="#fff" />
           </Svg>
+          {/* a new island is open and hasn't been looked at yet */}
+          {mapDot ? <View style={styles.dot} pointerEvents="none" /> : null}
         </AppTile>
 
         {/* Goals — bullseye target on a blue gradient */}
@@ -169,5 +173,17 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   badgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  // same anchor as `badge`, but wordless — there's no count to show, just news
+  dot: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 15,
+    height: 15,
+    borderRadius: 8,
+    backgroundColor: '#FF3B30',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+  },
   center: { alignItems: 'center', justifyContent: 'center' },
 });

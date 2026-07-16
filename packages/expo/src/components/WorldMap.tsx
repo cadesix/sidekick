@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
-import { Dimensions, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
   interpolate,
@@ -21,14 +21,16 @@ import {
   sessionFor,
 } from '@sidekick/core';
 
-import { AREA_BIOME, type EnvironmentId } from '../three/biomes';
+import { type EnvironmentId } from '../three/biomes';
+import { ISLANDS, type Island } from '../lib/islands';
 import { loadSettings } from '../three/settings';
 import { useBond } from '../store/bond';
 import { useSidekickContext } from '../store/context';
 
 // RN port of sidekick/src/components/world-map.tsx: the full-screen "world map"
-// the dock's Map icon opens. A static 3:4 map fills the viewport height (cover)
-// and pans horizontally; each island is locked behind ONE guided session.
+// the dock's Map icon opens. A static 3:4 map fills the viewport height (cover),
+// fixed and centered — the side overhang is clipped, never panned. Each island
+// is locked behind ONE guided session.
 // Unlocked islands show an emoji badge + name pill; locked islands show the
 // "Chat to unlock" purple lock-pill. Tapping any island opens the centered
 // destination modal — travel when unlocked, the session doorway when locked.
@@ -56,37 +58,29 @@ const PURPLE_SHADOW = '#5638c6';
 // bond bar fill gradient (web: from-[#ffb454] to-[#ff7a3d])
 const BOND_FILL: readonly [string, string] = ['#ffb454', '#ff7a3d'];
 
-type Area = {
-  id: string;
-  name: string;
-  emoji: string;
-  color: string; // marker badge background
-  left: number; // fraction of the map image
-  top: number;
-  biome: EnvironmentId; // 3D world this island travels to
-  blurb: string;
-};
+// an island placed on the map: its identity (from ISLANDS) + where the art puts
+// it. left/top are fractions of the world-map-*.webp image (matches the web's %)
+type Area = Island & { left: number; top: number };
 
-// positions are fractions of the world-map-*.webp image (matches the web's %)
 const AREAS: Area[] = [
-  { id: 'frostpeak', name: 'Frostpeak', emoji: '❄️', color: '#cfe6ff', left: 0.29, top: 0.19, biome: AREA_BIOME.frostpeak, blurb: 'Snow-capped summit' },
-  { id: 'pinewood', name: 'Pinewood', emoji: '🌲', color: '#8fd18f', left: 0.73, top: 0.28, biome: AREA_BIOME.pinewood, blurb: 'Evergreen forest' },
-  { id: 'blossom', name: 'Blossom Vale', emoji: '🌸', color: '#ffc1dd', left: 0.29, top: 0.49, biome: AREA_BIOME.blossom, blurb: 'Cherry-blossom groves' },
-  { id: 'dunes', name: 'Sandy Dunes', emoji: '🏜️', color: '#f2c98a', left: 0.82, top: 0.57, biome: AREA_BIOME.dunes, blurb: 'Golden desert canyon' },
-  { id: 'palmcove', name: 'Palm Cove', emoji: '🌴', color: '#7fd6b0', left: 0.24, top: 0.73, biome: AREA_BIOME.palmcove, blurb: 'Tropical palm shore' },
-  { id: 'ember', name: 'Mount Ember', emoji: '🌋', color: '#ff8a5b', left: 0.65, top: 0.79, biome: AREA_BIOME.ember, blurb: 'Smouldering volcano' },
+  { ...ISLANDS.frostpeak, left: 0.29, top: 0.19 },
+  { ...ISLANDS.pinewood, left: 0.73, top: 0.28 },
+  { ...ISLANDS.blossom, left: 0.29, top: 0.49 },
+  { ...ISLANDS.dunes, left: 0.82, top: 0.57 },
+  { ...ISLANDS.palmcove, left: 0.24, top: 0.73 },
+  { ...ISLANDS.ember, left: 0.65, top: 0.79 },
 ];
-
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-// CSS circle(74%) resolves against hypot(w,h)/√2; sized so the deceleration
-// lands just past the corners instead of overshooting off-frame.
-const CIRCLE_D = 2 * 0.74 * (Math.hypot(SCREEN_W, SCREEN_H) / Math.SQRT2);
-const MAP_W = SCREEN_H * MAP_ASPECT; // cover: fills height, pans horizontally
 
 // each marker box is centered on its map point; box is large enough to never
 // clip the lock-pill / name, and box-none so only the pill takes touches
 const MARK_W = 200;
 const MARK_H = 140;
+
+// markers sit in screen space, so an island near the art's edge can overhang
+// the viewport; nudge it back inside. Widths are measured on layout — this
+// stands in for the first frame.
+const PILL_W_GUESS = 150;
+const EDGE_PAD = 10;
 
 export function WorldMap({
   open,
@@ -102,9 +96,22 @@ export function WorldMap({
   onStartSession?: (islandId: string) => void;
 }) {
   const insets = useSafeAreaInsets();
+  // live, so the map keeps filling the viewport when it changes (web resize,
+  // rotation) instead of staying pinned to whatever it measured at module load
+  const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
+  // CSS circle(74%) resolves against hypot(w,h)/√2; sized so the deceleration
+  // lands just past the corners instead of overshooting off-frame.
+  const CIRCLE_D = 2 * 0.74 * (Math.hypot(SCREEN_W, SCREEN_H) / Math.SQRT2);
+  const MAP_W = SCREEN_H * MAP_ASPECT; // cover: fills the height, overhangs the sides
+  const MAP_X = (SCREEN_W - MAP_W) / 2; // fixed, centered — the overhang is clipped
+  const clampX = (x: number, w: number) =>
+    Math.min(Math.max(x, w / 2 + EDGE_PAD), SCREEN_W - w / 2 - EDGE_PAD);
+
   // map art matches the scene's time of day (like web's MAP_ART)
   const mapSrc = MAP_ART[loadSettings().timeOfDay] ?? MAP_ART.day;
   const [selId, setSelId] = useState<string | null>(null);
+  // measured marker widths, so edge islands can be clamped into the viewport
+  const [pillW, setPillW] = useState<Record<string, number>>({});
   const selected = AREAS.find((a) => a.id === selId) ?? null;
   // the modal keeps rendering the last destination through its fade-out
   const lastSelRef = useRef<Area | null>(null);
@@ -114,6 +121,8 @@ export function WorldMap({
   // live Bond score for the bars; session completion drives the locks
   const bond = useBond((s) => s.bond);
   const sessions = useSidekickContext((s) => s.sessions);
+  // the island unlocked since they last looked — gets a "new" bubble
+  const unseenIsland = useSidekickContext((s) => s.unseenIsland);
   // real gating: Frostpeak is always open; every other island unlocks by
   // completing its guided session (mirrors web isUnlocked)
   const isUnlocked = (id: string) => id === 'frostpeak' || !!sessions[id]?.done;
@@ -243,163 +252,177 @@ export function WorldMap({
           />
 
           {/* the 3:4 map fills the viewport height; it's wider than the screen,
-              so it pans horizontally and opens centered */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentOffset={{ x: Math.max(0, (MAP_W - SCREEN_W) / 2), y: 0 }}
+              so it sits centered and the overhang is clipped — fixed, no pan */}
+          <View
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: SCREEN_W,
+              height: SCREEN_H,
+              overflow: 'hidden',
+            }}
           >
-            <Pressable onPress={() => setSelId(null)} style={{ width: MAP_W, height: SCREEN_H }}>
+            <Pressable
+              onPress={() => setSelId(null)}
+              style={{ position: 'absolute', left: MAP_X, top: 0, width: MAP_W, height: SCREEN_H }}
+            >
               <Image
                 source={mapSrc}
                 style={{ width: MAP_W, height: SCREEN_H }}
                 contentFit="cover"
               />
-              {AREAS.map((a) => {
-                const unlocked = isUnlocked(a.id);
-                const session = sessionFor(a.id);
-                const startable = isSessionStartable(sessions, a.id);
-                const isNext = nextId === a.id;
-                // low-map islands flip their card ABOVE the pin so nothing clips
-                // at the bottom edge on tall (9:16) screens
-                const cardAbove = a.top > 0.6;
-                return (
-                  <View
-                    key={a.id}
-                    pointerEvents="box-none"
+            </Pressable>
+            {AREAS.map((a) => {
+              const unlocked = isUnlocked(a.id);
+              const session = sessionFor(a.id);
+              const startable = isSessionStartable(sessions, a.id);
+              const isNext = nextId === a.id;
+              // low-map islands flip their card ABOVE the pin so nothing clips
+              // at the bottom edge on tall (9:16) screens
+              const cardAbove = a.top > 0.6;
+              const cx = clampX(a.left * MAP_W + MAP_X, pillW[a.id] ?? PILL_W_GUESS);
+              return (
+                <View
+                  key={a.id}
+                  pointerEvents="box-none"
+                  style={{
+                    position: 'absolute',
+                    left: cx - MARK_W / 2,
+                    top: a.top * SCREEN_H - MARK_H / 2,
+                    width: MARK_W,
+                    height: MARK_H,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Pressable
+                    onPress={() => setSelId(a.id)}
+                    onLayout={(e) => {
+                      const w = e.nativeEvent.layout.width;
+                      setPillW((p) => (p[a.id] === w ? p : { ...p, [a.id]: w }));
+                    }}
+                    accessibilityLabel={a.name}
                     style={{
-                      position: 'absolute',
-                      left: a.left * MAP_W - MARK_W / 2,
-                      top: a.top * SCREEN_H - MARK_H / 2,
-                      width: MARK_W,
-                      height: MARK_H,
+                      flexDirection: cardAbove ? 'column-reverse' : 'column',
                       alignItems: 'center',
-                      justifyContent: 'center',
+                      gap: 6,
                     }}
                   >
-                    <Pressable
-                      onPress={() => setSelId(a.id)}
-                      accessibilityLabel={a.name}
-                      style={{
-                        flexDirection: cardAbove ? 'column-reverse' : 'column',
-                        alignItems: 'center',
-                        gap: 6,
-                      }}
-                    >
-                      {unlocked ? (
-                        <>
-                          <View
-                            style={{
-                              width: 36,
-                              height: 36,
-                              borderRadius: 18,
-                              backgroundColor: a.color,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              borderWidth: 2,
-                              borderColor: '#fff',
-                              shadowColor: '#000',
-                              shadowOffset: { width: 0, height: 2 },
-                              shadowOpacity: 0.4,
-                              shadowRadius: 3.5,
-                              elevation: 4,
-                            }}
+                    {unlocked ? (
+                      <>
+                        <View
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 18,
+                            backgroundColor: a.color,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            borderWidth: 2,
+                            borderColor: '#fff',
+                            shadowColor: '#000',
+                            shadowOffset: { width: 0, height: 2 },
+                            shadowOpacity: 0.4,
+                            shadowRadius: 3.5,
+                            elevation: 4,
+                          }}
+                        >
+                          <Text style={{ fontSize: 17 }}>{a.emoji}</Text>
+                        </View>
+                        <View
+                          style={{
+                            borderRadius: 999,
+                            backgroundColor: 'rgba(255,255,255,0.95)',
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                            overflow: 'hidden',
+                            shadowColor: '#000',
+                            shadowOffset: { width: 0, height: 1 },
+                            shadowOpacity: 0.3,
+                            shadowRadius: 4,
+                            elevation: 2,
+                          }}
+                        >
+                          <Text
+                            numberOfLines={1}
+                            style={{ fontSize: 11, fontWeight: '700', color: '#262626' }}
                           >
-                            <Text style={{ fontSize: 17 }}>{a.emoji}</Text>
-                          </View>
-                          <View
-                            style={{
-                              borderRadius: 999,
-                              backgroundColor: 'rgba(255,255,255,0.95)',
-                              paddingHorizontal: 8,
-                              paddingVertical: 2,
-                              overflow: 'hidden',
-                              shadowColor: '#000',
-                              shadowOffset: { width: 0, height: 1 },
-                              shadowOpacity: 0.3,
-                              shadowRadius: 4,
-                              elevation: 2,
-                            }}
-                          >
+                            {a.name}
+                          </Text>
+                        </View>
+                      </>
+                    ) : session ? (
+                      // locked: the lock icon IS the marker (no emoji circle) —
+                      // "Chat to unlock" primary, the island name secondary
+                      <View style={{ position: 'relative' }}>
+                        {isNext ? (
+                          <Animated.View
+                            pointerEvents="none"
+                            style={[
+                              pingStyle,
+                              {
+                                position: 'absolute',
+                                top: -6,
+                                left: -6,
+                                right: -6,
+                                bottom: -6,
+                                borderRadius: 20,
+                                backgroundColor: 'rgba(122,90,248,0.45)',
+                              },
+                            ]}
+                          />
+                        ) : null}
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 8,
+                            borderRadius: 16,
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            backgroundColor: startable ? PURPLE : 'rgba(0,0,0,0.45)',
+                            shadowColor: startable ? PURPLE_SHADOW : '#000',
+                            shadowOffset: { width: 0, height: startable ? 3 : 1 },
+                            shadowOpacity: startable ? 1 : 0.3,
+                            shadowRadius: startable ? 0 : 4,
+                            elevation: startable ? 5 : 3,
+                          }}
+                        >
+                          <Ionicons name="lock-closed" size={15} color="#fff" />
+                          <View>
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: '#fff' }}>
+                              Chat to unlock
+                            </Text>
                             <Text
-                              numberOfLines={1}
-                              style={{ fontSize: 11, fontWeight: '700', color: '#262626' }}
+                              style={{
+                                fontSize: 10,
+                                fontWeight: '600',
+                                color: startable ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.6)',
+                              }}
                             >
                               {a.name}
                             </Text>
                           </View>
-                        </>
-                      ) : session ? (
-                        // locked: the lock icon IS the marker (no emoji circle) —
-                        // "Chat to unlock" primary, the island name secondary
-                        <View style={{ position: 'relative' }}>
-                          {isNext ? (
-                            <Animated.View
-                              pointerEvents="none"
-                              style={[
-                                pingStyle,
-                                {
-                                  position: 'absolute',
-                                  top: -6,
-                                  left: -6,
-                                  right: -6,
-                                  bottom: -6,
-                                  borderRadius: 20,
-                                  backgroundColor: 'rgba(122,90,248,0.45)',
-                                },
-                              ]}
-                            />
-                          ) : null}
-                          <View
-                            style={{
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              gap: 8,
-                              borderRadius: 16,
-                              paddingHorizontal: 12,
-                              paddingVertical: 8,
-                              backgroundColor: startable ? PURPLE : 'rgba(0,0,0,0.45)',
-                              shadowColor: startable ? PURPLE_SHADOW : '#000',
-                              shadowOffset: { width: 0, height: startable ? 3 : 1 },
-                              shadowOpacity: startable ? 1 : 0.3,
-                              shadowRadius: startable ? 0 : 4,
-                              elevation: startable ? 5 : 3,
-                            }}
-                          >
-                            <Ionicons name="lock-closed" size={15} color="#fff" />
-                            <View>
-                              <Text style={{ fontSize: 12, fontWeight: '800', color: '#fff' }}>
-                                Chat to unlock
-                              </Text>
-                              <Text
-                                style={{
-                                  fontSize: 10,
-                                  fontWeight: '600',
-                                  color: startable ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.6)',
-                                }}
-                              >
-                                {a.name}
-                              </Text>
-                            </View>
-                          </View>
                         </View>
-                      ) : null}
-                    </Pressable>
-                  </View>
-                );
-              })}
-            </Pressable>
-          </ScrollView>
+                      </View>
+                    ) : null}
+                  </Pressable>
+                </View>
+              );
+            })}
+          </View>
 
-          {/* top scrim + close, like a map app header (stacked strips stand in
-              for the web's CSS gradient) */}
+          {/* top scrim + close, like a map app header */}
           <View
             style={{ position: 'absolute', top: 0, left: 0, right: 0 }}
             pointerEvents="box-none"
           >
-            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top + 40, backgroundColor: 'rgba(0,0,0,0.28)' }} />
-            <View style={{ position: 'absolute', top: insets.top + 40, left: 0, right: 0, height: 26, backgroundColor: 'rgba(0,0,0,0.16)' }} />
-            <View style={{ position: 'absolute', top: insets.top + 66, left: 0, right: 0, height: 26, backgroundColor: 'rgba(0,0,0,0.07)' }} />
+            <LinearGradient
+              colors={['rgba(0,0,0,0.28)', 'rgba(0,0,0,0)']}
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top + 92 }}
+              pointerEvents="none"
+            />
             <View
               className="flex-row items-center justify-end px-4"
               style={{ paddingTop: Math.max(insets.top, 12) }}

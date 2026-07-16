@@ -27,15 +27,29 @@ export type ContextNote = { tag: string; text: string; session?: string; ts?: nu
 // what the extraction pass hands back on completion
 export type Extracted = { fields: Record<string, string>; notes: { tag: string; text: string }[] };
 
+// The astral card: the user's running "personality reading". NOT per-session —
+// every completed star chat rewrites it from the whole accumulated profile, so
+// it gets richer as the ladder goes on. Null until the first session completes.
+export type Astral = { archetype: string; reading: string; traits: string[] };
+
 export type SidekickContext = {
   fields: Record<string, string>;
   notes: ContextNote[];
   sessions: SessionsState;
+  astral: Astral | null;
+  // An island unlocked but not yet seen on the map. Drives the dot on the dock's
+  // map icon and the "new" bubble beside the island itself; cleared when the map
+  // closes, i.e. once they've actually had a chance to look at it.
+  unseenIsland: string | null;
+
+  // the map has been looked at — drop the unlock notification
+  clearUnseenIsland: () => void;
 
   // persist progress after every answer so the user can dive out and back in
   saveSessionProgress: (id: string, beat: number, answers: string[]) => void;
-  // merge extracted fields + notes, mark done, and pay bond + coins
-  completeSession: (def: SessionDef, extracted: Extracted) => void;
+  // merge extracted fields + notes, mark done, refresh the astral card, and pay
+  // bond + coins
+  completeSession: (def: SessionDef, extracted: Extracted, astral?: Astral | null) => void;
 
   // selectors mirroring the core ladder helpers over this store's `sessions`
   isSessionDone: (id: string) => boolean;
@@ -50,12 +64,26 @@ export type SidekickContext = {
   resetGuidedChats: () => void;
 };
 
+// The line the sidekick says over its head when a star chat lands. It names the
+// card's archetype — a high-level read drawn from everything they've shared —
+// rather than a generic "done!", so the payoff is visibly about THEM. Falls back
+// to a trait, then to something honest, when the extraction gave us nothing.
+export function astralNews(astral: Astral | null): string {
+  if (astral?.archetype) return `astral card updated ✦ i've got you as "${astral.archetype}" now`;
+  if (astral?.traits.length) return `astral card updated ✦ you're more ${astral.traits[0]} than i realised`;
+  return 'astral card updated ✦ i feel like i know you a bit better now';
+}
+
 export const useSidekickContext = create<SidekickContext>()(
   persist(
     (set, get) => ({
       fields: {},
       notes: [],
       sessions: {},
+      astral: null,
+      unseenIsland: null,
+
+      clearUnseenIsland: () => set({ unseenIsland: null }),
 
       saveSessionProgress: (id, beat, answers) =>
         set((st) => ({
@@ -65,11 +93,16 @@ export const useSidekickContext = create<SidekickContext>()(
           },
         })),
 
-      completeSession: (def, extracted) => {
+      completeSession: (def, extracted, astral) => {
         const ts = Date.now();
         set((st) => ({
           fields: { ...st.fields, ...extracted.fields },
           notes: [...st.notes, ...extracted.notes.map((n) => ({ ...n, session: def.id, ts }))],
+          // only overwrite the card when this session produced one — a failed
+          // extraction must not wipe the reading earlier sessions earned
+          astral: astral ?? st.astral,
+          // this session's island just opened — flag it until the map is seen
+          unseenIsland: def.id,
           sessions: {
             ...st.sessions,
             [def.id]: {
@@ -90,13 +123,19 @@ export const useSidekickContext = create<SidekickContext>()(
       nextSession: () => coreNextSession(get().sessions),
       sessionInProgress: () => coreSessionInProgress(get().sessions),
 
-      resetSessions: () => set({ sessions: {} }),
-      resetGuidedChats: () => set({ sessions: {}, fields: {}, notes: [] }),
+      resetSessions: () => set({ sessions: {}, unseenIsland: null }),
+      resetGuidedChats: () => set({ sessions: {}, fields: {}, notes: [], astral: null, unseenIsland: null }),
     }),
     {
       name: 'sidekick_context_v1',
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (st) => ({ fields: st.fields, notes: st.notes, sessions: st.sessions }),
+      partialize: (st) => ({
+        fields: st.fields,
+        notes: st.notes,
+        sessions: st.sessions,
+        astral: st.astral,
+        unseenIsland: st.unseenIsland,
+      }),
     },
   ),
 );
