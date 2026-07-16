@@ -2,11 +2,12 @@ import Constants from "expo-constants";
 import { BlurView, type BlurViewProps } from "expo-blur";
 import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from "expo-glass-effect";
 import { createElement, type ReactNode } from "react";
-import type { StyleProp, ViewStyle } from "react-native";
+import { StyleSheet, type StyleProp, type ViewStyle } from "react-native";
 
 // True on iOS 26+ devices only. The simulator technically supports UIGlassEffect
 // but draws it as an almost fully transparent wash — chrome like the composer or
-// menus disappears entirely — so it gets the frosted-blur fallback instead.
+// menus disappears entirely (re-verified 2026-07 with the createElement fix in
+// place, so it is NOT the css-interop prop bug) — frosted-blur fallback instead.
 const liquidGlass = isLiquidGlassAvailable() && isGlassEffectAPIAvailable() && Constants.isDevice;
 
 interface GlassProps {
@@ -42,8 +43,21 @@ export function Glass({
   if (liquidGlass) {
     return createElement(GlassView, { glassEffectStyle: "regular", isInteractive, style }, children);
   }
+  // The hairline rim stands in for liquid glass's specular edge, so the
+  // fallback reads as glass rather than a flat frosted panel.
   return (
-    <BlurView intensity={intensity} tint={tint} style={[style, { overflow: "hidden" }]}>
+    <BlurView
+      intensity={intensity}
+      tint={tint}
+      style={[
+        style,
+        {
+          overflow: "hidden",
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: "rgba(255,255,255,0.9)",
+        },
+      ]}
+    >
       {children}
     </BlurView>
   );
