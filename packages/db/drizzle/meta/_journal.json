@@ -5,71 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1783473633538,
-      "tag": "0000_breezy_korg",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1783474449900,
-      "tag": "0001_blue_lizard",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1783477943233,
-      "tag": "0002_moaning_king_cobra",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1783481967295,
-      "tag": "0003_same_hawkeye",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1783515261851,
-      "tag": "0004_great_famine",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1783961323604,
-      "tag": "0005_bouncy_mimic",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1783966536992,
-      "tag": "0006_bent_landau",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1783970881890,
-      "tag": "0007_smart_tigra",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1784041954138,
-      "tag": "0008_supreme_marvel_boy",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "7",
-      "when": 1784055910402,
-      "tag": "0009_concerned_wendigo",
+      "when": 1784168429568,
+      "tag": "0000_high_leader",
       "breakpoints": true
     }
   ]

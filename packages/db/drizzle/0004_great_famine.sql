@@ -1,1 +1,0 @@
-ALTER TABLE "document_versions" ADD COLUMN "seq" bigserial NOT NULL;

@@ -1,2 +1,0 @@
-ALTER TABLE "messages" ADD COLUMN "content_tsv" "tsvector" GENERATED ALWAYS AS (to_tsvector('english', content)) STORED;--> statement-breakpoint
-CREATE INDEX "messages_content_tsv_idx" ON "messages" USING gin ("content_tsv");
