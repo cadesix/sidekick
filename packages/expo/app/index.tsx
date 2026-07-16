@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CHAT_SHEET_DETENT, ChatScreen } from '~/imessage';
 import { AppearanceSheet } from '../src/components/AppearanceSheet';
-import { BondBadge } from '../src/components/BondBadge';
+import { OverheadSpeech } from '../src/components/OverheadSpeech';
 import { BoxRewardsModal, GroundBox, StreakSplash } from '../src/components/DailyBox';
 import { DevPanel } from '../src/components/DevPanel';
 import { GoalsSheet } from '../src/components/GoalsSheet';
@@ -243,12 +243,12 @@ export default function Home() {
         />
       ) : null}
 
-      {/* bond score floating over the character's head (hidden while a full
-          surface covers the scene) */}
+      {/* what the sidekick is saying, over its head (hidden while a full
+          surface covers the scene). The bond score lives on the star now. */}
       {settings ? (
-        <BondBadge overhead={overhead} hidden={mapShown || shopOpen || chatOpen || settingsOpen || !!sessionId}>
+        <OverheadSpeech overhead={overhead} hidden={mapShown || shopOpen || chatOpen || settingsOpen || !!sessionId}>
           <SpeechBubble />
-        </BondBadge>
+        </OverheadSpeech>
       ) : null}
 
       {/* the way into a star chat: a star beside the sidekick's head. Hidden
