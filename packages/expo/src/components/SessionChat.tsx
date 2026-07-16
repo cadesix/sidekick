@@ -93,15 +93,24 @@ function parseAnalysis(a: unknown): Analysis | null {
   // prompt asks for 2-4 words, but a model that ignores that shouldn't be able
   // to break the layout.
   const archetype = typeof o.archetype === 'string' ? capArchetype(o.archetype.trim()) : '';
+  // The archetype IS the card: it headlines it, and it's the line astralNews
+  // speaks over the sidekick's head. Without a real one there is nothing worth
+  // persisting — and a fallback-headed card would both overwrite an earned
+  // reading and have the sidekick announce "i've got you as a sky still
+  // forming". So no archetype, no card. (`{}`, `[]`, blank fields and
+  // traits-only all land here.)
+  if (!archetype) return null;
   const reading = typeof o.reading === 'string' ? o.reading.trim() : '';
-  const traits = Array.isArray(o.traits) ? o.traits.filter((t): t is string => typeof t === 'string').slice(0, 4) : [];
-  // A card has to actually SAY something. `{}` and `[]` are object-shaped but
-  // carry nothing, and filling them from the fallback would hand completeSession
-  // a card indistinguishable from a real one — overwriting an earned reading.
-  // Partial is fine (fall back per field); wholly empty is not a card.
-  if (!archetype && !reading && !traits.length) return null;
+  // trim + drop blanks: [''] is not a trait
+  const traits = Array.isArray(o.traits)
+    ? o.traits
+        .filter((t): t is string => typeof t === 'string' && !!t.trim())
+        .map((t) => t.trim())
+        .slice(0, 4)
+    : [];
+  // a real archetype with a thin reading/traits is still a card — fall those back
   return {
-    archetype: archetype || FALLBACK_ANALYSIS.archetype,
+    archetype,
     reading: reading || FALLBACK_ANALYSIS.reading,
     traits: traits.length ? traits : FALLBACK_ANALYSIS.traits,
   };
