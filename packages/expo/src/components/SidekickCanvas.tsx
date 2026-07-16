@@ -6,6 +6,7 @@ import type { SharedValue } from 'react-native-reanimated';
 
 import type { BoxTier } from '@sidekick/core';
 
+import { NO_BROWSER_PAN } from '../lib/web-style';
 import type { EnvironmentId } from '../three/biomes';
 import { createSidekickRenderer, type Framing, type SidekickController } from '../three/renderer';
 import type { CosmeticsControls } from '../three/wardrobe';
@@ -43,6 +44,8 @@ export function SidekickCanvas({
   overhead,
   dailyBox,
   ground,
+  cosmos,
+  constellationLit,
 }: {
   style?: ViewStyle;
   framing: Framing;
@@ -50,6 +53,9 @@ export function SidekickCanvas({
   talking?: boolean;
   // Shop "studio": hide the meadow and show the character on a clean backdrop
   studio?: boolean;
+  // Guided session: crossfade the meadow → night sky + a progress constellation
+  cosmos?: boolean;
+  constellationLit?: number;
   // world environment (map travel): 'meadow' | biome id
   environment?: EnvironmentId;
   onControls?: (c: CosmeticsControls | null) => void;
@@ -86,6 +92,7 @@ export function SidekickCanvas({
       framing,
       holdingPhone,
       studio,
+      cosmos,
       environment,
       dailyBox,
       onControls: (c) => onControlsRef.current?.(c),
@@ -125,6 +132,14 @@ export function SidekickCanvas({
   }, [studio]);
 
   useEffect(() => {
+    controller.current?.setCosmos(!!cosmos);
+  }, [cosmos]);
+
+  useEffect(() => {
+    controller.current?.setConstellation(constellationLit ?? 0);
+  }, [constellationLit]);
+
+  useEffect(() => {
     controller.current?.setDailyBox(dailyBox ?? null);
   }, [dailyBox]);
 
@@ -142,7 +157,9 @@ export function SidekickCanvas({
 
   return (
     <View
-      style={[styles.fill, style]}
+      // NO_BROWSER_PAN: on web this drag orbits the camera, so the browser must
+      // not also read it as a page pan/zoom
+      style={[styles.fill, NO_BROWSER_PAN, style]}
       onLayout={(e) => {
         size.current = { w: e.nativeEvent.layout.width || 1, h: e.nativeEvent.layout.height || 1 };
       }}

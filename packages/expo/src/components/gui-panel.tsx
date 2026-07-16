@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Dimensions, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { NO_BROWSER_PAN } from '../lib/web-style';
 import { ColorPickerModal } from './look-controls';
 
 // lil-gui look, rebuilt in RN primitives. The web /sidekick-3d editor docked
@@ -152,7 +153,10 @@ export function GuiSlider({
   return (
     <Row label={label}>
       <View
-        style={{ height: 20, backgroundColor: C.widget, borderRadius: 2, justifyContent: 'center', overflow: 'hidden' }}
+        style={[
+          { height: 20, backgroundColor: C.widget, borderRadius: 2, justifyContent: 'center', overflow: 'hidden' },
+          NO_BROWSER_PAN,
+        ]}
         onLayout={(e) => (width.current = e.nativeEvent.layout.width || 1)}
         onStartShouldSetResponder={() => true}
         onMoveShouldSetResponder={() => true}

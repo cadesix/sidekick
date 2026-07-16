@@ -4,11 +4,28 @@
 
 We are unifying this repo into a **single Expo universal app**:
 
-- **`packages/expo` (React Native) is production** — it ships to users.
-- **`packages/web` (Vite) is a dev-only preview**, not a product, and is being
-  **retired**. Most feature dev happens on web because iteration is faster, but
-  the goal is that **web renders the same code as native** (via Expo Web /
-  react-native-web) so the two can never drift.
+- **`packages/expo` (React Native) is production** — it ships to users. It runs
+  on iOS **and** in the browser via Expo Web (react-native-web) from the *same
+  code*. This is "web" for all day-to-day dev.
+- **`packages/web` (Vite) is DEPRECATED** — a temporary *reference design* only,
+  being **retired** (Phase 4). It is a separate second implementation (React DOM
+  + its own three.js + its own logic copies); it is **not** the product and not
+  where features land.
+
+### ⚠️ Running locally / "launch in web" — ALWAYS Expo, NEVER the Vite app
+
+When you (or the user) want to run Sidekick **in a browser**, that means **Expo
+Web**, launched from `packages/expo`:
+
+```
+cd packages/expo && npx expo start --web        # the browser preview = the RN app
+```
+
+**Do NOT start `packages/web` (the Vite dev server) unless the user explicitly
+says to launch the DEPRECATED web app.** "Launch it", "run it in the browser",
+"spin up web", "let me see it" → all mean **Expo Web from `packages/expo`**. The
+Vite app is reference-only; running it by default is a mistake.
+(Sidekick is *not* registered in the personal `launch` CLI — start Expo manually.)
 
 ### Hard rules (until and after the refactor lands)
 
