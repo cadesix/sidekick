@@ -13,7 +13,7 @@ import { StreakModal } from '../src/components/StreakModal';
 import { SessionChat, STAR_FACE_TUNING } from '../src/components/SessionChat';
 import { StarChatButton } from '../src/components/StarChatButton';
 import { useStarFaceConfig } from '../src/store/starFaceConfig';
-import { astralNews, useSidekickContext } from '../src/store/context';
+import { useSidekickContext, type Astral } from '../src/store/context';
 import { SidekickAvatar } from '../src/components/SidekickAvatar';
 import { SpeechBubble } from '../src/components/SpeechBubble';
 import { StreakPill } from '../src/components/StreakPill';
@@ -75,6 +75,20 @@ const COSMOS_FRAMING: Framing = {
   target: [0, 8.5, -9],
   fov: 52,
 };
+
+// The line the sidekick says over its head when a star chat lands. It names the
+// card's archetype — a high-level read drawn from everything they've shared —
+// rather than a generic "done!", so the payoff is visibly about THEM. Falls back
+// to a trait, then to something honest, when the extraction gave us nothing.
+function astralNews(astral: Astral | null): string {
+  if (astral?.archetype) return `astral card updated ✦ i've got you as "${astral.archetype}" now`;
+  // Defensive, not a live path: parseAnalysis won't produce a card without an
+  // archetype, so line above always wins. But `astral` rehydrates from
+  // unvalidated JSON with no persist version/migrate, so a corrupt or reshaped
+  // blob lands here rather than showing an empty line.
+  if (astral?.traits?.length) return `astral card updated ✦ you're more ${astral.traits[0]} than i realised`;
+  return 'astral card updated ✦ i feel like i know you a bit better now';
+}
 
 // arrival line spoken/pushed when travelling to each world (verbatim from home5)
 const TRAVEL_LINES: Record<EnvironmentId, string> = {
