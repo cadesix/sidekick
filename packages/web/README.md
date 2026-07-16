@@ -1,16 +1,28 @@
-# @sidekick/web
+# @sidekick/web — ⚠️ DEPRECATED (reference only)
 
-Vite + React + TypeScript + Tailwind web app for Sidekick — the canonical dev
-surface (fast iteration + look-dev editor) that the expo app ports from.
+**This package is not the product and receives no new features.** It's the
+pre-refactor Vite + React DOM implementation, kept temporarily as a *porting
+reference* while the universal Expo app (`packages/expo` — iOS **and** browser
+via Expo Web) absorbs what's left. It will be deleted (Phase 4 of the refactor).
 
-Notable routes: `/home4` (current home), `/sidekick-3d` (look-dev editor),
-`/pose`, `/biomes`, plus the onboarding funnel.
+- Do **not** develop features here. They land in `packages/expo` /
+  `@sidekick/core`.
+- Do **not** run this when someone says "launch it in the browser" — that
+  means Expo Web (`pnpm dev` at the root). Only run this app when explicitly
+  asked for the deprecated Vite reference.
+- One thing here is still load-bearing: `public/cosmetics/` +
+  `public/sidekick-rigged.glb` remain the **canonical asset source** (the
+  char-pipeline writes here; expo's `sync-cosmetics.mjs` reads from here).
+  See `docs/MONOREPO.md` for the retirement checklist.
 
-## Run it
+Notable reference routes: `/home4` (pre-refactor home), `/sidekick-3d`
+(look-dev editor), `/pose`, `/biomes`, plus the onboarding funnel.
+
+## Run it (explicit request only)
 
 ```bash
 pnpm install                          # at the repo root
-pnpm --filter @sidekick/web dev       # or `pnpm dev` from the root
+pnpm dev:vite                         # from the root (or --filter @sidekick/web dev)
 ```
 
 Real AI chat replies need `OPENAI_API_KEY` in `.env.local` (used by the dev

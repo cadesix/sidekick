@@ -13,6 +13,7 @@ import { patchWorldFog } from './fog-patch';
 import { fillGradientTexture, makeGradientTexture, makeRadialShadowTexture } from './gradient';
 import { BIOMES, type BiomeId, type EnvironmentId } from './biomes';
 import { makeGrassEnvironment } from './grass';
+import { makeStarFace, type StarFaceConfig } from './star-face';
 import { createInteraction, POKE_FACE, type Interaction } from './interact';
 import { loadSettings, type SidekickSettings } from './settings';
 import {
@@ -80,8 +81,9 @@ export type SidekickController = {
   setStudio: (v: boolean) => void;
   // guided-session night sky: crossfade the meadow → dark starfield
   setCosmos: (v: boolean) => void;
-  // reveal the first `lit` constellation nodes (driven by beat progress)
-  setConstellation: (lit: number) => void;
+  // TEMPORARY: live look-dev for the sky's star constellation (see
+  // store/starFaceConfig.ts). Goes away once the numbers are baked in.
+  setStarFace: (c: StarFaceConfig) => void;
   // swap the world environment (map travel): 'meadow' | biome id
   setEnvironment: (id: EnvironmentId) => void;
   // daily loot chest: spawn/hide (tier or null) + trigger the open animation
@@ -99,7 +101,7 @@ export type SidekickController = {
 // Bump on every edit — logged at context creation so the debug loop can verify
 // the bundle it launched is actually the code it just changed (Metro sometimes
 // serves stale bundles; see scripts/sim-snap.sh).
-export const BUILD_MARKER = 'build-041-constellation';
+export const BUILD_MARKER = 'build-053-star-face-module';
 
 // Whether the production home renders through the bloom composer. Off: web
 // /home5 renders direct (no post) with antialias, so we match it. Flip on only
@@ -303,76 +305,9 @@ export function createSidekickRenderer(
   starPoints.renderOrder = -2;
   cosmosGroup.add(starPoints);
 
-  // constellation — up to 8 nodes in the upper-forward sky that light one by one
-  // as beats complete (conLit eases toward the lit count; node j lights over
-  // conLit j→j+1, and the edge into it draws with it).
-  const CONSTELLATION: [number, number, number][] = [
-    [-6.5, 23, -26],
-    [-4, 28, -30],
-    [-0.5, 25, -28],
-    [2.5, 29, -31],
-    [5, 25.5, -27],
-    [7, 30, -30],
-    [3, 32.5, -33],
-    [-2, 31.5, -32],
-  ];
-  const conUniforms = { uTime: { value: 0 }, uOpacity: { value: 0 }, uLit: { value: 0 } };
-  // node markers (brighter glowing points)
-  const nodePos = new Float32Array(CONSTELLATION.length * 3);
-  const nodeIdx = new Float32Array(CONSTELLATION.length);
-  CONSTELLATION.forEach((p, i) => {
-    nodePos[i * 3] = p[0];
-    nodePos[i * 3 + 1] = p[1];
-    nodePos[i * 3 + 2] = p[2];
-    nodeIdx[i] = i;
-  });
-  const nodeMat = new THREE.ShaderMaterial({
-    uniforms: conUniforms,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    vertexShader:
-      'attribute float aIndex; uniform float uTime; uniform float uLit; varying float vB;\n' +
-      'void main(){ vB = clamp(uLit - aIndex, 0.0, 1.0); float tw = 0.75 + 0.25*sin(uTime*2.2 + aIndex*1.7);\n' +
-      // base grows with vB, plus a subtle pop that peaks mid-ignite so the star
-      // flares as it lights, then settles
-      '  float pop = 1.0 + 3.0 * vB * (1.0 - vB);\n' +
-      '  vec4 mv = modelViewMatrix * vec4(position,1.0); gl_PointSize = (1.2 + 2.8*vB) * pop * tw * (200.0 / -mv.z);\n' +
-      '  gl_Position = projectionMatrix * mv; }',
-    fragmentShader:
-      // bright crisp core + soft halo → a star, not a fuzzy blob
-      'uniform float uOpacity; varying float vB;\n' +
-      'void main(){ float r = length(gl_PointCoord - 0.5);\n' +
-      '  float core = smoothstep(0.18, 0.0, r); float glow = smoothstep(0.5, 0.1, r) * 0.45;\n' +
-      '  float a = min(1.0, core + glow); gl_FragColor = vec4(0.92, 0.9, 1.0, a * vB * uOpacity); }',
-  });
-  const nodeGeo = new THREE.BufferGeometry();
-  nodeGeo.setAttribute('position', new THREE.BufferAttribute(nodePos, 3));
-  nodeGeo.setAttribute('aIndex', new THREE.BufferAttribute(nodeIdx, 1));
-  const conNodes = new THREE.Points(nodeGeo, nodeMat);
-  conNodes.renderOrder = -1;
-  cosmosGroup.add(conNodes);
-  // connecting lines: segment i joins node i→i+1, drawing in with node i+1
-  const segCount = CONSTELLATION.length - 1;
-  const linePos = new Float32Array(segCount * 2 * 3); // filled per-frame by the draw
-  const lineMat = new THREE.ShaderMaterial({
-    uniforms: conUniforms,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    // brightness is constant along the drawn portion — the *reveal* is done by
-    // extending the segment geometry each frame (see the animate loop), so the
-    // line visibly draws from star to star rather than just fading in
-    vertexShader:
-      'void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    fragmentShader:
-      'uniform float uOpacity; void main(){ gl_FragColor = vec4(0.72, 0.68, 1.0, uOpacity * 0.8); }',
-  });
-  const lineGeo = new THREE.BufferGeometry();
-  lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
-  const conLines = new THREE.LineSegments(lineGeo, lineMat);
-  conLines.renderOrder = -2;
-  cosmosGroup.add(conLines);
+  // the sidekick, drawn in stars, hanging in the night sky (three/star-face.ts)
+  const starFace = makeStarFace();
+  cosmosGroup.add(starFace.group);
 
   // Camera
   let framing = opts.framing;
@@ -756,8 +691,6 @@ export function createSidekickRenderer(
   let phoneShown = false;
   let studioT = 0; // eased meadow→studio blend (0 meadow, 1 studio)
   let cosmosT = 0; // eased meadow→night-sky blend (guided session)
-  let conLit = 0; // eased constellation reveal (0..total lit nodes)
-  let conLitTarget = 0;
   let raf = 0;
   let snapFrame = 0;
   const studioMat = studioSphere.material as THREE.MeshBasicMaterial;
@@ -885,26 +818,7 @@ export function createSidekickRenderer(
     nightMat.opacity = cosmosT;
     starUniforms.uOpacity.value = cosmosT;
     starUniforms.uTime.value = now;
-    conUniforms.uOpacity.value = cosmosT;
-    conUniforms.uTime.value = now;
-    conLit += (conLitTarget - conLit) * 0.08; // smooth star-by-star reveal
-    conUniforms.uLit.value = conLit;
-    // draw the constellation lines: segment i extends from node i toward node
-    // i+1 as node i+1 lights (conLit crossing i+1), so the line grows star→star
-    if (inCosmos) {
-      for (let i = 0; i < segCount; i++) {
-        const a = CONSTELLATION[i];
-        const b = CONSTELLATION[i + 1];
-        const prog = Math.min(1, Math.max(0, conLit - (i + 1)));
-        linePos[i * 6] = a[0];
-        linePos[i * 6 + 1] = a[1];
-        linePos[i * 6 + 2] = a[2];
-        linePos[i * 6 + 3] = a[0] + (b[0] - a[0]) * prog;
-        linePos[i * 6 + 4] = a[1] + (b[1] - a[1]) * prog;
-        linePos[i * 6 + 5] = a[2] + (b[2] - a[2]) * prog;
-      }
-      lineGeo.attributes.position.needsUpdate = true;
-    }
+    starFace.update(now, cosmosT);
     // the character sits out of frame under the up-pan; drop it entirely once in
     pull.visible = cosmosT < 0.9;
 
@@ -1106,9 +1020,7 @@ export function createSidekickRenderer(
     setCosmos: (v) => {
       cosmos = v;
     },
-    setConstellation: (lit) => {
-      conLitTarget = Math.max(0, Math.min(lit, CONSTELLATION.length));
-    },
+    setStarFace: (c) => starFace.setConfig(c),
     setEnvironment: (id) => {
       environment = id;
     },

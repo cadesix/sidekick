@@ -8,9 +8,10 @@
 	},
 	"packageManager": "pnpm@10.34.1",
 	"scripts": {
-		"dev": "pnpm --filter @sidekick/web dev",
-		"dev:web": "pnpm --filter @sidekick/web dev",
+		"dev": "pnpm --filter @sidekick/expo web",
+		"dev:web": "pnpm --filter @sidekick/expo web",
 		"dev:expo": "pnpm --filter @sidekick/expo start",
+		"dev:vite": "pnpm --filter @sidekick/web dev",
 		"dev:server": "pnpm --filter @sidekick/server dev",
 		"build": "pnpm --filter @sidekick/web build",
 		"typecheck": "pnpm -r run typecheck && tsc -p tests",

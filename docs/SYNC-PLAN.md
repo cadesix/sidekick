@@ -1,21 +1,24 @@
-# Web ↔ iOS sync plan
+# Web ↔ iOS sync plan (HISTORICAL — superseded)
 
-> **Status (2026-07-12):** partially superseded. This doc was written when web
-> and mobile were separate repos; both now live in this monorepo
-> (`packages/web` + `packages/expo`), which IS the "true monorepo endgame"
-> described in §1 — so the rsync/checksum copy-script machinery is obsolete.
-> Shared code goes in `packages/shared/core` (`@sidekick/core`) as a real
-> workspace dependency instead. §0's prerequisites are done (both apps
-> committed/remoted; `three` pinned to 0.185.1 workspace-wide via root pnpm
-> overrides). Still-relevant parts: the shared-vs-platform-specific inventory
-> (§1's table), bake-config (§2), the asset pipeline + manifest codegen (§3),
-> the port protocol/PARITY.md (§4), the platform gotchas (§5), and the
-> screenshot harness (§6). Referenced scripts (`sync-shared`, `sync-assets`,
-> `bake-config`) are still TODO, not real yet.
+> **Status (2026-07-15): SUPERSEDED.** The premise of this doc — develop in
+> the Vite web app, port to the RN app, keep two implementations in parity —
+> is dead. The repo has collapsed to **one universal Expo app**
+> (`packages/expo`, running on iOS and in the browser via Expo Web), with
+> shared logic in `@sidekick/core`. `packages/web` is a deprecated reference
+> being retired; there is no two-way parity contract to maintain anymore.
+>
+> **Current model:** root `CLAUDE.md` (rules) + `docs/MONOREPO.md`
+> (architecture, asset pipeline, web-retirement checklist).
+>
+> Still worth reading here, as reference only: the platform gotchas (§5 —
+> they now live executable-form in `packages/expo/README.md`) and the
+> shared-vs-platform-specific inventory (§1's table, useful when checking
+> whether anything in `packages/web` remains unported). Everything else —
+> sync scripts, PARITY.md, port protocol, screenshot parity harness — is
+> obsolete and was never built.
 
-Intent: **develop and tweak in the web app** (`packages/web`, fast
-iteration, look-dev editor), then **port to the RN app** (`packages/expo`) for
-prod. This doc is the pipeline for making that repeatable and drift-proof.
+Original intent (obsolete): develop and tweak in the web app (`packages/web`),
+then port to the RN app (`packages/expo`) for prod.
 
 ## 0. Prerequisites (one-time, do first)
 

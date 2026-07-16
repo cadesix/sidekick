@@ -1,23 +1,38 @@
-# @sidekick/expo
+# @sidekick/expo — THE app
 
-React Native (Expo) port of the sidekick web app's `/home4` interface — a
-full-screen cel-shaded 3D mascot with a chat drawer. Lives in the sidekick
-monorepo alongside its source-of-truth web app (`packages/web`). Stack: Expo
-SDK 54, expo-router, NativeWind, Zustand, Reanimated, plus a native GL layer
-(`expo-gl` + `expo-three` + `three`) for the imperative Three.js scene ported
-from `packages/web/src/components/sidekick-*`.
+**This is the product**: Sidekick's single universal app — a full-screen
+cel-shaded 3D mascot with chat, cosmetics shop, guided sessions, and world
+map. It runs on iOS **and in the browser** (Expo Web / react-native-web) from
+the same code; the browser build is the day-to-day dev surface. Stack: Expo
+SDK 54, expo-router, NativeWind, Zustand, Reanimated, a GL layer (`expo-gl` +
+`expo-three` + `three`) for the imperative Three.js scene
+(`src/three/` — the future `@sidekick/three`), and shared platform-agnostic
+logic from `@sidekick/core`.
 
-## Running (requires a dev client — NOT Expo Go)
+(Historical note: this started as a port of the deprecated Vite app's `/home4`
+— `packages/web`, now reference-only. Feature notes below that say "was
+sidekick-*.ts" refer to that reference implementation.)
 
-`expo-gl` is a native module, so Expo Go can't load it. You must build a dev
-client once, then Metro reloads JS instantly after that.
+## Running
+
+Browser (the normal dev loop):
 
 ```bash
-pnpm install                          # at the repo root (workspace install)
-pnpm --filter @sidekick/expo ios      # or: ... android  (prebuilds + builds the dev client)
+pnpm install        # at the repo root (workspace install)
+pnpm dev            # from the root — runs `expo start --web` here
 ```
 
-Subsequent runs: `pnpm --filter @sidekick/expo start` (Metro with the dev client).
+iOS requires a dev client — NOT Expo Go (`expo-gl` is a native module). Build
+the client once, then Metro reloads JS instantly:
+
+```bash
+pnpm --filter @sidekick/expo ios      # or: ... android  (prebuilds + builds the dev client)
+pnpm --filter @sidekick/expo start    # subsequent runs: Metro with the dev client
+```
+
+Anything 3D must ultimately be verified on a **physical device** — the iOS
+simulator's GL is unreliable (see "Known issue" below), and Expo Web's WebGL
+path differs from expo-gl in the usual hard-won ways.
 
 Optional real AI replies: copy `.env.example` → `.env` and set
 `EXPO_PUBLIC_OPENAI_API_KEY`. Without a key the chat uses canned replies so the

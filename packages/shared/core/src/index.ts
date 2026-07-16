@@ -1,8 +1,8 @@
-// @sidekick/core — platform-agnostic logic + tables shared by the Expo app
-// (production) and the Vite web app (dev reference). ZERO DOM / RN / expo
-// imports: pure functions and data only, so both apps compute identically and
-// can never drift. App layers own persistence (localStorage vs AsyncStorage)
-// and UI; this owns the numbers.
+// @sidekick/core — platform-agnostic logic + tables for the Sidekick app
+// (packages/expo — one universal app: iOS + Expo Web). ZERO DOM / RN / expo
+// imports: pure functions and data only, so every platform computes
+// identically and can never drift. The app layer owns persistence
+// (AsyncStorage / localStorage) and UI; this owns the numbers.
 
 export * from './rng';
 export * from './economy';

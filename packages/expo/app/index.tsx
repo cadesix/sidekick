@@ -5,21 +5,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CHAT_SHEET_DETENT, ChatScreen } from '~/imessage';
 import { AppearanceSheet } from '../src/components/AppearanceSheet';
-import { BondBadge } from '../src/components/BondBadge';
+import { OverheadSpeech } from '../src/components/OverheadSpeech';
 import { BoxRewardsModal, GroundBox, StreakSplash } from '../src/components/DailyBox';
 import { DevPanel } from '../src/components/DevPanel';
 import { GoalsSheet } from '../src/components/GoalsSheet';
 import { StreakModal } from '../src/components/StreakModal';
-import { SessionChat } from '../src/components/SessionChat';
+import { SessionChat, STAR_FACE_TUNING } from '../src/components/SessionChat';
+import { StarChatButton } from '../src/components/StarChatButton';
+import { useStarFaceConfig } from '../src/store/starFaceConfig';
+import { useSidekickContext, type Astral } from '../src/store/context';
 import { SidekickAvatar } from '../src/components/SidekickAvatar';
 import { SpeechBubble } from '../src/components/SpeechBubble';
 import { StreakPill } from '../src/components/StreakPill';
 import { HomeDock } from '../src/components/HomeDock';
-import { AREA_BIOME, type EnvironmentId } from '../src/three/biomes';
+import { type EnvironmentId } from '../src/three/biomes';
 import { useDailyBox } from '../src/store/dailyBox';
 import { speak } from '../src/store/speech';
 import { useStreak } from '../src/store/streak';
-import { boxTier, type BoxReward } from '@sidekick/core';
+import { boxTier, nextSession as coreNextSession, type BoxReward } from '@sidekick/core';
 import { SettingsSheet } from '../src/components/SettingsSheet';
 import { ShopSheet } from '../src/components/ShopSheet';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
@@ -73,6 +76,20 @@ const COSMOS_FRAMING: Framing = {
   fov: 52,
 };
 
+// The line the sidekick says over its head when a star chat lands. It names the
+// card's archetype — a high-level read drawn from everything they've shared —
+// rather than a generic "done!", so the payoff is visibly about THEM. Falls back
+// to a trait, then to something honest, when the extraction gave us nothing.
+function astralNews(astral: Astral | null): string {
+  if (astral?.archetype) return `astral card updated ✦ i've got you as "${astral.archetype}" now`;
+  // Defensive, not a live path: parseAnalysis won't produce a card without an
+  // archetype, so line above always wins. But `astral` rehydrates from
+  // unvalidated JSON with no persist version/migrate, so a corrupt or reshaped
+  // blob lands here rather than showing an empty line.
+  if (astral?.traits?.length) return `astral card updated ✦ you're more ${astral.traits[0]} than i realised`;
+  return 'astral card updated ✦ i feel like i know you a bit better now';
+}
+
 // arrival line spoken/pushed when travelling to each world (verbatim from home5)
 const TRAVEL_LINES: Record<EnvironmentId, string> = {
   meadow: 'ahh home sweet meadow 🌼',
@@ -101,9 +118,20 @@ export default function Home() {
   // world environment (map travel) + the active guided session (if any)
   const [environment, setEnvironment] = useState<EnvironmentId>('meadow');
   const [sessionId, setSessionId] = useState<string | null>(null);
+  // TEMPORARY: live star-face look-dev, driven by the sliders in SessionChat.
+  // Only pushed while tuning — otherwise the persisted config would override the
+  // constants baked into renderer.ts, and a stale device config would silently
+  // win over the code.
+  const starFaceCfg = useStarFaceConfig();
+  const starFace = STAR_FACE_TUNING ? starFaceCfg : undefined;
+  // the next unfinished star chat — drives the star beside the head. Subscribed
+  // to `sessions` so it re-evaluates the moment one completes.
+  const sessions = useSidekickContext((s) => s.sessions);
+  // an island opened but not yet looked at — dot on the dock's map icon
+  const unseenIsland = useSidekickContext((s) => s.unseenIsland);
+  const nextStarChat = coreNextSession(sessions);
   // guided-session constellation reveal: how many nodes are lit (the night sky
   // draws it as beats complete)
-  const [constellationLit, setConstellationLit] = useState(0);
 
   // Session entry choreography (cinematic, staged): land on HOME with the
   // sidekick (~1.1s), then `cosmosPanned` → pan up + night crossfade + head
@@ -184,6 +212,8 @@ export default function Home() {
   const closeMap = () => {
     setMapShown(false); // map scales back out…
     setMapOpen(false); // …while the camera flies back to the meadow
+    // they've had their look — retire the unlock notification
+    useSidekickContext.getState().clearUnseenIsland();
   };
 
   // No opacity here: animating a parent's opacity permanently breaks descendant
@@ -217,7 +247,7 @@ export default function Home() {
           holdingPhone={chatOpen}
           studio={shopOpen || appearanceOpen}
           cosmos={cosmosPanned}
-          constellationLit={constellationLit}
+          starFace={starFace}
           environment={environment}
           onControls={setControls}
           onController={setController}
@@ -227,12 +257,22 @@ export default function Home() {
         />
       ) : null}
 
-      {/* bond score floating over the character's head (hidden while a full
-          surface covers the scene) */}
+      {/* what the sidekick is saying, over its head (hidden while a full
+          surface covers the scene). The bond score lives on the star now. */}
       {settings ? (
-        <BondBadge overhead={overhead} hidden={mapShown || shopOpen || chatOpen || settingsOpen || !!sessionId}>
+        <OverheadSpeech overhead={overhead} hidden={mapShown || shopOpen || chatOpen || settingsOpen || !!sessionId}>
           <SpeechBubble />
-        </BondBadge>
+        </OverheadSpeech>
+      ) : null}
+
+      {/* the way into a star chat: a star beside the sidekick's head. Hidden
+          once every session is done — nothing left to open. */}
+      {settings && nextStarChat ? (
+        <StarChatButton
+          overhead={overhead}
+          hidden={mapShown || shopOpen || chatOpen || settingsOpen || !!sessionId}
+          onPress={() => setSessionId(nextStarChat.id)}
+        />
       ) : null}
 
       {/* top-right cluster: appearance + goals + streak (hidden under surfaces) */}
@@ -259,6 +299,7 @@ export default function Home() {
           full-screen map reveal hides it */}
       <HomeDock
         hidden={mapShown || !!sessionId}
+        mapDot={!!unseenIsland}
         onMessages={openChat}
         onShop={() => setShopOpen(true)}
         onMap={openMap}
@@ -288,20 +329,22 @@ export default function Home() {
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 60 }}>
           <SessionChat
             sessionId={sessionId}
-            onConstellation={setConstellationLit}
             onClose={() => {
               setSessionId(null);
-              setConstellationLit(0);
             }}
             onDone={() => {
-              const biome = AREA_BIOME[sessionId];
+              // Back to the meadow — no travel, no unlock modal. The news finds
+              // them at home instead: a dot on the map icon, and the sidekick
+              // saying what changed. Delayed until the sky has panned back down,
+              // or the line lands while the chat is still on screen.
               setSessionId(null);
-              setConstellationLit(0);
-              if (biome) travelTo(biome);
+              const line = astralNews(useSidekickContext.getState().astral);
+              setTimeout(() => speak(line, 6000), 2600);
             }}
           />
         </View>
       ) : null}
+
 
       {/* Daily-box flow (home only): streak splash → ground chest → rewards */}
       {settings && !mapShown && !shopOpen && !chatOpen && !settingsOpen && !sessionId ? (

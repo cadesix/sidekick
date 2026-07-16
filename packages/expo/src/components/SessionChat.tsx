@@ -21,8 +21,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { sessionFor, type SessionDef } from '@sidekick/core';
 
-import { SidekickAvatar } from './SidekickAvatar';
-import { useSidekickContext } from '../store/context';
+import { SliderRow } from './look-controls';
+import { starFaceSnippet, useStarFaceConfig } from '../store/starFaceConfig';
+import { useSidekickContext, type Astral, type ContextNote } from '../store/context';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
@@ -43,18 +44,21 @@ type Phase = 'asking' | 'answer' | 'probe' | 'extracting' | 'confirm' | 'done';
 const KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
 const NAME = 'sidekick';
 
-// the opening bot messages — frame the "star chat": every alignment builds a
-// star chart of who you are, ending in an astral analysis.
+// What the star chat is — shown ONCE, on the user's very first session. Every
+// later session opens with WELCOME_BACK + that session's own `def.intro`
+// instead, since the framing only needs explaining the first time.
 const STAR_CHAT_INTRO = [
   'this is our star chat, where i get to know you better',
   'as you answer, your star chart will come together',
   'the better i know you, the better i can help',
-  'and at the end you can see your astral analysis!',
+  'and at the end you can see your astral card!',
 ];
+const WELCOME_BACK = 'welcome back to our star chat';
 
-// the end-of-session payoff: a short "astral reading" the AI writes from the
-// transcript. `archetype` is a poetic title, `traits` are quick descriptors.
-type Analysis = { archetype: string; reading: string; traits: string[] };
+// the end-of-session payoff: the astral card, rewritten each session from the
+// WHOLE profile (see store/context). `archetype` is a poetic title, `traits`
+// are quick descriptors.
+type Analysis = Astral;
 // shown when there's no AI key or the model's analysis didn't parse
 const FALLBACK_ANALYSIS: Analysis = {
   archetype: 'a sky still forming',
@@ -63,13 +67,51 @@ const FALLBACK_ANALYSIS: Analysis = {
   traits: ['curious', 'open', 'worth knowing'],
 };
 
-function parseAnalysis(a: unknown): Analysis {
-  if (!a || typeof a !== 'object') return FALLBACK_ANALYSIS;
+// A poetic 2-4 word title. Real ones run ~19-25 chars ("the restless
+// cartographer"), so this only bites a model that ignored the prompt — but it
+// cuts on a word boundary rather than mid-word, because the result is shown to
+// the user and spoken over the sidekick's head.
+const ARCHETYPE_MAX = 48;
+
+function capArchetype(s: string): string {
+  if (s.length <= ARCHETYPE_MAX) return s;
+  const cut = s.slice(0, ARCHETYPE_MAX);
+  const lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trim();
+}
+
+// null when the model gave us nothing usable — NOT a fallback card. The
+// difference is load-bearing: completeSession persists whatever it's handed and
+// only declines when the card is null, so fabricating one here would overwrite a
+// real reading earned by earlier sessions with "a sky still forming".
+function parseAnalysis(a: unknown): Analysis | null {
+  // Array.isArray: [] is typeof 'object' too, and an array is never a card.
+  if (!a || typeof a !== 'object' || Array.isArray(a)) return null;
   const o = a as Record<string, unknown>;
-  const traits = Array.isArray(o.traits) ? o.traits.filter((t): t is string => typeof t === 'string').slice(0, 4) : [];
+  // capped: the archetype flows into astralNews() and out to the speech bubble,
+  // which grows upward until it collides with the star above the head. The
+  // prompt asks for 2-4 words, but a model that ignores that shouldn't be able
+  // to break the layout.
+  const archetype = typeof o.archetype === 'string' ? capArchetype(o.archetype.trim()) : '';
+  // The archetype IS the card: it headlines it, and it's the line astralNews
+  // speaks over the sidekick's head. Without a real one there is nothing worth
+  // persisting — and a fallback-headed card would both overwrite an earned
+  // reading and have the sidekick announce "i've got you as a sky still
+  // forming". So no archetype, no card. (`{}`, `[]`, blank fields and
+  // traits-only all land here.)
+  if (!archetype) return null;
+  const reading = typeof o.reading === 'string' ? o.reading.trim() : '';
+  // trim + drop blanks: [''] is not a trait
+  const traits = Array.isArray(o.traits)
+    ? o.traits
+        .filter((t): t is string => typeof t === 'string' && !!t.trim())
+        .map((t) => t.trim())
+        .slice(0, 4)
+    : [];
+  // a real archetype with a thin reading/traits is still a card — fall those back
   return {
-    archetype: typeof o.archetype === 'string' && o.archetype.trim() ? o.archetype.trim() : FALLBACK_ANALYSIS.archetype,
-    reading: typeof o.reading === 'string' && o.reading.trim() ? o.reading.trim() : FALLBACK_ANALYSIS.reading,
+    archetype,
+    reading: reading || FALLBACK_ANALYSIS.reading,
     traits: traits.length ? traits : FALLBACK_ANALYSIS.traits,
   };
 }
@@ -115,24 +157,50 @@ async function fetchAck(def: SessionDef, ask: string, answer: string, probe: boo
   return llm(system, `you asked: ${ask}\nthey answered: ${answer}`);
 }
 
-// the extraction pass: transcript + schema → fields, notes, and the recap line
+// A digest of everything earlier sessions already learned. Feeds the astral
+// card so it reads as ONE person growing clearer, not six unrelated readings.
+// Notes are capped — by the last session there can be a lot of them, and the
+// card only needs the gist.
+function priorProfile(fields: Record<string, string>, notes: ContextNote[], astral: Astral | null): string {
+  const f = Object.entries(fields).map(([k, v]) => `${k}: ${v}`);
+  const n = notes.slice(-14).map((x) => `${x.tag}: ${x.text}`);
+  if (!f.length && !n.length && !astral) return '';
+  return (
+    `what you ALREADY know about them from earlier star chats (context for the astral card only —\n` +
+    `do NOT re-extract any of this into "fields" or "notes"):\n` +
+    (f.length ? `${f.join('\n')}\n` : '') +
+    (n.length ? `${n.join('\n')}\n` : '') +
+    (astral ? `\ntheir astral card right now:\narchetype: ${astral.archetype}\nreading: ${astral.reading}\ntraits: ${astral.traits.join(', ')}\n` : '') +
+    `\n--- this session's transcript (extract fields + notes from THIS ONLY) ---\n`
+  );
+}
+
+// the extraction pass: transcript + schema → fields, notes, the recap line, and
+// the refreshed astral card
 async function fetchExtraction(
   def: SessionDef,
   transcript: string,
-): Promise<{ fields: Record<string, string>; notes: { tag: string; text: string }[]; recap: string; analysis: Analysis } | null> {
+  prior: { fields: Record<string, string>; notes: ContextNote[]; astral: Astral | null },
+): Promise<{ fields: Record<string, string>; notes: { tag: string; text: string }[]; recap: string; analysis: Analysis | null } | null> {
+  const head = priorProfile(prior.fields, prior.notes, prior.astral);
+  const returning = !!head;
   const system =
     `you extract structured profile data from a get-to-know-you chat transcript. respond with ONLY valid JSON, no fences, in this shape:\n` +
     `{"fields": {…}, "notes": [{"tag": "…", "text": "…"}], "recap": "…", "analysis": {"archetype": "…", "reading": "…", "traits": ["…"]}}\n` +
     `- "fields" keys MUST be from: ${def.schema.fields.join(', ') || '(none)'} — short lowercase values, omit anything the user didn't clearly say\n` +
     `- "notes" tags MUST be from: ${def.schema.notes.join(', ')} — text is a short quote-like capture of the user's own words\n` +
     `- "recap" is a 1-2 sentence playful readback of what you learned, as a lowercase internet-native friend, ending with "locked in 🔒". no em-dash.\n` +
-    `- "analysis" is a warm "astral reading" of this person built ONLY from what they shared:\n` +
+    `- "analysis" is their ASTRAL CARD: a warm, high-level, almost-astrology read of who this person is.\n` +
+    (returning
+      ? `  this is an UPDATE. rewrite the whole card from EVERYTHING you know (the profile above PLUS this transcript),\n` +
+        `  so it's richer and more specific than the card they have now. keep what still rings true, deepen it with what's new.\n`
+      : `  build it ONLY from what they shared in this transcript.\n`) +
     `  - "archetype": a poetic 2-4 word lowercase title capturing their vibe (e.g. "the midnight builder")\n` +
-    `  - "reading": a warm, slightly mystical 2-3 sentence read of who they are — like a personalized horoscope grounded in what they actually said. lowercase, no em-dash, no clichés\n` +
-    `  - "traits": 3-4 short lowercase trait words drawn from the chat`;
+    `  - "reading": a warm, slightly mystical 2-3 sentence read of who they are — like a personalized horoscope grounded in what they actually said. speak in essence and pattern, not a list of facts. lowercase, no em-dash, no clichés\n` +
+    `  - "traits": 3-4 short lowercase trait words${returning ? ' drawn from the full picture' : ' drawn from the chat'}`;
   // extraction JSON is the biggest payload (fields + notes + recap + analysis) —
   // give it real headroom so it never truncates mid-object
-  const reply = await llm(system, transcript, 900);
+  const reply = await llm(system, head + transcript, 900);
   if (!reply) return null;
   try {
     const raw = reply
@@ -149,6 +217,66 @@ async function fetchExtraction(
   } catch {
     return null;
   }
+}
+
+// ---- TEMPORARY: star-face look-dev -----------------------------------------
+// OFF: the tuned numbers are baked into the constants in three/renderer.ts, so
+// the chat transcript is back. Flip this to true to dial the sky in live again
+// (the sliders start from those same values). To delete the tool for good: this
+// flag + StarFaceTuner below, store/starFaceConfig.ts, the renderer's
+// setStarFace, and the canvas's starFace prop — the uniforms stay.
+export const STAR_FACE_TUNING = false;
+
+function StarFaceTuner() {
+  const cfg = useStarFaceConfig();
+  const set = useStarFaceConfig((s) => s.set);
+  const reset = useStarFaceConfig((s) => s.reset);
+  const [saved, setSaved] = useState(false);
+  // Every drag already persists (the store is on AsyncStorage), so this is the
+  // last mile: print the values as a paste-ready block for renderer.ts, which is
+  // the only way a tuning session actually lands in the code.
+  const save = () => {
+    console.log('\n' + starFaceSnippet(cfg) + '\n');
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1600);
+  };
+  return (
+    <ScrollView
+      style={{ flex: 1 }}
+      className="px-3 pt-3"
+      contentContainerStyle={{ paddingBottom: 16 }}
+      showsVerticalScrollIndicator={false}
+    >
+      <View className="flex-row items-center justify-between px-1 pb-1">
+        <Text className="text-[11px] font-extrabold uppercase tracking-[2px] text-[#C9BCFF]">
+          ✦ star face — temporary
+        </Text>
+        <View className="flex-row items-center gap-2">
+          <Pressable onPress={reset} className="rounded-full bg-white/15 px-3 py-1">
+            <Text className="text-[11px] font-bold text-white">reset</Text>
+          </Pressable>
+          <Pressable onPress={save} className="rounded-full bg-[#7A5AF8] px-3 py-1">
+            <Text className="text-[11px] font-bold text-white">{saved ? 'logged ✓' : 'save'}</Text>
+          </Pressable>
+        </View>
+      </View>
+      <Text className="px-1 pb-1 text-[10px] text-[#C9BCFF]/60">
+        every drag is saved automatically · save prints the constants to the console
+      </Text>
+      <SliderRow label="Line alpha" value={cfg.lineAlpha} min={0} max={1} onChange={(v) => set('lineAlpha', v)} />
+      <SliderRow label="Dust bright" value={cfg.dustWeight} min={0} max={1} onChange={(v) => set('dustWeight', v)} />
+      <SliderRow label="Star size" value={cfg.starSize} min={0.3} max={3} onChange={(v) => set('starSize', v)} />
+      <SliderRow label="Shine speed" value={cfg.shineSpeed} min={0} max={2} onChange={(v) => set('shineSpeed', v)} />
+      <SliderRow label="Shine depth" value={cfg.shineDepth} min={0} max={1} onChange={(v) => set('shineDepth', v)} />
+      <SliderRow label="Size" value={cfg.size} min={5} max={30} onChange={(v) => set('size', v)} />
+      <SliderRow label="Height" value={cfg.height} min={14} max={40} onChange={(v) => set('height', v)} />
+      <SliderRow label="Depth" value={cfg.depth} min={-50} max={-12} onChange={(v) => set('depth', v)} />
+      <SliderRow label="Pitch" value={cfg.pitch} min={-0.4} max={1.2} onChange={(v) => set('pitch', v)} />
+      <SliderRow label="Pulse pitch" value={cfg.pulseAmt} min={0} max={0.2} onChange={(v) => set('pulseAmt', v)} />
+      <SliderRow label="Pulse depth" value={cfg.pulseDepth} min={0} max={4} onChange={(v) => set('pulseDepth', v)} />
+      <SliderRow label="Pulse rate" value={cfg.pulseHz} min={0.01} max={0.3} onChange={(v) => set('pulseHz', v)} />
+    </ScrollView>
+  );
 }
 
 function Dot({ delay }: { delay: number }) {
@@ -176,15 +304,12 @@ export function SessionChat({
   sessionId,
   onClose,
   onDone,
-  onConstellation,
 }: {
   sessionId: string;
   // dive out mid-session (progress is already saved per beat)
   onClose: () => void;
   // completed: host closes the window and may offer travel
   onDone: () => void;
-  // report constellation progress → the night sky lights `lit` of `total` stars
-  onConstellation?: (lit: number) => void;
 }) {
   const insets = useSafeAreaInsets();
   const def = sessionFor(sessionId);
@@ -200,7 +325,14 @@ export function SessionChat({
   const answers = useRef<string[]>([]);
   const transcriptExtra = useRef(''); // recap corrections appended for re-extraction
   const extraction = useRef<{ fields: Record<string, string>; notes: { tag: string; text: string }[] } | null>(null);
-  const [analysis, setAnalysis] = useState<Analysis>(FALLBACK_ANALYSIS);
+  // the refreshed card this session produced, handed to completeSession. null =
+  // nothing new (offline/parse fail), so the stored card survives untouched.
+  const nextAstral = useRef<Astral | null>(null);
+  // opens on the card they already have, so a returning user sees it update
+  // rather than appear from nothing
+  const [analysis, setAnalysis] = useState<Analysis>(
+    () => useSidekickContext.getState().astral ?? FALLBACK_ANALYSIS,
+  );
   const confirmedOnce = useRef(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -263,21 +395,26 @@ export function SessionChat({
     if (!def) return;
     beatIdx.current = idx;
     setPhase('asking');
-    // a star lights for each beat already behind us (beats 0..idx-1 are done)
-    onConstellation?.(idx);
     showBotThen(def.beats[idx].ask, () => setPhase('answer'));
   };
 
-  // kick off: fresh intro, or a "where were we" resume at the saved beat
+  // kick off: three openings — resume where they left off, the one-time star
+  // chat explainer (first session ever), or a welcome-back + this session's
+  // topic intro for every session after that
   useEffect(() => {
     if (!def) return;
-    const st = useSidekickContext.getState().sessions[def.id];
+    const { sessions } = useSidekickContext.getState();
+    const st = sessions[def.id];
     answers.current = st ? [...st.answers] : [];
     const resuming = !!st && st.beat > 0 && !st.done;
+    // first star chat ever = they've never touched a session before this one
+    const firstEver = Object.keys(sessions).length === 0;
     if (resuming) {
       showBotThen(['oh hey, you\'re back!!', 'where were we… right:'], () => askBeat(st.beat));
+    } else if (firstEver) {
+      showBotThen([...STAR_CHAT_INTRO, ...def.intro], () => askBeat(0));
     } else {
-      showBotThen(STAR_CHAT_INTRO, () => askBeat(0));
+      showBotThen([WELCOME_BACK, ...def.intro], () => askBeat(0));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [def?.id]);
@@ -288,15 +425,25 @@ export function SessionChat({
       .filter(Boolean)
       .join('\n\n') + transcriptExtra.current;
 
+  // the profile as it stands BEFORE this session lands — the astral card is
+  // rewritten from this plus the new transcript
+  const prior = () => {
+    const { fields, notes, astral } = useSidekickContext.getState();
+    return { fields, notes, astral };
+  };
+
   const finish = async () => {
     if (!def) return;
-    onConstellation?.(def.beats.length); // all beats in → full constellation
     setPhase('extracting');
     setTyping(true);
-    const ex = await fetchExtraction(def, transcript());
+    const ex = await fetchExtraction(def, transcript(), prior());
     setTyping(false);
     extraction.current = ex ? { fields: ex.fields, notes: ex.notes } : { fields: {}, notes: [] };
-    setAnalysis(ex?.analysis ?? FALLBACK_ANALYSIS);
+    // Show: fresh card, else the one they already have, else a placeholder.
+    // Persist: ONLY a fresh card — `?? null` keeps completeSession from writing,
+    // so a bad reading leaves the earned card untouched.
+    setAnalysis(ex?.analysis ?? prior().astral ?? FALLBACK_ANALYSIS);
+    nextAstral.current = ex?.analysis ?? null;
     showBotThen([ex?.recap ?? 'ok, got all of that. locked in 🔒', 'did i get that right?'], () => setPhase('confirm'));
   };
 
@@ -309,9 +456,15 @@ export function SessionChat({
 
   const celebrate = () => {
     if (!def) return;
-    completeSession(def, { fields: extraction.current?.fields ?? {}, notes: extraction.current?.notes ?? [] });
-    showBotThen([`and that's ${def.title.toLowerCase()} done. +${def.bond}% bond 🧡`, 'the island\'s open. let\'s gooo 🏝️'], () =>
-      setPhase('done'),
+    completeSession(
+      def,
+      { fields: extraction.current?.fields ?? {}, notes: extraction.current?.notes ?? [] },
+      nextAstral.current,
+    );
+    // the payoff is the card itself (rendered below) — these lines hand off to it
+    showBotThen(
+      [`and that's ${def.title.toLowerCase()} done. +${def.bond}% bond 🧡`, 'here\'s your astral card, updated ✦'],
+      () => setPhase('done'),
     );
   };
 
@@ -329,11 +482,16 @@ export function SessionChat({
       transcriptExtra.current += `\n\ncorrection from the user about your summary: ${text}`;
       setPhase('extracting');
       setTyping(true);
-      const ex = await fetchExtraction(def, transcript());
+      const ex = await fetchExtraction(def, transcript(), prior());
       setTyping(false);
       if (ex) {
         extraction.current = { fields: ex.fields, notes: ex.notes };
-        setAnalysis(ex.analysis);
+        // same rule as finish(): only a real card displaces what's on screen or
+        // in the store
+        if (ex.analysis) {
+          setAnalysis(ex.analysis);
+          nextAstral.current = ex.analysis;
+        }
       }
       showBotThen([ex ? `ok fixed. ${ex.recap}` : 'ok noted!!', 'good now?'], () => setPhase('confirm'));
       return;
@@ -369,7 +527,6 @@ export function SessionChat({
   };
 
   if (!def) return null;
-  const progress = Math.min(beatIdx.current + 1, def.beats.length);
   const sendDisabled = !input.trim() || typing || phase === 'asking' || phase === 'extracting';
 
   return (
@@ -378,9 +535,9 @@ export function SessionChat({
     // where a top/bottom-only absolute parent doesn't size flex children.
     // Fades in over ~0.8s as the sky darkens under the camera's pan up.
     <Animated.View style={[{ height: SCREEN_H, paddingTop: insets.top }, rootStyle]}>
-      {/* header: the live sidekick head (mounted once here — never remounts, so
-          no flash), the session title + progress, and the dive-out chevron */}
-      <View className="items-center px-4 pb-2.5 pt-3">
+      {/* Just the dive-out chevron. No title, step count or avatar — the sky IS
+          the header, and the sidekick is already up there in stars. */}
+      <View className="px-4 pb-2.5 pt-3" pointerEvents="box-none">
         <Pressable
           onPress={onClose}
           accessibilityLabel="Leave session"
@@ -388,11 +545,6 @@ export function SessionChat({
         >
           <Ionicons name="chevron-down" size={20} color="rgba(255,255,255,0.8)" />
         </Pressable>
-        <SidekickAvatar size={44} style={{ marginBottom: 4 }} />
-        <Text className="text-[16px] font-extrabold text-white">{def.title}</Text>
-        <Text className="mt-0.5 text-[11px] font-semibold text-[#C9BCFF]">
-          {phase === 'done' ? 'complete!' : `${progress} of ${def.beats.length}`}
-        </Text>
       </View>
 
       {/* clear focal zone up top — the constellation + stars live here, nothing
@@ -415,6 +567,9 @@ export function SessionChat({
           kbPad,
         ]}
       >
+        {STAR_FACE_TUNING ? (
+          <StarFaceTuner />
+        ) : (
         <ScrollView
           ref={scrollRef}
           style={{ flex: 1 }}
@@ -448,7 +603,7 @@ export function SessionChat({
               <View className="flex-row items-center gap-1.5">
                 <Text className="text-[12px] text-[#C9BCFF]">✦</Text>
                 <Text className="text-[11px] font-extrabold uppercase tracking-[2px] text-[#C9BCFF]">
-                  your astral analysis
+                  your astral card
                 </Text>
               </View>
               <Text className="mt-2 text-[21px] font-extrabold leading-[26px] text-white">{analysis.archetype}</Text>
@@ -465,6 +620,7 @@ export function SessionChat({
             </View>
           ) : null}
         </ScrollView>
+        )}
 
         <View
           className="px-3 pt-2 border-t border-white/10"
@@ -472,7 +628,7 @@ export function SessionChat({
         >
           {phase === 'done' ? (
             <Pressable onPress={onDone} className="rounded-full bg-[#7A5AF8] py-3.5 items-center">
-              <Text className="text-[16px] font-bold text-white">See the island</Text>
+              <Text className="text-[16px] font-bold text-white">Continue</Text>
             </Pressable>
           ) : (
             <View className="flex-row items-center gap-2">

@@ -11,7 +11,7 @@ import Animated, {
 import { useSpeech } from '../store/speech';
 
 // RN port of sidekick/src/components/speech-bubble.tsx. Rendered inside the
-// head-tracked BondBadge stack, so it floats above the pill and tracks the head
+// head-tracked OverheadSpeech box, so it bottom-anchors just above the head
 // for free. Springs in on speak(), fades out after `ms`. Bubble + a rotated tail
 // pointing down at the head.
 

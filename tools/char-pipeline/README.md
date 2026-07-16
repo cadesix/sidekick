@@ -9,6 +9,14 @@ This is the *authoring* pipeline only. The character *generation* lab (Tripo /
 Hunyuan experiments, retopo/rig runs, old meshes and renders, ~900MB) is a
 local archive outside this repo.
 
+> **Note (2026-07-15):** `packages/web` (the Vite app) is deprecated, but its
+> `public/` directory is still the **canonical asset home** this pipeline
+> writes into — the Expo app derives its bundled copies from there via
+> `packages/expo/scripts/sync-cosmetics.mjs`. After adding/changing an item,
+> re-run that sync so the real app picks it up. The asset home will relocate
+> before `packages/web` is deleted (see `docs/MONOREPO.md`), at which point
+> the output paths here get repointed.
+
 ## Prerequisites
 
 - Blender 4.4 (`/Applications/Blender.app` on macOS). No other deps — scripts
