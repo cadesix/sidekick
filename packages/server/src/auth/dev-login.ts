@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
-import { and, eq } from "drizzle-orm";
-import { type Database, accounts, notificationPreferences, users } from "@sidekick/db";
+import { eq } from "drizzle-orm";
+import { type Database, users } from "@sidekick/db";
+import { findOrCreateUserForProvider } from "./provider-user";
 import { createSession } from "./sessions";
 
 const DEV_EMAIL = "dev@test.local";
@@ -20,20 +21,17 @@ export async function devLogin(db: Database): Promise<DevLoginResult> {
     throw new TRPCError({ code: "FORBIDDEN", message: "Dev login is only available in development" });
   }
 
-  const existing = await db.query.accounts.findFirst({
-    where: and(eq(accounts.provider, "email"), eq(accounts.providerAccountId, DEV_EMAIL)),
+  const { userId, isNewUser } = await findOrCreateUserForProvider(db, {
+    provider: "email",
+    providerAccountId: DEV_EMAIL,
+    email: DEV_EMAIL,
+    emailVerified: true,
   });
-  if (existing) {
-    const { token } = await createSession(db, existing.userId);
-    return { token, userId: existing.userId, isNewUser: false };
-  }
 
-  const userId = await db.transaction(async (tx) => {
-    const inserted = await tx
-      .insert(users)
-      .values({
-        email: DEV_EMAIL,
-        emailVerified: new Date(),
+  if (isNewUser) {
+    await db
+      .update(users)
+      .set({
         name: "Dev",
         sidekickName: "Sidekick",
         sidekickColor: "#8a63d2",
@@ -41,18 +39,9 @@ export async function devLogin(db: Database): Promise<DevLoginResult> {
         onboardingCompletedAt: new Date(),
         sparks: 50,
       })
-      .returning({ id: users.id });
-    const user = inserted[0];
-    if (!user) {
-      throw new Error("failed to create dev user");
-    }
-    await tx
-      .insert(accounts)
-      .values({ userId: user.id, provider: "email", providerAccountId: DEV_EMAIL });
-    await tx.insert(notificationPreferences).values({ userId: user.id });
-    return user.id;
-  });
+      .where(eq(users.id, userId));
+  }
 
   const { token } = await createSession(db, userId);
-  return { token, userId, isNewUser: true };
+  return { token, userId, isNewUser };
 }

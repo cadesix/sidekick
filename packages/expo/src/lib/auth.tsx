@@ -22,7 +22,7 @@ export { useApplyAuthResult, useSignOut } from "./auth-session";
  * SignInScreen. Runs as a react-query query so the async storage read needs no
  * effect orchestration.
  */
-async function bootstrapAuth(): Promise<{ signedIn: boolean }> {
+async function bootstrapAuth(): Promise<null> {
   const storedDeviceId = await getStoredItem(DEVICE_STORAGE_KEY);
   const deviceId = storedDeviceId ?? Crypto.randomUUID();
   if (!storedDeviceId) {
@@ -38,7 +38,8 @@ async function bootstrapAuth(): Promise<{ signedIn: boolean }> {
       // own requests confirm it.
     });
   }
-  return { signedIn: token !== null };
+  // The store is the source of truth for signed-in state; nothing reads this.
+  return null;
 }
 
 /**

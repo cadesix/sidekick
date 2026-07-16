@@ -6,6 +6,12 @@ const GENERAL_TOKEN_PREFIX = "sk";
 const AUTH_TOKEN_PREFIX = "au";
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+/**
+ * Only slide a session forward once it has aged past this, so an active session
+ * isn't re-written on every request — one bump per day keeps the 30-day window
+ * fresh without adding a write to the hot path.
+ */
+const SESSION_TOUCH_INTERVAL_MS = 1000 * 60 * 60 * 24;
 
 export function hashSha256(input: string): string {
   return crypto.createHash("sha256").update(input).digest("hex");
@@ -38,14 +44,15 @@ export async function getSessionFromAuthHeader(
     return null;
   }
 
-  if (session.expiresAt < new Date()) {
+  const now = Date.now();
+  if (session.expiresAt.getTime() < now) {
     return null;
   }
 
-  if (touch) {
+  if (touch && session.expiresAt.getTime() - now < SESSION_TTL_MS - SESSION_TOUCH_INTERVAL_MS) {
     await db
       .update(authSessions)
-      .set({ expiresAt: new Date(Date.now() + SESSION_TTL_MS) })
+      .set({ expiresAt: new Date(now + SESSION_TTL_MS) })
       .where(eq(authSessions.id, session.id));
   }
 

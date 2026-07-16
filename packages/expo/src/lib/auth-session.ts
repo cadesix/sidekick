@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { logout, registerDevice, setAuthToken, type AuthResult } from "./api";
+import { logout, registerDevice, setAuthToken, signOut, type AuthResult } from "./api";
 import { TOKEN_STORAGE_KEY, useAuthStore } from "./auth-store";
-import { removeStoredItem, setStoredItem } from "./secure-storage";
+import { setStoredItem } from "./secure-storage";
 
 /**
  * Persist a freshly-minted session and flip the app to signed-in. New users
@@ -26,16 +26,12 @@ export function useApplyAuthResult(): (result: AuthResult) => Promise<void> {
 
 /** Best-effort server logout, then local sign-out back to the SignInScreen. */
 export function useSignOut(): () => Promise<void> {
-  const queryClient = useQueryClient();
   return async () => {
     try {
       await logout();
     } catch {
       // The session may already be dead server-side; local sign-out proceeds.
     }
-    await removeStoredItem(TOKEN_STORAGE_KEY);
-    setAuthToken(null);
-    queryClient.clear();
-    useAuthStore.setState({ status: "signedOut" });
+    signOut();
   };
 }

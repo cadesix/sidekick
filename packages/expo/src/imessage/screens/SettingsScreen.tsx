@@ -79,6 +79,19 @@ function LinkRow({ label, onPress }: { label: string; onPress: () => void }) {
 	);
 }
 
+/** A read-only label/value row in the Account card, with its trailing divider. */
+function AccountRow({ label, value }: { label: string; value: string }) {
+	return (
+		<>
+			<View style={styles.row}>
+				<Text style={styles.rowLabel}>{label}</Text>
+				<Text style={styles.rowValue}>{value}</Text>
+			</View>
+			<View style={styles.divider} />
+		</>
+	);
+}
+
 function Group({
 	title,
 	children,
@@ -387,24 +400,8 @@ export function SettingsScreen() {
 						/>
 					</Group>
 					<Group title="Account">
-						{me.data.email ? (
-							<>
-								<View style={styles.row}>
-									<Text style={styles.rowLabel}>Email</Text>
-									<Text style={styles.rowValue}>{me.data.email}</Text>
-								</View>
-								<View style={styles.divider} />
-							</>
-						) : null}
-						{me.data.phone ? (
-							<>
-								<View style={styles.row}>
-									<Text style={styles.rowLabel}>Phone</Text>
-									<Text style={styles.rowValue}>{me.data.phone}</Text>
-								</View>
-								<View style={styles.divider} />
-							</>
-						) : null}
+						{me.data.email ? <AccountRow label="Email" value={me.data.email} /> : null}
+						{me.data.phone ? <AccountRow label="Phone" value={me.data.phone} /> : null}
 						<Pressable
 							style={styles.row}
 							disabled={signOutMutation.isPending}

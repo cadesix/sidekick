@@ -19,6 +19,8 @@ import { useApplyAuthResult } from "./auth-session";
 /** On web the OAuth redirect lands back on the app; this closes the popup loop. */
 WebBrowser.maybeCompleteAuthSession();
 
+const GOOGLE_SIGN_IN_ERROR = "couldn’t sign in with Google — mind trying again?";
+
 /** Server auth errors carry user-facing messages; zod issues arrive as JSON blobs we hide. */
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof TRPCClientError && !error.message.startsWith("[")) {
@@ -93,7 +95,7 @@ export function useGoogleAuth() {
     if (response.type !== "success") {
       setIsAuthenticating(false);
       if (response.type === "error") {
-        setError("couldn’t sign in with Google — mind trying again?");
+        setError(GOOGLE_SIGN_IN_ERROR);
       }
       return;
     }
@@ -106,7 +108,7 @@ export function useGoogleAuth() {
     authenticateWithGoogle(idToken)
       .then((result) => applyAuthResult(result))
       .catch((e: unknown) => {
-        setError(errorMessage(e, "couldn’t sign in with Google — mind trying again?"));
+        setError(errorMessage(e, GOOGLE_SIGN_IN_ERROR));
       })
       .finally(() => setIsAuthenticating(false));
     // applyAuthResult is recreated per render; keying on it would re-run the
@@ -124,7 +126,7 @@ export function useGoogleAuth() {
       await promptAsync();
     } catch {
       setIsAuthenticating(false);
-      setError("couldn’t sign in with Google — mind trying again?");
+      setError(GOOGLE_SIGN_IN_ERROR);
     }
   };
 

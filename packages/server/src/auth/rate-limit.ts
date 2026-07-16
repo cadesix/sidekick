@@ -6,6 +6,7 @@
  */
 export class RateLimiter {
   private readonly hits = new Map<string, number[]>();
+  private lastSweep = 0;
 
   constructor(
     private readonly points: number,
@@ -15,6 +16,7 @@ export class RateLimiter {
   /** Record an attempt for `key`; false once the window is already full. */
   consume(key: string): boolean {
     const now = Date.now();
+    this.sweep(now);
     const cutoff = now - this.durationMs;
     const recent = (this.hits.get(key) ?? []).filter((t) => t > cutoff);
     if (recent.length >= this.points) {
@@ -24,6 +26,24 @@ export class RateLimiter {
     recent.push(now);
     this.hits.set(key, recent);
     return true;
+  }
+
+  /**
+   * Drop keys whose entire window has elapsed so the map can't grow unbounded
+   * with every address that ever requested a code. Runs at most once per window,
+   * an O(n) pass over a map already bounded to keys seen within it.
+   */
+  private sweep(now: number): void {
+    if (now - this.lastSweep < this.durationMs) {
+      return;
+    }
+    this.lastSweep = now;
+    const cutoff = now - this.durationMs;
+    for (const [key, times] of this.hits) {
+      if (times.every((t) => t <= cutoff)) {
+        this.hits.delete(key);
+      }
+    }
   }
 }
 

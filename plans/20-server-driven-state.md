@@ -10,10 +10,15 @@ becomes a React Query cache over tRPC, exactly like chat/documents/reminders
 already are. Nothing is in prod, so **no back-compat and no data migration**:
 stale AsyncStorage keys are simply abandoned.
 
-Why now: signed-in accounts (19-auth) are meaningless if progression evaporates
-on reinstall or doesn't follow the account across devices; IAP/streak-freeze
-plans (`docs/token-economy.md` §Integrity) hard-require server-validated grants;
-and the current setup ships an OpenAI API key in the client bundle (see below).
+Why now: auth just landed (19-auth) — the app is gated behind sign-in and
+every user is a real account, but progression still lives on the device, which
+is now an actual bug, not just a limitation: **sign out and into a different
+account on the same device and you inherit the previous account's coins,
+inventory, bond, and session history** (the zustand stores don't know users
+exist). Accounts are also meaningless if progression evaporates on reinstall
+or doesn't follow the account across devices; IAP/streak-freeze plans
+(`docs/token-economy.md` §Integrity) hard-require server-validated grants; and
+the current setup ships an OpenAI API key in the client bundle (see below).
 
 ## Current state — the full picture
 
@@ -44,6 +49,31 @@ the **server's grant-ledger skeleton wins** (it's exactly the "grant log keyed
 by date + faucet id" the token-economy spec demands). The sparks-specific parts
 get deleted.
 
+### Auth, as actually landed (deviates from `plans/19-auth.md`)
+
+The implemented auth is **sign-in-required with no anonymous users** — a
+simplification over the plan's anon-first model. What this migration builds on:
+
+- `AuthGate` (`lib/auth.tsx`) blocks the whole app behind `SignInScreen`; the
+  session token (`authSessions`, `sk_au_` opaque tokens) is the only
+  credential. Every request that reaches a progression router has a real
+  `ctx.userId`.
+- Users are created in exactly two places: `findOrCreateUserForProvider`
+  (`auth/provider-user.ts` — fresh user per new provider identity, **no
+  merging**) and `devLogin` (`auth/dev-login.ts`, which currently seeds
+  `sparks: 50` — a sparks-removal dependency).
+- `registerDevice` is post-auth device-metadata upsert: a device that signs
+  into a different account repoints its `devices.userId`.
+- Both auth transitions (`useApplyAuthResult`, `useSignOut` in
+  `auth-session.ts`) already call `queryClient.clear()` — React Query state
+  can't bleed across accounts. AsyncStorage/zustand state has no such hook
+  today; this plan adds one (decision 10).
+
+Consequences for this plan: account switching on one device is a first-class
+flow (not a future concern), there are no anon-merge semantics to design for,
+and "starter seeding at registration" concretely means the two user-creation
+sites above.
+
 ### Inventory of on-device state and its fate
 
 | Key | File | Contents | Fate |
@@ -57,7 +87,7 @@ get deleted.
 | `sidekick-wardrobe-v1` | `three/wardrobe.ts` | worn item per slot | **→ server** (`userCosmetics.equipped`) + local boot cache |
 | `sidekick3d-settings-v2` | `three/settings.ts` | skin color + ~60 look-dev knobs | **skin → server** (`users.skin`); look-dev stays local |
 | `sidekick_star_face_tuning` | `store/starFaceConfig.ts` | dev-only sliders | stays local (slated for deletion anyway) |
-| `sidekick.deviceId` / `sidekick.token` | `lib/auth.tsx` | credentials | stays (19-auth owns this) |
+| `sidekick.deviceId` / `sidekick.token` | `lib/auth-store.ts` | install id + session token | stays (auth owns this) |
 | `health-agent-sharing-enabled`, `sidekick.locationEnabled`, `sidekick.lastLocatedMs` | `lib/health.ts`, `lib/location.ts` | device-scoped consent flags + throttle | stays local (consent is per-device; the data already syncs) |
 | `sidekickFocusSettings` | `lib/focus.ts` | Screen Time config | stays local (must live in the iOS App Group for the extension) |
 
@@ -82,8 +112,9 @@ get deleted.
    `REDEEM_COST`, the spinner sweep in `rewards/cron.ts` (+ its vercel.json
    cron), and `COSMETIC_CATALOG`. Removal dependency map: the deep-talks
    `grantReward` callers switch to coin amounts through the ledger (they keep
-   their `event:*` dedupe keys); `api.ts` wrappers for redeem/spin/rewardStatus
-   go; existing rewards tests get rewritten against the ledger. The `rewards`
+   their `event:*` dedupe keys); `devLogin`'s `sparks: 50` seed becomes the
+   standard starter grant; `api.ts` wrappers for redeem/spin/rewardStatus go;
+   existing rewards tests get rewritten against the ledger. The `rewards`
    table's skeleton survives as the **`ledger`** — see next decision.
 2. **One signed ledger for every coin and item movement.** Rename `rewards` →
    `ledger`: `(userId, source, dedupeKey unique per user, kind
@@ -188,14 +219,16 @@ get deleted.
    unified here).
 10. **The 3D scene gets a boot cache, not a persisted store.** The renderer
    hydrates wardrobe/skin before any network. Keep AsyncStorage mirrors of
-   server state — **scoped per user** (`sidekick-wardrobe-v1:<userId>`, same
-   for the skin blob) and cleared on sign-out/account switch, so account B
-   never boots wearing account A's outfit and stale pre-migration keys are
-   never mistaken for cache. Hydrate the scene from the mirror instantly,
-   reconcile when the snapshot query lands, update the mirror on every
-   equip/skin mutation. A failed equip mutation rolls the scene and mirror
-   back to the server's returned state — nothing stays locally equipped that
-   the server rejected. Server is truth; the mirror is disposable.
+   server state under **new key names** (so pre-migration authoritative data
+   is never read as cache), with the owning `userId` + a schema version inside
+   the payload as a boot-time guard. The mirrors are **deleted in
+   `useApplyAuthResult` and `useSignOut`** — the exact hooks that already
+   `queryClient.clear()` — so account B never boots wearing account A's
+   outfit. Hydrate the scene from the mirror instantly, reconcile when the
+   snapshot query lands, update the mirror on every equip/skin mutation. A
+   failed equip mutation rolls the scene and mirror back to the server's
+   returned state — nothing stays locally equipped that the server rejected.
+   Server is truth; the mirror is disposable.
 11. **One cold-start snapshot query, versioned.** New `state.snapshot`
    procedure returning `{ stateVersion, coins, bond, streak: { count,
    milestoneLadder }, dailyBox: { claimable, tier }, inventory, equipped,
@@ -211,8 +244,8 @@ get deleted.
    a response carrying an older `stateVersion` than the cache never
    overwrites it** (kills delayed-response clobbering). Optimistic updates for
    purchase/equip/goal-toggle, where the UX needs instant feedback. Cross-
-   device (Expo Web + iOS on one account, post-19-auth) is honest-but-simple
-   in v1: no push — the snapshot refetches on app foreground, and any response
+   device (Expo Web + iOS on one account — live today, since auth landed) is
+   honest-but-simple in v1: no push — the snapshot refetches on app foreground, and any response
    carrying a newer version triggers a refetch; per-domain invalidation fanout
    never needs to exist. The snapshot is a bag of named slices; future domains
    add a slice rather than new cold-start round trips.
@@ -277,13 +310,14 @@ import.
 
 ## Server changes (`packages/server`)
 
-**Starter seeding moves to registration** (`auth.register` / the 19-auth
-`register.ts`), not a read path: one transaction grants the `starter:coins`
-ledger row (+150) and inserts `START_INVENTORY` renderKeys into
-`userCosmetics` **equipped** (`source: 'starter'`). (Today's
-`ensureStarterCosmetics` inserts unequipped and runs on a query — both wrong
-for us: a fresh account must boot wearing the sky shirt, and a protected
-*query* that writes is surprising.)
+**Starter seeding moves to user creation**, not a read path — concretely, the
+create branch of `findOrCreateUserForProvider` (`auth/provider-user.ts`) and
+`devLogin`'s first-creation seed (whose `sparks: 50` this replaces): one
+transaction grants the `starter:coins` ledger row (+150) and inserts
+`START_INVENTORY` renderKeys into `userCosmetics` **equipped**
+(`source: 'starter'`). (Today's `ensureStarterCosmetics` inserts unequipped
+and runs on a query — both wrong for us: a fresh account must boot wearing
+the sky shirt, and a protected *query* that writes is surprising.)
 
 **New `state` router** — `snapshot` (protected query) assembling the payload in
 decision 11.
@@ -346,7 +380,7 @@ transactionally. Delete `redeem`, `rewardStatus`, `spin`. Add `setSkin`
 `source: 'manual'`, upsert on `(goalId, date)`, same service function as the
 chat path) for the sheet's toggle.
 
-**New `dev` router** (dev-only, same double-gating as 19-auth's `devLogin`:
+**New `dev` router** (dev-only, same double-gating as the existing `devLogin`:
 throws unless `NODE_ENV === 'development'`), replacing the DevPanel's direct
 store writes — every lever preserves the ledger invariant:
 - `adjustCoins` — writes a `dev-adjust:<uuid>` ledger row (never sets the
@@ -427,7 +461,7 @@ this plan keeps that. The failure experience, flow by flow:
 
 ## What deliberately stays on-device
 
-- Credentials (`sidekick.deviceId`/`token`) — 19-auth's domain.
+- Credentials (`sidekick.deviceId`/`token`) — auth's domain.
 - Health/location consent flags + the location throttle stamp — device-scoped
   consent; the underlying data already syncs.
 - Focus settings — must live in the iOS App Group for the Screen Time
@@ -458,7 +492,8 @@ mechanics). Everything on the roadmap decomposes onto them:
 | Room/environment decor, world-map travel state | new progression domain | the "new domain recipe" below + a snapshot slice |
 | Proactive pushes about progression ("your box is waiting", streak-at-risk) | server visibility into streak/box | state is now in Postgres next to the existing `notificationOutbox` + cron infra — a policy function away |
 | Tuning & experiments (token-economy levers) | change numbers without app release | numbers-in-payloads rule (decision 5); a config/experiment table can later feed the same payloads |
-| Multi-device (Expo Web + iOS, post-19-auth) | cheap cross-device consistency | `stateVersion` + foreground refetch; no offline mutation queue by design |
+| Multi-device (Expo Web + iOS, live today) | cheap cross-device consistency | `stateVersion` + foreground refetch; no offline mutation queue by design |
+| Account linking / merging (if it ever lands) | a merge policy for progression | everything is server rows keyed by `userId` — 19-auth's "adopt the target account's data" policy becomes a device repoint, no local state to reconcile |
 
 **The recipe for any new server-driven domain** (this is the groove every
 phase below also follows — deviating from it is the code smell to catch in
@@ -508,16 +543,17 @@ is ready.
    packages/expo/src` returns only the allowlist — the boot mirrors, the
    consent flags, `starFaceConfig`, and look-dev settings.
 
-Auth interplay: this works on today's anonymous device auth; 19-auth's session
-swap is orthogonal (the boot-mirror scoping + clear-on-switch hooks into
-whichever auth flow is live). Land 19-auth's merge semantics before inviting
-testers who reinstall, since server-side progression is what makes account
-merge matter.
+Auth interplay: auth is landed and every request carries a real `ctx.userId`,
+so nothing here waits on auth work. The two integration points are owned by
+this plan: starter seeding inside the user-creation transaction, and boot-
+mirror deletion inside `useApplyAuthResult`/`useSignOut`. Until phase 1 lands,
+account switching visibly bleeds local progression between accounts — worth
+telling testers, and a reason to not let this plan sit.
 
 ## Testing
 
 - **Vitest + PGlite** (existing harness, no mocks — LLM calls go through the
-  `createServices` seam with a capturing fake, same as 19-auth plans):
+  `createServices` seam with a capturing fake, matching the auth suites):
   - purchase: unknown key, insufficient coins, double-buy, concurrent spend,
     same-item race (unique index holds), optimistic-rollback contract (error
     surfaces).
@@ -541,5 +577,6 @@ merge matter.
   starter state (150 coins, sky shirt equipped); buy → equip → force-quit →
   relaunch → state intact; airplane-mode launch → scene renders from mirror,
   skeletons elsewhere; claim box twice → one grant; run a full star session →
-  coins/bond/astral update and survive reinstall; sign out/in (once 19-auth
-  lands) → no outfit bleed between accounts; toggle a goal day.
+  coins/bond/astral update and survive reinstall; sign out and into a second
+  account (dev login + one provider) → fresh starter state, no outfit or coin
+  bleed, then back to the first account → its state intact; toggle a goal day.

@@ -160,6 +160,31 @@ function ErrorText({ message }: { message: string }) {
 }
 
 /**
+ * Phone is a primary method everywhere; on iOS it sits under Apple as the
+ * outlined pill, on web it stands alone as the filled primary. Both buttons
+ * take the same props, so the only difference is which one renders.
+ */
+const PhoneButton = Platform.OS === "ios" ? ProviderButton : PrimaryButton;
+
+/** Shared chrome for the email/phone entry + code steps: the white sheet, dark
+ *  status bar, and a back affordance. Each step supplies its own `onBack` + body. */
+function StepScreen({ onBack, children }: { onBack: () => void; children: ReactNode }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View
+      className="flex-1 bg-white px-8"
+      style={{ paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }}
+    >
+      <StatusBar style="dark" />
+      <Pressable hitSlop={12} className="self-start py-2" onPress={onBack}>
+        <Text className="text-[15px] text-ink/55">← back</Text>
+      </Pressable>
+      {children}
+    </View>
+  );
+}
+
+/**
  * The app's front door (19-auth.md), built from sidekick's own world: the
  * cream backdrop and white rounded-top card from the chat surface, with the
  * mascot peeking over the card's edge to greet you — your little friend is
@@ -218,21 +243,12 @@ export function SignInScreen() {
 
   if (screen !== "methods" && active.step === "code") {
     return (
-      <View
-        className="flex-1 bg-white px-8"
-        style={{ paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }}
+      <StepScreen
+        onBack={() => {
+          setCode("");
+          active.reset();
+        }}
       >
-        <StatusBar style="dark" />
-        <Pressable
-          hitSlop={12}
-          className="self-start py-2"
-          onPress={() => {
-            setCode("");
-            active.reset();
-          }}
-        >
-          <Text className="text-[15px] text-ink/55">← back</Text>
-        </Pressable>
         <View className="flex-1 justify-center gap-5 pb-24 w-full max-w-md self-center">
           <Text className="text-[24px] font-semibold text-ink text-center">enter your code</Text>
           <Text className="text-[15px] leading-[1.6] text-ink/55 text-center">
@@ -260,27 +276,18 @@ export function SignInScreen() {
             </Text>
           </Pressable>
         </View>
-      </View>
+      </StepScreen>
     );
   }
 
   if (screen !== "methods") {
     return (
-      <View
-        className="flex-1 bg-white px-8"
-        style={{ paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }}
+      <StepScreen
+        onBack={() => {
+          active.reset();
+          setScreen("methods");
+        }}
       >
-        <StatusBar style="dark" />
-        <Pressable
-          hitSlop={12}
-          className="self-start py-2"
-          onPress={() => {
-            active.reset();
-            setScreen("methods");
-          }}
-        >
-          <Text className="text-[15px] text-ink/55">← back</Text>
-        </Pressable>
         <View className="flex-1 justify-center gap-5 pb-24 w-full max-w-md self-center">
           <Text className="text-[24px] font-semibold text-ink text-center">
             {screen === "email" ? "what’s your email?" : "what’s your number?"}
@@ -323,7 +330,7 @@ export function SignInScreen() {
           />
           {active.error ? <ErrorText message={active.error} /> : null}
         </View>
-      </View>
+      </StepScreen>
     );
   }
 
@@ -363,19 +370,11 @@ export function SignInScreen() {
                 disabled={providerBusy}
               />
             ) : null}
-            {Platform.OS === "ios" ? (
-              <ProviderButton
-                label="continue with phone number"
-                onPress={() => openMethod("phone")}
-                disabled={providerBusy}
-              />
-            ) : (
-              <PrimaryButton
-                label="continue with phone number"
-                onPress={() => openMethod("phone")}
-                disabled={providerBusy}
-              />
-            )}
+            <PhoneButton
+              label="continue with phone number"
+              onPress={() => openMethod("phone")}
+              disabled={providerBusy}
+            />
             {showMoreOptions ? (
               <>
                 <ProviderButton

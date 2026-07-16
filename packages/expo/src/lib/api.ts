@@ -14,6 +14,7 @@ import type {
 import { drainStreamFrames } from "~/features/chat/stream-frames";
 import { Platform } from "react-native";
 import { TOKEN_STORAGE_KEY, useAuthStore } from "./auth-store";
+import { queryClient } from "./query-client";
 import { removeStoredItem } from "./secure-storage";
 
 /**
@@ -42,9 +43,10 @@ export function setAuthToken(token: string | null, deviceId?: string): void {
 }
 
 function authHeaders(): Record<string, string> {
+  const locale = Intl.DateTimeFormat().resolvedOptions();
   const headers: Record<string, string> = {
-    "accept-language": Intl.DateTimeFormat().resolvedOptions().locale,
-    "x-sidekick-timezone": Intl.DateTimeFormat().resolvedOptions().timeZone,
+    "accept-language": locale.locale,
+    "x-sidekick-timezone": locale.timeZone,
     "x-sidekick-user-agent": `Sidekick/${Constants.expoConfig?.version ?? "1"} (${Platform.OS}; ${String(Platform.Version)})`,
   };
   if (authDeviceId) {
@@ -56,15 +58,27 @@ function authHeaders(): Record<string, string> {
   return headers;
 }
 
+/**
+ * Drop the local session and return the app to the SignInScreen (19-auth.md):
+ * forget the in-memory + stored token, clear the react-query cache so no
+ * previous-user data lingers, and flip the auth store to signed-out. Plain
+ * (non-hook) so both the 401 handler here and `useSignOut` share one teardown.
+ */
+export function signOut(): void {
+  authToken = null;
+  void removeStoredItem(TOKEN_STORAGE_KEY);
+  queryClient.clear();
+  useAuthStore.setState({ status: "signedOut" });
+}
+
 const UNAUTHORIZED_SIGN_OUT_THRESHOLD = 3;
 let consecutiveUnauthorizedCount = 0;
 
 /**
  * A revoked/expired session makes every request 401. After three consecutive
- * UNAUTHORIZED responses, drop the local token and flip the auth store to
- * signed-out — AuthGate then swaps the app for the SignInScreen (19-auth.md).
- * A one-off 401 (e.g. the fire-and-forget registerDevice racing a sign-out)
- * never trips it, and any success resets the counter.
+ * UNAUTHORIZED responses, sign out — AuthGate then swaps the app for the
+ * SignInScreen. A one-off 401 (e.g. the fire-and-forget registerDevice racing a
+ * sign-out) never trips it, and any success resets the counter.
  */
 function recordUnauthorized(): void {
   consecutiveUnauthorizedCount += 1;
@@ -72,9 +86,7 @@ function recordUnauthorized(): void {
     return;
   }
   consecutiveUnauthorizedCount = 0;
-  authToken = null;
-  void removeStoredItem(TOKEN_STORAGE_KEY);
-  useAuthStore.setState({ status: "signedOut" });
+  signOut();
 }
 
 const authErrorLink: TRPCLink<AppRouter> =
@@ -323,18 +335,19 @@ export async function uploadAttachment(input: {
   /** Normalized 0..1 amplitude bars for a voice message, so it survives a reload. */
   waveform?: number[];
 }): Promise<{ attachmentId: string }> {
-  const created = await trpc.chat.createUploadUrl.mutate({
-    kind: input.kind,
-    mime: input.mime,
-    bytes: input.bytes,
-    filename: input.filename,
-    width: input.width,
-    height: input.height,
-    durationMs: input.durationMs,
-  });
+  const [created, body] = await Promise.all([
+    trpc.chat.createUploadUrl.mutate({
+      kind: input.kind,
+      mime: input.mime,
+      bytes: input.bytes,
+      filename: input.filename,
+      width: input.width,
+      height: input.height,
+      durationMs: input.durationMs,
+    }),
+    fetch(input.uri).then((response) => response.blob()),
+  ]);
 
-  const fileResponse = await fetch(input.uri);
-  const body = await fileResponse.blob();
   const put = await fetch(created.upload.uploadUrl, {
     method: created.upload.method,
     headers: { ...created.upload.headers, ...authHeaders() },
