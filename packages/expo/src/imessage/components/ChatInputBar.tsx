@@ -1,7 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
-import Animated, { ZoomIn, ZoomOut } from "react-native-reanimated";
+import Animated, { useAnimatedStyle, withSpring, ZoomIn, ZoomOut } from "react-native-reanimated";
 import { colors } from "../theme";
 import { Glass } from "./Glass";
 import { Icon } from "./Icon";
@@ -65,16 +65,23 @@ export function ChatInputBar({
 		onTogglePlusMenu();
 	};
 
+	// The plus twists 45° into an X while the drawer is open (or a take is
+	// recording), like the Messages composer button.
+	const closeButton = recording || plusMenuOpen;
+	const plusIconStyle = useAnimatedStyle(() => ({
+		transform: [
+			{ rotate: withSpring(closeButton ? "45deg" : "0deg", { duration: 350, dampingRatio: 0.8 }) },
+		],
+	}));
+
 	return (
 		<View style={styles.container}>
 			<View style={styles.row}>
-				<Glass style={styles.plusButton}>
+				<Glass isInteractive style={styles.plusButton}>
 					<Pressable onPress={handleLeftButton} style={styles.plusPressable} hitSlop={6}>
-						<Icon
-							name={recording || plusMenuOpen ? "xmark" : "plus"}
-							size={19}
-							color={colors.label}
-						/>
+						<Animated.View style={plusIconStyle}>
+							<Icon name="plus" size={19} color={colors.label} />
+						</Animated.View>
 					</Pressable>
 				</Glass>
 				{recording ? (
@@ -135,7 +142,6 @@ const styles = StyleSheet.create({
 		width: 40,
 		height: 40,
 		borderRadius: 20,
-		overflow: "hidden",
 	},
 	plusPressable: {
 		flex: 1,
@@ -150,7 +156,6 @@ const styles = StyleSheet.create({
 		maxHeight: 132,
 		borderRadius: 20,
 		borderCurve: "continuous",
-		overflow: "hidden",
 	},
 	input: {
 		flex: 1,

@@ -106,6 +106,10 @@ export function TapbackBadge({ reaction, bubbleSide }: TapbackBadgeProps) {
 
 const BADGE = 30;
 
+// How far the badge pokes above the bubble's top edge (its container sits at
+// top: -BADGE + 10) — anything placed above the bubble must clear this too.
+export const TAPBACK_BADGE_OVERHANG = BADGE - 10;
+
 const styles = StyleSheet.create({
 	textGlyph: {
 		color: "#3FA2F7",

@@ -1,7 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { BlurView } from "expo-blur";
 import { useEffect, useRef, useState } from "react";
-import { Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, {
 	Easing,
 	interpolate,
@@ -21,9 +21,14 @@ import { AudioBubble } from "./AudioBubble";
 import { Icon, type IconName } from "./Icon";
 import type { BubbleLayout } from "./MessageRow";
 import { MessageBubble } from "./MessageBubble";
-import { TAPBACK_ORDER, TapbackBadge, TapbackGlyph } from "./TapbackBadge";
+import { TAPBACK_BADGE_OVERHANG, TAPBACK_ORDER, TapbackBadge, TapbackGlyph } from "./TapbackBadge";
 
 const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
+
+// The bubble clone floats over the scrim (blurred background + 12% black dim),
+// so its tail cutout must carve with the dimmed background color — the raw
+// background would show as a bright square just above the tail.
+const SCRIM_BEHIND = "#E0E0E0";
 
 const PILL_HEIGHT = 48;
 const MENU_WIDTH = 254;
@@ -90,6 +95,9 @@ function MenuRow({
 interface TapbackOverlayProps {
 	message: Message;
 	layout: BubbleLayout;
+	// Size of the view the overlay fills — the chat drawer, NOT the window.
+	// Bubble layouts arrive in these same drawer-relative coordinates.
+	container: { width: number; height: number };
 	onSelectReaction: (type: ReactionType) => void;
 	onAction: (key: string) => void;
 	onDismiss: () => void;
@@ -98,12 +106,12 @@ interface TapbackOverlayProps {
 export function TapbackOverlay({
 	message,
 	layout,
+	container,
 	onSelectReaction,
 	onAction,
 	onDismiss,
 }: TapbackOverlayProps) {
 	const insets = useSafeAreaInsets();
-	const screen = Dimensions.get("window");
 	const sent = message.role === "me";
 	const [emojiRow, setEmojiRow] = useState(false);
 
@@ -124,11 +132,16 @@ export function TapbackOverlay({
 	const menuHeight =
 		groups.reduce((sum, group) => sum + group.length * MENU_ROW_HEIGHT, 0) +
 		(groups.length - 1) * MENU_GROUP_GAP;
-	const minTop = insets.top + 56;
-	const maxBottom = screen.height - insets.bottom - 16;
+	// Reaction badges poke above the bubble clone, so the pill backs off far
+	// enough not to sit on top of them.
+	const pillGap = GAP + (message.reactions.length > 0 ? TAPBACK_BADGE_OVERHANG : 0);
+	// The drawer already starts below the status bar; its bottom edge is the
+	// screen bottom, so only the home-indicator inset applies.
+	const minTop = 12;
+	const maxBottom = container.height - insets.bottom - 16;
 	let bubbleTop = layout.y;
-	if (bubbleTop - PILL_HEIGHT - GAP < minTop) {
-		bubbleTop = minTop + PILL_HEIGHT + GAP;
+	if (bubbleTop - PILL_HEIGHT - pillGap < minTop) {
+		bubbleTop = minTop + PILL_HEIGHT + pillGap;
 	}
 	if (bubbleTop + layout.height + GAP + menuHeight > maxBottom) {
 		bubbleTop = maxBottom - menuHeight - GAP - layout.height;
@@ -177,7 +190,7 @@ export function TapbackOverlay({
 	const mine = message.reactions.find((reaction) => reaction.from === "me");
 	const emojiOnly = message.kind === "text" && isEmojiOnly(message.text);
 	const sideAlign = sent
-		? { right: screen.width - layout.x - layout.width }
+		? { right: container.width - layout.x - layout.width }
 		: { left: layout.x };
 
 	const selectReaction = (type: ReactionType) => {
@@ -211,11 +224,11 @@ export function TapbackOverlay({
 				{emojiOnly ? (
 					<Text style={styles.bigEmoji}>{message.text}</Text>
 				) : message.kind === "audio" && message.audio ? (
-					<MessageBubble from={message.role} tail>
+					<MessageBubble from={message.role} tail backgroundBehind={SCRIM_BEHIND}>
 						<AudioBubble audio={message.audio} sent={sent} />
 					</MessageBubble>
 				) : (
-					<MessageBubble from={message.role} tail>
+					<MessageBubble from={message.role} tail backgroundBehind={SCRIM_BEHIND}>
 						<Text style={[styles.text, { color: sent ? colors.sentText : colors.receivedText }]}>
 							{message.text}
 						</Text>
@@ -233,10 +246,10 @@ export function TapbackOverlay({
 			<Animated.View
 				style={[
 					styles.pill,
-					{ top: bubbleTop - PILL_HEIGHT - GAP },
-					emojiRow ? { maxWidth: screen.width - 24 } : null,
+					{ top: bubbleTop - PILL_HEIGHT - pillGap },
+					emojiRow ? { maxWidth: container.width - 24 } : null,
 					sent
-						? { right: screen.width - layout.x - layout.width - 4, transformOrigin: "bottom right" }
+						? { right: container.width - layout.x - layout.width - 4, transformOrigin: "bottom right" }
 						: { left: Math.max(8, layout.x - 4), transformOrigin: "bottom left" },
 					popoverStyle,
 				]}
@@ -309,7 +322,7 @@ export function TapbackOverlay({
 					styles.menu,
 					{ top: bubbleTop + layout.height + GAP },
 					sent
-						? { right: screen.width - layout.x - layout.width, transformOrigin: "top right" }
+						? { right: container.width - layout.x - layout.width, transformOrigin: "top right" }
 						: { left: layout.x, transformOrigin: "top left" },
 					popoverStyle,
 				]}
@@ -364,7 +377,6 @@ const styles = StyleSheet.create({
 		height: "100%",
 		borderRadius: PILL_HEIGHT / 2,
 		borderCurve: "continuous",
-		overflow: "hidden",
 		paddingHorizontal: 6,
 		gap: 1,
 	},
@@ -393,7 +405,6 @@ const styles = StyleSheet.create({
 	menuGroup: {
 		borderRadius: 16,
 		borderCurve: "continuous",
-		overflow: "hidden",
 		shadowColor: "#000000",
 		shadowOpacity: 0.1,
 		shadowRadius: 20,

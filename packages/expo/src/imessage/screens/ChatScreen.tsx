@@ -45,6 +45,7 @@ export const CHAT_SHEET_DETENT = 0.75;
 interface OverlayState {
 	message: Message;
 	layout: BubbleLayout;
+	container: { width: number; height: number };
 }
 
 /**
@@ -170,10 +171,11 @@ export function ChatScreen() {
 	// screen, which sits inside a drawer offset from the window's top.
 	const handleLongPress = useCallback((message: Message, layout: BubbleLayout) => {
 		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-		containerRef.current?.measureInWindow((containerX, containerY) => {
+		containerRef.current?.measureInWindow((containerX, containerY, containerWidth, containerHeight) => {
 			setOverlay({
 				message,
 				layout: { ...layout, x: layout.x - containerX, y: layout.y - containerY },
+				container: { width: containerWidth, height: containerHeight },
 			});
 		});
 	}, []);
@@ -324,6 +326,7 @@ export function ChatScreen() {
 						overlay.message
 					}
 					layout={overlay.layout}
+					container={overlay.container}
 					onSelectReaction={handleReaction}
 					onAction={handleOverlayAction}
 					onDismiss={() => setOverlay(null)}

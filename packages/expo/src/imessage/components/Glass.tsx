@@ -1,15 +1,20 @@
+import Constants from "expo-constants";
 import { BlurView, type BlurViewProps } from "expo-blur";
-import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
-import type { ReactNode } from "react";
+import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from "expo-glass-effect";
+import { createElement, type ReactNode } from "react";
 import type { StyleProp, ViewStyle } from "react-native";
 
-// True on iOS 26+ only; false on older iOS, Android, and web.
-const liquidGlass = isLiquidGlassAvailable();
+// True on iOS 26+ devices only. The simulator technically supports UIGlassEffect
+// but draws it as an almost fully transparent wash — chrome like the composer or
+// menus disappears entirely — so it gets the frosted-blur fallback instead.
+const liquidGlass = isLiquidGlassAvailable() && isGlassEffectAPIAvailable() && Constants.isDevice;
 
 interface GlassProps {
   style?: StyleProp<ViewStyle>;
   children?: ReactNode;
-  // Fallback blur tuning (older iOS / Android native blur, web backdrop-filter).
+  // Only for tappable glass (round buttons) — matches UIKit's interactive glass.
+  isInteractive?: boolean;
+  // Fallback blur tuning (simulator, older iOS / Android native blur, web backdrop-filter).
   intensity?: number;
   tint?: BlurViewProps["tint"];
 }
@@ -19,17 +24,26 @@ interface GlassProps {
  * everywhere else. `expo-glass-effect`'s GlassView renders as a plain (opaque-less)
  * View off-iOS, so the fallback has to be explicit — `expo-blur` gives a real
  * `backdrop-filter` on web and a native blur on older iOS / Android.
+ *
+ * Never put `overflow: "hidden"` in `style`: clipping a UIGlassEffect view stops
+ * the glass from rendering at all. GlassView respects `borderRadius` natively;
+ * the BlurView fallback gets its clipping here.
  */
-export function Glass({ style, children, intensity = 40, tint = "light" }: GlassProps) {
+export function Glass({
+  style,
+  children,
+  isInteractive = false,
+  intensity = 100,
+  tint = "systemThinMaterialLight",
+}: GlassProps) {
+  // createElement, not JSX: this file compiles with jsxImportSource "nativewind",
+  // whose css-interop wrapper silently breaks GlassView's native props — the
+  // effect never gets applied and the glass renders fully transparent.
   if (liquidGlass) {
-    return (
-      <GlassView glassEffectStyle="regular" isInteractive style={style}>
-        {children}
-      </GlassView>
-    );
+    return createElement(GlassView, { glassEffectStyle: "regular", isInteractive, style }, children);
   }
   return (
-    <BlurView intensity={intensity} tint={tint} style={style}>
+    <BlurView intensity={intensity} tint={tint} style={[style, { overflow: "hidden" }]}>
       {children}
     </BlurView>
   );

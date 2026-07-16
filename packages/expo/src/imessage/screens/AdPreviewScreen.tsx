@@ -84,7 +84,7 @@ export function AdPreviewScreen() {
 	return (
 		<View style={styles.screen}>
 			<View style={[styles.header, { paddingTop: insets.top + 6 }]}>
-				<Glass style={styles.glassButton}>
+				<Glass isInteractive style={styles.glassButton}>
 					<Pressable hitSlop={12} onPress={() => router.back()} style={styles.glassPressable}>
 						<Icon name="chevronLeft" size={20} color={colors.blue} strokeWidth={2.5} />
 					</Pressable>
@@ -177,7 +177,6 @@ const styles = StyleSheet.create({
 		height: 42,
 		borderRadius: 21,
 		borderCurve: "continuous",
-		overflow: "hidden",
 	},
 	glassPressable: {
 		flex: 1,

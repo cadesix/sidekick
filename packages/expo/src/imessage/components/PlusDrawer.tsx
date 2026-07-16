@@ -128,7 +128,6 @@ const styles = StyleSheet.create({
 		minWidth: 218,
 		borderRadius: 26,
 		borderCurve: "continuous",
-		overflow: "hidden",
 	},
 	item: {
 		flexDirection: "row",

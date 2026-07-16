@@ -251,7 +251,6 @@ const styles = StyleSheet.create({
 		borderCurve: "continuous",
 		paddingLeft: 14,
 		paddingRight: 4,
-		overflow: "hidden",
 	},
 	playButton: {
 		width: 24,

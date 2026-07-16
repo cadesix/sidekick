@@ -146,12 +146,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.25)',
     paddingHorizontal: 18,
     paddingVertical: 14,
-    overflow: 'hidden',
   },
   tile: {
     width: TILE,
     height: TILE,
     borderRadius: 14,
+    borderCurve: 'continuous',
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.05)',
