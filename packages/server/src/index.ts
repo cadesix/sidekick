@@ -20,7 +20,7 @@ export {
   otpEmailHtml,
   type AuthEmailSender,
 } from "./auth/email";
-export { verifyAppleToken, type VerifiedAppleToken, type Platform } from "./auth/apple";
+export { verifyAppleToken, type VerifiedAppleToken } from "./auth/apple";
 export { verifyGoogleIdToken, type VerifiedGoogleToken } from "./auth/google";
 export { createTwilioSms, type SmsSender } from "./auth/sms";
 export { devLogin, type DevLoginResult } from "./auth/dev-login";

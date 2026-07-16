@@ -65,11 +65,18 @@ export const memoryKind = pgEnum("memory_kind", [
  * gender, personality, sidekickName, sidekickColor) are nullable because a fresh
  * signup has a blank profile until the funnel's cold-start transaction
  * (user-memory.md §6) populates them.
+ *
+ * `email`/`phone` are NOT unique: identity is keyed on `(provider,
+ * providerAccountId)` in `accounts`. A verified email is shared by linking (a new
+ * trusted provider carrying the same *verified* email attaches to the existing
+ * user — see `findOrCreateUserForProvider`), but an *unverified* email can still
+ * coexist as a separate weak identity, so the column can hold duplicates. A unique
+ * constraint would make those legitimate cases fail with a unique violation.
  */
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
-  email: text("email").unique(),
-  phone: text("phone").unique(),
+  email: text("email"),
+  phone: text("phone"),
   emailVerified: timestamp("email_verified", { withTimezone: true, mode: "date" }),
   name: text("name"),
   ageBracket: text("age_bracket"),

@@ -5,15 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1784168429568,
-      "tag": "0000_high_leader",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1784214843662,
-      "tag": "0001_tired_squadron_sinister",
+      "when": 1784223504783,
+      "tag": "0000_dear_lilandra",
       "breakpoints": true
     }
   ]

@@ -195,7 +195,7 @@ export async function ensureMainConversation(
   return row;
 }
 
-async function assertConversationOwned(
+export async function assertConversationOwned(
   db: Database,
   conversationId: string,
   userId: string,
@@ -837,8 +837,10 @@ export async function sendChatTurn(
 
 export async function chatHistory(
   db: Database,
+  userId: string,
   input: { conversationId: string; cursor?: number; limit: number },
 ): Promise<MessageRow[]> {
+  await assertConversationOwned(db, input.conversationId, userId);
   const base = eq(messages.conversationId, input.conversationId);
   const where = input.cursor ? and(base, lt(messages.id, input.cursor)) : base;
   return db.select().from(messages).where(where).orderBy(desc(messages.id)).limit(input.limit);
@@ -851,8 +853,10 @@ export async function chatHistory(
  */
 export async function chatHistoryAround(
   db: Database,
+  userId: string,
   input: { conversationId: string; messageId: number; span: number },
 ): Promise<MessageRow[]> {
+  await assertConversationOwned(db, input.conversationId, userId);
   const base = eq(messages.conversationId, input.conversationId);
   const older = await db
     .select()
@@ -885,8 +889,10 @@ export type SearchHit = {
  */
 export async function chatSearch(
   db: Database,
+  userId: string,
   input: { conversationId: string; query: string; limit: number },
 ): Promise<SearchHit[]> {
+  await assertConversationOwned(db, input.conversationId, userId);
   const matches = sql`${messages.contentTsv} @@ websearch_to_tsquery('english', ${input.query})`;
   return db
     .select({

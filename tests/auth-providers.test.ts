@@ -8,7 +8,11 @@ import {
   users,
 } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
-import { getSessionFromAuthHeader, type SmsSender } from "@sidekick/server";
+import {
+  findOrCreateUserForProvider,
+  getSessionFromAuthHeader,
+  type SmsSender,
+} from "@sidekick/server";
 import { makeCaller, textModel } from "./helpers";
 
 let db: Database;
@@ -140,6 +144,55 @@ test("first verify creates the user + account + notification prefs; second signs
   const returning = await caller.auth.verifyEmailCode({ email, code: last() });
   expect(returning.isNewUser).toBe(false);
   expect(returning.userId).toBe(created.userId);
+});
+
+test("a trusted provider with the same verified email links to the existing user", async () => {
+  const email = "shared@example.com";
+  const { sender, last } = capturingEmail();
+  const caller = emailCaller(sender);
+
+  await caller.auth.requestEmailCode({ email });
+  const viaEmail = await caller.auth.verifyEmailCode({ email, code: last() });
+
+  // Same verified address via Google — links onto the existing user rather than
+  // minting a duplicate: one user, two account rows.
+  const viaGoogle = await findOrCreateUserForProvider(db, {
+    provider: "google",
+    providerAccountId: "google-sub-123",
+    email,
+    emailVerified: true,
+  });
+
+  expect(viaGoogle.isNewUser).toBe(false);
+  expect(viaGoogle.userId).toBe(viaEmail.userId);
+  const sharing = await db.select().from(users).where(eq(users.email, email));
+  expect(sharing.length).toBe(1);
+  const accountRows = await db
+    .select()
+    .from(accounts)
+    .where(eq(accounts.userId, viaEmail.userId));
+  expect(accountRows.map((a) => a.provider).sort()).toEqual(["email", "google"]);
+});
+
+test("an UNverified provider email does not link — it cannot hijack the account", async () => {
+  const email = "verified-owner@example.com";
+  const { sender, last } = capturingEmail();
+  const caller = emailCaller(sender);
+
+  await caller.auth.requestEmailCode({ email });
+  const owner = await caller.auth.verifyEmailCode({ email, code: last() });
+
+  // A provider asserting the same address but WITHOUT email verification must
+  // never attach to the verified owner — it gets its own distinct weak identity.
+  const unverified = await findOrCreateUserForProvider(db, {
+    provider: "google",
+    providerAccountId: "google-sub-unverified",
+    email,
+    emailVerified: false,
+  });
+
+  expect(unverified.isNewUser).toBe(true);
+  expect(unverified.userId).not.toBe(owner.userId);
 });
 
 test("phone flow: approved verification creates a user with the phone identity", async () => {

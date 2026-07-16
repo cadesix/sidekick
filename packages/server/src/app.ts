@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { trpcServer } from "@hono/trpc-server";
 import { createMiddleware } from "hono/factory";
 import { attachments } from "@sidekick/db";
@@ -28,11 +29,33 @@ import { appRouter } from "./routers";
  */
 const cronAuth = createMiddleware(async (c, next) => {
   const secret = readEnv().CRON_SECRET;
-  if (!secret || c.req.header("authorization") !== `Bearer ${secret}`) {
+  const provided = c.req.header("authorization");
+  if (!secret || !provided || !constantTimeEqual(provided, `Bearer ${secret}`)) {
     return c.json({ error: "unauthorized" }, 401);
   }
   return next();
 });
+
+/** Length-checked constant-time string compare — avoids leaking a shared secret byte-by-byte via timing. */
+function constantTimeEqual(a: string, b: string): boolean {
+  const aBytes = Buffer.from(a);
+  const bBytes = Buffer.from(b);
+  return aBytes.length === bBytes.length && timingSafeEqual(aBytes, bBytes);
+}
+
+/**
+ * Attachment bytes are user-supplied and served back from this origin, so never
+ * echo a content-type a browser will execute: `text/html`/`svg`/`xhtml` are
+ * downgraded to an inert `application/octet-stream`. Paired with `nosniff` on the
+ * response, this neutralizes stored-XSS while images/audio/pdf still render inline.
+ */
+function safeContentType(mime: string | undefined): string {
+  const resolved = mime ?? "application/octet-stream";
+  if (/^(?:text\/html|image\/svg\+xml|application\/xhtml\+xml)/i.test(resolved)) {
+    return "application/octet-stream";
+  }
+  return resolved;
+}
 
 /** A single `bytes=` range, clamped to the object; null when absent or unsatisfiable. */
 function parseByteRange(
@@ -242,13 +265,22 @@ export function buildApp(services: Services) {
      * defeating a lying/absent length.
      */
     const reservation = await services.db
-      .select({ userId: attachments.userId, bytes: attachments.bytes })
+      .select({ userId: attachments.userId, bytes: attachments.bytes, status: attachments.status })
       .from(attachments)
       .where(eq(attachments.storageKey, key))
       .limit(1);
     const row = reservation[0];
     if (!row || row.userId !== ctx.userId) {
       return c.json({ error: "not found" }, 404);
+    }
+    /**
+     * The reservation is single-use: once it leaves `uploading` (the client has
+     * marked the bytes uploaded and ingest derived caption/transcript/text from
+     * them), a second PUT would swap the served bytes out from under that already-
+     * ingested metadata. Reject it rather than let stored content diverge.
+     */
+    if (row.status !== "uploading") {
+      return c.json({ error: "conflict" }, 409);
     }
     const declaredLength = Number(c.req.header("content-length"));
     if (Number.isFinite(declaredLength) && declaredLength > row.bytes) {
@@ -281,8 +313,9 @@ export function buildApp(services: Services) {
         .where(eq(attachments.storageKey, key))
         .limit(1);
       const headers: Record<string, string> = {
-        "content-type": rows[0]?.mime ?? "application/octet-stream",
+        "content-type": safeContentType(rows[0]?.mime),
         "accept-ranges": "bytes",
+        "x-content-type-options": "nosniff",
       };
       const range = parseByteRange(c.req.header("range"), bytes.byteLength);
       if (!range) {

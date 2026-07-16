@@ -36,7 +36,7 @@ export const authRouter = router({
   authenticateWithApple: publicProcedure
     .input(appleAuthInput)
     .mutation(async ({ ctx, input }) => {
-      const verified = await verifyAppleToken(input.identityToken, input.platform);
+      const verified = await verifyAppleToken(input.identityToken);
       return issueSession(ctx, {
         provider: "apple",
         providerAccountId: verified.sub,

@@ -25,13 +25,18 @@ function fireAndForget(task: () => Promise<unknown>): void {
 
 /**
  * Email OTP delivery (19-auth.md). Resend when `RESEND_API_KEY`/`RESEND_FROM_EMAIL`
- * are set; otherwise the code is logged to the console — invoice's dev behavior, so
- * local email sign-in works without a Resend account.
+ * are set; otherwise, in development only, the code is logged to the console so
+ * local email sign-in works without a Resend account. A production server missing
+ * Resend config must NOT fall back to logging live OTPs to the server logs — it
+ * throws at send time instead (mirroring the Twilio seam's lazy fail-closed).
  */
 function createAuthEmail(env: ServerEnv): AuthEmailSender {
   if (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL) {
     return {
       sendOtp: async (email, code) => {
+        if (process.env.NODE_ENV === "production") {
+          throw new Error("Email OTP is not configured: set RESEND_API_KEY and RESEND_FROM_EMAIL");
+        }
         console.log(`[auth] email OTP for ${email}: ${code}`);
       },
     };
