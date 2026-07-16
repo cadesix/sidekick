@@ -85,19 +85,24 @@ function capArchetype(s: string): string {
 // only declines when the card is null, so fabricating one here would overwrite a
 // real reading earned by earlier sessions with "a sky still forming".
 function parseAnalysis(a: unknown): Analysis | null {
-  if (!a || typeof a !== 'object') return null;
+  // Array.isArray: [] is typeof 'object' too, and an array is never a card.
+  if (!a || typeof a !== 'object' || Array.isArray(a)) return null;
   const o = a as Record<string, unknown>;
+  // capped: the archetype flows into astralNews() and out to the speech bubble,
+  // which grows upward until it collides with the star above the head. The
+  // prompt asks for 2-4 words, but a model that ignores that shouldn't be able
+  // to break the layout.
+  const archetype = typeof o.archetype === 'string' ? capArchetype(o.archetype.trim()) : '';
+  const reading = typeof o.reading === 'string' ? o.reading.trim() : '';
   const traits = Array.isArray(o.traits) ? o.traits.filter((t): t is string => typeof t === 'string').slice(0, 4) : [];
+  // A card has to actually SAY something. `{}` and `[]` are object-shaped but
+  // carry nothing, and filling them from the fallback would hand completeSession
+  // a card indistinguishable from a real one — overwriting an earned reading.
+  // Partial is fine (fall back per field); wholly empty is not a card.
+  if (!archetype && !reading && !traits.length) return null;
   return {
-    // capped: the archetype flows into astralNews() and out to the speech
-    // bubble, which grows upward until it collides with the star above the head.
-    // The prompt asks for 2-4 words, but a model that ignores that shouldn't be
-    // able to break the layout.
-    archetype:
-      typeof o.archetype === 'string' && o.archetype.trim()
-        ? capArchetype(o.archetype.trim())
-        : FALLBACK_ANALYSIS.archetype,
-    reading: typeof o.reading === 'string' && o.reading.trim() ? o.reading.trim() : FALLBACK_ANALYSIS.reading,
+    archetype: archetype || FALLBACK_ANALYSIS.archetype,
+    reading: reading || FALLBACK_ANALYSIS.reading,
     traits: traits.length ? traits : FALLBACK_ANALYSIS.traits,
   };
 }
