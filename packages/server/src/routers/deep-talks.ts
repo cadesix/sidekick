@@ -1,5 +1,5 @@
 import { and, eq, like } from "drizzle-orm";
-import { type Database, rewards, users } from "@sidekick/db";
+import { type Database, ledger, users } from "@sidekick/db";
 import {
   DEEP_TALKS,
   chatgptImportCommitInput,
@@ -33,9 +33,9 @@ export const deepTalksRouter = router({
   shelf: protectedProcedure.query(async ({ ctx }) => {
     const score = await contextScore(ctx.db, ctx.userId);
     const completedRows = await ctx.db
-      .select({ dedupeKey: rewards.dedupeKey })
-      .from(rewards)
-      .where(and(eq(rewards.userId, ctx.userId), like(rewards.dedupeKey, "deep-talk:%")));
+      .select({ dedupeKey: ledger.dedupeKey })
+      .from(ledger)
+      .where(and(eq(ledger.userId, ctx.userId), like(ledger.dedupeKey, "deep-talk:%")));
     const completed = new Set(completedRows.map((r) => r.dedupeKey.slice("deep-talk:".length)));
     const active = await activeDeepTalkForUser(ctx.db, ctx.userId);
 

@@ -5,10 +5,11 @@
 // (AsyncStorage / localStorage) and UI; this owns the numbers.
 
 export * from './rng';
+export * from './catalog';
+export * from './catalog-variants';
 export * from './economy';
 export * from './bond';
 export * from './streak';
 export * from './daily-box';
-export * from './goals';
 export * from './shop';
 export * from './sessions';

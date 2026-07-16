@@ -88,6 +88,7 @@ export type CallerOverrides = {
   storage?: Storage;
   captionModel?: LanguageModel;
   transcriptionModel?: TranscriptionModel;
+  sessionModel?: LanguageModel;
   adNetwork?: AdNetworkClient | null;
   authEmail?: AuthEmailSender;
   sms?: SmsSender;
@@ -113,6 +114,7 @@ export function makeCaller(
     storage: opts.storage ?? testStorage(),
     captionModel: opts.captionModel ?? model,
     transcriptionModel: opts.transcriptionModel,
+    sessionModel: opts.sessionModel ?? model,
     adNetwork: opts.adNetwork ?? null,
     authEmail: opts.authEmail ?? { sendOtp: async () => {} },
     sms: opts.sms ?? { sendCode: async () => {}, verifyCode: async () => false },

@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { users } from "@sidekick/db";
+import { ianaTimezone } from "@sidekick/shared";
 import { protectedProcedure, router } from "../trpc";
 import { recomputeTimezoneDrift } from "../reminders/engine";
 
@@ -17,7 +18,7 @@ export const locationRouter = router({
         city: z.string().min(1),
         region: z.string().optional(),
         country: z.string().optional(),
-        timezone: z.string().min(1).optional(),
+        timezone: ianaTimezone.optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {

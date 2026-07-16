@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { PrimaryButton } from "~/components/PrimaryButton";
 import { SignInScreen } from "~/components/SignInScreen";
 import { registerDevice, setAuthToken } from "./api";
-import { DEVICE_STORAGE_KEY, TOKEN_STORAGE_KEY, useAuthStore } from "./auth-store";
+import { DEVICE_STORAGE_KEY, TOKEN_STORAGE_KEY, USER_STORAGE_KEY, useAuthStore } from "./auth-store";
 import { getStoredItem, setStoredItem } from "./secure-storage";
 
 /**
@@ -29,8 +29,9 @@ async function bootstrapAuth(): Promise<null> {
     await setStoredItem(DEVICE_STORAGE_KEY, deviceId);
   }
   const token = await getStoredItem(TOKEN_STORAGE_KEY);
+  const userId = await getStoredItem(USER_STORAGE_KEY);
   setAuthToken(token, deviceId);
-  useAuthStore.setState({ deviceId, status: token ? "signedIn" : "signedOut" });
+  useAuthStore.setState({ deviceId, userId, status: token ? "signedIn" : "signedOut" });
   if (token) {
     registerDevice(deviceId).catch(() => {
       // Fire-and-forget: if the session is stale this 401s once, and the

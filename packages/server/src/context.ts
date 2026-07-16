@@ -27,6 +27,8 @@ export type Services = {
   captionModel: LanguageModel;
   /** Audio transcription model; absent when unconfigured (09 §audio). */
   transcriptionModel?: TranscriptionModel;
+  /** Guided-session acks + extraction (plan 20 decision 9) — the client's old direct-OpenAI calls. */
+  sessionModel: LanguageModel;
   /** Ad network (05); null until a Gravity key is configured — ads off. */
   adNetwork: AdNetworkClient | null;
   /** Email OTP delivery (19-auth.md); Resend in prod, console.log in dev. */

@@ -15,8 +15,8 @@ import { ensureMainConversation } from "../chat/turn";
 import { runExtraction } from "../jobs/extraction";
 import { recomputeContextScore } from "./score";
 
-/** Sparks granted for finishing a deep talk (14 §runner — the visible payoff). */
-export const DEEP_TALK_REWARD_SPARKS = 6;
+/** Coins granted for finishing a deep talk (14 §runner — the visible payoff). */
+export const DEEP_TALK_REWARD_COINS = 6;
 
 /**
  * The `complete_deep_talk` slugs invoked on one assistant message. Read from the
@@ -52,7 +52,7 @@ async function grantDeepTalkCompletion(db: Database, userId: string, slug: strin
     userId,
     source: "event",
     dedupeKey: `deep-talk:${slug}`,
-    outcome: { kind: "sparks", amount: DEEP_TALK_REWARD_SPARKS },
+    outcome: { kind: "coins", amount: DEEP_TALK_REWARD_COINS },
   });
 }
 

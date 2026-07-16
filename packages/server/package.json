@@ -15,6 +15,7 @@
 		"@ai-sdk/openai": "^2.0.110",
 		"@hono/node-server": "^1.13.7",
 		"@hono/trpc-server": "^0.4.0",
+		"@sidekick/core": "workspace:*",
 		"@sidekick/db": "workspace:*",
 		"@sidekick/shared": "workspace:*",
 		"@trpc/server": "^11.0.0",

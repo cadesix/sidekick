@@ -104,11 +104,13 @@ export const users = pgTable("users", {
     withTimezone: true,
     mode: "date",
   }),
-  /**
-   * Soft "sparks" currency (04 spinner pity-timer). Granted as a spinner fallback
-   * and spent to redeem a chosen cosmetic. No purchasable currency in v1.
-   */
-  sparks: integer("sparks").notNull().default(0),
+  coins: integer("coins").notNull().default(0),
+  bond: integer("bond").notNull().default(10),
+  streakCount: integer("streak_count").notNull().default(0),
+  streakLastDay: date("streak_last_day"),
+  astral: jsonb("astral"),
+  skin: jsonb("skin"),
+  stateVersion: bigint("state_version", { mode: "number" }).notNull().default(1),
   createdAt: now(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });
@@ -450,6 +452,7 @@ export const checkIns = pgTable(
       .references(() => users.id),
     date: date("date").notNull(),
     status: text("status").notNull().default("pending"),
+    source: text("source").notNull().default("chat"),
     openerMessageId: bigint("opener_message_id", { mode: "number" }),
     completedAt: timestamp("completed_at", { withTimezone: true, mode: "date" }),
     createdAt: now(),
@@ -686,11 +689,13 @@ export const purchaseIntents = pgTable(
 );
 
 /**
- * A cosmetic a user owns (04). The catalog itself is code (`@sidekick/shared`
- * COSMETIC_CATALOG), so ownership references a stable `itemKey` rather than a
+ * A cosmetic a user owns (plan 20). The catalog itself is code (the
+ * `@sidekick/core` catalog), so ownership references a stable `itemKey` — now a
+ * renderKey (`${slot}-${variantId}` / `${slot}-c<hex>`) — rather than a
  * catalog-row FK. `slot` is denormalized so "unequip everything in this slot"
- * is one indexed write. Unique per (user, item) — re-granting a dupe is a no-op
- * and the roller instead awards sparks (04 pity timer).
+ * is one indexed write. Unique per (user, item) gives purchase/grant
+ * idempotency — re-granting a dupe is a no-op. `source` records how the item
+ * was acquired; the price paid lives on the ledger row.
  */
 export const userCosmetics = pgTable(
   "user_cosmetics",
@@ -701,6 +706,7 @@ export const userCosmetics = pgTable(
       .references(() => users.id),
     itemKey: text("item_key").notNull(),
     slot: text("slot").notNull(),
+    source: text("source").notNull().default("reward"),
     equipped: boolean("equipped").notNull().default(false),
     acquiredAt: timestamp("acquired_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
     createdAt: now(),
@@ -712,16 +718,21 @@ export const userCosmetics = pgTable(
 );
 
 /**
- * Server-authoritative reward grants (04). The generic grant path every reward
- * source flows through: streak milestones, the daily spinner, and later
- * deep-talk `source:'event'` bonuses. `dedupeKey` makes every grant idempotent
- * (e.g. `spin:<checkInId>`, `streak:7`, `event:<sessionId>`), so a cron re-run
- * or a background-then-reopen never double-grants. `revealedAt` is null until
- * the client has animated the result — the spinner shows a granted-but-unseen
- * reward exactly once.
+ * The single signed ledger every coin and item movement flows through (plan 20
+ * decision 2). Grants insert positive `coins` rows, spends insert negative ones,
+ * always in the same transaction as the `users.coins` update — so the invariant
+ * is simply `users.coins = sum(ledger.coins)`. Even the opening balance is a row
+ * (`starter:coins`, +150 at registration), leaving no special cases. `dedupeKey`
+ * (unique per user) makes every movement idempotent — cron re-runs and client
+ * retries are no-ops; keys look like `starter:coins`, `daily-box:<date>`,
+ * `session:<sessionId>`, `purchase:<renderKey>`, `dev-adjust:<uuid>`. `coins` is
+ * nullable because item-kind rows carry no coins. `meta` holds the full awarded
+ * payload for structured rewards (e.g. daily-box contents + UTC claim instant) so
+ * an idempotent replay returns exactly what was granted. `revealedAt` is null
+ * until the client has animated the result.
  */
-export const rewards = pgTable(
-  "rewards",
+export const ledger = pgTable(
+  "ledger",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
@@ -731,9 +742,61 @@ export const rewards = pgTable(
     dedupeKey: text("dedupe_key").notNull(),
     kind: text("kind").notNull(),
     itemKey: text("item_key"),
-    sparks: integer("sparks"),
+    coins: integer("coins"),
+    meta: jsonb("meta"),
     revealedAt: timestamp("revealed_at", { withTimezone: true, mode: "date" }),
     createdAt: now(),
   },
-  (t) => [uniqueIndex("rewards_user_id_dedupe_key_idx").on(t.userId, t.dedupeKey)],
+  (t) => [uniqueIndex("ledger_user_id_dedupe_key_idx").on(t.userId, t.dedupeKey)],
 );
+
+/**
+ * A user's progress through a guided (star) session (plan 20 decision 9). The
+ * server holds the authoritative transcript — every answer is posted here — so
+ * `extract`/`complete` operate on server-stored `answers` plus the scripted asks
+ * from core's `SESSIONS` catalog. `beat` is the current step; `done` guards the
+ * one-way completion transition. Unique per (user, session).
+ */
+export const guidedSessions = pgTable(
+  "guided_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    sessionId: text("session_id").notNull(),
+    beat: integer("beat").notNull().default(0),
+    answers: jsonb("answers").notNull().default([]),
+    done: boolean("done").notNull().default(false),
+    completedAt: timestamp("completed_at", { withTimezone: true, mode: "date" }),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("guided_sessions_user_id_session_id_idx").on(t.userId, t.sessionId)],
+);
+
+/** Extracted profile key/values from guided sessions (plan 20). Unique per (user, key). */
+export const sessionFields = pgTable(
+  "session_fields",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    key: text("key").notNull(),
+    value: text("value").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("session_fields_user_id_key_idx").on(t.userId, t.key)],
+);
+
+/** Verbatim captures from guided sessions (plan 20). */
+export const sessionNotes = pgTable("session_notes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  tag: text("tag").notNull(),
+  text: text("text").notNull(),
+  sessionId: text("session_id"),
+  createdAt: now(),
+});

@@ -21,6 +21,7 @@
 		"db:migrate": "pnpm --filter @sidekick/db migrate"
 	},
 	"devDependencies": {
+		"@sidekick/core": "workspace:*",
 		"@sidekick/db": "workspace:*",
 		"@sidekick/server": "workspace:*",
 		"@sidekick/shared": "workspace:*",

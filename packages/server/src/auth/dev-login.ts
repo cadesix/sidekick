@@ -13,8 +13,9 @@ export type DevLoginResult = { token: string; userId: string; isNewUser: boolean
  * `NODE_ENV === "development"` (unset counts as not-dev, so a prod server refuses
  * it even if called manually). Finds/creates `dev@test.local` via its email
  * account row; a first creation seeds a usable profile (name, sidekick,
- * timezone, sparks, notification prefs) with `onboardingCompletedAt` set, so the
- * app skips the onboarding funnel and lands on home.
+ * timezone, notification prefs) with `onboardingCompletedAt` set, so the app
+ * skips the onboarding funnel and lands on home. The starter economy state comes
+ * from `findOrCreateUserForProvider`, same as any sign-in.
  */
 export async function devLogin(db: Database): Promise<DevLoginResult> {
   if (process.env.NODE_ENV !== "development") {
@@ -37,7 +38,6 @@ export async function devLogin(db: Database): Promise<DevLoginResult> {
         sidekickColor: "#8a63d2",
         timezone: "America/New_York",
         onboardingCompletedAt: new Date(),
-        sparks: 50,
       })
       .where(eq(users.id, userId));
   }

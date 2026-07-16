@@ -46,7 +46,7 @@ export const SESSIONS: SessionDef[] = [
 		tease: "the basics of your life",
 		minutes: 3,
 		bond: 6,
-		coins: 15,
+		coins: 25,
 		intro: [
 			"ok this one's easy mode. just the basics of your life",
 			"answer as lazy as you want, i'll keep up",
@@ -71,7 +71,7 @@ export const SESSIONS: SessionDef[] = [
 		tease: "what you're into + who you're around",
 		minutes: 3,
 		bond: 6,
-		coins: 15,
+		coins: 25,
 		intro: ["this one's fun. what you're actually into", "zero wrong answers, only revealing ones"],
 		beats: [
 			{ id: "media", ask: ["what's on repeat right now, music, shows, games, whatever"], probe: true },
@@ -92,7 +92,7 @@ export const SESSIONS: SessionDef[] = [
 		tease: "your past + what shaped you",
 		minutes: 3,
 		bond: 7,
-		coins: 15,
+		coins: 30,
 		sensitive: true,
 		intro: [
 			"ok this one goes a little deeper. where you come from",
@@ -114,7 +114,7 @@ export const SESSIONS: SessionDef[] = [
 		tease: "personality + what drives you",
 		minutes: 4,
 		bond: 7,
-		coins: 15,
+		coins: 30,
 		intro: ["this island's about how your brain works", "no wrong answers, just true ones"],
 		beats: [
 			{ id: "personality", ask: ["describe your personality in one line. whatever comes first"], probe: true },
@@ -136,7 +136,7 @@ export const SESSIONS: SessionDef[] = [
 		tease: "where you're headed",
 		minutes: 4,
 		bond: 8,
-		coins: 20,
+		coins: 40,
 		intro: ["ok. the fun one", "goals, dreams, the whole future thing"],
 		beats: [
 			{ id: "y1", ask: ["one year from now, what's different?"], probe: true },
@@ -158,7 +158,7 @@ export const SESSIONS: SessionDef[] = [
 		tease: "the real talk",
 		minutes: 4,
 		bond: 8,
-		coins: 20,
+		coins: 40,
 		sensitive: true,
 		intro: ["last island. the real stuff", "no judgment in here. ever"],
 		beats: [

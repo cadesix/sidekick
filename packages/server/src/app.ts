@@ -10,7 +10,6 @@ import { stream } from "hono/streaming";
 import { beginTurn, continueTurn } from "./chat/turn";
 import { buildCheckinCron } from "./checkins/cron";
 import { buildRemindersCron } from "./reminders/cron";
-import { buildRewardsCron } from "./rewards/cron";
 import { buildNotificationsCron } from "./notifications/cron";
 import { buildProactivityCron } from "./proactivity/cron";
 import { runAdDecision } from "./ads/decision";
@@ -372,7 +371,6 @@ export function buildApp(services: Services) {
 
   app.route("/cron", buildCheckinCron(services));
   app.route("/cron", buildRemindersCron(services));
-  app.route("/cron", buildRewardsCron(services));
   app.route("/cron", buildNotificationsCron(services));
   app.route("/cron", buildProactivityCron(services));
 

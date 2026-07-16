@@ -34,9 +34,9 @@ Anything 3D must ultimately be verified on a **physical device** — the iOS
 simulator's GL is unreliable (see "Known issue" below), and Expo Web's WebGL
 path differs from expo-gl in the usual hard-won ways.
 
-Optional real AI replies: copy `.env.example` → `.env` and set
-`EXPO_PUBLIC_OPENAI_API_KEY`. Without a key the chat uses canned replies so the
-UI is fully usable offline.
+AI replies come from `@sidekick/server` (plan 20 removed the client-side LLM
+key): copy `.env.example` → `.env` and point `EXPO_PUBLIC_API_URL` at a running
+server (`pnpm dev:server`).
 
 ## What's in v1 (MVP)
 
@@ -126,7 +126,7 @@ src/
     ShopSheet.tsx        wardrobe bottom sheet (was shop-sheet.tsx)
     WorldMap.tsx         full-screen map overlay (was world-map.tsx)
   store/chat.ts          zustand + AsyncStorage
-  lib/chat-api.ts        OpenAI-compatible reply (or canned fallback)
+  lib/chat-api.ts        LLM reply (or canned fallback) — since replaced by lib/api.ts
 assets/models/           texture-stripped GLBs
 assets/cosmetics/        slot GLBs (stripped) + variant PNGs (from web .webp)
 assets/images/           world-map-day.webp

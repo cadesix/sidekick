@@ -24,6 +24,17 @@ export function createModel(env: ServerEnv): LanguageModel {
 }
 
 /**
+ * The guided-session model (plan 20 decision 9): OpenAI `gpt-4o-mini` on chat
+ * completions — the exact model + API the client's SessionChat called directly
+ * before the engine moved server-side (killing the bundled key). Tests inject a
+ * MockLanguageModelV2.
+ */
+export function createSessionModel(env: ServerEnv): LanguageModel {
+  const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
+  return openai.chat("gpt-4o-mini");
+}
+
+/**
  * The voice-note transcription model (09 §audio): OpenAI `gpt-4o-transcribe`;
  * null when no OpenAI key is configured, in which case audio ingest fails
  * gracefully. Tests inject a MockTranscriptionModelV2.

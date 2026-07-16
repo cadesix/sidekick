@@ -2,8 +2,6 @@
 // day resets to 1. Pure day-math — the app passes today/yesterday strings (from
 // localDay) and persists the returned state.
 
-export const STREAK_KEY = 'sidekick_streak_v1';
-
 export type StreakState = { count: number; last: string }; // last = local YYYY-MM-DD
 
 // Idempotent per day: same day → unchanged; consecutive day → +1; gap → reset.

@@ -12,7 +12,9 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { useBond } from '../store/bond';
+import { BOND_MIN } from '@sidekick/core';
+
+import { useSnapshot } from '../lib/state';
 import type { OverheadTarget } from './SidekickCanvas';
 
 // The way into the night sky: a star hanging above the sidekick that opens the
@@ -59,7 +61,8 @@ export function StarChatButton({
   hidden?: boolean;
   onPress: () => void;
 }) {
-  const bond = useBond((s) => s.bond);
+  // server-driven bond (plan 20): the snapshot, patched when a session completes
+  const bond = useSnapshot().data?.bond ?? BOND_MIN;
 
   // Twinkle (a slow shimmer, so it reads as invitation rather than chrome) and
   // drift (a free-running 0→1 ramp the Lissajous reads off — linear and

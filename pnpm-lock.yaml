@@ -12,6 +12,9 @@ importers:
 
   .:
     devDependencies:
+      '@sidekick/core':
+        specifier: workspace:*
+        version: link:packages/shared/core
       '@sidekick/db':
         specifier: workspace:*
         version: link:packages/db
@@ -346,6 +349,9 @@ importers:
       '@hono/trpc-server':
         specifier: ^0.4.0
         version: 0.4.2(@trpc/server@11.18.0(typescript@5.9.3))(hono@4.12.30)
+      '@sidekick/core':
+        specifier: workspace:*
+        version: link:../shared/core
       '@sidekick/db':
         specifier: workspace:*
         version: link:../db

@@ -6,8 +6,6 @@
 
 import { hashStr, mulberry32 } from './rng';
 
-export const DAILY_BOX_KEY = 'sidekick_daily_box_v1'; // last claimed YYYY-MM-DD
-
 // Streak milestone schedule: a reward every day for week one, then tapering so
 // later rewards keep scarcity. Rewards are coins or real shop cosmetics.
 export type Milestone = { day: number; label: string; coins?: number; render?: string };
