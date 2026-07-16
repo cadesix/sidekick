@@ -40,7 +40,7 @@ export type SidekickTool = {
 export type ProviderToolContext = {
   /** Per-user feature flags — a tool name mapped to `false` is withheld. */
   flags: Record<string, boolean>;
-  /** Anthropic's approximate user location, omitted entirely when unknown. */
+  /** The approximate user location, omitted entirely when unknown. */
   userLocation?: {
     type: "approximate";
     city?: string;
@@ -61,10 +61,10 @@ export type ProviderToolContext = {
  * search/health/music/focus/deep-talks later. Keep `promptGuidance` static
  * per-day — no clock time, no volatile content — or it breaks 08's prompt cache.
  *
- * `providerTools` is the seam for Anthropic-executed tools (11's web_search /
- * web_fetch): tools the model runs provider-side rather than `defineTool` server
- * tools. It's a per-turn factory because those tools depend on live context
- * (user location, the daily cap). Assembled by `selectProviderTools`.
+ * `providerTools` is the seam for provider-executed tools (11's web_search):
+ * tools the model runs provider-side rather than `defineTool` server tools. It's
+ * a per-turn factory because those tools depend on live context (user location,
+ * the daily cap). Assembled by `selectProviderTools`.
  */
 export type Capability = {
   name: string;

@@ -1,5 +1,5 @@
 import { and, desc, eq, gt, gte, inArray, sql } from "drizzle-orm";
-import { anthropic } from "@ai-sdk/anthropic";
+import { openai } from "@ai-sdk/openai";
 import { generateText, stepCountIs, type LanguageModel } from "ai";
 import {
   type Database,
@@ -14,6 +14,7 @@ import {
 } from "@sidekick/db";
 import {
   DEFAULT_REMINDER_TIME,
+  WEB_SEARCH_CONTEXT_SIZE,
   WEB_SEARCH_TOOL,
   addDays,
   bumpMemoryVersion,
@@ -279,8 +280,8 @@ export async function generateOpener(
     : renderOpenerSystem(input);
   const tools = canSearch
     ? {
-        [WEB_SEARCH_TOOL]: anthropic.tools.webSearch_20250305({
-          maxUses: 1,
+        [WEB_SEARCH_TOOL]: openai.tools.webSearch({
+          searchContextSize: WEB_SEARCH_CONTEXT_SIZE,
           userLocation: userLocationFrom(user),
         }),
       }

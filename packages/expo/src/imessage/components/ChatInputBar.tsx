@@ -101,7 +101,6 @@ export function ChatInputBar({
 							placeholder={replyActive ? "Reply" : "Message"}
 							placeholderTextColor={colors.tertiaryLabel}
 							multiline
-							numberOfLines={1}
 							style={styles.input}
 							keyboardAppearance="light"
 						/>

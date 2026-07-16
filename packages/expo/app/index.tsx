@@ -41,9 +41,9 @@ const HERO_FRAMING: Framing = {
 };
 
 const CHAT_FRAMING: Framing = {
-  pos: [0, 1.0, 7.7],
-  target: [0, -0.55, 0],
-  fov: 31,
+  pos: [0, 1.2, 6.0],
+  target: [0, -0.75, 0],
+  fov: 30,
 };
 
 // Opening the map: the camera rapidly rockets up + back (pull away from the

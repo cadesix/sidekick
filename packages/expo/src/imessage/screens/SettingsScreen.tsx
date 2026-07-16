@@ -292,6 +292,7 @@ export function SettingsScreen() {
 							<View style={styles.row}>
 								<Text style={styles.rowLabel}>Messages from Sidekick</Text>
 								<Switch
+									style={styles.switch}
 									value={notifications.data.proactiveEnabled}
 									disabled={updateNotifications.isPending}
 									onValueChange={(proactiveEnabled) =>
@@ -304,6 +305,7 @@ export function SettingsScreen() {
 							<View style={styles.row}>
 								<Text style={styles.rowLabel}>Goal check-ins</Text>
 								<Switch
+									style={styles.switch}
 									value={notifications.data.checkinsEnabled}
 									disabled={updateNotifications.isPending}
 									onValueChange={(checkinsEnabled) =>
@@ -316,6 +318,7 @@ export function SettingsScreen() {
 							<View style={styles.row}>
 								<Text style={styles.rowLabel}>Reminders</Text>
 								<Switch
+									style={styles.switch}
 									value={notifications.data.remindersEnabled}
 									disabled={updateNotifications.isPending}
 									onValueChange={(remindersEnabled) =>
@@ -353,6 +356,7 @@ export function SettingsScreen() {
 								<Text style={styles.integrationDescription}>{locationDescription(location.data)}</Text>
 							</View>
 							<Switch
+								style={styles.switch}
 								value={locationEnabled}
 								disabled={location.isPending || setLocationEnabled.isPending}
 								onValueChange={(enabled) => setLocationEnabled.mutate(enabled)}
@@ -475,6 +479,11 @@ const styles = StyleSheet.create({
 	rowChevron: {
 		flex: 1,
 		alignItems: "flex-end",
+	},
+	// Without this the iOS 26 switch stretches to the row height and draws its
+	// track top-anchored, so it sits visibly above the label's centerline.
+	switch: {
+		alignSelf: "center",
 	},
 	divider: {
 		height: StyleSheet.hairlineWidth,

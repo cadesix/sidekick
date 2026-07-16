@@ -21,23 +21,18 @@ afterAll(async () => {
   await close();
 });
 
-/** Two cited results carrying opaque `encryptedContent` that must survive verbatim (11/08). */
-const SOURCES = [
-  {
-    type: "web_search_result",
-    url: "https://www.nytimes.com/2026/07/07/marathon.html",
-    title: "The marathon is still on",
-    pageAge: "1 day",
-    encryptedContent: "ENCRYPTED_BLOB_ABC123==",
-  },
-  {
-    type: "web_search_result",
-    url: "https://www.espn.com/race/live",
-    title: "Race day live",
-    pageAge: null,
-    encryptedContent: "ENCRYPTED_BLOB_XYZ789==",
-  },
-];
+/**
+ * An OpenAI `web_search` tool result: an opaque `{ action, sources }` object that
+ * must survive verbatim in the persisted tool row (11/08). Only the compact
+ * `url`s get lifted onto the assistant row for citation pills.
+ */
+const SEARCH_OUTPUT = {
+  action: { type: "search", query: "is the marathon still on" },
+  sources: [
+    { type: "url", url: "https://www.nytimes.com/2026/07/07/marathon.html" },
+    { type: "url", url: "https://www.espn.com/race/live" },
+  ],
+};
 
 function textParts(text: string): LanguageModelV2StreamPart[] {
   return [
@@ -57,28 +52,21 @@ function searchCall(id: string, query: string): LanguageModelV2StreamPart {
   };
 }
 
-function searchResult(id: string, results: unknown): LanguageModelV2StreamPart {
+function searchResult(id: string, output: unknown): LanguageModelV2StreamPart {
   return {
     type: "tool-result",
     toolCallId: id,
     toolName: "web_search",
-    result: results,
+    result: output,
     providerExecuted: true,
   };
 }
 
-function finish(webSearchRequests?: number): LanguageModelV2StreamPart {
-  const usage = { inputTokens: 100, outputTokens: 20, totalTokens: 120 };
-  if (webSearchRequests === undefined) {
-    return { type: "finish", finishReason: "stop", usage };
-  }
+function finish(): LanguageModelV2StreamPart {
   return {
     type: "finish",
     finishReason: "stop",
-    usage,
-    providerMetadata: {
-      anthropic: { usage: { server_tool_use: { web_search_requests: webSearchRequests } } },
-    },
+    usage: { inputTokens: 100, outputTokens: 20, totalTokens: 120 },
   };
 }
 
@@ -138,9 +126,9 @@ test("web_search result round-trips encrypted_content byte-identical and logs us
   const { model } = scriptedStreamModel([
     [
       searchCall("s1", "is the marathon still on"),
-      searchResult("s1", SOURCES),
+      searchResult("s1", SEARCH_OUTPUT),
       ...textParts("ok so it says the marathon is still on sunday"),
-      finish(1),
+      finish(),
     ],
   ]);
 
@@ -161,12 +149,12 @@ test("web_search result round-trips encrypted_content byte-identical and logs us
     .from(messages)
     .where(and(eq(messages.conversationId, conversationId), eq(messages.role, "tool")));
   expect(toolRows).toHaveLength(1);
-  expect(JSON.parse(toolRows[0]!.content)).toEqual(SOURCES);
+  expect(JSON.parse(toolRows[0]!.content)).toEqual(SEARCH_OUTPUT);
 
-  // the assistant row carries only compact sources — never the encrypted blob
+  // the assistant row carries only compact sources — never the full opaque output
   const assistantJson = JSON.stringify(outcome.message.toolCalls);
   expect(assistantJson).toContain("nytimes.com");
-  expect(assistantJson).not.toContain("ENCRYPTED_BLOB");
+  expect(assistantJson).not.toContain("action");
 
   // derived-view reconstruction hands the model back the exact result
   const view = await buildContextView(db, conversationId, {});
@@ -178,7 +166,7 @@ test("web_search result round-trips encrypted_content byte-identical and logs us
     const part = content.find((p) => p.type === "tool-result");
     expect(part).toBeDefined();
     if (part && part.type === "tool-result" && part.output.type === "json") {
-      expect(part.output.value).toEqual(SOURCES);
+      expect(part.output.value).toEqual(SEARCH_OUTPUT);
     }
   }
 
@@ -192,7 +180,7 @@ test("pause_turn resends the assistant turn unchanged until a real stop", async 
   const conversationId = await createConversation(db, user.id);
   const { model, callCount } = scriptedStreamModel([
     [searchCall("s1", "latest news"), finish()],
-    [searchResult("s1", SOURCES), ...textParts("here's the scoop"), finish(1)],
+    [searchResult("s1", SEARCH_OUTPUT), ...textParts("here's the scoop"), finish()],
   ]);
 
   const outcome = await sendChatTurn(
@@ -208,10 +196,10 @@ test("pause_turn resends the assistant turn unchanged until a real stop", async 
     .from(messages)
     .where(and(eq(messages.conversationId, conversationId), eq(messages.role, "tool")));
   expect(toolRows).toHaveLength(1);
-  expect(JSON.parse(toolRows[0]!.content)).toEqual(SOURCES);
+  expect(JSON.parse(toolRows[0]!.content)).toEqual(SEARCH_OUTPUT);
 });
 
-test("past the daily search cap, web_search is omitted while web_fetch remains", async () => {
+test("past the daily search cap, web_search is omitted", async () => {
   const user = await makeUser("ws-capped");
   const conversationId = await createConversation(db, user.id);
   for (let i = 0; i < 20; i += 1) {
@@ -229,9 +217,7 @@ test("past the daily search cap, web_search is omitted while web_fetch remains",
     { conversationId, text: "news?" },
   );
 
-  const offered = JSON.stringify(seenTools[0]);
-  expect(offered).not.toContain("web_search");
-  expect(offered).toContain("web_fetch");
+  expect(JSON.stringify(seenTools[0])).not.toContain("web_search");
 });
 
 test("under the daily cap, web_search is offered", async () => {

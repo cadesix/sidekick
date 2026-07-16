@@ -216,8 +216,8 @@ function userContent(
  * result row *inside the tail*. A server tool that resolved inside its own turn
  * has no result row, so its call is dropped to keep the message stream valid;
  * an orphan tool result (its call summarized away) is likewise dropped. Tool
- * results round-trip as opaque JSON `output` values — a later engineer's
- * server-side `web_search` (encrypted_content and all) passes through untouched.
+ * results round-trip as opaque JSON `output` values — a provider-executed
+ * `web_search` result (sources and all) passes through untouched.
  */
 export function assembleTail(tail: TailMessage[], storageUrl: StorageUrl): ModelMessage[] {
   const imageIds: string[] = [];

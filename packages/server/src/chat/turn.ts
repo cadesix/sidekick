@@ -2,7 +2,6 @@ import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, sql } from "drizzle-orm";
 import {
   type LanguageModel,
-  type ProviderMetadata,
   type ToolSet,
   generateText,
   stepCountIs,
@@ -61,8 +60,8 @@ const HEALTH_TOOL_NAMES = new Set(
 const HEALTH_CONTEXT_MARKER = "connected Apple Health summary:";
 const HEALTH_TEXT_PATTERN = /\b(health|sleep|steps?|workout|exercise|active energy|calories)\b/i;
 
-/** Anthropic-executed tool names (11) — persisted as `tool` rows so their result blocks round-trip. */
-const PROVIDER_TOOL_NAMES = new Set([WEB_SEARCH_TOOL, "web_fetch"]);
+/** Provider-executed tool names (11) — persisted as `tool` rows so their result blocks round-trip. */
+const PROVIDER_TOOL_NAMES = new Set([WEB_SEARCH_TOOL]);
 
 /**
  * Server-side runaway guard (11 §cost & guardrails): 20 searches/user/day. Past
@@ -257,7 +256,7 @@ async function suggestReplies(
   }
 }
 
-/** Anthropic's approximate location for a user, or undefined when we know none (11/12). */
+/** The approximate location for a user, or undefined when we know none (11/12). */
 export function userLocationFrom(user: {
   lastCity: string | null;
   lastRegion: string | null;
@@ -267,36 +266,42 @@ export function userLocationFrom(user: {
   if (!user.lastCity && !user.lastRegion && !user.lastCountry) {
     return undefined;
   }
+  /**
+   * `lastCountry` is the localized country *name* from the client's reverse
+   * geocode ("United States"), but OpenAI web search requires an ISO 3166-1
+   * alpha-2 code ("US") and 400s on anything else. We don't store the code, so
+   * only forward `country` when it already is one; otherwise omit it and let
+   * city/region/timezone carry the location.
+   */
+  const country =
+    user.lastCountry && /^[a-z]{2}$/i.test(user.lastCountry.trim())
+      ? user.lastCountry.trim().toUpperCase()
+      : undefined;
   return {
     type: "approximate",
     ...(user.lastCity ? { city: user.lastCity } : {}),
     ...(user.lastRegion ? { region: user.lastRegion } : {}),
-    ...(user.lastCountry ? { country: user.lastCountry } : {}),
+    ...(country ? { country } : {}),
     timezone: user.timezone,
   };
 }
 
-/** Safe read of `usage.server_tool_use.web_search_requests` from Anthropic provider metadata (11). */
-function webSearchRequestsOf(meta: ProviderMetadata | undefined): number {
-  const usage = meta?.anthropic?.usage;
-  if (typeof usage !== "object" || usage === null) {
-    return 0;
-  }
-  const serverToolUse = (usage as Record<string, unknown>).server_tool_use;
-  if (typeof serverToolUse !== "object" || serverToolUse === null) {
-    return 0;
-  }
-  const count = (serverToolUse as Record<string, unknown>).web_search_requests;
-  return typeof count === "number" ? count : 0;
-}
-
-/** The compact `{ domain-bearing url, title }` sources for a web_search result — the citation pills read these (11). */
+/**
+ * The compact `{ domain-bearing url, title }` sources for a `web_search` result —
+ * the citation pills read these (11). OpenAI returns `{ action, sources: [{ type:
+ * 'url', url }] }` (url only, no title); older/other shapes that hand back a bare
+ * array of `{ url, title }` are still parsed for resilience.
+ */
 export function webSearchSources(output: unknown): { url: string; title: string | null }[] {
-  if (!Array.isArray(output)) {
+  const raw =
+    output && typeof output === "object" && "sources" in output
+      ? (output as { sources: unknown }).sources
+      : output;
+  if (!Array.isArray(raw)) {
     return [];
   }
   const sources: { url: string; title: string | null }[] = [];
-  for (const entry of output) {
+  for (const entry of raw) {
     if (typeof entry === "object" && entry !== null) {
       const record = entry as Record<string, unknown>;
       if (typeof record.url === "string") {
@@ -460,8 +465,8 @@ export async function continueTurn(
 }
 
 /**
- * Assemble the context view and drive the model — looping on Anthropic's
- * `pause_turn` while a server tool (web search) runs long (11) — then persist the
+ * Assemble the context view and drive the model — resending while a provider
+ * tool (web search) leaves a call unresolved across a step (11) — then persist the
  * assistant message plus any provider-executed search-result rows. When the model
  * emits client (device) tool-calls it streams a device-tool frame (12) and ends
  * the turn; the client runs them and calls `continueTurn` to resume.
@@ -614,12 +619,24 @@ async function driveTurn(
       let searching = false;
 
       for (let attempt = 0; attempt < MAX_TURN_ATTEMPTS; attempt += 1) {
+        /**
+         * Capture stream errors here rather than letting them surface as
+         * unhandled rejections: `streamText` reports a mid-stream failure (an
+         * API 400, a dropped connection) through `onError`, and without this the
+         * rejecting internal promises take down the whole process. We record it
+         * and rethrow below so the turn fails for this one request — the outer
+         * `try/catch` rejects `done`, and the tRPC handler returns the error.
+         */
+        let streamError: unknown;
         const result = streamText({
           model,
           system: renderSystem(view.system),
           messages: convo,
           tools,
           stopWhen: stepCountIs(8),
+          onError: ({ error }) => {
+            streamError = error;
+          },
         });
         /**
          * Drain the full stream so we can slip the "looking it up…" control frames
@@ -645,17 +662,18 @@ async function driveTurn(
             yield SEARCH_STREAM_END;
           }
         }
-        const [steps, usage, meta, response, reason] = await Promise.all([
+        if (streamError) {
+          throw streamError;
+        }
+        const [steps, usage, response, reason] = await Promise.all([
           result.steps,
           result.usage,
-          result.providerMetadata,
           result.response,
           result.finishReason,
         ]);
         finishReason = reason;
         tokensIn += usage.inputTokens ?? 0;
         tokensOut += usage.outputTokens ?? 0;
-        webSearchRequests += webSearchRequestsOf(meta);
 
         const resolvedIds = new Set<string>();
         const pendingProviderCalls: string[] = [];
@@ -691,6 +709,9 @@ async function driveTurn(
                   toolName: part.toolName,
                   output: part.output,
                 });
+                if (part.toolName === WEB_SEARCH_TOOL) {
+                  webSearchRequests += 1;
+                }
                 if (call) {
                   call.result =
                     part.toolName === WEB_SEARCH_TOOL ? webSearchSources(part.output) : null;

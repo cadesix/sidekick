@@ -44,7 +44,7 @@ const ENTRY_ANIMATION_WINDOW = 1200;
 const SHEET_HEADER_HEIGHT = 54;
 
 /** Fraction of the screen the chat sheet covers; the mascot lives in the band above. */
-export const CHAT_SHEET_DETENT = 0.75;
+export const CHAT_SHEET_DETENT = 0.82;
 
 interface OverlayState {
 	message: Message;

@@ -72,7 +72,7 @@ export function clientTools(tools: SidekickTool[]): SidekickTool[] {
 }
 
 /**
- * The Anthropic-executed tools (11) every enabled capability contributes this
+ * The provider-executed tools (11) every enabled capability contributes this
  * turn, merged into one `ToolSet` for `streamText`. Each capability's
  * `providerTools` factory decides what to include from the live context (flags,
  * user location, daily cap), so a capability past its cap simply returns fewer.

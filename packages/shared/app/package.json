@@ -16,7 +16,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@ai-sdk/anthropic": "^2.0.0",
+		"@ai-sdk/openai": "^2.0.110",
 		"@sidekick/db": "workspace:*",
 		"ai": "^5.0.0",
 		"rrule": "^2.8.1",
