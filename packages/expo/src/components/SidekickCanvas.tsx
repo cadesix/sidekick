@@ -1,4 +1,4 @@
-import Constants from 'expo-constants';
+import * as Device from 'expo-device';
 import { GLView, type ExpoWebGLRenderingContext } from 'expo-gl';
 import { useEffect, useRef } from 'react';
 import { StyleSheet, View, type GestureResponderEvent, type ViewStyle } from 'react-native';
@@ -151,9 +151,8 @@ export function SidekickCanvas({
     };
   }, []);
 
-  // Simulators (and the EXPO_PUBLIC_DISABLE_3D escape hatch) stay on the
-  // lightweight fallback — expo-gl's software renderer misbehaves there and a
-  // scene failure can take down unrelated app flows.
+  // Simulators stay on the lightweight fallback — expo-gl's software renderer
+  // misbehaves there and a scene failure can take down unrelated app flows.
   if (!SCENE_3D_ENABLED) return <SceneFallback style={StyleSheet.flatten([styles.fill, style])} />;
 
   return (
@@ -175,7 +174,7 @@ export function SidekickCanvas({
       <GLView
         style={styles.fill}
         pointerEvents="none"
-        msaaSamples={Constants.isDevice ? 4 : 0}
+        msaaSamples={Device.isDevice ? 4 : 0}
         onContextCreate={onContextCreate}
       />
     </View>

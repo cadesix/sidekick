@@ -1,11 +1,9 @@
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import Animated, { FadeInDown, FadeOut } from "react-native-reanimated";
 import { formatSeparator } from "../lib/time";
-import { isEmojiOnly } from "../lib/emoji";
-import { bubble, colors, type } from "../theme";
+import { bubble } from "../theme";
 import type { Message } from "../types";
-import { AudioBubble } from "./AudioBubble";
-import { MessageBubble } from "./MessageBubble";
+import { MessageContent } from "./MessageContent";
 import { TapbackBadge } from "./TapbackBadge";
 import { TimestampSeparator } from "./TimestampSeparator";
 
@@ -36,24 +34,7 @@ export function ReplyChain({ messages }: { messages: Message[] }) {
 						]}
 					>
 						<View style={styles.bubbleHolder}>
-							{message.kind === "audio" && message.audio ? (
-								<MessageBubble from={message.role} tail={tail}>
-									<AudioBubble audio={message.audio} sent={sent} />
-								</MessageBubble>
-							) : isEmojiOnly(message.text) ? (
-								<Text style={styles.bigEmoji}>{message.text}</Text>
-							) : (
-								<MessageBubble from={message.role} tail={tail}>
-									<Text
-										style={[
-											styles.text,
-											sent ? styles.textSent : styles.textReceived,
-										]}
-									>
-										{message.text}
-									</Text>
-								</MessageBubble>
-							)}
+							<MessageContent message={message} tail={tail} />
 							{message.reactions.map((reaction) => (
 								<TapbackBadge
 									key={reaction.from}
@@ -86,19 +67,5 @@ const styles = StyleSheet.create({
 	},
 	bubbleHolder: {
 		maxWidth: `${bubble.maxWidthFraction * 100}%`,
-	},
-	text: {
-		fontSize: type.body.fontSize,
-		lineHeight: type.body.lineHeight,
-	},
-	textSent: {
-		color: colors.sentText,
-	},
-	textReceived: {
-		color: colors.receivedText,
-	},
-	bigEmoji: {
-		fontSize: 46,
-		lineHeight: 54,
 	},
 });

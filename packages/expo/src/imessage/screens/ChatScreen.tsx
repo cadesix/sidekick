@@ -4,7 +4,7 @@ import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { FlatList, Pressable, StyleSheet, View } from "react-native";
+import { Alert, FlatList, Pressable, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, {
@@ -20,9 +20,12 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { buildTranscript, type TranscriptItem } from "../lib/transcript";
 import { useSidekickChat } from "../useSidekickChat";
+import { usePendingAttachments } from "../usePendingAttachments";
+import { resolveCityLine } from "~/lib/location";
 import { colors } from "../theme";
 import type { AudioAttachment, Message, ReactionType } from "../types";
-import { ChatInputBar } from "../components/ChatInputBar";
+import { type AttachmentState, ChatInputBar } from "../components/ChatInputBar";
+import { PendingAttachmentRow } from "../components/PendingAttachmentRow";
 import { Glass } from "../components/Glass";
 import { Icon } from "../components/Icon";
 import { SponsoredCard } from "~/components/SponsoredCard";
@@ -31,7 +34,7 @@ import {
 	TIME_REVEAL_WIDTH,
 	type BubbleLayout,
 } from "../components/MessageRow";
-import { PlusDrawer } from "../components/PlusDrawer";
+import { type DrawerAction, PlusDrawer } from "../components/PlusDrawer";
 import { ReplyChain } from "../components/ReplyChain";
 import { TapbackOverlay } from "../components/TapbackOverlay";
 import { TimestampSeparator } from "../components/TimestampSeparator";
@@ -69,6 +72,7 @@ export function ChatScreen({ onClose }: { onClose: () => void }) {
 	const [replyTo, setReplyTo] = useState<Message | undefined>(undefined);
 	const [plusOpen, setPlusOpen] = useState(false);
 	const [recording, setRecording] = useState(false);
+	const attachments = usePendingAttachments();
 	const [overlay, setOverlay] = useState<OverlayState | null>(null);
 	const mountedAt = useRef(Date.now());
 	const containerRef = useRef<View>(null);
@@ -161,10 +165,10 @@ export function ChatScreen({ onClose }: { onClose: () => void }) {
 
 	const handleSendText = useCallback(
 		(text: string) => {
-			send({ text, replyToId: replyTo?.id });
+			send({ text, replyToId: replyTo?.id, attachments: attachments.take() });
 			setReplyTo(undefined);
 		},
-		[send, replyTo],
+		[send, replyTo, attachments],
 	);
 
 	const handleSendAudio = useCallback(
@@ -173,6 +177,38 @@ export function ChatScreen({ onClose }: { onClose: () => void }) {
 		},
 		[send],
 	);
+
+	// Location is a one-time, city-level share (coords never leave the device) —
+	// it lands in the transcript as a normal turn the sidekick can react to.
+	const shareLocation = async () => {
+		const city = await resolveCityLine().catch(() => null);
+		if (city === null) {
+			Alert.alert(
+				"Couldn't share location",
+				"Allow location access in Settings, then try again.",
+			);
+			return;
+		}
+		send({ text: `📍 ${city}` });
+	};
+
+	let attachmentState: AttachmentState = "none";
+	if (attachments.pending.length > 0) {
+		attachmentState = attachments.allReady ? "ready" : "settling";
+	}
+
+	const handleDrawerAction = (action: DrawerAction) => {
+		setPlusOpen(false);
+		if (action === "audio") {
+			setRecording(true);
+			return;
+		}
+		if (action === "location") {
+			void shareLocation();
+			return;
+		}
+		void attachments.pickFrom(action);
+	};
 
 	// Bubbles are measured in window coordinates, but the overlay fills this
 	// screen, which sits inside a drawer offset from the window's top.
@@ -326,15 +362,7 @@ export function ChatScreen({ onClose }: { onClose: () => void }) {
 					style={styles.inputFade}
 					pointerEvents="none"
 				/>
-				{plusOpen ? (
-					<PlusDrawer
-						onSelectAudio={() => {
-							setPlusOpen(false);
-							setRecording(true);
-						}}
-						onClose={() => setPlusOpen(false)}
-					/>
-				) : null}
+				{plusOpen ? <PlusDrawer onSelect={handleDrawerAction} /> : null}
 				<Animated.View
 					style={inputBarPaddingStyle}
 					onLayout={(event) => {
@@ -345,8 +373,15 @@ export function ChatScreen({ onClose }: { onClose: () => void }) {
 				>
 					{replyTo ? <ReplyChain messages={replyChain} /> : null}
 					{composerAd ? <SponsoredCard ad={composerAd} /> : null}
+					<PendingAttachmentRow
+						attachments={attachments.pending}
+						error={attachments.error}
+						onRemove={attachments.remove}
+						onRetry={attachments.retry}
+					/>
 					<ChatInputBar
 						replyActive={replyTo !== undefined}
+						attachmentState={attachmentState}
 						onSendText={handleSendText}
 						onSendAudio={handleSendAudio}
 						onTogglePlusMenu={() => setPlusOpen((open) => !open)}

@@ -1,16 +1,10 @@
-import { Platform } from "react-native";
+import * as Device from "expo-device";
 
 /**
- * Gate for the GL scene. 3D renders everywhere (device, simulator, Expo Web) by
- * default; set EXPO_PUBLIC_DISABLE_3D=1 to force the lightweight 2D fallback.
- *
- * The flag only applies to native: browser WebGL is reliable, whereas expo-gl on
- * the iOS simulator is a software renderer that is slow and lies about
- * extensions (verify the scene on a physical device per the README). So Expo Web
- * keeps 3D even when the flag disables it on the crashy simulator.
- *
- * EXPO_PUBLIC_* values are inlined at bundle time, so changing this needs a
- * Metro restart, not just a reload.
+ * Gate for the GL scene. 3D renders on real devices and on Expo Web (isDevice
+ * is always true in a browser); simulators get the lightweight 2D fallback
+ * automatically — expo-gl there is a software renderer that is slow, lies
+ * about extensions, and a scene failure can take down unrelated app flows.
+ * Verify anything 3D on a physical device per the README.
  */
-export const SCENE_3D_ENABLED =
-  Platform.OS === "web" || process.env.EXPO_PUBLIC_DISABLE_3D !== "1";
+export const SCENE_3D_ENABLED = Device.isDevice;

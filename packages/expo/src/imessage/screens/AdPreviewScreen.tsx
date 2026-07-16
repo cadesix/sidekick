@@ -147,6 +147,7 @@ export function AdPreviewScreen() {
 					)}
 					<ChatInputBar
 						replyActive={false}
+						attachmentState="none"
 						onSendText={() => {}}
 						onSendAudio={() => {}}
 						onTogglePlusMenu={() => {}}
