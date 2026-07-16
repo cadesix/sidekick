@@ -19,7 +19,6 @@ const C = {
   widget: '#3c3c3c', // --widget-color (slider track)
   focus: '#595959', // --focus-color
   number: '#2cc9ff', // --number-color
-  string: '#a2db3c',
   text: '#ebebeb', // --text-color
   dim: '#bebebe',
   hair: '#1f1f1f',

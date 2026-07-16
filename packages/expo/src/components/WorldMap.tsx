@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
-import { Dimensions, Pressable, ScrollView, Text, View } from 'react-native';
+import { Dimensions, ScrollView, Text, View } from 'react-native';
 import Animated, {
   Easing,
   interpolate,
@@ -21,6 +21,7 @@ import {
   sessionFor,
 } from '@sidekick/core';
 
+import { Pressable } from './Pressable';
 import { AREA_BIOME, type EnvironmentId } from '../three/biomes';
 import { loadSettings } from '../three/settings';
 import { useBond } from '../store/bond';

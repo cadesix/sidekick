@@ -11,8 +11,23 @@
 		"dev": "pnpm --filter @sidekick/web dev",
 		"dev:web": "pnpm --filter @sidekick/web dev",
 		"dev:expo": "pnpm --filter @sidekick/expo start",
+		"dev:server": "pnpm --filter @sidekick/server dev",
 		"build": "pnpm --filter @sidekick/web build",
-		"typecheck": "pnpm -r run typecheck"
+		"typecheck": "pnpm -r run typecheck && tsc -p tests",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"db:generate": "pnpm --filter @sidekick/db generate",
+		"db:migrate": "pnpm --filter @sidekick/db migrate"
+	},
+	"devDependencies": {
+		"@sidekick/db": "workspace:*",
+		"@sidekick/server": "workspace:*",
+		"@sidekick/shared": "workspace:*",
+		"@sidekick/tsconfig": "workspace:*",
+		"@types/node": "^22.20.0",
+		"msw": "^2.7.0",
+		"typescript": "^5.7.2",
+		"vitest": "^3.0.5"
 	},
 	"pnpm": {
 		"overrides": {

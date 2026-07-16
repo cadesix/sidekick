@@ -17,7 +17,7 @@
 # Usage: scripts/sim-snap.sh [wait_seconds] [metro_log]
 set -euo pipefail
 
-APP=com.cadesix.sidekick-mobile
+APP=com.sanssoftware.sidekick
 WAIT="${1:-12}"
 METRO_LOG="${2:-/tmp/sk-metro.log}"
 DIR="$(cd "$(dirname "$0")" && pwd)"

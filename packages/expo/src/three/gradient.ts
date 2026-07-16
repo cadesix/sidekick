@@ -6,7 +6,6 @@ import * as THREE from 'three';
 
 type Stop = { at: number; color: string };
 
-
 // Soft elliptical contact-shadow blob (the web drew this with a DOM canvas
 // radial gradient: 0 → 0.42 alpha, 0.7 → 0.12, 1 → 0). Ink color fixed at the
 // web's warm near-black (30, 24, 16).

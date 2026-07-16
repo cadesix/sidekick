@@ -66,8 +66,10 @@ installed, which updates the system CoreSimulator): a sky+ground-only scene
 rendered fully blank on a fresh iOS 26.1 device with a freshly rebuilt dev
 client, with either MSAA setting. RN-level UI (dock/map/shop/chat) is always
 unaffected. The reliable verification path for anything 3D remains a PHYSICAL
-device; alternatively migrate to a newer Expo SDK whose expo-gl tracks the
-current simulator stack.
+device. The app now detects simulators and uses the static scene fallback
+automatically; `EXPO_PUBLIC_DISABLE_3D=1` provides the same fallback on a
+physical device. Alternatively, migrate to a newer Expo SDK whose expo-gl
+tracks the current simulator stack.
 
 ## Asset pipeline
 

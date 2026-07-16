@@ -45,6 +45,8 @@ sidekick/
 ├── .npmrc                  node-linker=hoisted (required for Expo/Metro)
 ├── pnpm-lock.yaml          single lockfile for everything
 ├── docs/                   this file, SYNC-PLAN.md, creative-brief.md
+├── plans/                  design docs for the chat/server stack (00–16)
+├── tests/                  vitest suite for server/db/shared (+ pure expo chat modules)
 └── packages/
     ├── web/                @sidekick/web — Vite web app (dev surface, Vercel deploy)
     │   ├── src/components/sidekick-*.ts   imperative three.js scene modules
@@ -53,18 +55,36 @@ sidekick/
     │   ├── api/chat.js                    Vercel serverless chat endpoint
     │   └── vite-plugin-sidekick.ts        /sidekick-3d studio dev plugin
     ├── expo/               @sidekick/expo — RN app (prod surface)
-    │   ├── app/                           expo-router routes
+    │   ├── app/                           expo-router routes (home, document, reminders, focus-setup)
     │   ├── src/three/                     ported three.js scene (see mapping below)
-    │   ├── src/components/                RN UI (dock, chat, shop, map)
+    │   ├── src/components/                RN UI (dock, shop, map, chat bubbles/composer/…)
+    │   ├── src/features/chat/             chat sheet: streaming turns, search, device tools
+    │   ├── src/lib/                       tRPC client (api.ts), anonymous auth, chat thread model
     │   ├── assets/                        stripped GLBs + PNG variants (derived from web)
     │   └── scripts/strip-glb.mjs          GLB texture stripper
+    ├── server/             @sidekick/server — Hono + tRPC backend (Vercel deploy via api/)
+    │   ├── src/chat/                      chat turn engine (streaming, compaction)
+    │   ├── src/routers/                   tRPC routers (chat, goals, documents, reminders, …)
+    │   └── src/…                          ads, checkins, memory, attachments, music, rewards
+    ├── db/                 @sidekick/db — drizzle schema + migrations (postgres; PGlite in tests)
     ├── shared/
-    │   └── core/           @sidekick/core — platform-agnostic shared logic
-    │                       (being populated incrementally; see "Roadmap")
+    │   ├── core/           @sidekick/core — platform-agnostic shared logic
+    │   │                   (being populated incrementally; see "Roadmap")
+    │   └── app/            @sidekick/shared — product domain logic shared by server + expo
+    │                       (prompts, model tools, conversation/context, stream frame protocol)
     └── config/
-        ├── tsconfig/       @sidekick/tsconfig — shared TS configs
+        ├── tsconfig/       @sidekick/tsconfig — shared TS configs (base, node, react-vite)
         └── tailwind/       @sidekick/tailwind-config — shared Tailwind preset (brand tokens)
 ```
+
+The chat stack is a vertical slice through four packages: the expo chat sheet
+(`src/features/chat/`) talks to `@sidekick/server` (tRPC at `/trpc`, raw
+streaming at `/chat/stream` + `/chat/continue`), which runs the turn engine
+against `@sidekick/db` using the prompts/tools/frame-protocol in
+`@sidekick/shared`. Run it locally with `pnpm dev:server` (needs
+`DATABASE_URL` + `ANTHROPIC_API_KEY`; see `packages/server/.env.example`) and
+point the app at it via `EXPO_PUBLIC_API_URL`. `pnpm test` covers this whole
+stack with PGlite and mocked models — no keys or database needed.
 
 ## How the two apps relate, file by file
 

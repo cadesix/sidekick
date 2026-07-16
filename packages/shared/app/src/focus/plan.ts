@@ -1,0 +1,319 @@
+/**
+ * Focus mode (13-focus-mode.md) — the pure, platform-free half of the feature.
+ * These builders shape the DeviceActivity monitor schedules, threshold events and
+ * shield actions the native module consumes, plus the budget/unlock math. Nothing
+ * here imports `react-native-device-activity`; the mobile seam (lib/focus.ts) maps
+ * these shapes onto the real module at the call boundary, and vitest exercises them
+ * directly. Structural types below are deliberate mirrors of the module's public
+ * types (DeviceActivitySchedule / DeviceActivityEvent / Action) so the seam can pass
+ * a plan straight through and TypeScript still checks assignability.
+ */
+
+/** The single on-device selection id — the apps the user chose to guard (opaque). */
+export const FOCUS_SELECTION_ID = "focus";
+/** The shield the block actions raise; also the id the module ties config to. */
+export const FOCUS_SHIELD_ID = "sidekick";
+/** The repeating daily-budget monitor. */
+export const FOCUS_DAILY_ACTIVITY = "focus-daily";
+/** The one-off monitor that re-blocks when a temporary unlock elapses. */
+export const FOCUS_REBLOCK_ACTIVITY = "focus-reblock";
+export const FOCUS_SESSION_ACTIVITY = "focus-session";
+export const FOCUS_SCHEDULE_ACTIVITY_PREFIX = "focus-schedule";
+
+/** Platform allows 20; we use at most 3 (daily, re-block, 03's passive threshold). */
+export const MAX_FOCUS_MONITORS = 10;
+
+export const MIN_UNLOCK_MINUTES = 5;
+export const MAX_UNLOCK_MINUTES = 60;
+/** Warn the user once they've spent this fraction of the daily budget. */
+export const WARN_FRACTION = 0.8;
+
+/** Doomscroll/procrastinate goals are the ones focus mode backs (03 Tier 4). */
+export const FOCUS_GOAL_SLUGS: readonly string[] = [
+  "stop-doomscrolling",
+  "stop-procrastinating",
+];
+
+export function isFocusGoalSlug(slug: string): boolean {
+  return FOCUS_GOAL_SLUGS.includes(slug);
+}
+
+/** Foundation DateComponents subset — a wall-clock point or an accumulated duration. */
+export type FocusDateComponents = {
+  hour?: number;
+  minute?: number;
+  second?: number;
+  weekday?: number;
+  year?: number;
+  month?: number;
+  day?: number;
+};
+
+export type FocusSchedule = {
+  intervalStart: FocusDateComponents;
+  intervalEnd: FocusDateComponents;
+  repeats: boolean;
+};
+
+export type FocusThresholdEvent = {
+  familyActivitySelection: string;
+  threshold: FocusDateComponents;
+  eventName: string;
+};
+
+export type FocusNotificationPayload = {
+  title: string;
+  body: string;
+  userInfo?: Record<string, string>;
+};
+
+/** The subset of the module's Action union focus uses. */
+export type FocusAction =
+  | { type: "blockSelection"; familyActivitySelectionId: string; shieldId?: string }
+  | { type: "unblockSelection"; familyActivitySelectionId: string }
+  | { type: "sendNotification"; payload: FocusNotificationPayload };
+
+/** Shield the chosen apps / lift the shield. Shared so the id can't drift between plans. */
+const BLOCK_SELECTION: FocusAction = {
+  type: "blockSelection",
+  familyActivitySelectionId: FOCUS_SELECTION_ID,
+  shieldId: FOCUS_SHIELD_ID,
+};
+const UNBLOCK_SELECTION: FocusAction = {
+  type: "unblockSelection",
+  familyActivitySelectionId: FOCUS_SELECTION_ID,
+};
+
+export type FocusCallbackName = "intervalDidStart" | "intervalDidEnd" | "eventDidReachThreshold";
+
+/** One `configureActions` call: fire `actions` when `callbackName`(+`eventName`) hits. */
+export type FocusActionConfig = {
+  callbackName: FocusCallbackName;
+  eventName?: string;
+  actions: FocusAction[];
+};
+
+/** Everything the seam needs to register one monitor and wire its actions. */
+export type FocusMonitorPlan = {
+  activityName: string;
+  schedule: FocusSchedule;
+  events: FocusThresholdEvent[];
+  actions: FocusActionConfig[];
+};
+
+/** Minute of accumulated use at which the 80% warning fires. At least 1. */
+export function warnThresholdMinutes(budgetMinutes: number): number {
+  return Math.max(1, Math.floor(budgetMinutes * WARN_FRACTION));
+}
+
+/** The temporary-unlock length, clamped to the sanctioned 5–60 min window. */
+export function clampUnlockMinutes(minutes: number): number {
+  const rounded = Math.round(minutes);
+  if (rounded < MIN_UNLOCK_MINUTES) {
+    return MIN_UNLOCK_MINUTES;
+  }
+  if (rounded > MAX_UNLOCK_MINUTES) {
+    return MAX_UNLOCK_MINUTES;
+  }
+  return rounded;
+}
+
+/** Total guarded things (apps + categories + web domains) for the "7 apps" mirror. */
+export function selectionCount(meta: {
+  applicationCount: number;
+  categoryCount: number;
+  webDomainCount: number;
+}): number {
+  return meta.applicationCount + meta.categoryCount + meta.webDomainCount;
+}
+
+/**
+ * The repeating daily-budget monitor (13 §mechanics). Two threshold events on the
+ * focus selection — a warn at 80% (local notification) and the limit (native block
+ * behind the sidekick shield) — plus a midnight `intervalDidStart` unblock so every
+ * day starts fresh. The block fires inside the monitor extension with no JS running.
+ */
+export function dailyMonitorPlan(input: {
+  budgetMinutes: number;
+  selectionToken: string;
+  sidekickName: string;
+}): FocusMonitorPlan {
+  const warnAt = warnThresholdMinutes(input.budgetMinutes);
+  return {
+    activityName: FOCUS_DAILY_ACTIVITY,
+    schedule: {
+      intervalStart: { hour: 0, minute: 0 },
+      intervalEnd: { hour: 23, minute: 59 },
+      repeats: true,
+    },
+    events: [
+      {
+        familyActivitySelection: input.selectionToken,
+        threshold: { minute: warnAt },
+        eventName: "warn",
+      },
+      {
+        familyActivitySelection: input.selectionToken,
+        threshold: { minute: input.budgetMinutes },
+        eventName: "limit",
+      },
+    ],
+    actions: [
+      {
+        callbackName: "eventDidReachThreshold",
+        eventName: "warn",
+        actions: [
+          {
+            type: "sendNotification",
+            payload: {
+              title: `it's ${input.sidekickName}.`,
+              body: `you're at 80% of your ${input.budgetMinutes} min`,
+              userInfo: { type: "focus_warn" },
+            },
+          },
+        ],
+      },
+      {
+        callbackName: "eventDidReachThreshold",
+        eventName: "limit",
+        actions: [
+          BLOCK_SELECTION,
+        ],
+      },
+      {
+        callbackName: "intervalDidStart",
+        actions: [UNBLOCK_SELECTION],
+      },
+    ],
+  };
+}
+
+/**
+ * The one-off re-block monitor for a temporary unlock (13 §mechanics): an interval
+ * from now to now+N whose `intervalDidEnd` action re-raises the shield block —
+ * natively, even if the user never returns to our app. `repeats:false`.
+ */
+export function reblockMonitorPlan(input: { now: Date; minutes: number }): FocusMonitorPlan {
+  const clamped = clampUnlockMinutes(input.minutes);
+  const end = new Date(input.now.getTime() + clamped * 60_000);
+  return {
+    activityName: FOCUS_REBLOCK_ACTIVITY,
+    schedule: {
+      intervalStart: dateComponents(input.now),
+      intervalEnd: dateComponents(end),
+      repeats: false,
+    },
+    events: [],
+    actions: [
+      {
+        callbackName: "intervalDidEnd",
+        actions: [
+          BLOCK_SELECTION,
+        ],
+      },
+    ],
+  };
+}
+
+export function focusSessionPlan(input: { now: Date; minutes: number }): FocusMonitorPlan {
+  const end = new Date(input.now.getTime() + input.minutes * 60_000);
+  return {
+    activityName: FOCUS_SESSION_ACTIVITY,
+    schedule: {
+      intervalStart: dateComponents(input.now),
+      intervalEnd: dateComponents(end),
+      repeats: false,
+    },
+    events: [],
+    actions: [
+      {
+        callbackName: "intervalDidEnd",
+        actions: [
+          UNBLOCK_SELECTION,
+          {
+            type: "sendNotification",
+            payload: {
+              title: "Your Focus session is complete.",
+              body: "Your guarded apps are available again.",
+              userInfo: { type: "focus_session_complete" },
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function dateComponents(date: Date): FocusDateComponents {
+  return {
+    year: date.getFullYear(),
+    month: date.getMonth() + 1,
+    day: date.getDate(),
+    hour: date.getHours(),
+    minute: date.getMinutes(),
+  };
+}
+
+export function scheduledMonitorPlan(input: {
+  weekday: number;
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
+}): FocusMonitorPlan {
+  return {
+    activityName: `${FOCUS_SCHEDULE_ACTIVITY_PREFIX}-${input.weekday}`,
+    schedule: {
+      intervalStart: {
+        weekday: input.weekday,
+        hour: input.startHour,
+        minute: input.startMinute,
+      },
+      intervalEnd: {
+        weekday: input.weekday,
+        hour: input.endHour,
+        minute: input.endMinute,
+      },
+      repeats: true,
+    },
+    events: [],
+    actions: [
+      {
+        callbackName: "intervalDidStart",
+        actions: [
+          BLOCK_SELECTION,
+        ],
+      },
+      {
+        callbackName: "intervalDidEnd",
+        actions: [UNBLOCK_SELECTION],
+      },
+    ],
+  };
+}
+
+/**
+ * Guard the 20-monitor platform ceiling (13 §mechanics) before starting another.
+ * Throws rather than silently over-scheduling — the seam surfaces it as a device
+ * failure and the model degrades in-voice.
+ */
+export function assertMonitorCapacity(activeActivityNames: string[], adding: string): void {
+  const willBeActive = activeActivityNames.includes(adding)
+    ? activeActivityNames.length
+    : activeActivityNames.length + 1;
+  if (willBeActive > MAX_FOCUS_MONITORS) {
+    throw new Error(
+      `focus: refusing to exceed ${MAX_FOCUS_MONITORS} concurrent monitors (have ${activeActivityNames.length})`,
+    );
+  }
+}
+
+export const BUDGET_CHOICES = [15, 30, 45, 60] as const;
+
+/** "15m" / "30m" / "45m" / "1h" — the budget ReplyChip labels. */
+export function budgetLabel(minutes: number): string {
+  if (minutes % 60 === 0) {
+    return `${minutes / 60}h`;
+  }
+  return `${minutes}m`;
+}

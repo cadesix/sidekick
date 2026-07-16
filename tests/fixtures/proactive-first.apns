@@ -1,0 +1,18 @@
+{
+  "Simulator Target Bundle": "com.cadesix.sidekick-mobile",
+  "aps": {
+    "alert": {
+      "title": "Milo",
+      "body": "your sidekick sent you a message, tap to read it"
+    },
+    "sound": "default",
+    "mutable-content": 1
+  },
+  "notificationId": "6675efba-d246-4bfa-8a46-a8cb5538402c",
+  "type": "proactive-message",
+  "conversationId": "d71482c3-a0a9-4232-9160-da5bb9eb7bf7",
+  "messageId": 1001,
+  "proactiveTurnId": "b35854d0-1e63-48a2-a347-ecf19ce54a3c",
+  "sequence": 0,
+  "notificationThreadId": "conversation-d71482c3-a0a9-4232-9160-da5bb9eb7bf7"
+}
