@@ -153,7 +153,7 @@ async function fetchExtraction(
   def: SessionDef,
   transcript: string,
   prior: { fields: Record<string, string>; notes: ContextNote[]; astral: Astral | null },
-): Promise<{ fields: Record<string, string>; notes: { tag: string; text: string }[]; recap: string; analysis: Analysis } | null> {
+): Promise<{ fields: Record<string, string>; notes: { tag: string; text: string }[]; recap: string; analysis: Analysis | null } | null> {
   const head = priorProfile(prior.fields, prior.notes, prior.astral);
   const returning = !!head;
   const system =
@@ -411,7 +411,9 @@ export function SessionChat({
     const ex = await fetchExtraction(def, transcript(), prior());
     setTyping(false);
     extraction.current = ex ? { fields: ex.fields, notes: ex.notes } : { fields: {}, notes: [] };
-    // no fresh card (offline/parse fail) → keep whatever they already earned
+    // Show: fresh card, else the one they already have, else a placeholder.
+    // Persist: ONLY a fresh card — `?? null` keeps completeSession from writing,
+    // so a bad reading leaves the earned card untouched.
     setAnalysis(ex?.analysis ?? prior().astral ?? FALLBACK_ANALYSIS);
     nextAstral.current = ex?.analysis ?? null;
     showBotThen([ex?.recap ?? 'ok, got all of that. locked in 🔒', 'did i get that right?'], () => setPhase('confirm'));
@@ -456,8 +458,12 @@ export function SessionChat({
       setTyping(false);
       if (ex) {
         extraction.current = { fields: ex.fields, notes: ex.notes };
-        setAnalysis(ex.analysis);
-        nextAstral.current = ex.analysis;
+        // same rule as finish(): only a real card displaces what's on screen or
+        // in the store
+        if (ex.analysis) {
+          setAnalysis(ex.analysis);
+          nextAstral.current = ex.analysis;
+        }
       }
       showBotThen([ex ? `ok fixed. ${ex.recap}` : 'ok noted!!', 'good now?'], () => setPhase('confirm'));
       return;
