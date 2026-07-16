@@ -256,7 +256,7 @@ export default function Home() {
       {settings && nextStarChat ? (
         <StarChatButton
           overhead={overhead}
-          hidden={mapShown || shopOpen || open || settingsOpen || !!sessionId}
+          hidden={mapShown || shopOpen || chatOpen || settingsOpen || !!sessionId}
           onPress={() => setSessionId(nextStarChat.id)}
         />
       ) : null}
