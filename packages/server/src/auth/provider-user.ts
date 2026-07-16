@@ -1,5 +1,6 @@
 import { and, eq, isNotNull } from "drizzle-orm";
 import { type Database, accounts, notificationPreferences, users } from "@sidekick/db";
+import { seedStarterState } from "../rewards/service";
 
 export type AuthProvider = "apple" | "google" | "email" | "phone";
 
@@ -34,7 +35,9 @@ const normalizeEmail = (email: string): string => email.trim().toLowerCase();
  * identity carries a *verified* email from a trusted provider and an existing
  * user already owns that verified email, the new provider is **linked** to that
  * user (a fresh `accounts` row, same `userId`). Otherwise a new user is created
- * with its account row and notification preferences in one transaction.
+ * with its account row, notification preferences, and starter economy state
+ * (plan 20: the `starter:coins` ledger grant plus the starter outfit, equipped)
+ * in one transaction.
  *
  * Linking requires verification on *both* sides (trusted `emailVerified` incoming
  * AND the existing user's `emailVerified` set) so an unverified email claim can
@@ -89,6 +92,7 @@ export async function findOrCreateUserForProvider(
       providerAccountId: identity.providerAccountId,
     });
     await tx.insert(notificationPreferences).values({ userId: user.id });
+    await seedStarterState(tx, user.id);
     return { userId: user.id, isNewUser: true };
   });
 }

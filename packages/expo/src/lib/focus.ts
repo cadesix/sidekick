@@ -47,7 +47,9 @@ import {
   shieldSecondaryLabel,
   shieldTitle,
 } from "@sidekick/shared";
-import { fetchHome, fetchMe } from "./api";
+import { fetchMe, fetchSnapshot } from "./api";
+import { queryClient } from "./query-client";
+import { SNAPSHOT_QUERY_KEY } from "./state";
 
 const APPROVED = 2;
 const LOCAL_SETTINGS_KEY = "sidekickFocusSettings";
@@ -326,11 +328,18 @@ export async function maybeRefreshFocusShield(): Promise<void> {
   if (!focusAvailable() || !settings.enabled) {
     return;
   }
-  const [me, home] = await Promise.all([fetchMe(), fetchHome()]);
+  // The shield copy shows the app-open streak (plan 20 decision 7 — one streak
+  // number everywhere). This runs outside React, so read the snapshot through
+  // the shared queryClient; ensureQueryData serves the cached slice and only
+  // hits the network when nothing is cached yet.
+  const [me, snapshot] = await Promise.all([
+    fetchMe(),
+    queryClient.ensureQueryData({ queryKey: SNAPSHOT_QUERY_KEY, queryFn: fetchSnapshot }),
+  ]);
   refreshShield({
     date: new Date(),
     budgetMinutes: settings.budgetMinutes,
-    streak: home.streak,
+    streak: snapshot.streak.count,
     sidekickName: me.sidekickName ?? "your sidekick",
   });
 }

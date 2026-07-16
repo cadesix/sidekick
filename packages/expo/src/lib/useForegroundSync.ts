@@ -2,11 +2,12 @@ import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
-import { syncHealth } from '~/lib/api';
+import { syncHealth, touchStreak } from '~/lib/api';
 import { maybeRefreshFocusShield } from '~/lib/focus';
 import { readHealthDays } from '~/lib/health';
 import { HEALTH_CONNECTION_QUERY_KEY } from '~/lib/health-connection';
 import { maybeUpdateLocation } from '~/lib/location';
+import { patchStreakTouch, SNAPSHOT_QUERY_KEY } from '~/lib/state';
 
 // Each integration pushes fresh device data, then invalidates the query that
 // reads it back. All are safe no-ops when the user hasn't connected / has denied
@@ -31,6 +32,21 @@ async function syncFocus(queryClient: QueryClient): Promise<void> {
   await queryClient.invalidateQueries({ queryKey: ['focus-local'] });
 }
 
+// Progression is server-truth (plan 20 decision 11): no push in v1, so each
+// foreground touches the app-open streak (decision 7 — server-idempotent per
+// local day, so once per foreground event is the only client-side discipline)
+// and then refetches the snapshot — cross-device changes land here. Ordering
+// the refetch after the touch means the first snapshot of the day already
+// carries the bumped count; the patch after both settles the count even when
+// the refetch deduped into an in-flight pre-touch request.
+async function syncProgression(queryClient: QueryClient): Promise<void> {
+  const touch = await touchStreak().catch(() => null);
+  await queryClient.invalidateQueries({ queryKey: SNAPSHOT_QUERY_KEY });
+  if (touch) {
+    patchStreakTouch(queryClient, touch);
+  }
+}
+
 /**
  * On each genuine foreground (and once on mount), push fresh HealthKit days,
  * coarse location, and focus-shield state, then refresh the queries that read
@@ -51,6 +67,7 @@ export function useForegroundSync(): void {
         syncHealthData(queryClient),
         syncLocation(queryClient),
         syncFocus(queryClient),
+        syncProgression(queryClient),
       ]);
     }
     function onChange(next: AppStateStatus): void {

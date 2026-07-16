@@ -1,5 +1,6 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Dimensions, Pressable, View } from 'react-native';
+import { Alert, Dimensions, Pressable, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -19,18 +20,21 @@ import { SpeechBubble } from '../src/components/SpeechBubble';
 import { StreakPill } from '../src/components/StreakPill';
 import { HomeDock } from '../src/components/HomeDock';
 import { type EnvironmentId } from '../src/three/biomes';
-import { useDailyBox } from '../src/store/dailyBox';
 import { speak } from '../src/store/speech';
-import { useStreak } from '../src/store/streak';
-import { boxTier, nextSession as coreNextSession, type BoxReward } from '@sidekick/core';
+import { nextSession as coreNextSession } from '@sidekick/core';
 import { SettingsSheet } from '../src/components/SettingsSheet';
 import { ShopSheet } from '../src/components/ShopSheet';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { WorldMap } from '../src/components/WorldMap';
 import type { Framing, SidekickController } from '../src/three/renderer';
-import { hydrateSettings, loadSettings, type SidekickSettings } from '../src/three/settings';
+import { hydrateSettings, loadSettings, saveSettings, type SidekickSettings } from '../src/three/settings';
 import type { CosmeticsControls } from '../src/three/wardrobe';
 import { useDeferredFlag } from '../src/lib/useDeferredFlag';
+import { claimDailyBox, type BoxContents } from '../src/lib/api';
+import { patchBoxClaim, snapshotSessions, useSnapshot } from '../src/lib/state';
+import { reconcileWardrobe } from '../src/lib/wardrobe-sync';
+import { useCosmeticVersion } from '../src/store/cosmeticVersion';
+import { hydrateSkinFromMirror, saveSkinMirror } from '../src/store/skin';
 
 // RN port of sidekick/src/home4.tsx: full-viewport 3D mascot with an iOS-style
 // dock. Messages presents the chat as a native sheet over the lower ~75%
@@ -82,10 +86,10 @@ const COSMOS_FRAMING: Framing = {
 // to a trait, then to something honest, when the extraction gave us nothing.
 function astralNews(astral: Astral | null): string {
   if (astral?.archetype) return `astral card updated ✦ i've got you as "${astral.archetype}" now`;
-  // Defensive, not a live path: parseAnalysis won't produce a card without an
-  // archetype, so line above always wins. But `astral` rehydrates from
-  // unvalidated JSON with no persist version/migrate, so a corrupt or reshaped
-  // blob lands here rather than showing an empty line.
+  // Defensive, not a live path: the server never persists a card without an
+  // archetype, so the line above always wins. But the snapshot's astral parses
+  // a jsonb column with `catch(null)`, so a corrupt or reshaped blob lands here
+  // rather than showing an empty line.
   if (astral?.traits?.length) return `astral card updated ✦ you're more ${astral.traits[0]} than i realised`;
   return 'astral card updated ✦ i feel like i know you a bit better now';
 }
@@ -124,9 +128,13 @@ export default function Home() {
   // win over the code.
   const starFaceCfg = useStarFaceConfig();
   const starFace = STAR_FACE_TUNING ? starFaceCfg : undefined;
-  // the next unfinished star chat — drives the star beside the head. Subscribed
-  // to `sessions` so it re-evaluates the moment one completes.
-  const sessions = useSidekickContext((s) => s.sessions);
+  // Server-driven progression (plan 20): session progress, bond and the astral
+  // card all live on the one snapshot, patched by sessions.complete.
+  const snapshot = useSnapshot().data;
+  // the next unfinished star chat — drives the star beside the head. Derived
+  // from the snapshot's sessions slice, so it re-evaluates the moment one
+  // completes (the completion response patches the cache).
+  const sessions = snapshotSessions(snapshot);
   // an island opened but not yet looked at — dot on the dock's map icon
   const unseenIsland = useSidekickContext((s) => s.unseenIsland);
   const nextStarChat = coreNextSession(sessions);
@@ -141,7 +149,7 @@ export default function Home() {
   const chatReady = useDeferredFlag(!!sessionId, { onDelay: 2900 });
   // daily-box flow: streak splash → ground chest → rewards modal → done
   const [boxStage, setBoxStage] = useState<'init' | 'streak' | 'ground' | 'rewards' | 'done'>('init');
-  const [boxReward, setBoxReward] = useState<BoxReward | null>(null);
+  const [boxReward, setBoxReward] = useState<BoxContents | null>(null);
   const [goalsOpen, setGoalsOpen] = useState(false);
   const [streakModalOpen, setStreakModalOpen] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
@@ -150,11 +158,47 @@ export default function Home() {
   const [controls, setControls] = useState<CosmeticsControls | null>(null);
   // raw scene controller for the Settings sheet's live look-dev
   const [controller, setController] = useState<SidekickController | null>(null);
-  // saved look-dev state must hydrate BEFORE the GL scene builds from it
+  // saved look-dev state must hydrate BEFORE the GL scene builds from it; the
+  // mirrored server skin then overwrites its cel colors (plan 20 decision 10)
   const [settings, setSettings] = useState<SidekickSettings | null>(null);
   useEffect(() => {
-    hydrateSettings().then(() => setSettings(loadSettings()));
+    hydrateSettings()
+      .then(() => hydrateSkinFromMirror())
+      .then(() => setSettings(loadSettings()));
   }, []);
+
+  // Server-driven cosmetics (plan 20 decision 10): when the snapshot lands —
+  // cold start, foreground refetch, or a mutation patch — the server's equipped
+  // set + skin overwrite the live scene and the boot mirrors. After a local
+  // equip/skin change the cache was patched to match the scene, so this
+  // re-applies a no-op; it only visibly acts on genuinely newer server state
+  // (another device, a rejected mutation's refetch).
+  useEffect(() => {
+    if (!snapshot) return;
+    let changed = false;
+    if (controls) {
+      changed = reconcileWardrobe(controls, snapshot.inventory);
+    }
+    if (snapshot.skin) {
+      saveSkinMirror(snapshot.skin);
+      const current = loadSettings();
+      if (
+        current.celBodyColor.toLowerCase() !== snapshot.skin.body.toLowerCase() ||
+        current.celShadowColor.toLowerCase() !== snapshot.skin.shadow.toLowerCase()
+      ) {
+        const next = {
+          ...current,
+          celBodyColor: snapshot.skin.body,
+          celShadowColor: snapshot.skin.shadow,
+        };
+        saveSettings(next);
+        setSettings(next);
+        controller?.applySettings(next);
+        changed = true;
+      }
+    }
+    if (changed) useCosmeticVersion.getState().bump();
+  }, [snapshot, controls, controller]);
   // travel to a biome: swap the 3D world, close the map, and drop an arrival
   // line (bubble after the map reveal shrinks so it pops over the visible
   // character) — mirrors home5.tsx onTravel.
@@ -167,20 +211,17 @@ export default function Home() {
     }
   };
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
 
-  // count today's streak once the store has hydrated (idempotent per local day)
-  const streakHydrated = useStreak((s) => s.hydrated);
-  const streakCount = useStreak((s) => s.count);
-  const dailyBoxHydrated = useDailyBox((s) => s.hydrated);
-  useEffect(() => {
-    if (streakHydrated) useStreak.getState().touch();
-  }, [streakHydrated]);
-  // once streak + box have hydrated, open the daily flow if today's box is unclaimed
-  useEffect(() => {
-    if (boxStage === 'init' && streakHydrated && dailyBoxHydrated) {
-      setBoxStage(useDailyBox.getState().hasBox() ? 'streak' : 'done');
-    }
-  }, [boxStage, streakHydrated, dailyBoxHydrated]);
+  // Streak + daily box are server state (plan 20 phase 2): the streak count and
+  // the box's claimable/tier come from the snapshot; the touch itself fires from
+  // useForegroundSync. Latch the daily flow once, when the snapshot first lands
+  // (state-during-render, the effect-free way to react to data arrival): an
+  // unclaimed box opens with the streak splash, otherwise the flow is done.
+  const streakCount = snapshot?.streak.count ?? 0;
+  if (boxStage === 'init' && snapshot) {
+    setBoxStage(snapshot.dailyBox.claimable ? 'streak' : 'done');
+  }
 
   // head-tracked overlay position (bond badge / speech bubble); the canvas
   // writes these every frame from the head-bone projection
@@ -253,7 +294,7 @@ export default function Home() {
           onController={setController}
           overhead={overhead}
           ground={ground}
-          dailyBox={boxStage === 'ground' || boxStage === 'rewards' ? boxTier(streakCount) : null}
+          dailyBox={boxStage === 'ground' || boxStage === 'rewards' ? (snapshot?.dailyBox.tier ?? null) : null}
         />
       ) : null}
 
@@ -266,8 +307,9 @@ export default function Home() {
       ) : null}
 
       {/* the way into a star chat: a star beside the sidekick's head. Hidden
-          once every session is done — nothing left to open. */}
-      {settings && nextStarChat ? (
+          once every session is done — nothing left to open — and until the
+          snapshot lands (we don't know the ladder's position before then). */}
+      {settings && snapshot && nextStarChat ? (
         <StarChatButton
           overhead={overhead}
           hidden={mapShown || shopOpen || chatOpen || settingsOpen || !!sessionId}
@@ -336,9 +378,10 @@ export default function Home() {
               // Back to the meadow — no travel, no unlock modal. The news finds
               // them at home instead: a dot on the map icon, and the sidekick
               // saying what changed. Delayed until the sky has panned back down,
-              // or the line lands while the chat is still on screen.
+              // or the line lands while the chat is still on screen. The card
+              // comes off the snapshot, patched by the completion response.
               setSessionId(null);
-              const line = astralNews(useSidekickContext.getState().astral);
+              const line = astralNews(snapshot?.astral ?? null);
               setTimeout(() => speak(line, 6000), 2600);
             }}
           />
@@ -356,12 +399,27 @@ export default function Home() {
             <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 30 }} pointerEvents="box-none">
               <GroundBox
                 ground={ground}
-                onTap={() => controller?.popDailyBox()}
-                onOpened={() => {
-                  const db = useDailyBox.getState();
-                  setBoxReward(db.claim(streakCount) ?? db.preview(streakCount));
-                  setBoxStage('rewards');
+                onTap={async () => {
+                  // claim first; the chest only pops on the server's word. The
+                  // response carries the exact granted contents (a same-day
+                  // replay returns the identical persisted box), and its
+                  // coins/streak patch the snapshot.
+                  try {
+                    const claim = await claimDailyBox();
+                    patchBoxClaim(queryClient, claim);
+                    setBoxReward(claim.box);
+                    controller?.popDailyBox();
+                    return true;
+                  } catch (error) {
+                    const message =
+                      error instanceof Error && error.message
+                        ? error.message
+                        : 'something went wrong — try again';
+                    Alert.alert("Couldn't open the box", message);
+                    return false;
+                  }
                 }}
+                onOpened={() => setBoxStage('rewards')}
               />
             </View>
           ) : null}

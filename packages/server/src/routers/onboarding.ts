@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { cadenceSchema } from "@sidekick/shared";
+import { cadenceSchema, ianaTimezone } from "@sidekick/shared";
 import { protectedProcedure, router } from "../trpc";
 import { startOnboardingChat } from "../onboarding/chat";
 import { completeOnboarding } from "../onboarding/complete";
@@ -31,7 +31,7 @@ const completeInput = z.object({
   personality: personalitySchema,
   sidekickName: z.string().min(1),
   sidekickColor: z.string().min(1),
-  timezone: z.string().min(1),
+  timezone: ianaTimezone,
   reminderTime: z
     .string()
     .regex(/^\d{2}:\d{2}$/)

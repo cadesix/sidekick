@@ -1,6 +1,6 @@
 import { Image } from "expo-image";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import Animated, { FadeInDown, FadeOut } from "react-native-reanimated";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import {
 	fileTypeLabel,
 	formatBytes,
@@ -10,15 +10,28 @@ import {
 import { colors } from "../theme";
 import { Icon } from "./Icon";
 
+const PREVIEW_HEIGHT = 148;
+const PREVIEW_MIN_WIDTH = 88;
+const PREVIEW_MAX_WIDTH = 236;
+
+/** Preview width from the picked image's aspect ratio, clamped like iMessage. */
+function previewWidth(attachment: PendingAttachment): number {
+	if (attachment.width === undefined || attachment.height === undefined) {
+		return PREVIEW_HEIGHT;
+	}
+	const natural = PREVIEW_HEIGHT * (attachment.width / attachment.height);
+	return Math.round(Math.min(Math.max(natural, PREVIEW_MIN_WIDTH), PREVIEW_MAX_WIDTH));
+}
+
 function RemoveBadge({ onPress }: { onPress: () => void }) {
 	return (
 		<Pressable
 			onPress={onPress}
-			hitSlop={8}
+			hitSlop={10}
 			style={styles.removeBadge}
 			accessibilityLabel="Remove attachment"
 		>
-			<Icon name="xmark" size={10} color="#FFFFFF" strokeWidth={3} />
+			<Icon name="xmark" size={11} color="#FFFFFF" strokeWidth={2.5} />
 		</Pressable>
 	);
 }
@@ -43,9 +56,10 @@ function FileCard({ attachment }: { attachment: PendingAttachment }) {
 }
 
 /**
- * Picked attachments waiting above the input bar (09 §composer): image
- * thumbnails and file cards, dimmed with a spinner only while ingest is still
- * settling; a failed chip's caption becomes the tappable retry line.
+ * Picked attachments staged inside the composer bubble (09 §composer), like
+ * iMessage: large aspect-ratio photo previews with the × inset in the corner,
+ * file cards, dimmed with a spinner only while ingest is still settling; a
+ * failed chip's caption becomes the tappable retry line.
  */
 export function PendingAttachmentRow({
 	attachments,
@@ -63,7 +77,7 @@ export function PendingAttachmentRow({
 	}
 	const failed = attachments.filter((attachment) => attachment.status === "failed");
 	return (
-		<Animated.View entering={FadeInDown.duration(200)} exiting={FadeOut.duration(150)}>
+		<Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)}>
 			{attachments.length > 0 ? (
 				<ScrollView
 					horizontal
@@ -78,7 +92,11 @@ export function PendingAttachmentRow({
 								{attachment.kind === "image" ? (
 									<Image
 										source={{ uri: attachment.localUri }}
-										style={[styles.thumbnail, settling ? styles.dimmed : null]}
+										style={[
+											styles.preview,
+											{ width: previewWidth(attachment) },
+											settling ? styles.dimmed : null,
+										]}
 										contentFit="cover"
 									/>
 								) : (
@@ -88,7 +106,7 @@ export function PendingAttachmentRow({
 								)}
 								{settling ? (
 									<View style={styles.spinner} pointerEvents="none">
-										<ActivityIndicator size="small" color={colors.gray} />
+										<ActivityIndicator size="small" color="#FFFFFF" />
 									</View>
 								) : null}
 								<RemoveBadge onPress={() => onRemove(attachment.id)} />
@@ -109,20 +127,15 @@ export function PendingAttachmentRow({
 	);
 }
 
-const THUMBNAIL = 62;
-
 const styles = StyleSheet.create({
 	chips: {
-		gap: 10,
-		alignItems: "center",
-		paddingHorizontal: 14,
-		paddingTop: 10,
-		paddingBottom: 4,
+		gap: 8,
+		alignItems: "flex-end",
+		padding: 8,
 	},
-	thumbnail: {
-		width: THUMBNAIL,
-		height: THUMBNAIL,
-		borderRadius: 16,
+	preview: {
+		height: PREVIEW_HEIGHT,
+		borderRadius: 14,
 		borderCurve: "continuous",
 		borderWidth: StyleSheet.hairlineWidth,
 		borderColor: "rgba(0,0,0,0.08)",
@@ -132,10 +145,10 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 10,
-		height: THUMBNAIL,
+		height: 62,
 		width: 168,
 		paddingHorizontal: 10,
-		borderRadius: 16,
+		borderRadius: 14,
 		borderCurve: "continuous",
 		backgroundColor: colors.gray6,
 		borderWidth: StyleSheet.hairlineWidth,
@@ -173,14 +186,12 @@ const styles = StyleSheet.create({
 	},
 	removeBadge: {
 		position: "absolute",
-		top: -6,
-		right: -6,
-		width: 22,
-		height: 22,
-		borderRadius: 11,
-		backgroundColor: "rgba(0,0,0,0.55)",
-		borderWidth: 1.5,
-		borderColor: "#FFFFFF",
+		top: 6,
+		right: 6,
+		width: 26,
+		height: 26,
+		borderRadius: 13,
+		backgroundColor: "rgba(50,50,54,0.75)",
 		alignItems: "center",
 		justifyContent: "center",
 	},
@@ -188,7 +199,7 @@ const styles = StyleSheet.create({
 		fontSize: 12,
 		fontWeight: "500",
 		color: colors.red,
-		paddingHorizontal: 16,
-		paddingBottom: 4,
+		paddingHorizontal: 14,
+		paddingBottom: 6,
 	},
 });

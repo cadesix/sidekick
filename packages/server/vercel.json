@@ -6,7 +6,6 @@
     { "path": "/cron/ad-profiles", "schedule": "30 8 * * *" },
     { "path": "/cron/reminders/fire", "schedule": "* * * * *" },
     { "path": "/cron/reminders/recompute", "schedule": "0 4 * * *" },
-    { "path": "/cron/rewards/grant", "schedule": "15 * * * *" },
     { "path": "/cron/proactivity/schedule", "schedule": "*/15 * * * *" },
     { "path": "/cron/proactivity/dispatch", "schedule": "* * * * *" },
     { "path": "/cron/notifications/send", "schedule": "* * * * *" },

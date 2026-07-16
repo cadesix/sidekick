@@ -1,77 +1,91 @@
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BOND_MIN, START_COINS, START_INVENTORY, buildProducts } from '@sidekick/core';
+import { BOND_MAX, BOND_MIN } from '@sidekick/core';
 
-import { MANIFEST } from '../three/cosmetics-manifest';
-import { SHOP_COLORS, SLOT_LABEL, WARDROBE_SLOTS } from '../three/wardrobe';
-import { useBond } from '../store/bond';
-import { useSidekickContext } from '../store/context';
-import { useDailyBox } from '../store/dailyBox';
-import { useEconomy } from '../store/economy';
-import { useStreak } from '../store/streak';
+import {
+  devAdjustCoins,
+  devResetDailyBox,
+  devResetProfile,
+  devResetSessions,
+  devSetBond,
+  devSetStreak,
+  type Snapshot,
+} from '../lib/api';
+import { patchSnapshot, SNAPSHOT_QUERY_KEY, type SnapshotPatch, useSnapshot } from '../lib/state';
 
 // DEV-only user-state panel — the RN counterpart of the web app's dev chip
 // (packages/web/src/components/dev-panel.tsx). A tiny "DEV" chip pinned top-LEFT
-// toggles a compact panel that nudges the dev dials: Bond, Streak, Coins,
-// Inventory (own all / own none), the daily box ("replay first session"), map
-// sessions, and a full profile reset.
+// toggles a compact panel that nudges the dev dials: Bond, Streak, Coins, the
+// daily box, guided-session progress, and the extracted profile.
 //
-// The web version writes localStorage keys then reloads (every store re-reads at
-// mount). Expo can't reload the same way, and __DEV__ is FALSE on the Expo Web
-// dev build — so we gate on SHOW_DEV below and mutate the zustand stores
-// DIRECTLY (their updates propagate live, no reload needed).
+// Progression is server state now (plan 20), so every dial routes through the
+// `dev` router (double-gated to NODE_ENV=development server-side). Each response
+// carries the bumped stateVersion; we patch the snapshot cache for instant
+// feedback and then refetch it so the slices the response doesn't carry —
+// dailyBox.claimable after a box reset, the sessions list after a wipe —
+// reconcile too.
 //
-// Not ported from web: the Personas presets and the Onboarding-phase row — no
-// persona/onboarding stores exist in the Expo app yet.
+// __DEV__ is FALSE on the Expo Web dev build, so we gate on SHOW_DEV below.
 
 const SHOW_DEV = true;
 
+const COIN_STEPS = [-1000, -100, 100, 1000, 5000];
+const BOND_PRESETS = [10, 25, 40, 55, 70, 85, 100];
+const STREAK_PRESETS = [1, 3, 6, 9, 13, 29, 89, 364];
+
 export function DevPanel() {
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-
-  // live dial values (re-render on change)
-  const bond = useBond((s) => s.bond);
-  const streak = useStreak((s) => s.count);
-  const coins = useEconomy((s) => s.coins);
-  const owned = useEconomy((s) => s.inventory.length);
-  const boxArmed = useDailyBox((s) => s.hasBox());
-
-  // every purchasable renderKey in the catalog (variants + solid colors)
-  const allKeys = useMemo(
-    () =>
-      buildProducts({
-        slots: WARDROBE_SLOTS,
-        slotLabel: SLOT_LABEL,
-        colors: SHOP_COLORS,
-        manifest: MANIFEST,
-      }).map((p) => p.renderKey),
-    [],
-  );
+  const snapshot = useSnapshot().data;
 
   if (!SHOW_DEV) return null;
 
-  const setBond = useBond.getState().setBond;
-  const addBond = useBond.getState().addBond;
-  const setCount = useStreak.getState().setCount;
-  const setCoins = useEconomy.getState().setCoins;
-  const setInventory = useEconomy.getState().setInventory;
-  const resetBox = useDailyBox.getState().reset;
-  const resetSessions = useSidekickContext.getState().resetSessions;
-  const resetGuidedChats = useSidekickContext.getState().resetGuidedChats;
+  const bond = snapshot?.bond ?? BOND_MIN;
+  const streak = snapshot?.streak.count ?? 0;
+  const coins = snapshot?.coins ?? 0;
 
-  // Full wipe: put every dial back to its starting value (the web's
-  // "Reset profile (wipe all keys)").
-  const resetProfile = () => {
-    setBond(BOND_MIN);
-    setCount(0);
-    setCoins(START_COINS);
-    setInventory([...START_INVENTORY]);
-    resetBox();
-    resetGuidedChats();
+  const settle = (patch: SnapshotPatch) => {
+    patchSnapshot(queryClient, patch);
+    void queryClient.invalidateQueries({ queryKey: SNAPSHOT_QUERY_KEY });
   };
+  const onError = (error: unknown) => {
+    Alert.alert('Dev lever failed', error instanceof Error && error.message ? error.message : 'try again');
+  };
+
+  const setBondTo = (v: number) =>
+    devSetBond(Math.min(BOND_MAX, Math.max(BOND_MIN, v)))
+      .then((r) => settle({ stateVersion: r.stateVersion, bond: r.bond }))
+      .catch(onError);
+  const setStreakTo = (v: number) =>
+    devSetStreak(Math.max(0, v))
+      .then((r) => {
+        const current = queryClient.getQueryData<Snapshot>(SNAPSHOT_QUERY_KEY);
+        settle({
+          stateVersion: r.stateVersion,
+          streak: { milestoneLadder: current?.streak.milestoneLadder ?? [], count: r.count },
+        });
+      })
+      .catch(onError);
+  const adjustCoins = (amount: number) =>
+    devAdjustCoins(amount)
+      .then((r) => settle({ stateVersion: r.stateVersion, coins: r.coins }))
+      .catch(onError);
+  const replayDailyBox = () =>
+    devResetDailyBox()
+      .then((r) => settle({ stateVersion: r.stateVersion, coins: r.coins }))
+      .catch(onError);
+  const relockMap = () =>
+    devResetSessions()
+      .then((r) => settle({ stateVersion: r.stateVersion, coins: r.coins, bond: r.bond }))
+      .catch(onError);
+  const wipeProfile = () =>
+    devResetProfile()
+      .then((r) => settle({ stateVersion: r.stateVersion, coins: r.coins, bond: r.bond }))
+      .catch(onError);
 
   return (
     <>
@@ -89,45 +103,35 @@ export function DevPanel() {
           contentContainerStyle={styles.panelContent}
         >
           <Row label="Bond" value={`${bond}%`}>
-            {[10, 25, 40, 55, 70, 85, 100].map((v) => (
-              <Btn key={v} label={String(v)} onPress={() => setBond(v)} />
+            {BOND_PRESETS.map((v) => (
+              <Btn key={v} label={String(v)} onPress={() => setBondTo(v)} />
             ))}
-            <Btn label="-10" onPress={() => addBond(-10)} />
-            <Btn label="+10" onPress={() => addBond(10)} />
+            <Btn label="-10" onPress={() => setBondTo(bond - 10)} />
+            <Btn label="+10" onPress={() => setBondTo(bond + 10)} />
           </Row>
 
           <Row label="Streak" value={`${streak}d`}>
-            {[1, 3, 6, 9, 13, 29, 89, 364].map((v) => (
-              <Btn key={v} label={String(v)} onPress={() => setCount(v)} />
+            {STREAK_PRESETS.map((v) => (
+              <Btn key={v} label={String(v)} onPress={() => setStreakTo(v)} />
             ))}
-            <Btn label="+1" onPress={() => setCount(streak + 1)} />
-            <Btn label="reset" onPress={() => setCount(1)} />
+            <Btn label="+1" onPress={() => setStreakTo(streak + 1)} />
+            <Btn label="reset" onPress={() => setStreakTo(1)} />
           </Row>
 
-          <Row label="Daily box" value={boxArmed ? 'unclaimed' : 'claimed'}>
-            <Btn label="Replay first session of day" onPress={resetBox} wide />
+          <Row label="Daily box">
+            <Btn label="Replay daily box" onPress={replayDailyBox} wide />
           </Row>
 
           <Row label="Coins" value={String(coins)}>
-            {[0, 50, 250, 1000, 5000].map((v) => (
-              <Btn key={v} label={String(v)} onPress={() => setCoins(v)} />
+            {COIN_STEPS.map((v) => (
+              <Btn key={v} label={v > 0 ? `+${v}` : String(v)} onPress={() => adjustCoins(v)} />
             ))}
-            <Btn label="+50" onPress={() => setCoins(coins + 50)} />
-          </Row>
-
-          <Row label="Inventory" value={`${owned} items`}>
-            <Btn label="Own all" onPress={() => setInventory(allKeys)} />
-            <Btn label="Own none" onPress={() => setInventory([...START_INVENTORY])} />
           </Row>
 
           <Row label="Guided chats">
-            <Btn label="Re-lock map (progress only)" onPress={resetSessions} wide />
-            <Btn label="Wipe guided chats (+ profile)" onPress={resetGuidedChats} wide />
+            <Btn label="Re-lock map (progress only)" onPress={relockMap} wide />
+            <Btn label="Wipe guided chats (+ profile)" onPress={wipeProfile} wide />
           </Row>
-
-          <Pressable onPress={resetProfile} style={styles.resetBtn}>
-            <Text style={styles.resetText}>Reset profile (wipe all dials)</Text>
-          </Pressable>
         </ScrollView>
       ) : null}
     </>
@@ -223,17 +227,5 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#fff',
-  },
-  resetBtn: {
-    borderRadius: 6,
-    backgroundColor: 'rgba(127,29,29,0.7)', // red-900/70
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  resetText: {
-    fontFamily: 'monospace',
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#fecaca', // red-200
   },
 });

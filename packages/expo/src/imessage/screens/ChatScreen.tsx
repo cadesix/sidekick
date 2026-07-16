@@ -372,20 +372,24 @@ export function ChatScreen({ onClose }: { onClose: () => void }) {
 				>
 					{replyTo ? <ReplyChain messages={replyChain} /> : null}
 					{composerAd ? <SponsoredCard ad={composerAd} /> : null}
-					<PendingAttachmentRow
-						attachments={attachments.pending}
-						error={attachments.error}
-						onRemove={attachments.remove}
-						onRetry={attachments.retry}
-					/>
-					{/* The drawer anchors to the input bar (not the growing footer), so it
-					    always opens the same distance above the plus button — staged
-					    attachments and reply chains no longer push it up. */}
+					{/* The drawer anchors a fixed distance above the wrapper's BOTTOM (the
+					    plus button is bottom-aligned there), so staged attachments, reply
+					    chains, and multiline text never push it up. */}
 					<View>
 						{plusOpen ? <PlusDrawer onSelect={handleDrawerAction} /> : null}
 						<ChatInputBar
 							replyActive={replyTo !== undefined}
 							attachmentState={attachmentState}
+							tray={
+								attachments.pending.length > 0 || attachments.error !== null ? (
+									<PendingAttachmentRow
+										attachments={attachments.pending}
+										error={attachments.error}
+										onRemove={attachments.remove}
+										onRetry={attachments.retry}
+									/>
+								) : null
+							}
 							onSendText={handleSendText}
 							onSendAudio={handleSendAudio}
 							onTogglePlusMenu={() => setPlusOpen((open) => !open)}

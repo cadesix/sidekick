@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { users } from "@sidekick/db";
+import { ianaTimezone } from "@sidekick/shared";
 import { protectedProcedure, router } from "../trpc";
 
 const personalitySchema = z.object({
@@ -22,7 +23,7 @@ const updateProfileInput = z.object({
   name: z.string().min(1).optional(),
   ageBracket: z.string().min(1).optional(),
   gender: z.string().min(1).optional(),
-  timezone: z.string().min(1).optional(),
+  timezone: ianaTimezone.optional(),
   sidekickName: z.string().min(1).optional(),
   sidekickColor: z.string().min(1).optional(),
   personality: personalitySchema.optional(),

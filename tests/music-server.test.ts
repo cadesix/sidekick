@@ -42,6 +42,7 @@ function servicesFor(): Services {
     scheduleBackground: () => {},
     storage: new LocalStorage("/tmp/sidekick-test-blob", "http://localhost/blob"),
     captionModel: textModel("ok"),
+    sessionModel: textModel("ok"),
     adNetwork: null,
     authEmail: { sendOtp: async () => {} },
     sms: { sendCode: async () => {}, verifyCode: async () => false },

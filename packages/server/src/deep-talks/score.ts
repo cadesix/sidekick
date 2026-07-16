@@ -1,25 +1,15 @@
 import { and, eq, sql } from "drizzle-orm";
 import { type Database, memories, users } from "@sidekick/db";
-import {
-  CONTEXT_BANDS,
-  type MemoryKind,
-  computeContextScore,
-  crossedBands,
-  getCosmetic,
-} from "@sidekick/shared";
+import { type MemoryKind, computeContextScore, crossedBands } from "@sidekick/shared";
 import { grantReward } from "../rewards/service";
 
 /**
- * The exclusive cosmetic granted the first time the context score enters each
- * 25-point band (14 §unlocks — "one exclusive cosmetic per 25-point band", wired
- * through 04's `source:'event'` grant path). Flavor only, never utility.
+ * Coins granted the first time the context score enters each 25-point band
+ * (14 §unlocks, wired through the `source:'event'` grant path). Plan 20
+ * re-denominated this in coins: the sparks-era band cosmetics left with
+ * `COSMETIC_CATALOG`, so the crossing pays through the ledger instead.
  */
-const BAND_COSMETIC: Record<(typeof CONTEXT_BANDS)[number], string> = {
-  25: "friendship-pin",
-  50: "locket",
-  75: "besties-charm",
-  100: "soulmate-ring",
-};
+export const CONTEXT_BAND_REWARD_COINS = 25;
 
 /** Count active memories by kind for one user (the `n_k` of the score formula). */
 export async function memoryCountsByKind(
@@ -41,7 +31,7 @@ export async function memoryCountsByKind(
 export type ScoreResult = {
   score: number;
   previous: number;
-  /** Bands newly reached this recompute; each granted its exclusive cosmetic. */
+  /** Bands newly reached this recompute; each granted its one-time coin reward. */
   unlockedBands: number[];
 };
 
@@ -50,7 +40,7 @@ export type ScoreResult = {
  * extraction pass. The score is clamped to never fall below the stored value
  * (compaction folds memories into replacement sentences, so a lower raw count
  * must not drop the progress bar). Crossing a 25-point band grants its exclusive
- * cosmetic through the idempotent reward path.
+ * coin reward through the idempotent grant path.
  */
 export async function recomputeContextScore(db: Database, userId: string): Promise<ScoreResult> {
   const stored = await db
@@ -70,16 +60,12 @@ export async function recomputeContextScore(db: Database, userId: string): Promi
 
   const unlockedBands = crossedBands(previous, score);
   for (const band of unlockedBands) {
-    const itemKey = BAND_COSMETIC[band as (typeof CONTEXT_BANDS)[number]];
-    const definition = getCosmetic(itemKey);
-    if (definition) {
-      await grantReward(db, {
-        userId,
-        source: "event",
-        dedupeKey: `context-band:${band}`,
-        outcome: { kind: "item", itemKey: definition.key, rarity: definition.rarity },
-      });
-    }
+    await grantReward(db, {
+      userId,
+      source: "event",
+      dedupeKey: `context-band:${band}`,
+      outcome: { kind: "coins", amount: CONTEXT_BAND_REWARD_COINS },
+    });
   }
 
   return { score, previous, unlockedBands };

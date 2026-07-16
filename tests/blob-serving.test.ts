@@ -30,6 +30,7 @@ function servicesFor(storage: LocalStorage): Services {
     scheduleBackground: () => {},
     storage,
     captionModel: textModel("ok"),
+    sessionModel: textModel("ok"),
     adNetwork: null,
     authEmail: { sendOtp: async () => {} },
     sms: { sendCode: async () => {}, verifyCode: async () => false },

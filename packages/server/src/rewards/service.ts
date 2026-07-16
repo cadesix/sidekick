@@ -3,101 +3,279 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   type Database,
   actionItems,
-  checkIns,
   goals,
+  ledger,
   progressEvents,
-  rewards,
   userCosmetics,
   users,
 } from "@sidekick/db";
+import { currentStreak } from "@sidekick/shared";
 import {
-  type GrantOutcome,
-  type Rng,
-  REDEEM_COST,
-  currentStreak,
-  getCosmetic,
-  localDate,
-  rollReward,
-  starterCosmetics,
-} from "@sidekick/shared";
+  type Product,
+  type WardrobeSlot,
+  START_COINS,
+  START_INVENTORY,
+  WARDROBE_SLOTS,
+  buildProducts,
+  regionSiblings,
+} from "@sidekick/core";
 
-type RewardRow = typeof rewards.$inferSelect;
+type LedgerRow = typeof ledger.$inferSelect;
+
+/** renderKey → product for the whole purchasable catalog (pure core data, built once). */
+const PRODUCT_BY_KEY = new Map<string, Product>(buildProducts().map((p) => [p.renderKey, p]));
+
+/**
+ * Resolve a renderKey against the core catalog — the canonical item identity
+ * (plan 20 decision 3). Slot and cost always come from here, never from the
+ * client. Throws on a key the catalog doesn't sell.
+ */
+export function catalogProduct(itemKey: string): Product {
+  const product = PRODUCT_BY_KEY.get(itemKey);
+  if (!product) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: `unknown item ${itemKey}` });
+  }
+  return product;
+}
+
+function isWardrobeSlot(slot: string): slot is WardrobeSlot {
+  return WARDROBE_SLOTS.some((s) => s === slot);
+}
+
+/**
+ * Bump `users.stateVersion` and return the new value (plan 20 decision 11).
+ * Every progression write flows through this (or folds the bump into its own
+ * UPDATE), so every mutation can return `{ stateVersion, ...changed }` for the
+ * client's compare-before-patch cache rule.
+ */
+export async function bumpStateVersion(db: Database, userId: string): Promise<number> {
+  const rows = await db
+    .update(users)
+    .set({ stateVersion: sql`${users.stateVersion} + 1` })
+    .where(eq(users.id, userId))
+    .returning({ stateVersion: users.stateVersion });
+  const row = rows[0];
+  if (!row) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "user not found" });
+  }
+  return row.stateVersion;
+}
+
+/** Apply a signed coin delta and the stateVersion bump in one UPDATE. */
+async function applyUserDelta(
+  db: Database,
+  userId: string,
+  coinsDelta: number,
+): Promise<{ coins: number; stateVersion: number }> {
+  const rows = await db
+    .update(users)
+    .set({
+      coins: sql`${users.coins} + ${coinsDelta}`,
+      stateVersion: sql`${users.stateVersion} + 1`,
+    })
+    .where(eq(users.id, userId))
+    .returning({ coins: users.coins, stateVersion: users.stateVersion });
+  const row = rows[0];
+  if (!row) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "user not found" });
+  }
+  return row;
+}
+
+async function existingEntry(db: Database, userId: string, dedupeKey: string): Promise<LedgerRow> {
+  const rows = await db
+    .select()
+    .from(ledger)
+    .where(and(eq(ledger.userId, userId), eq(ledger.dedupeKey, dedupeKey)))
+    .limit(1);
+  const row = rows[0];
+  if (!row) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "ledger entry lost" });
+  }
+  return row;
+}
+
+async function userBalance(
+  db: Database,
+  userId: string,
+): Promise<{ coins: number; stateVersion: number }> {
+  const rows = await db
+    .select({ coins: users.coins, stateVersion: users.stateVersion })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const row = rows[0];
+  if (!row) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "user not found" });
+  }
+  return row;
+}
+
+export type GrantOutcome =
+  | { kind: "coins"; amount: number }
+  | { kind: "item"; itemKey: string; source?: "reward" | "starter" };
 
 export type GrantResult = {
-  reward: RewardRow;
-  /** False when the `dedupeKey` already existed — the grant was a no-op. */
+  entry: LedgerRow;
+  /** False when the `dedupeKey` already existed — the grant was a replayed no-op. */
   granted: boolean;
   /** True when an item was newly added to the wardrobe (not a dupe). */
   addedToInventory: boolean;
+  /** The user's coin balance after this call. */
+  coins: number;
+  /** `users.stateVersion` after this call (unchanged on a replay). */
+  stateVersion: number;
 };
 
 /**
- * THE generic reward grant path (04). Every reward source — streak milestones,
- * the daily spinner, and later deep-talk `source:'event'` bonuses — flows through
- * here. Idempotent on `(userId, dedupeKey)`: a re-run returns the existing grant
- * without a second item or sparks bump. The deep-talks engineer calls this with
- * `source:'event'` and a per-session `dedupeKey`.
+ * THE grant path of the signed ledger (plan 20 decision 2). Every faucet — the
+ * starter grant, daily box, sessions, deep-talk events — flows through here.
+ * Idempotent on `(userId, dedupeKey)`: a replay returns the existing row
+ * (including its persisted `meta`, so structured rewards replay exactly what was
+ * granted) and changes NO state. A fresh grant writes the ledger row and, in the
+ * same transaction, the `users.coins` update (coin grants) or the
+ * `userCosmetics` insert (item grants, slot resolved from the core catalog),
+ * plus the stateVersion bump.
  */
 export async function grantReward(
   db: Database,
-  input: { userId: string; source: string; dedupeKey: string; outcome: GrantOutcome },
+  input: {
+    userId: string;
+    source: string;
+    dedupeKey: string;
+    outcome: GrantOutcome;
+    meta?: unknown;
+  },
 ): Promise<GrantResult> {
-  const { userId, source, dedupeKey, outcome } = input;
-  const values =
-    outcome.kind === "item"
-      ? { userId, source, dedupeKey, kind: "item" as const, itemKey: outcome.itemKey }
-      : { userId, source, dedupeKey, kind: "sparks" as const, sparks: outcome.amount };
+  const { userId, source, dedupeKey, outcome, meta } = input;
+  if (outcome.kind === "item") {
+    catalogProduct(outcome.itemKey);
+  }
+  return db.transaction(async (tx) => {
+    const values =
+      outcome.kind === "item"
+        ? { userId, source, dedupeKey, kind: "item" as const, itemKey: outcome.itemKey, meta }
+        : { userId, source, dedupeKey, kind: "coins" as const, coins: outcome.amount, meta };
+    const inserted = await tx
+      .insert(ledger)
+      .values(values)
+      .onConflictDoNothing({ target: [ledger.userId, ledger.dedupeKey] })
+      .returning();
+    const entry = inserted[0];
 
-  const inserted = await db
-    .insert(rewards)
-    .values(values)
-    .onConflictDoNothing({ target: [rewards.userId, rewards.dedupeKey] })
-    .returning();
-  const reward = inserted[0];
-
-  if (!reward) {
-    const existing = await db
-      .select()
-      .from(rewards)
-      .where(and(eq(rewards.userId, userId), eq(rewards.dedupeKey, dedupeKey)))
-      .limit(1);
-    const row = existing[0];
-    if (!row) {
-      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "reward grant lost" });
+    if (!entry) {
+      const existing = await existingEntry(tx, userId, dedupeKey);
+      const balance = await userBalance(tx, userId);
+      return { entry: existing, granted: false, addedToInventory: false, ...balance };
     }
-    return { reward: row, granted: false, addedToInventory: false };
-  }
 
-  if (outcome.kind === "sparks") {
-    await db
-      .update(users)
-      .set({ sparks: sql`${users.sparks} + ${outcome.amount}` })
-      .where(eq(users.id, userId));
-    return { reward, granted: true, addedToInventory: false };
-  }
+    if (outcome.kind === "coins") {
+      const balance = await applyUserDelta(tx, userId, outcome.amount);
+      return { entry, granted: true, addedToInventory: false, ...balance };
+    }
 
-  const definition = getCosmetic(outcome.itemKey);
-  if (!definition) {
-    throw new TRPCError({ code: "BAD_REQUEST", message: `unknown cosmetic ${outcome.itemKey}` });
-  }
-  const ownedInsert = await db
-    .insert(userCosmetics)
-    .values({ userId, itemKey: definition.key, slot: definition.slot })
-    .onConflictDoNothing({ target: [userCosmetics.userId, userCosmetics.itemKey] })
-    .returning({ id: userCosmetics.id });
-
-  return { reward, granted: true, addedToInventory: ownedInsert.length > 0 };
+    const { slot } = catalogProduct(outcome.itemKey);
+    const owned = await tx
+      .insert(userCosmetics)
+      .values({ userId, itemKey: outcome.itemKey, slot, source: outcome.source ?? "reward" })
+      .onConflictDoNothing({ target: [userCosmetics.userId, userCosmetics.itemKey] })
+      .returning({ id: userCosmetics.id });
+    const balance = await applyUserDelta(tx, userId, 0);
+    return { entry, granted: true, addedToInventory: owned.length > 0, ...balance };
+  });
 }
 
-/** Grant every starter cosmetic (idempotently). Safe to call on any read path. */
-export async function ensureStarterCosmetics(db: Database, userId: string): Promise<void> {
-  const starters = starterCosmetics();
-  if (starters.length === 0) {
+export type SpendResult = {
+  entry: LedgerRow;
+  /** False when the `dedupeKey` already existed — the spend was a replayed no-op. */
+  spent: boolean;
+  /** The user's coin balance after this call. */
+  coins: number;
+  /** `users.stateVersion` after this call (unchanged on a replay). */
+  stateVersion: number;
+};
+
+/**
+ * THE spend path of the signed ledger: a negative row plus a conditional
+ * `coins >= cost` decrement, one transaction — no oversell under concurrency.
+ * Idempotent on `(userId, dedupeKey)`: a replayed spend returns the existing row
+ * and never double-charges. An insufficient balance rejects with BAD_REQUEST and
+ * leaves no ledger row. `itemKey` is recorded on the row for purchases; the
+ * ownership insert belongs to the caller (in its own transaction around this).
+ */
+export async function spendCoins(
+  db: Database,
+  input: {
+    userId: string;
+    cost: number;
+    source: string;
+    dedupeKey: string;
+    itemKey?: string;
+    meta?: unknown;
+  },
+): Promise<SpendResult> {
+  const { userId, cost, source, dedupeKey, itemKey, meta } = input;
+  if (!Number.isInteger(cost) || cost <= 0) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "cost must be a positive integer" });
+  }
+  return db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(ledger)
+      .values({ userId, source, dedupeKey, kind: "coins", coins: -cost, itemKey, meta })
+      .onConflictDoNothing({ target: [ledger.userId, ledger.dedupeKey] })
+      .returning();
+    const entry = inserted[0];
+
+    if (!entry) {
+      const existing = await existingEntry(tx, userId, dedupeKey);
+      const balance = await userBalance(tx, userId);
+      return { entry: existing, spent: false, ...balance };
+    }
+
+    const updated = await tx
+      .update(users)
+      .set({
+        coins: sql`${users.coins} - ${cost}`,
+        stateVersion: sql`${users.stateVersion} + 1`,
+      })
+      .where(and(eq(users.id, userId), sql`${users.coins} >= ${cost}`))
+      .returning({ coins: users.coins, stateVersion: users.stateVersion });
+    const balance = updated[0];
+    if (!balance) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "not enough coins" });
+    }
+    return { entry, spent: true, ...balance };
+  });
+}
+
+/**
+ * Seed a brand-new account's economy (plan 20 §server changes): the opening
+ * `starter:coins` ledger grant and the starter outfit owned AND equipped
+ * (`source: 'starter'`) — a fresh account boots wearing the sky shirt. Called
+ * inside the user-creation transaction; idempotent via the grant dedupe key and
+ * the `(userId, itemKey)` unique index.
+ */
+export async function seedStarterState(db: Database, userId: string): Promise<void> {
+  await grantReward(db, {
+    userId,
+    source: "starter",
+    dedupeKey: "starter:coins",
+    outcome: { kind: "coins", amount: START_COINS },
+  });
+  if (START_INVENTORY.length === 0) {
     return;
   }
   await db
     .insert(userCosmetics)
-    .values(starters.map((c) => ({ userId, itemKey: c.key, slot: c.slot, equipped: false })))
+    .values(
+      START_INVENTORY.map((itemKey) => ({
+        userId,
+        itemKey,
+        slot: catalogProduct(itemKey).slot,
+        source: "starter",
+        equipped: true,
+      })),
+    )
     .onConflictDoNothing({ target: [userCosmetics.userId, userCosmetics.itemKey] });
 }
 
@@ -113,45 +291,6 @@ export async function userStreak(db: Database, userId: string, today: string): P
     hitRows.map((r) => r.date),
     today,
   );
-}
-
-async function ownedKeys(db: Database, userId: string): Promise<string[]> {
-  const rows = await db
-    .select({ itemKey: userCosmetics.itemKey })
-    .from(userCosmetics)
-    .where(eq(userCosmetics.userId, userId));
-  return rows.map((r) => r.itemKey);
-}
-
-/**
- * Roll and grant the daily-spinner reward for one completed check-in (04). The
- * grant is keyed to the check-in, so re-calling (client re-open, cron sweep)
- * returns the same already-granted result and never re-rolls — the §6 idempotency
- * contract. Returns the reward plus whether this call is the one that revealed it.
- */
-export async function spinForCheckIn(
-  db: Database,
-  input: { userId: string; checkInId: string; today: string; rng?: Rng },
-): Promise<GrantResult> {
-  const [streak, keys] = await Promise.all([
-    userStreak(db, input.userId, input.today),
-    ownedKeys(db, input.userId),
-  ]);
-  const outcome = rollReward({ streak, ownedKeys: keys, rng: input.rng });
-  return grantReward(db, {
-    userId: input.userId,
-    source: "spinner",
-    dedupeKey: `spin:${input.checkInId}`,
-    outcome,
-  });
-}
-
-/** Mark a reward's animation as seen so the spinner never re-presents it. */
-export async function markRewardRevealed(db: Database, rewardId: string): Promise<void> {
-  await db
-    .update(rewards)
-    .set({ revealedAt: new Date() })
-    .where(and(eq(rewards.id, rewardId), sql`${rewards.revealedAt} is null`));
 }
 
 export async function assertOwned(
@@ -171,130 +310,47 @@ export async function assertOwned(
   return row;
 }
 
-/** Equip one owned item, clearing anything else equipped in the same slot. */
-export async function equipCosmetic(db: Database, userId: string, itemKey: string): Promise<void> {
-  const { slot } = await assertOwned(db, userId, itemKey);
-  await db
-    .update(userCosmetics)
-    .set({ equipped: false })
-    .where(and(eq(userCosmetics.userId, userId), eq(userCosmetics.slot, slot)));
-  await db
-    .update(userCosmetics)
-    .set({ equipped: true })
-    .where(and(eq(userCosmetics.userId, userId), eq(userCosmetics.itemKey, itemKey)));
-}
-
-export async function unequipCosmetic(db: Database, userId: string, itemKey: string): Promise<void> {
-  await assertOwned(db, userId, itemKey);
-  await db
-    .update(userCosmetics)
-    .set({ equipped: false })
-    .where(and(eq(userCosmetics.userId, userId), eq(userCosmetics.itemKey, itemKey)));
-}
-
 /**
- * Redeem sparks for a chosen cosmetic (04 pity timer — "N more to pick anything
- * you want"). Spends `REDEEM_COST` and adds the item, atomically guarded against
- * double-spend and re-owning.
+ * Equip one owned item, clearing anything worn anywhere in its body region —
+ * core's exclusivity rule (a crown replaces a beanie, a hoodie takes the shirt
+ * off) enforced transactionally, one stateVersion bump.
  */
-export async function redeemSparks(
+export async function equipCosmetic(
   db: Database,
   userId: string,
   itemKey: string,
-): Promise<{ sparks: number }> {
-  const definition = getCosmetic(itemKey);
-  if (!definition || definition.slot === "environment") {
-    throw new TRPCError({ code: "BAD_REQUEST", message: "that item can't be redeemed" });
-  }
-  const already = await db
-    .select({ id: userCosmetics.id })
-    .from(userCosmetics)
-    .where(and(eq(userCosmetics.userId, userId), eq(userCosmetics.itemKey, itemKey)))
-    .limit(1);
-  if (already[0]) {
-    throw new TRPCError({ code: "BAD_REQUEST", message: "you already own that item" });
-  }
-
-  const spent = await db
-    .update(users)
-    .set({ sparks: sql`${users.sparks} - ${REDEEM_COST}` })
-    .where(and(eq(users.id, userId), sql`${users.sparks} >= ${REDEEM_COST}`))
-    .returning({ sparks: users.sparks });
-  const row = spent[0];
-  if (!row) {
-    throw new TRPCError({ code: "BAD_REQUEST", message: "not enough sparks yet" });
-  }
-  await db
-    .insert(userCosmetics)
-    .values({ userId, itemKey: definition.key, slot: definition.slot })
-    .onConflictDoNothing({ target: [userCosmetics.userId, userCosmetics.itemKey] });
-  return { sparks: row.sparks };
-}
-
-/**
- * Backstop sweep (04 streak-evaluation cron): for every check-in completed on the
- * user's local today, ensure its spinner reward has been rolled and granted. This
- * covers users who completed a check-in but never opened the spinner, and applies
- * the front-loaded streak-milestone guarantee. Idempotent — a re-run grants
- * nothing new (dedupe on `spin:<checkInId>`).
- */
-export async function sweepCompletedCheckIns(
-  db: Database,
-  now: Date,
-): Promise<{ considered: number; granted: number }> {
-  const rows = await db
-    .select({ id: checkIns.id, userId: checkIns.userId, date: checkIns.date, timezone: users.timezone })
-    .from(checkIns)
-    .innerJoin(users, eq(checkIns.userId, users.id))
-    .where(eq(checkIns.status, "completed"));
-  const today = rows.filter((r) => r.date === localDate(r.timezone, now));
-
-  let granted = 0;
-  for (const row of today) {
-    const result = await spinForCheckIn(db, {
-      userId: row.userId,
-      checkInId: row.id,
-      today: row.date,
-    });
-    if (result.granted) {
-      granted += 1;
+): Promise<{ stateVersion: number }> {
+  return db.transaction(async (tx) => {
+    const { slot } = await assertOwned(tx, userId, itemKey);
+    let clearSlots: string[] = [slot];
+    if (isWardrobeSlot(slot)) {
+      clearSlots = [slot, ...regionSiblings(slot)];
     }
-  }
-  return { considered: today.length, granted };
+    await tx
+      .update(userCosmetics)
+      .set({ equipped: false })
+      .where(and(eq(userCosmetics.userId, userId), inArray(userCosmetics.slot, clearSlots)));
+    await tx
+      .update(userCosmetics)
+      .set({ equipped: true })
+      .where(and(eq(userCosmetics.userId, userId), eq(userCosmetics.itemKey, itemKey)));
+    const stateVersion = await bumpStateVersion(tx, userId);
+    return { stateVersion };
+  });
 }
 
-export type CheckInReward = {
-  status: "none" | "available" | "revealed";
-  checkInId: string | null;
-};
-
-/**
- * The home screen's spinner gate: is there a reward to present for today's
- * completed check-in? `available` means the check-in is done and its spinner
- * result hasn't been animated yet (whether or not the roll has run).
- */
-export async function todayRewardStatus(
+export async function unequipCosmetic(
   db: Database,
   userId: string,
-  today: string,
-): Promise<CheckInReward> {
-  const checkInRows = await db
-    .select({ id: checkIns.id, status: checkIns.status })
-    .from(checkIns)
-    .where(and(eq(checkIns.userId, userId), eq(checkIns.date, today)))
-    .limit(1);
-  const checkIn = checkInRows[0];
-  if (!checkIn || checkIn.status !== "completed") {
-    return { status: "none", checkInId: null };
-  }
-  const rewardRows = await db
-    .select({ revealedAt: rewards.revealedAt })
-    .from(rewards)
-    .where(and(eq(rewards.userId, userId), eq(rewards.dedupeKey, `spin:${checkIn.id}`)))
-    .limit(1);
-  const reward = rewardRows[0];
-  if (reward && reward.revealedAt) {
-    return { status: "revealed", checkInId: checkIn.id };
-  }
-  return { status: "available", checkInId: checkIn.id };
+  itemKey: string,
+): Promise<{ stateVersion: number }> {
+  return db.transaction(async (tx) => {
+    await assertOwned(tx, userId, itemKey);
+    await tx
+      .update(userCosmetics)
+      .set({ equipped: false })
+      .where(and(eq(userCosmetics.userId, userId), eq(userCosmetics.itemKey, itemKey)));
+    const stateVersion = await bumpStateVersion(tx, userId);
+    return { stateVersion };
+  });
 }

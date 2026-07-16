@@ -2,13 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image, Modal, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { MILESTONES } from '@sidekick/core';
-
-import { useStreak } from '../store/streak';
+import { Skeleton } from './Skeleton';
+import { useSnapshot } from '../lib/state';
 
 // Streak modal: the current streak up top, then only the NEXT few milestone
 // containers — everything past that is a mystery card, so upcoming rewards tease
-// without revealing the whole curve. Mirrors the web reference
+// without revealing the whole curve. Count AND ladder come from the snapshot's
+// streak slice — the milestone schedule travels in the payload, never from a
+// core import (plan 20 decision 5). Mirrors the web reference
 // (packages/web/src/components/streak-sheet.tsx).
 //
 // NOTE: milestone cosmetic rewards render as shop product PNGs on web
@@ -23,9 +24,10 @@ const streakIcon = require('../../assets/icons/streak.png');
 
 export function StreakModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const insets = useSafeAreaInsets();
-  const count = useStreak((s) => s.count);
+  const streak = useSnapshot().data?.streak;
+  const count = streak?.count ?? 0;
 
-  const upcoming = MILESTONES.filter((m) => m.day > count);
+  const upcoming = (streak?.milestoneLadder ?? []).filter((m) => m.day > count);
   const revealed = upcoming.slice(0, SHOW_NEXT);
   const mystery = upcoming[SHOW_NEXT];
 
@@ -69,7 +71,11 @@ export function StreakModal({ open, onClose }: { open: boolean; onClose: () => v
           {/* the streak itself */}
           <View className="items-center">
             <Image source={streakIcon} style={{ width: 64, height: 64 }} resizeMode="contain" />
-            <Text className="mt-2 text-[24px] font-extrabold text-neutral-900">{count}-day streak</Text>
+            {streak ? (
+              <Text className="mt-2 text-[24px] font-extrabold text-neutral-900">{count}-day streak</Text>
+            ) : (
+              <Skeleton className="mt-3 h-6 w-36 rounded-full" />
+            )}
             <Text className="text-[13px] font-medium text-neutral-400">Come back daily to earn rewards</Text>
           </View>
 

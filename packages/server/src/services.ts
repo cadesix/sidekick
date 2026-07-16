@@ -7,7 +7,7 @@ import { otpEmailHtml } from "./auth/email";
 import { createTwilioSms } from "./auth/sms";
 import type { Services } from "./context";
 import { type ServerEnv, readEnv } from "./env";
-import { createModel, createTranscriptionModel } from "./model";
+import { createModel, createSessionModel, createTranscriptionModel } from "./model";
 import { appleMusicClientForUser } from "./music/client-factory";
 import { createStorage } from "./storage";
 
@@ -70,6 +70,7 @@ export function createServices(): Services {
     storage: createStorage(env),
     captionModel: model,
     transcriptionModel: createTranscriptionModel(env),
+    sessionModel: createSessionModel(env),
     adNetwork: gravityClientFromEnv(env),
     authEmail: createAuthEmail(env),
     sms: createTwilioSms(),

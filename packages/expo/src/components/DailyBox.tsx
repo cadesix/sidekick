@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { cancelAnimation, Easing, FadeIn, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 
-import type { BoxReward } from '@sidekick/core';
-
+import type { BoxContents } from '../lib/api';
 import type { OverheadTarget } from './SidekickCanvas';
 import { shopRender } from '../three/shop-renders';
 
@@ -11,7 +10,9 @@ import { shopRender } from '../three/shop-renders';
 // StreakSplash (first session of day), GroundBox (the DOM layer pinned over the
 // 3D chest), and BoxRewardsModal (coins count-up + milestone). GroundBox is an
 // invisible tap target + badge/sparkles/burst pinned to the 3D chest via the
-// canvas ground projection; the tap drives the real 3D lid-swing pop.
+// canvas ground projection; the tap fires the server claim, and only a
+// successful claim drives the real 3D lid-swing pop (plan 20 — nothing
+// animates speculatively; the modal shows the returned box contents).
 
 const STREAK_ICON = require('../../assets/icons/streak.png');
 
@@ -124,7 +125,8 @@ export function GroundBox({
 }: {
   ground: OverheadTarget;
   hidden?: boolean;
-  onTap: () => void;
+  /** Claims the box; resolves true when it may open (false re-arms the tap). */
+  onTap: () => Promise<boolean>;
   onOpened: () => void;
 }) {
   const [burst, setBurst] = useState(false);
@@ -143,10 +145,16 @@ export function GroundBox({
   const tap = () => {
     if (opened.current) return;
     opened.current = true;
-    setBurst(true);
-    onTap(); // canvas starts rattle → lid swing → light
-    flash.value = withDelay(620, withSequence(withTiming(1, { duration: 120 }), withTiming(0, { duration: 380 })));
-    timer.current = setTimeout(onOpened, 1200); // light pours out ~0.62s; modal rides the beam
+    void onTap().then((claimed) => {
+      // a failed claim leaves the chest closed and tappable — no FX played
+      if (!claimed) {
+        opened.current = false;
+        return;
+      }
+      setBurst(true); // caller pops the 3D chest: rattle → lid swing → light
+      flash.value = withDelay(620, withSequence(withTiming(1, { duration: 120 }), withTiming(0, { duration: 380 })));
+      timer.current = setTimeout(onOpened, 1200); // light pours out ~0.62s; modal rides the beam
+    });
   };
 
   // pin bottom-center over the projected chest ground point; hide when behind
@@ -191,7 +199,7 @@ export function GroundBox({
 }
 
 // ---- BoxRewardsModal --------------------------------------------------------
-export function BoxRewardsModal({ reward, onCollect }: { reward: BoxReward; onCollect: () => void }) {
+export function BoxRewardsModal({ reward, onCollect }: { reward: BoxContents; onCollect: () => void }) {
   const coins = useCountUp(reward.coins * (reward.doubled ? 2 : 1));
   const item = reward.milestone?.render;
   const itemArt = item ? shopRender(item) : undefined;

@@ -107,8 +107,11 @@ const styles = StyleSheet.create({
 	container: {
 		position: "absolute",
 		left: 12,
-		bottom: "100%",
-		marginBottom: 4,
+		// A fixed rise above the wrapper's bottom edge: the input bar's 8px bottom
+		// padding + the 40px (bottom-aligned) plus button + a 4px gap. Anchoring to
+		// the bottom keeps the menu put while the composer bubble grows (staged
+		// attachments, multiline text).
+		bottom: 52,
 		zIndex: 30,
 		transformOrigin: "bottom left",
 		shadowColor: "#000000",
