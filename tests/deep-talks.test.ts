@@ -24,12 +24,11 @@ import {
   commitChatGptImport,
   completedDeepTalkSlugs,
   recomputeContextScore,
-  registerDevice,
   settleDeepTalks,
   stageChatGptImport,
   startDeepTalk,
 } from "@sidekick/server";
-import { generateModel, makeCaller, objectModel, textModel } from "./helpers";
+import { generateModel, makeCaller, objectModel, textModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -45,7 +44,7 @@ afterAll(async () => {
 let deviceSeq = 0;
 async function freshUser(): Promise<string> {
   deviceSeq += 1;
-  const { userId } = await registerDevice(db, { deviceId: `dt-device-${deviceSeq}` });
+  const userId = await createUser(db);
   return userId;
 }
 

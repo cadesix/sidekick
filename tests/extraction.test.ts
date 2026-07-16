@@ -9,8 +9,8 @@ import {
   users,
 } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
-import { registerDevice, runExtraction } from "@sidekick/server";
-import { createConversation, objectModel } from "./helpers";
+import { runExtraction } from "@sidekick/server";
+import { createConversation, objectModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -32,7 +32,7 @@ async function insert(conversationId: string, role: string, content: string): Pr
 }
 
 test("extraction applies add ops, advances the watermark, and bumps memory_version", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "ex-1" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   await insert(conversationId, "user", "i got a corgi named biscuit");
   const lastId = await insert(conversationId, "assistant", "aw, biscuit is a great name");
@@ -62,7 +62,7 @@ test("extraction applies add ops, advances the watermark, and bumps memory_versi
 });
 
 test("extraction skips an add that matches the suppression list", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "ex-2" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   await db.insert(memorySuppressions).values({ userId, content: "likes pineapple pizza" });
   await insert(conversationId, "user", "honestly pineapple pizza is elite");
@@ -78,7 +78,7 @@ test("extraction skips an add that matches the suppression list", async () => {
 });
 
 test("extraction supersedes an existing memory, flipping the old row", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "ex-3" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const seeded = await db
     .insert(memories)
@@ -108,7 +108,7 @@ test("extraction supersedes an existing memory, flipping the old row", async () 
 });
 
 test("extraction is a no-op with no new messages", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "ex-4" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const model = objectModel({ ops: [] });
   const result = await runExtraction(db, model, conversationId);

@@ -38,6 +38,8 @@ export const usersRouter = router({
     const rows = await ctx.db
       .select({
         id: users.id,
+        email: users.email,
+        phone: users.phone,
         name: users.name,
         ageBracket: users.ageBracket,
         gender: users.gender,

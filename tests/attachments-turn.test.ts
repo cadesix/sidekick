@@ -2,8 +2,7 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { and, asc, eq } from "drizzle-orm";
 import { type Database, attachments, messages } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
-import { registerDevice } from "@sidekick/server";
-import { createConversation, makeCaller, textModel, testStorage } from "./helpers";
+import { createConversation, makeCaller, textModel, testStorage, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -30,7 +29,7 @@ async function reserveAttachment(
 }
 
 test("a ready attachment sends and links to the user message", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "turn-ready" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const caller = makeCaller(db, textModel("got the file"), userId, { storage: testStorage() });
 
@@ -59,7 +58,7 @@ test("a ready attachment sends and links to the user message", async () => {
 });
 
 test("a failed attachment aborts the turn — no assistant reply is produced", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "turn-failed" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const caller = makeCaller(db, textModel("should not happen"), userId, { storage: testStorage() });
 
@@ -78,7 +77,7 @@ test("a failed attachment aborts the turn — no assistant reply is produced", a
 });
 
 test("the turn waits for a processing attachment to become ready before replying", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "turn-wait" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const caller = makeCaller(db, textModel("got it"), userId, { storage: testStorage() });
 

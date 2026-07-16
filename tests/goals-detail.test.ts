@@ -3,8 +3,7 @@ import { eq } from "drizzle-orm";
 import { type Database, progressEvents, users } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
 import { addDays, localDate } from "@sidekick/shared";
-import { registerDevice } from "@sidekick/server";
-import { makeCaller, textModel } from "./helpers";
+import { makeCaller, textModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -22,7 +21,7 @@ function caller(userId: string) {
 }
 
 test("detail returns cadence options, per-goal streak, the week strip, and history", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "goal-detail-1" });
+  const userId = await createUser(db);
   const c = caller(userId);
   const { goal, actionItem } = await c.goals.adopt({ slug: "get-fit" });
 
@@ -47,8 +46,8 @@ test("detail returns cadence options, per-goal streak, the week strip, and histo
 });
 
 test("detail rejects another user's goal", async () => {
-  const { userId: owner } = await registerDevice(db, { deviceId: "goal-detail-owner" });
-  const { userId: stranger } = await registerDevice(db, { deviceId: "goal-detail-stranger" });
+  const owner = await createUser(db);
+  const stranger = await createUser(db);
   const { goal } = await caller(owner).goals.adopt({ slug: "read-more" });
   await expect(caller(stranger).goals.detail({ goalId: goal.id })).rejects.toThrow();
 });

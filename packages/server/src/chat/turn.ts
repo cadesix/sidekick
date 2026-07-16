@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, sql } from "drizzle-orm";
 import {
   type LanguageModel,
+  type ModelMessage,
   type ToolSet,
   generateText,
   stepCountIs,
@@ -194,7 +195,7 @@ export async function ensureMainConversation(
   return row;
 }
 
-async function assertConversationOwned(
+export async function assertConversationOwned(
   db: Database,
   conversationId: string,
   userId: string,
@@ -465,6 +466,31 @@ export async function continueTurn(
 }
 
 /**
+ * Swap image/PDF content parts' storage keys for the raw bytes before the model
+ * call (09). The default identity `storageUrl` leaves parts holding storage
+ * keys; providers can't reliably fetch our store by URL (a localhost dev store
+ * is unreachable from OpenAI), so the bytes always ride inline — the AI SDK
+ * encodes them per provider.
+ */
+async function inlineAttachmentBytes(
+  modelMessages: ModelMessage[],
+  storage: Storage,
+): Promise<void> {
+  for (const message of modelMessages) {
+    if (message.role !== "user" || !Array.isArray(message.content)) {
+      continue;
+    }
+    for (const part of message.content) {
+      if (part.type === "image" && typeof part.image === "string") {
+        part.image = await storage.getObject(part.image);
+      } else if (part.type === "file" && typeof part.data === "string") {
+        part.data = await storage.getObject(part.data);
+      }
+    }
+  }
+}
+
+/**
  * Assemble the context view and drive the model — resending while a provider
  * tool (web search) leaves a call unresolved across a step (11) — then persist the
  * assistant message plus any provider-executed search-result rows. When the model
@@ -493,10 +519,8 @@ async function driveTurn(
   const user = userRows[0];
   const timezone = user?.timezone ?? "UTC";
 
-  const view = await buildContextView(db, input.conversationId, {
-    storageUrl: (key) => storage.publicUrl(key),
-    flags,
-  });
+  const view = await buildContextView(db, input.conversationId, { flags });
+  await inlineAttachmentBytes(view.messages, storage);
   const healthContextUsed = view.system.some(
     (block) => block.id === "memory" && block.text.includes(HEALTH_CONTEXT_MARKER),
   );
@@ -813,8 +837,10 @@ export async function sendChatTurn(
 
 export async function chatHistory(
   db: Database,
+  userId: string,
   input: { conversationId: string; cursor?: number; limit: number },
 ): Promise<MessageRow[]> {
+  await assertConversationOwned(db, input.conversationId, userId);
   const base = eq(messages.conversationId, input.conversationId);
   const where = input.cursor ? and(base, lt(messages.id, input.cursor)) : base;
   return db.select().from(messages).where(where).orderBy(desc(messages.id)).limit(input.limit);
@@ -827,8 +853,10 @@ export async function chatHistory(
  */
 export async function chatHistoryAround(
   db: Database,
+  userId: string,
   input: { conversationId: string; messageId: number; span: number },
 ): Promise<MessageRow[]> {
+  await assertConversationOwned(db, input.conversationId, userId);
   const base = eq(messages.conversationId, input.conversationId);
   const older = await db
     .select()
@@ -861,8 +889,10 @@ export type SearchHit = {
  */
 export async function chatSearch(
   db: Database,
+  userId: string,
   input: { conversationId: string; query: string; limit: number },
 ): Promise<SearchHit[]> {
+  await assertConversationOwned(db, input.conversationId, userId);
   const matches = sql`${messages.contentTsv} @@ websearch_to_tsquery('english', ${input.query})`;
   return db
     .select({

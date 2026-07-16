@@ -6,9 +6,8 @@ import {
   type InterestClassifier,
   modelInterestClassifier,
   projectAdProfile,
-  registerDevice,
 } from "@sidekick/server";
-import { objectModel } from "./helpers";
+import { objectModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -22,7 +21,7 @@ afterAll(async () => {
 });
 
 async function eligibleUser(deviceId: string): Promise<string> {
-  const { userId } = await registerDevice(db, { deviceId });
+  const userId = await createUser(db);
   await db
     .update(users)
     .set({ ageBracket: "25-34", gender: "female", personalizedAdsConsent: true })
@@ -73,7 +72,7 @@ test("non-expired purchase intents project; expired ones are dropped", async () 
 });
 
 test("a minor projects nothing — no interests, no intents, ineligible", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "iab-minor" });
+  const userId = await createUser(db);
   await db.update(users).set({ ageBracket: "under-18", personalizedAdsConsent: true }).where(eq(users.id, userId));
   await db.insert(memories).values({ userId, kind: "interest", content: "into skateboarding", source: "extraction" });
   await db.insert(purchaseIntents).values({

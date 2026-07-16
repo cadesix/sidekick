@@ -3,8 +3,8 @@ import { and, eq } from "drizzle-orm";
 import { type Database, actionItems, checkIns, goals, progressEvents, rewards, userCosmetics, users } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
 import { REDEEM_COST, addDays, grantableCosmetics, localDate, starterCosmetics } from "@sidekick/shared";
-import { grantReward, registerDevice, sweepCompletedCheckIns } from "@sidekick/server";
-import { makeCaller, textModel } from "./helpers";
+import { grantReward, sweepCompletedCheckIns } from "@sidekick/server";
+import { makeCaller, textModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -49,7 +49,7 @@ async function completedCheckIn(userId: string): Promise<string> {
 }
 
 test("inventory grants the starter wardrobe on first read and reports zero sparks", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "cos-inv" });
+  const userId = await createUser(db);
   const inv = await caller(userId).cosmetics.inventory();
   expect(inv.sparks).toBe(0);
   const keys = inv.items.map((i) => i.itemKey).sort();
@@ -60,7 +60,7 @@ test("inventory grants the starter wardrobe on first read and reports zero spark
 });
 
 test("equip is single-per-slot and unequip clears it; foreign items are rejected", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "cos-equip" });
+  const userId = await createUser(db);
   const c = caller(userId);
   await c.cosmetics.inventory();
   // Give the user a second head item so we can prove slot exclusivity.
@@ -86,7 +86,7 @@ test("equip is single-per-slot and unequip clears it; foreign items are rejected
 });
 
 test("a completed check-in spin grants an item at a streak milestone and never re-rolls", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "cos-spin" });
+  const userId = await createUser(db);
   await seedStreak(userId, 7); // 7 = a guaranteed-item milestone
   const checkInId = await completedCheckIn(userId);
   const c = caller(userId);
@@ -110,21 +110,21 @@ test("a completed check-in spin grants an item at a streak milestone and never r
 });
 
 test("spin refuses a check-in that isn't complete or isn't yours", async () => {
-  const { userId: pendingUser } = await registerDevice(db, { deviceId: "cos-spin-pending" });
+  const pendingUser = await createUser(db);
   const pending = await db
     .insert(checkIns)
     .values({ userId: pendingUser, date: await today(pendingUser), status: "opened" })
     .returning({ id: checkIns.id });
   await expect(caller(pendingUser).cosmetics.spin({ checkInId: pending[0]!.id })).rejects.toThrow();
 
-  const { userId: owner } = await registerDevice(db, { deviceId: "cos-spin-owner" });
-  const { userId: stranger } = await registerDevice(db, { deviceId: "cos-spin-stranger" });
+  const owner = await createUser(db);
+  const stranger = await createUser(db);
   const done = await completedCheckIn(owner);
   await expect(caller(stranger).cosmetics.spin({ checkInId: done })).rejects.toThrow();
 });
 
 test("the reward cron sweeps completed check-ins idempotently", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "cos-sweep" });
+  const userId = await createUser(db);
   await seedStreak(userId, 3);
   await completedCheckIn(userId);
 
@@ -140,7 +140,7 @@ test("the reward cron sweeps completed check-ins idempotently", async () => {
 });
 
 test("grantReward is the idempotent generic path (deep-talks source:'event')", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "cos-event" });
+  const userId = await createUser(db);
   const outcome = { kind: "item" as const, itemKey: "trophy", rarity: "legendary" as const };
 
   const first = await grantReward(db, { userId, source: "event", dedupeKey: "deep-talk:s1", outcome });
@@ -157,7 +157,7 @@ test("grantReward is the idempotent generic path (deep-talks source:'event')", a
 });
 
 test("sparks accumulate and redeem for a chosen item; underfunded redeem is refused", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "cos-sparks" });
+  const userId = await createUser(db);
   const c = caller(userId);
   await c.cosmetics.inventory();
 

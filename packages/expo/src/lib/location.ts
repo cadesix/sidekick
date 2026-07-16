@@ -89,6 +89,33 @@ export async function maybeUpdateLocation(force = false): Promise<void> {
   await SecureStore.setItemAsync(LAST_LOCATED_KEY, String(now));
 }
 
+/**
+ * One-time, city-level share for the chat's + menu: request foreground
+ * permission if needed, take a coarse fix, reverse-geocode on device, and
+ * return "City, Region". Coordinates never leave the phone (same privacy model
+ * as the ongoing context above); null when permission is denied or the fix
+ * can't resolve to a city.
+ */
+export async function resolveCityLine(): Promise<string | null> {
+  let permission = await Location.getForegroundPermissionsAsync();
+  if (!permission.granted && permission.canAskAgain) {
+    permission = await Location.requestForegroundPermissionsAsync();
+  }
+  if (!permission.granted) {
+    return null;
+  }
+  const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low });
+  const places = await Location.reverseGeocodeAsync({
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude,
+  });
+  const place = places[0];
+  if (!place?.city) {
+    return null;
+  }
+  return place.region ? `${place.city}, ${place.region}` : place.city;
+}
+
 export async function enableLocationAccess(): Promise<LocationAccess> {
   let permission = await Location.getForegroundPermissionsAsync();
   if (!permission.granted && permission.canAskAgain) {

@@ -1,13 +1,10 @@
+import * as Device from "expo-device";
+
 /**
- * Gate for the GL scene. 3D renders everywhere (device, simulator, Expo Web) by
- * default; set EXPO_PUBLIC_DISABLE_3D=1 to force the lightweight 2D fallback when
- * working on the 2D app.
- *
- * Caveat: expo-gl on the simulator is a software renderer that behaves
- * differently from a real device — it is slow and it lies about extensions, so
- * per the README verify the scene itself on a physical device regardless.
- *
- * EXPO_PUBLIC_* values are inlined at bundle time, so changing this needs a
- * Metro restart, not just a reload.
+ * Gate for the GL scene. 3D renders on real devices and on Expo Web (isDevice
+ * is always true in a browser); simulators get the lightweight 2D fallback
+ * automatically — expo-gl there is a software renderer that is slow, lies
+ * about extensions, and a scene failure can take down unrelated app flows.
+ * Verify anything 3D on a physical device per the README.
  */
-export const SCENE_3D_ENABLED = process.env.EXPO_PUBLIC_DISABLE_3D !== "1";
+export const SCENE_3D_ENABLED = Device.isDevice;

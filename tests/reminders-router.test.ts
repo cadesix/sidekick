@@ -2,8 +2,7 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { eq } from "drizzle-orm";
 import { type Database, reminders, users } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
-import { registerDevice } from "@sidekick/server";
-import { makeCaller, textModel } from "./helpers";
+import { makeCaller, textModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -17,7 +16,7 @@ afterAll(async () => {
 });
 
 async function makeUser(deviceId: string): Promise<string> {
-  const { userId } = await registerDevice(db, { deviceId });
+  const userId = await createUser(db);
   await db.update(users).set({ timezone: "America/New_York" }).where(eq(users.id, userId));
   return userId;
 }

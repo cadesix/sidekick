@@ -1,6 +1,6 @@
 import '../global.css';
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -11,9 +11,8 @@ import 'react-native-reanimated';
 
 import { AuthGate } from '~/lib/auth';
 import { NotificationObserver } from '~/lib/notifications/observer';
+import { queryClient } from '~/lib/query-client';
 import { useForegroundSync } from '~/lib/useForegroundSync';
-
-const queryClient = new QueryClient();
 
 function ConnectedApp() {
   useForegroundSync();

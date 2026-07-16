@@ -4,8 +4,8 @@ import { type LanguageModel } from "ai";
 import { MockLanguageModelV2 } from "ai/test";
 import { type Database, conversations, memories, messages, users } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
-import { findIdleConversations, registerDevice, runIdleJob } from "@sidekick/server";
-import { createConversation } from "./helpers";
+import { findIdleConversations, runIdleJob } from "@sidekick/server";
+import { createConversation, createUser, createUserSession } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -43,7 +43,7 @@ async function insert(conversationId: string, role: string, content: string, tok
 }
 
 test("the idle job runs extraction then compaction, holding the ordering invariant", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "idle-1" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
 
   let lastId = 0;
@@ -76,7 +76,7 @@ test("the idle job runs extraction then compaction, holding the ordering invaria
 test("findIdleConversations returns only conversations idle past the threshold with unseen messages", async () => {
   const now = new Date("2026-07-06T12:00:00Z");
 
-  const idle = await registerDevice(db, { deviceId: "idle-2" });
+  const idle = await createUserSession(db);
   const idleConversation = await createConversation(db, idle.userId);
   const idleMessage = await insert(idleConversation, "user", "hello?", 5);
   await db
@@ -84,7 +84,7 @@ test("findIdleConversations returns only conversations idle past the threshold w
     .set({ createdAt: new Date("2026-07-06T11:00:00Z") })
     .where(eq(messages.id, idleMessage));
 
-  const fresh = await registerDevice(db, { deviceId: "idle-3" });
+  const fresh = await createUserSession(db);
   const freshConversation = await createConversation(db, fresh.userId);
   await db
     .insert(messages)
@@ -97,7 +97,7 @@ test("findIdleConversations returns only conversations idle past the threshold w
 });
 
 test("the end-of-day trigger fires exactly once, on the sweep that crosses local midnight", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "idle-eod-1" });
+  const userId = await createUser(db);
   await db.update(users).set({ timezone: "America/Chicago" }).where(eq(users.id, userId));
   const conversationId = await createConversation(db, userId);
   const messageId = await insert(conversationId, "user", "night night", 5);
@@ -115,12 +115,12 @@ test("the end-of-day trigger fires exactly once, on the sweep that crosses local
 });
 
 test("the end-of-day trigger respects each user's timezone", async () => {
-  const chicago = await registerDevice(db, { deviceId: "idle-eod-2" });
+  const chicago = await createUserSession(db);
   await db.update(users).set({ timezone: "America/Chicago" }).where(eq(users.id, chicago.userId));
   const chicagoConversation = await createConversation(db, chicago.userId);
   const chicagoMessage = await insert(chicagoConversation, "user", "hey", 5);
 
-  const tokyo = await registerDevice(db, { deviceId: "idle-eod-3" });
+  const tokyo = await createUserSession(db);
   await db.update(users).set({ timezone: "Asia/Tokyo" }).where(eq(users.id, tokyo.userId));
   const tokyoConversation = await createConversation(db, tokyo.userId);
   const tokyoMessage = await insert(tokyoConversation, "user", "hey", 5);
@@ -137,7 +137,7 @@ test("the end-of-day trigger respects each user's timezone", async () => {
 });
 
 test("the end-of-day trigger skips conversations with nothing new to extract", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "idle-eod-4" });
+  const userId = await createUser(db);
   await db.update(users).set({ timezone: "America/Chicago" }).where(eq(users.id, userId));
   const conversationId = await createConversation(db, userId);
   const messageId = await insert(conversationId, "user", "all caught up", 5);

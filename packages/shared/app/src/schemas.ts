@@ -31,12 +31,44 @@ export const reactionTypeSchema = z.custom<ReactionType>(
   "invalid reaction type",
 );
 
-/** Device registration → anonymous account (01-architecture.md auth). */
-export const registerInput = z.object({
-  deviceId: z.string().min(8),
+/** Post-auth device metadata upsert (19-auth.md). */
+export const registerDeviceInput = z.object({
+  deviceId: z.string().min(1),
   publicKey: z.string().optional(),
 });
-export type RegisterInput = z.infer<typeof registerInput>;
+export type RegisterDeviceInput = z.infer<typeof registerDeviceInput>;
+
+/** E.164 phone number (19-auth.md): a leading `+` and up to 15 digits. */
+const e164Phone = z.string().regex(/^\+[1-9]\d{1,14}$/, "invalid phone number");
+/** A 6-digit OTP (19-auth.md). */
+const otpCode = z.string().regex(/^\d{6}$/, "invalid code");
+
+/** Apple sign-in: an identity token verified server-side (19-auth.md). */
+export const appleAuthInput = z.object({
+  identityToken: z.string().min(1),
+  platform: z.enum(["ios", "web"]).default("ios"),
+});
+export type AppleAuthInput = z.infer<typeof appleAuthInput>;
+
+/** Google sign-in: an id_token verified server-side (19-auth.md). */
+export const googleAuthInput = z.object({ idToken: z.string().min(1) });
+export type GoogleAuthInput = z.infer<typeof googleAuthInput>;
+
+/** Request an email OTP (19-auth.md). */
+export const emailAuthInput = z.object({ email: z.string().email() });
+export type EmailAuthInput = z.infer<typeof emailAuthInput>;
+
+/** Verify an email OTP (19-auth.md). */
+export const verifyEmailCodeInput = z.object({ email: z.string().email(), code: otpCode });
+export type VerifyEmailCodeInput = z.infer<typeof verifyEmailCodeInput>;
+
+/** Request an SMS OTP (19-auth.md). */
+export const phoneAuthInput = z.object({ phone: e164Phone });
+export type PhoneAuthInput = z.infer<typeof phoneAuthInput>;
+
+/** Verify an SMS OTP (19-auth.md). */
+export const verifyPhoneCodeInput = z.object({ phone: e164Phone, code: otpCode });
+export type VerifyPhoneCodeInput = z.infer<typeof verifyPhoneCodeInput>;
 
 export const chatSendInput = z
   .object({

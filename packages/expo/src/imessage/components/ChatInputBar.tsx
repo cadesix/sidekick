@@ -8,8 +8,12 @@ import { Icon } from "./Icon";
 import type { AudioAttachment } from "../types";
 import { VoiceRecorder } from "./VoiceRecorder";
 
+/** The composer's view of its picked attachments: none, still uploading/ingesting, or all ready. */
+export type AttachmentState = "none" | "settling" | "ready";
+
 interface ChatInputBarProps {
 	replyActive: boolean;
+	attachmentState: AttachmentState;
 	onSendText: (text: string) => void;
 	onSendAudio: (audio: AudioAttachment) => void;
 	onTogglePlusMenu: () => void;
@@ -20,6 +24,7 @@ interface ChatInputBarProps {
 
 export function ChatInputBar({
 	replyActive,
+	attachmentState,
 	onSendText,
 	onSendAudio,
 	onTogglePlusMenu,
@@ -37,14 +42,19 @@ export function ChatInputBar({
 		}
 	}, [replyActive]);
 
+	// A message with attachments may send with no text, but never before every
+	// attachment is ready — the turn must carry them.
+	const showSend = hasText || attachmentState !== "none";
+	const canSend =
+		attachmentState === "ready" || (hasText && attachmentState === "none");
+
 	const send = () => {
-		const trimmed = text.trim();
-		if (!trimmed) {
+		if (!canSend) {
 			return;
 		}
 		setText("");
 		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-		onSendText(trimmed);
+		onSendText(text.trim());
 	};
 
 	const startRecording = () => {
@@ -101,13 +111,18 @@ export function ChatInputBar({
 							style={styles.input}
 							keyboardAppearance="light"
 						/>
-						{hasText ? (
+						{showSend ? (
 							<Animated.View
 								entering={ZoomIn.springify().duration(300)}
 								exiting={ZoomOut.duration(120)}
 								style={styles.sendWrapper}
 							>
-								<Pressable onPress={send} style={styles.sendButton} hitSlop={6}>
+								<Pressable
+									onPress={send}
+									style={[styles.sendButton, canSend ? null : styles.sendDisabled]}
+									disabled={!canSend}
+									hitSlop={6}
+								>
 									<Icon name="arrowUp" size={16} color="#FFFFFF" strokeWidth={3} />
 								</Pressable>
 							</Animated.View>
@@ -180,5 +195,8 @@ const styles = StyleSheet.create({
 		backgroundColor: colors.blue,
 		alignItems: "center",
 		justifyContent: "center",
+	},
+	sendDisabled: {
+		backgroundColor: colors.gray3,
 	},
 });

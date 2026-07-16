@@ -3,8 +3,7 @@ import { asc, eq } from "drizzle-orm";
 import { type Database, messages } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
 import { PERSONA_PROMPT } from "@sidekick/shared";
-import { registerDevice } from "@sidekick/server";
-import { createConversation, makeCaller, textModel } from "./helpers";
+import { createConversation, makeCaller, textModel, createUserSession } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -18,7 +17,7 @@ afterAll(async () => {
 });
 
 test("chat.send persists the user message and the scripted assistant reply", async () => {
-  const { userId, token } = await registerDevice(db, { deviceId: "chat-device-1" });
+  const { userId, token } = await createUserSession(db);
   expect(token).toBeTruthy();
   const conversationId = await createConversation(db, userId);
   const caller = makeCaller(db, textModel("hey! glad you texted 💛"), userId);

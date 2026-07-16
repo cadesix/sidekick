@@ -4,9 +4,9 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { eq } from "drizzle-orm";
 import { type Database, attachments } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
-import { ingestAttachment, registerDevice } from "@sidekick/server";
+import { ingestAttachment } from "@sidekick/server";
 import { pdfNativeEligible } from "@sidekick/shared";
-import { generateModel, testStorage } from "./helpers";
+import { generateModel, testStorage, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -20,7 +20,7 @@ afterAll(async () => {
 });
 
 test("ingest persists the PDF page count on the attachment", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "page-1" });
+  const userId = await createUser(db);
   const storage = testStorage();
   const bytes = new Uint8Array(
     readFileSync(fileURLToPath(new URL("./fixtures/sample.pdf", import.meta.url))),

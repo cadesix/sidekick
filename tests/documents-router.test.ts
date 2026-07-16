@@ -2,8 +2,7 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { eq } from "drizzle-orm";
 import { type Database, documents, documentVersions } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
-import { registerDevice } from "@sidekick/server";
-import { makeCaller, textModel } from "./helpers";
+import { makeCaller, textModel, createUser, createUserSession } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -39,7 +38,7 @@ async function seedDoc(
 }
 
 test("list returns folders and active documents, folded by updatedAt desc", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "docs-router-list" });
+  const userId = await createUser(db);
   const c = caller(userId);
   const folder = await c.documents.createFolder({ name: "Plans" });
   await seedDoc(userId, {
@@ -60,7 +59,7 @@ test("list returns folders and active documents, folded by updatedAt desc", asyn
 });
 
 test("edit versions the write and records the user as the author", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "docs-router-edit" });
+  const userId = await createUser(db);
   const c = caller(userId);
   const docId = await seedDoc(userId, { title: "Draft", content: "one" });
 
@@ -79,7 +78,7 @@ test("edit versions the write and records the user as the author", async () => {
 });
 
 test("delete is soft and removes the document from the list", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "docs-router-delete" });
+  const userId = await createUser(db);
   const c = caller(userId);
   const docId = await seedDoc(userId, { title: "Trash", content: "x" });
 
@@ -93,8 +92,8 @@ test("delete is soft and removes the document from the list", async () => {
 });
 
 test("move files a document into a folder and rejects a stranger's folder", async () => {
-  const owner = await registerDevice(db, { deviceId: "docs-router-move-owner" });
-  const stranger = await registerDevice(db, { deviceId: "docs-router-move-stranger" });
+  const owner = await createUserSession(db);
+  const stranger = await createUserSession(db);
   const oc = caller(owner.userId);
   const folder = await oc.documents.createFolder({ name: "Keep" });
   const docId = await seedDoc(owner.userId, { title: "Movable", content: "x" });
@@ -109,7 +108,7 @@ test("move files a document into a folder and rejects a stranger's folder", asyn
 });
 
 test("versions + restore create a new version without destroying anything", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "docs-router-restore" });
+  const userId = await createUser(db);
   const c = caller(userId);
   const docId = await seedDoc(userId, { title: "Recipe", content: "v1" });
 
@@ -129,7 +128,7 @@ test("versions + restore create a new version without destroying anything", asyn
 });
 
 test("renameFolder and reorderFolders update folder metadata", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "docs-router-folders" });
+  const userId = await createUser(db);
   const c = caller(userId);
   const a = await c.documents.createFolder({ name: "First" });
   const b = await c.documents.createFolder({ name: "Second" });

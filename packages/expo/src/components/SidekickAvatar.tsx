@@ -1,4 +1,4 @@
-import Constants from 'expo-constants';
+import * as Device from 'expo-device';
 import { Image } from 'expo-image';
 import { GLView, type ExpoWebGLRenderingContext } from 'expo-gl';
 import { useEffect, useRef } from 'react';
@@ -64,7 +64,7 @@ export function SidekickAvatar({
       <GLView
         key={version}
         style={StyleSheet.absoluteFill}
-        msaaSamples={Constants.isDevice ? 4 : 0}
+        msaaSamples={Device.isDevice ? 4 : 0}
         onContextCreate={onContextCreate}
       />
     </View>

@@ -6,7 +6,15 @@ import {
 } from "~/lib/api";
 import { runDeviceToolCalls } from "~/features/chat/device-tools";
 import { activeComposerAd, type AdView } from "~/lib/chat-thread";
-import type { AudioAttachment, Message, ReactionType, Thread } from "./types";
+import { filenameFromUrl } from "./lib/attachments";
+import type {
+  AudioAttachment,
+  FileAttachment,
+  ImageAttachment,
+  Message,
+  ReactionType,
+  Thread,
+} from "./types";
 
 /**
  * The chat's server stitch. The transcript lives in Postgres (the sidekick's
@@ -48,6 +56,29 @@ function toAudio(row: HistoryRow): AudioAttachment | undefined {
   };
 }
 
+function toImages(row: HistoryRow): ImageAttachment[] {
+  return row.attachments
+    .filter((attachment) => attachment.kind === "image")
+    .map((attachment) => ({
+      uri: attachment.url,
+      width: attachment.width ?? undefined,
+      height: attachment.height ?? undefined,
+    }));
+}
+
+function toFile(row: HistoryRow): FileAttachment | undefined {
+  const file = row.attachments.find((attachment) => attachment.kind === "file");
+  if (!file) {
+    return undefined;
+  }
+  return {
+    url: file.url,
+    filename: filenameFromUrl(file.url),
+    mime: file.mime,
+    bytes: file.bytes,
+  };
+}
+
 /** A persisted row → the bubble the transcript renders. */
 function toMessage(row: HistoryRow): Message {
   const audio = toAudio(row);
@@ -62,6 +93,8 @@ function toMessage(row: HistoryRow): Message {
     reactions: row.reactions,
     kind: audio ? "audio" : "text",
     audio,
+    images: toImages(row),
+    file: toFile(row),
   };
 }
 

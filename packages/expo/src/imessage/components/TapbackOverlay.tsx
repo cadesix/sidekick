@@ -13,14 +13,12 @@ import Animated, {
 	withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { isEmojiOnly } from "../lib/emoji";
 import { colors } from "../theme";
 import { Glass } from "./Glass";
 import type { Message, ReactionType } from "../types";
-import { AudioBubble } from "./AudioBubble";
 import { Icon, type IconName } from "./Icon";
+import { MessageContent } from "./MessageContent";
 import type { BubbleLayout } from "./MessageRow";
-import { MessageBubble } from "./MessageBubble";
 import { TAPBACK_BADGE_OVERHANG, TAPBACK_ORDER, TapbackBadge, TapbackGlyph } from "./TapbackBadge";
 
 const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
@@ -189,7 +187,6 @@ export function TapbackOverlay({
 	const scrimDimStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
 
 	const mine = message.reactions.find((reaction) => reaction.from === "me");
-	const emojiOnly = message.kind === "text" && isEmojiOnly(message.text);
 	const sideAlign = sent
 		? { right: container.width - layout.x - layout.width }
 		: { left: layout.x };
@@ -222,19 +219,7 @@ export function TapbackOverlay({
 					bubbleStyle,
 				]}
 			>
-				{emojiOnly ? (
-					<Text style={styles.bigEmoji}>{message.text}</Text>
-				) : message.kind === "audio" && message.audio ? (
-					<MessageBubble from={message.role} tail backgroundBehind={SCRIM_BEHIND}>
-						<AudioBubble audio={message.audio} sent={sent} />
-					</MessageBubble>
-				) : (
-					<MessageBubble from={message.role} tail backgroundBehind={SCRIM_BEHIND}>
-						<Text style={[styles.text, { color: sent ? colors.sentText : colors.receivedText }]}>
-							{message.text}
-						</Text>
-					</MessageBubble>
-				)}
+				<MessageContent message={message} tail backgroundBehind={SCRIM_BEHIND} />
 				{message.reactions.map((reaction) => (
 					<TapbackBadge
 						key={reaction.from}
@@ -354,14 +339,6 @@ const styles = StyleSheet.create({
 	},
 	bubbleClone: {
 		position: "absolute",
-	},
-	text: {
-		fontSize: 17,
-		lineHeight: 22,
-	},
-	bigEmoji: {
-		fontSize: 46,
-		lineHeight: 54,
 	},
 	pill: {
 		position: "absolute",

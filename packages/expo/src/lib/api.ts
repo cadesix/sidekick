@@ -1,6 +1,7 @@
 import { fetch as streamingFetch } from "expo/fetch";
 import Constants from "expo-constants";
-import { createTRPCClient, httpBatchLink } from "@trpc/client";
+import { createTRPCClient, httpBatchLink, type TRPCLink } from "@trpc/client";
+import { observable } from "@trpc/server/observable";
 import type { AppRouter } from "@sidekick/server/router";
 import { STREAM_META_DELIMITER } from "@sidekick/shared";
 import type {
@@ -12,6 +13,9 @@ import type {
 } from "@sidekick/shared";
 import { drainStreamFrames } from "~/features/chat/stream-frames";
 import { Platform } from "react-native";
+import { TOKEN_STORAGE_KEY, useAuthStore } from "./auth-store";
+import { queryClient } from "./query-client";
+import { removeStoredItem } from "./secure-storage";
 
 /**
  * THE server stitch. Everything the app asks of the backend goes through here so
@@ -39,9 +43,10 @@ export function setAuthToken(token: string | null, deviceId?: string): void {
 }
 
 function authHeaders(): Record<string, string> {
+  const locale = Intl.DateTimeFormat().resolvedOptions();
   const headers: Record<string, string> = {
-    "accept-language": Intl.DateTimeFormat().resolvedOptions().locale,
-    "x-sidekick-timezone": Intl.DateTimeFormat().resolvedOptions().timeZone,
+    "accept-language": locale.locale,
+    "x-sidekick-timezone": locale.timeZone,
     "x-sidekick-user-agent": `Sidekick/${Constants.expoConfig?.version ?? "1"} (${Platform.OS}; ${String(Platform.Version)})`,
   };
   if (authDeviceId) {
@@ -53,14 +58,102 @@ function authHeaders(): Record<string, string> {
   return headers;
 }
 
-export const trpc = createTRPCClient<AppRouter>({
-  links: [httpBatchLink({ url: TRPC_URL, headers: authHeaders })],
-});
-
-export function registerDevice(deviceId: string): Promise<{ userId: string; token: string }> {
-  return trpc.auth.register.mutate({ deviceId });
+/**
+ * Drop the local session and return the app to the SignInScreen (19-auth.md):
+ * forget the in-memory + stored token, clear the react-query cache so no
+ * previous-user data lingers, and flip the auth store to signed-out. Plain
+ * (non-hook) so both the 401 handler here and `useSignOut` share one teardown.
+ */
+export function signOut(): void {
+  authToken = null;
+  void removeStoredItem(TOKEN_STORAGE_KEY);
+  queryClient.clear();
+  useAuthStore.setState({ status: "signedOut" });
 }
 
+const UNAUTHORIZED_SIGN_OUT_THRESHOLD = 3;
+let consecutiveUnauthorizedCount = 0;
+
+/**
+ * A revoked/expired session makes every request 401. After three consecutive
+ * UNAUTHORIZED responses, sign out — AuthGate then swaps the app for the
+ * SignInScreen. A one-off 401 (e.g. the fire-and-forget registerDevice racing a
+ * sign-out) never trips it, and any success resets the counter.
+ */
+function recordUnauthorized(): void {
+  consecutiveUnauthorizedCount += 1;
+  if (consecutiveUnauthorizedCount < UNAUTHORIZED_SIGN_OUT_THRESHOLD) {
+    return;
+  }
+  consecutiveUnauthorizedCount = 0;
+  signOut();
+}
+
+const authErrorLink: TRPCLink<AppRouter> =
+  () =>
+  ({ next, op }) =>
+    observable((observer) =>
+      next(op).subscribe({
+        next(value) {
+          consecutiveUnauthorizedCount = 0;
+          observer.next(value);
+        },
+        error(err) {
+          if (err.data?.code === "UNAUTHORIZED") {
+            recordUnauthorized();
+          }
+          observer.error(err);
+        },
+        complete() {
+          observer.complete();
+        },
+      }),
+    );
+
+export const trpc = createTRPCClient<AppRouter>({
+  links: [authErrorLink, httpBatchLink({ url: TRPC_URL, headers: authHeaders })],
+});
+
+/** The session every auth mutation returns (19-auth.md). */
+export type AuthResult = { token: string; userId: string; isNewUser: boolean };
+
+export function authenticateWithApple(identityToken: string): Promise<AuthResult> {
+  return trpc.auth.authenticateWithApple.mutate({ identityToken, platform: "ios" });
+}
+
+export function authenticateWithGoogle(idToken: string): Promise<AuthResult> {
+  return trpc.auth.authenticateWithGoogle.mutate({ idToken });
+}
+
+export function requestEmailCode(email: string): Promise<{ ok: boolean }> {
+  return trpc.auth.requestEmailCode.mutate({ email });
+}
+
+export function verifyEmailCode(email: string, code: string): Promise<AuthResult> {
+  return trpc.auth.verifyEmailCode.mutate({ email, code });
+}
+
+export function requestPhoneCode(phone: string): Promise<{ ok: boolean }> {
+  return trpc.auth.requestPhoneCode.mutate({ phone });
+}
+
+export function verifyPhoneCode(phone: string, code: string): Promise<AuthResult> {
+  return trpc.auth.verifyPhoneCode.mutate({ phone, code });
+}
+
+/** Dev-only instant session — double-gated (client `__DEV__` + server env check). */
+export function devLogin(): Promise<AuthResult> {
+  return trpc.auth.devLogin.mutate();
+}
+
+/** Post-auth device-metadata upsert — repoints this install's push tokens at the caller. */
+export function registerDevice(deviceId: string): Promise<{ ok: boolean }> {
+  return trpc.auth.registerDevice.mutate({ deviceId });
+}
+
+export function logout(): Promise<{ ok: boolean }> {
+  return trpc.auth.logout.mutate();
+}
 
 /**
  * Consume one chat SSE stream to completion: prose → `onDelta`, control frames →
@@ -242,18 +335,19 @@ export async function uploadAttachment(input: {
   /** Normalized 0..1 amplitude bars for a voice message, so it survives a reload. */
   waveform?: number[];
 }): Promise<{ attachmentId: string }> {
-  const created = await trpc.chat.createUploadUrl.mutate({
-    kind: input.kind,
-    mime: input.mime,
-    bytes: input.bytes,
-    filename: input.filename,
-    width: input.width,
-    height: input.height,
-    durationMs: input.durationMs,
-  });
+  const [created, body] = await Promise.all([
+    trpc.chat.createUploadUrl.mutate({
+      kind: input.kind,
+      mime: input.mime,
+      bytes: input.bytes,
+      filename: input.filename,
+      width: input.width,
+      height: input.height,
+      durationMs: input.durationMs,
+    }),
+    fetch(input.uri).then((response) => response.blob()),
+  ]);
 
-  const fileResponse = await fetch(input.uri);
-  const body = await fileResponse.blob();
   const put = await fetch(created.upload.uploadUrl, {
     method: created.upload.method,
     headers: { ...created.upload.headers, ...authHeaders() },

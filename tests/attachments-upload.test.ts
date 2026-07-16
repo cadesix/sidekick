@@ -3,8 +3,7 @@ import { eq } from "drizzle-orm";
 import { type Database, attachments } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
 import { ATTACHMENT_LIMITS, checkAttachmentBatch, checkUploadLimit } from "@sidekick/shared";
-import { registerDevice } from "@sidekick/server";
-import { generateModel, makeCaller, testStorage, textModel } from "./helpers";
+import { generateModel, makeCaller, testStorage, textModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -40,7 +39,7 @@ test("checkAttachmentBatch enforces per-message counts", () => {
 });
 
 test("createUploadUrl rejects an over-limit image before reserving a row", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "up-limit" });
+  const userId = await createUser(db);
   const caller = makeCaller(db, textModel("ok"), userId);
   await expect(
     caller.chat.createUploadUrl({
@@ -54,7 +53,7 @@ test("createUploadUrl rejects an over-limit image before reserving a row", async
 });
 
 test("createUploadUrl → PUT → attachmentUploaded runs ingest to ready", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "up-flow" });
+  const userId = await createUser(db);
   const storage = testStorage();
   const scheduled: Array<() => Promise<unknown>> = [];
   const caller = makeCaller(db, textModel("ok"), userId, {
@@ -94,7 +93,7 @@ test("createUploadUrl → PUT → attachmentUploaded runs ingest to ready", asyn
 });
 
 test("retryAttachment re-runs ingest for a failed attachment", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "up-retry" });
+  const userId = await createUser(db);
   const storage = testStorage();
   const scheduled: Array<() => Promise<unknown>> = [];
   const caller = makeCaller(db, textModel("ok"), userId, {

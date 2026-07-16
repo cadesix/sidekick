@@ -3,8 +3,7 @@ import { eq } from "drizzle-orm";
 import { type Database, actionItems, progressEvents, users } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
 import { localDate } from "@sidekick/shared";
-import { registerDevice } from "@sidekick/server";
-import { makeCaller, textModel } from "./helpers";
+import { makeCaller, textModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -27,7 +26,7 @@ async function timezone(userId: string): Promise<string> {
 }
 
 test("adopt creates a goal and its default action item", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "goals-router-1" });
+  const userId = await createUser(db);
   const { goal, actionItem } = await caller(userId).goals.adopt({ slug: "get-fit" });
 
   expect(goal.slug).toBe("get-fit");
@@ -38,7 +37,7 @@ test("adopt creates a goal and its default action item", async () => {
 });
 
 test("adopt honors a chosen action item and custom cadence", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "goals-router-2" });
+  const userId = await createUser(db);
   const { actionItem } = await caller(userId).goals.adopt({
     slug: "get-fit",
     actionSlug: "run",
@@ -49,7 +48,7 @@ test("adopt honors a chosen action item and custom cadence", async () => {
 });
 
 test("list returns today's checklist state with streak and weekly tally", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "goals-router-3" });
+  const userId = await createUser(db);
   const c = caller(userId);
   const { actionItem } = await c.goals.adopt({ slug: "get-fit" });
   const today = localDate(await timezone(userId), new Date());
@@ -75,7 +74,7 @@ test("list returns today's checklist state with streak and weekly tally", async 
 });
 
 test("adjust updates the active action item's cadence", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "goals-router-4" });
+  const userId = await createUser(db);
   const c = caller(userId);
   const { goal, actionItem } = await c.goals.adopt({ slug: "get-fit" });
 
@@ -87,7 +86,7 @@ test("adjust updates the active action item's cadence", async () => {
 });
 
 test("pause and complete change goal status and drop it from the active list", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "goals-router-5" });
+  const userId = await createUser(db);
   const c = caller(userId);
   const paused = await c.goals.adopt({ slug: "get-fit" });
   const done = await c.goals.adopt({ slug: "read-more" });
@@ -100,8 +99,8 @@ test("pause and complete change goal status and drop it from the active list", a
 });
 
 test("adjust rejects another user's goal", async () => {
-  const { userId: owner } = await registerDevice(db, { deviceId: "goals-router-6a" });
-  const { userId: stranger } = await registerDevice(db, { deviceId: "goals-router-6b" });
+  const owner = await createUser(db);
+  const stranger = await createUser(db);
   const { goal } = await caller(owner).goals.adopt({ slug: "get-fit" });
 
   await expect(

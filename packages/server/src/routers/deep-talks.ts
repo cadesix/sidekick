@@ -10,6 +10,7 @@ import {
   isDeepTalkUnlocked,
 } from "@sidekick/shared";
 import { protectedProcedure, router } from "../trpc";
+import { assertConversationOwned } from "../chat/turn";
 import { activeDeepTalkForUser, settleDeepTalks, startDeepTalk } from "../deep-talks/session";
 import { commitChatGptImport, stageChatGptImport } from "../deep-talks/import";
 
@@ -60,9 +61,10 @@ export const deepTalksRouter = router({
 
   finish: protectedProcedure
     .input(deepTalkFinishInput)
-    .mutation(({ ctx, input }) =>
-      settleDeepTalks(ctx.db, ctx.model, input.conversationId, ctx.userId),
-    ),
+    .mutation(async ({ ctx, input }) => {
+      await assertConversationOwned(ctx.db, input.conversationId, ctx.userId);
+      return settleDeepTalks(ctx.db, ctx.model, input.conversationId, ctx.userId);
+    }),
 
   importStage: protectedProcedure
     .input(chatgptImportStageInput)

@@ -2,8 +2,8 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { eq } from "drizzle-orm";
 import { type Database, ads } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
-import { ScriptedAdClient, type SponsoredAd, registerDevice } from "@sidekick/server";
-import { makeCaller, textModel } from "./helpers";
+import { ScriptedAdClient, type SponsoredAd } from "@sidekick/server";
+import { makeCaller, textModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -28,7 +28,7 @@ const SAMPLE_AD: SponsoredAd = {
 };
 
 test("preview returns the network fill as a render payload without persisting it", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "preview-1" });
+  const userId = await createUser(db);
   const network = new ScriptedAdClient([SAMPLE_AD]);
   const caller = makeCaller(db, textModel("hi"), userId, { adNetwork: network });
 
@@ -48,7 +48,7 @@ test("preview returns the network fill as a render payload without persisting it
 });
 
 test("preview is null when ads are disabled or the network has no fill", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "preview-2" });
+  const userId = await createUser(db);
 
   const disabled = makeCaller(db, textModel("hi"), userId);
   expect(await disabled.ads.preview()).toBeNull();

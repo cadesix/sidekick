@@ -3,8 +3,8 @@ import { eq } from "drizzle-orm";
 import { type Database, healthDays, messages, users } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
 import { renderHealthLines } from "@sidekick/shared";
-import { registerDevice, syncHealthDays } from "@sidekick/server";
-import { createConversation, makeCaller, textModel } from "./helpers";
+import { syncHealthDays } from "@sidekick/server";
+import { createConversation, makeCaller, textModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -18,7 +18,7 @@ afterAll(async () => {
 });
 
 test("renders yesterday's health into a friend-shaped RECENT line", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "render-1" });
+  const userId = await createUser(db);
   await db.update(users).set({ timezone: "America/New_York" }).where(eq(users.id, userId));
 
   await db.insert(healthDays).values({
@@ -48,7 +48,7 @@ test("renders yesterday's health into a friend-shaped RECENT line", async () => 
 });
 
 test("no synced days renders nothing (empty section)", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "render-2" });
+  const userId = await createUser(db);
   const lines = await renderHealthLines(
     db,
     userId,
@@ -59,7 +59,7 @@ test("no synced days renders nothing (empty section)", async () => {
 });
 
 test("health.disconnect deletes every synced day", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "render-3" });
+  const userId = await createUser(db);
   await syncHealthDays(db, userId, [
     { date: "2026-07-05", steps: 5000, workouts: [] },
     { date: "2026-07-06", steps: 6000, workouts: [] },
@@ -79,7 +79,7 @@ test("health.disconnect deletes every synced day", async () => {
 });
 
 test("a reply generated with Apple Health context is marked sensitive", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "health-sensitive" });
+  const userId = await createUser(db);
   await db.update(users).set({ timezone: "UTC" }).where(eq(users.id, userId));
   await syncHealthDays(db, userId, [
     { date: new Date().toISOString().slice(0, 10), steps: 7200, workouts: [] },

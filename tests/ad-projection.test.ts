@@ -6,9 +6,8 @@ import {
   adForwardMessages,
   markMessagesSensitive,
   projectAdProfile,
-  registerDevice,
 } from "@sidekick/server";
-import { createConversation } from "./helpers";
+import { createConversation, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -22,7 +21,7 @@ afterAll(async () => {
 });
 
 test("health_days is never part of the ad projection — table-level exclusion", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "ad-1" });
+  const userId = await createUser(db);
   await db
     .update(users)
     .set({ ageBracket: "25-34", gender: "female", lastRegion: "Illinois", personalizedAdsConsent: true })
@@ -53,7 +52,7 @@ test("health_days is never part of the ad projection — table-level exclusion",
 });
 
 test("sensitive (health-derived) messages are stripped from the ad-forward window", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "ad-2" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
 
   const rows = await db

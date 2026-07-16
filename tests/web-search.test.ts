@@ -6,9 +6,9 @@ import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
 import { type Database, checkIns, messages, users } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
 import { buildContextView } from "@sidekick/shared";
-import { registerDevice, sendChatTurn } from "@sidekick/server";
+import { sendChatTurn } from "@sidekick/server";
 import { generateOpener } from "../packages/server/src/checkins/engine";
-import { createConversation, testStorage } from "./helpers";
+import { createConversation, testStorage, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -111,7 +111,7 @@ function scriptedOpenerModel(text: string): { model: LanguageModel; seenTools: u
 }
 
 async function makeUser(deviceId: string, timezone = "UTC"): Promise<typeof users.$inferSelect> {
-  const { userId } = await registerDevice(db, { deviceId });
+  const userId = await createUser(db);
   const updated = await db
     .update(users)
     .set({ timezone, name: "Maya", sidekickName: "Kick" })

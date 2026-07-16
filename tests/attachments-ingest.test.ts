@@ -4,8 +4,8 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { eq } from "drizzle-orm";
 import { type Database, attachments } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
-import { ingestAttachment, registerDevice } from "@sidekick/server";
-import { generateModel, testStorage, transcriptionModel } from "./helpers";
+import { ingestAttachment } from "@sidekick/server";
+import { generateModel, testStorage, transcriptionModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -52,7 +52,7 @@ async function statusOf(id: string) {
 }
 
 test("image ingest writes a vision caption and lands ready", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "ing-img" });
+  const userId = await createUser(db);
   const storage = testStorage();
   const id = await seedAttachment(userId, storage, {
     kind: "image",
@@ -72,7 +72,7 @@ test("image ingest writes a vision caption and lands ready", async () => {
 });
 
 test("audio ingest transcribes to a transcript and lands ready", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "ing-aud" });
+  const userId = await createUser(db);
   const storage = testStorage();
   const id = await seedAttachment(userId, storage, {
     kind: "audio",
@@ -97,7 +97,7 @@ test("audio ingest transcribes to a transcript and lands ready", async () => {
 });
 
 test("file ingest extracts real text from each fixture and summarizes it", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "ing-file" });
+  const userId = await createUser(db);
   const storage = testStorage();
   const cases = [
     { name: "sample.csv", mime: "text/csv", contains: "designer" },
@@ -130,7 +130,7 @@ test("file ingest extracts real text from each fixture and summarizes it", async
 });
 
 test("audio ingest with no transcription model fails and marks the row failed", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "ing-fail" });
+  const userId = await createUser(db);
   const storage = testStorage();
   const id = await seedAttachment(userId, storage, {
     kind: "audio",

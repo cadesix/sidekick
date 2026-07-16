@@ -165,18 +165,18 @@ export const chatRouter = router({
   history: protectedProcedure
     .input(chatHistoryInput)
     .query(async ({ ctx, input }) =>
-      withAttachments(ctx.db, ctx.storage, await chatHistory(ctx.db, input)),
+      withAttachments(ctx.db, ctx.storage, await chatHistory(ctx.db, ctx.userId, input)),
     ),
 
   historyAround: protectedProcedure
     .input(chatHistoryAroundInput)
     .query(async ({ ctx, input }) =>
-      withAttachments(ctx.db, ctx.storage, await chatHistoryAround(ctx.db, input)),
+      withAttachments(ctx.db, ctx.storage, await chatHistoryAround(ctx.db, ctx.userId, input)),
     ),
 
   search: protectedProcedure
     .input(chatSearchInput)
-    .query(({ ctx, input }) => chatSearch(ctx.db, input)),
+    .query(({ ctx, input }) => chatSearch(ctx.db, ctx.userId, input)),
 
   react: protectedProcedure.input(chatReactInput).mutation(async ({ ctx, input }) => {
     const rows = await ctx.db

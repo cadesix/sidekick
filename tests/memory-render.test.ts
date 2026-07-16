@@ -1,3 +1,4 @@
+import { createUser } from "./helpers";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { eq } from "drizzle-orm";
 import {
@@ -11,7 +12,6 @@ import {
 } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
 import { renderMemoryBlock } from "@sidekick/shared";
-import { registerDevice } from "@sidekick/server";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -25,7 +25,7 @@ afterAll(async () => {
 });
 
 test("renderMemoryBlock composes the profile sections from the DB with relative dates", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "render-1" });
+  const userId = await createUser(db);
   await db
     .update(users)
     .set({
@@ -94,7 +94,7 @@ test("renderMemoryBlock composes the profile sections from the DB with relative 
 });
 
 test("renderMemoryBlock renders a minimal profile without optional sections", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "render-2" });
+  const userId = await createUser(db);
   await db.update(users).set({ name: "Sam" }).where(eq(users.id, userId));
 
   const block = await renderMemoryBlock(db, userId, new Date("2026-07-06T16:00:00Z"));
