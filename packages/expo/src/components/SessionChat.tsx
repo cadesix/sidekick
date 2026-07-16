@@ -67,12 +67,22 @@ const FALLBACK_ANALYSIS: Analysis = {
   traits: ['curious', 'open', 'worth knowing'],
 };
 
+// a poetic 2-4 word title; anything longer is a model that ignored the prompt
+const ARCHETYPE_MAX = 40;
+
 function parseAnalysis(a: unknown): Analysis {
   if (!a || typeof a !== 'object') return FALLBACK_ANALYSIS;
   const o = a as Record<string, unknown>;
   const traits = Array.isArray(o.traits) ? o.traits.filter((t): t is string => typeof t === 'string').slice(0, 4) : [];
   return {
-    archetype: typeof o.archetype === 'string' && o.archetype.trim() ? o.archetype.trim() : FALLBACK_ANALYSIS.archetype,
+    // capped: the archetype flows into astralNews() and out to the speech
+    // bubble, which grows upward until it collides with the star above the head.
+    // The prompt asks for 2-4 words, but a model that ignores that shouldn't be
+    // able to break the layout.
+    archetype:
+      typeof o.archetype === 'string' && o.archetype.trim()
+        ? o.archetype.trim().slice(0, ARCHETYPE_MAX)
+        : FALLBACK_ANALYSIS.archetype,
     reading: typeof o.reading === 'string' && o.reading.trim() ? o.reading.trim() : FALLBACK_ANALYSIS.reading,
     traits: traits.length ? traits : FALLBACK_ANALYSIS.traits,
   };
