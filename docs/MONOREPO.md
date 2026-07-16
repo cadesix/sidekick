@@ -53,27 +53,49 @@ sidekick/
 ├── package.json            workspace root — pnpm dev = Expo Web; pnpm.overrides pins three
 ├── pnpm-workspace.yaml     packages/*, packages/config/*, packages/shared/*
 ├── .npmrc                  node-linker=hoisted (required for Expo/Metro)
+├── pnpm-lock.yaml          single lockfile for everything
 ├── docs/                   this file, creative-brief, token-economy, guided-sessions
+├── plans/                  design docs for the chat/server stack (00–16)
+├── tests/                  vitest suite for server/db/shared (+ pure expo chat modules)
 ├── tools/char-pipeline/    Blender cosmetics authoring pipeline (writes into web/public — see Assets)
 └── packages/
     ├── expo/               @sidekick/expo — THE app (iOS + web from one codebase)
     │   ├── app/                           expo-router routes (index = home, sidekick-3d = look-dev)
     │   ├── src/three/                     imperative three.js scene (future @sidekick/three)
-    │   ├── src/components/                RN UI (dock, chat, shop, map, sessions, …)
+    │   ├── src/components/                RN UI (dock, shop, map, sessions, …)
+    │   ├── src/features/chat/             chat sheet: streaming turns, search, device tools
+    │   ├── src/lib/                       tRPC client (api.ts), anonymous auth, notifications
     │   ├── src/store/                     zustand stores (persistence via AsyncStorage)
+    │   ├── targets/                       iOS NotificationService extension
     │   ├── assets/                        bundled GLBs/textures (DERIVED — see Assets)
     │   └── scripts/                       strip-glb.mjs, sync-cosmetics.mjs
+    ├── server/             @sidekick/server — Hono + tRPC backend (Vercel deploy via api/)
+    │   ├── src/chat/                      chat turn engine (streaming, compaction)
+    │   ├── src/routers/                   tRPC routers (chat, goals, documents, reminders, …)
+    │   └── src/…                          ads, checkins, memory, notifications, rewards
+    ├── db/                 @sidekick/db — drizzle schema + migrations (postgres; PGlite in tests)
     ├── shared/
-    │   └── core/           @sidekick/core — platform-agnostic logic + tables
+    │   ├── core/           @sidekick/core — platform-agnostic logic + tables
+    │   └── app/            @sidekick/shared — product domain logic shared by server + expo
+    │                       (prompts, model tools, conversation/context, stream frame protocol)
     ├── web/                @sidekick/web — DEPRECATED Vite reference (do not develop here)
     │   ├── src/components/sidekick-*.ts   pre-refactor three.js scene (reference)
     │   ├── public/cosmetics/              still the CANONICAL asset source (see Assets)
     │   └── api/chat.js                    Vercel serverless chat endpoint (legacy deploy)
     ├── landing/            marketing site (Next.js) — independent of everything above
     └── config/
-        ├── tsconfig/       @sidekick/tsconfig — shared TS configs
+        ├── tsconfig/       @sidekick/tsconfig — shared TS configs (base, node, react-vite)
         └── tailwind/       @sidekick/tailwind-config — shared Tailwind preset (brand tokens)
 ```
+
+The chat stack is a vertical slice through four packages: the expo chat sheet
+(`src/features/chat/`) talks to `@sidekick/server` (tRPC at `/trpc`, raw
+streaming at `/chat/stream` + `/chat/continue`), which runs the turn engine
+against `@sidekick/db` using the prompts/tools/frame-protocol in
+`@sidekick/shared`. Run it locally with `pnpm dev:server` (needs
+`DATABASE_URL` + `ANTHROPIC_API_KEY`; see `packages/server/.env.example`) and
+point the app at it via `EXPO_PUBLIC_API_URL`. `pnpm test` covers this whole
+stack with PGlite and mocked models — no keys or database needed.
 
 ## Running things
 
@@ -91,9 +113,10 @@ simulator's GL stack is unreliable (blank scenes, z-fight artifacts; see
 `packages/expo/README.md`). Expo Web is the fast iteration loop; the device is
 the truth for rendering.
 
-Chat: expo uses `EXPO_PUBLIC_OPENAI_API_KEY` (see `packages/expo/.env.example`)
-or falls back to canned replies. The legacy Vite deploy on Vercel uses
-`packages/web/api/chat.js` with `OPENAI_API_KEY`.
+Chat: expo talks to `@sidekick/server` — point it at a local server with
+`EXPO_PUBLIC_API_URL` and run `pnpm dev:server` (see the chat stack above). The
+legacy Vite deploy on Vercel still uses `packages/web/api/chat.js` with
+`OPENAI_API_KEY`.
 
 ## Assets — canonical source is still `packages/web/public/` (for now)
 

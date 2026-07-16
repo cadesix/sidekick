@@ -244,7 +244,7 @@ export function createSidekickRenderer(
   // so the full top→horizon ramp spans the viewport regardless of camera fov.
   // (An earlier build mapped it onto a skydome; the narrow fov then saw only a
   // thin slice of the ramp and the sky read as a flat saturated blue.)
-  const skyStops = (p: typeof sc) => [
+  const skyStops = (p: { skyHorizon: string; skyMid: string; skyTop: string }) => [
     { at: 0, color: p.skyHorizon },
     { at: 0.42, color: p.skyMid },
     { at: 1, color: p.skyTop },
@@ -556,11 +556,7 @@ export function createSidekickRenderer(
       group.visible = false;
       scene.add(group);
       const p = def.preset;
-      const sky = makeGradientTexture([
-        { at: 0, color: p.skyHorizon },
-        { at: 0.42, color: p.skyMid },
-        { at: 1, color: p.skyTop },
-      ]);
+      const sky = makeGradientTexture(skyStops(p));
       const fog = new THREE.Fog(p.fog, p.fogNear, p.fogFar);
       bc = { group, sky, fog };
       biomeCache.set(id, bc);

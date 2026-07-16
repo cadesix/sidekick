@@ -1,0 +1,4 @@
+{
+	"extends": "@sidekick/tsconfig/node.json",
+	"include": ["src", "drizzle.config.ts"]
+}

@@ -1,14 +1,13 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { Dimensions, Pressable, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { CHAT_SHEET_DETENT, ChatScreen } from '~/imessage';
 import { AppearanceSheet } from '../src/components/AppearanceSheet';
 import { BondBadge } from '../src/components/BondBadge';
 import { BoxRewardsModal, GroundBox, StreakSplash } from '../src/components/DailyBox';
 import { DevPanel } from '../src/components/DevPanel';
-import { Chat } from '../src/components/Chat';
 import { GoalsSheet } from '../src/components/GoalsSheet';
 import { StreakModal } from '../src/components/StreakModal';
 import { SessionChat, STAR_FACE_TUNING } from '../src/components/SessionChat';
@@ -32,13 +31,12 @@ import type { Framing, SidekickController } from '../src/three/renderer';
 import { hydrateSettings, loadSettings, type SidekickSettings } from '../src/three/settings';
 import type { CosmeticsControls } from '../src/three/wardrobe';
 import { useDeferredFlag } from '../src/lib/useDeferredFlag';
-import { useChat } from '../src/store/chat';
 
 // RN port of sidekick/src/home4.tsx: full-viewport 3D mascot with an iOS-style
-// dock. Messages slides the chat drawer up over the lower ~55% (camera eases to
-// CHAT_FRAMING, mascot holds its phone), Shop swaps the meadow for a studio and
-// opens the wardrobe sheet, Map rockets the camera up while the world map
-// circle-reveals over it.
+// dock. Messages presents the chat as a native sheet over the lower ~75%
+// (camera eases to CHAT_FRAMING, the mascot holds its phone in the band above),
+// Shop swaps the meadow for a studio and opens the wardrobe sheet, Map rockets
+// the camera up while the world map circle-reveals over it.
 
 const HERO_FRAMING: Framing = {
   pos: [0, 0.66, 4.2],
@@ -47,8 +45,8 @@ const HERO_FRAMING: Framing = {
 };
 
 const CHAT_FRAMING: Framing = {
-  pos: [0, 1.6, 13],
-  target: [0, -2.0, 0],
+  pos: [0, 1.2, 6.0],
+  target: [0, -0.75, 0],
   fov: 30,
 };
 
@@ -90,10 +88,13 @@ const TRAVEL_LINES: Record<EnvironmentId, string> = {
 };
 
 const { height: SCREEN_H } = Dimensions.get('window');
-const DRAWER_TOP = SCREEN_H * 0.2; // chat drawer covers the lower 80% (web: top-[20%])
+// The chat drawer covers the lower 75%; the mascot lives in the band above.
+const DRAWER_TOP = SCREEN_H * (1 - CHAT_SHEET_DETENT);
 
 export default function Home() {
-  const [open, setOpen] = useState(false);
+  // chatOpen drives the camera/holdingPhone; chatProgress slides the drawer
+  const [chatOpen, setChatOpen] = useState(false);
+  const chatProgress = useSharedValue(0);
   // mapOpen drives the camera pull-back; mapShown drives the map's circle
   // reveal, a beat later, so the camera starts flying out before the map grows.
   const [mapOpen, setMapOpen] = useState(false);
@@ -140,20 +141,14 @@ export default function Home() {
   useEffect(() => {
     hydrateSettings().then(() => setSettings(loadSettings()));
   }, []);
-  const loading = useChat((s) => s.loading);
-  const unread = useChat((s) => s.unread);
-  const clearUnread = useChat((s) => s.clearUnread);
-  const pushMsg = useChat((s) => s.pushSidekickMessage);
-
   // travel to a biome: swap the 3D world, close the map, and drop an arrival
-  // line (badge now, bubble after the map reveal shrinks so it pops over the
-  // visible character) — mirrors home5.tsx onTravel.
+  // line (bubble after the map reveal shrinks so it pops over the visible
+  // character) — mirrors home5.tsx onTravel.
   const travelTo = (biome: EnvironmentId) => {
     setEnvironment(biome);
     closeMap();
     const line = TRAVEL_LINES[biome];
     if (line) {
-      pushMsg(line);
       setTimeout(() => speak(line), 650);
     }
   };
@@ -173,9 +168,6 @@ export default function Home() {
     }
   }, [boxStage, streakHydrated, dailyBoxHydrated]);
 
-  // 0 = closed (drawer off-screen), 1 = open
-  const progress = useSharedValue(0);
-
   // head-tracked overlay position (bond badge / speech bubble); the canvas
   // writes these every frame from the head-bone projection
   const overheadX = useSharedValue(0);
@@ -190,14 +182,13 @@ export default function Home() {
   const groundVisible = useSharedValue(0);
   const ground = { x: groundX, y: groundY, visible: groundVisible };
 
-  const openDrawer = () => {
-    setOpen(true);
-    clearUnread();
-    progress.value = withTiming(1, { duration: 380 });
+  const openChat = () => {
+    setChatOpen(true); // camera starts easing while the drawer slides up
+    chatProgress.value = withTiming(1, { duration: 380 });
   };
-  const closeDrawer = () => {
-    setOpen(false);
-    progress.value = withTiming(0, { duration: 340 });
+  const closeChat = () => {
+    setChatOpen(false);
+    chatProgress.value = withTiming(0, { duration: 340 });
   };
 
   const openMap = () => {
@@ -211,9 +202,11 @@ export default function Home() {
     useSidekickContext.getState().clearUnseenIsland();
   };
 
+  // No opacity here: animating a parent's opacity permanently breaks descendant
+  // UIGlassEffect views (expo/expo#41024) — the closed drawer is already fully
+  // off-screen via the translate.
   const drawerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: (1 - progress.value) * (SCREEN_H - DRAWER_TOP) }],
-    opacity: progress.value < 0.02 ? 0 : 1,
+    transform: [{ translateY: (1 - chatProgress.value) * (SCREEN_H - DRAWER_TOP) }],
   }));
 
   return (
@@ -233,12 +226,11 @@ export default function Home() {
                 ? MAP_FRAMING
                 : shopOpen || appearanceOpen
                   ? SHOP_FRAMING
-                  : open || settingsOpen
+                  : chatOpen || settingsOpen
                     ? CHAT_FRAMING
                     : HERO_FRAMING
           }
-          holdingPhone={open}
-          talking={loading}
+          holdingPhone={chatOpen}
           studio={shopOpen || appearanceOpen}
           cosmos={cosmosPanned}
           starFace={starFace}
@@ -254,7 +246,7 @@ export default function Home() {
       {/* bond score floating over the character's head (hidden while a full
           surface covers the scene) */}
       {settings ? (
-        <BondBadge overhead={overhead} hidden={mapShown || shopOpen || open || settingsOpen || !!sessionId}>
+        <BondBadge overhead={overhead} hidden={mapShown || shopOpen || chatOpen || settingsOpen || !!sessionId}>
           <SpeechBubble />
         </BondBadge>
       ) : null}
@@ -270,7 +262,7 @@ export default function Home() {
       ) : null}
 
       {/* top-right cluster: appearance + goals + streak (hidden under surfaces) */}
-      {!mapShown && !shopOpen && !open && !sessionId ? (
+      {!mapShown && !shopOpen && !chatOpen && !sessionId ? (
         <View
           style={{ position: 'absolute', top: insets.top + 8, right: 16, zIndex: 25, flexDirection: 'row', gap: 8, alignItems: 'center' }}
           pointerEvents="box-none"
@@ -289,21 +281,12 @@ export default function Home() {
         </View>
       ) : null}
 
-      {/* Tap the character band above the drawer to close */}
-      {open ? (
-        <Pressable
-          onPress={closeDrawer}
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: DRAWER_TOP }}
-        />
-      ) : null}
-
       {/* iOS-style home dock — the sheets slide up OVER it; only the
           full-screen map reveal hides it */}
       <HomeDock
         hidden={mapShown || !!sessionId}
-        unread={unread}
         mapDot={!!unseenIsland}
-        onMessages={openDrawer}
+        onMessages={openChat}
         onShop={() => setShopOpen(true)}
         onMap={openMap}
         onGoals={() => setGoalsOpen(true)}
@@ -316,7 +299,7 @@ export default function Home() {
         onClose={closeMap}
         onChat={() => {
           closeMap();
-          openDrawer();
+          openChat();
         }}
         onTravel={travelTo}
         onStartSession={(id) => {
@@ -350,7 +333,7 @@ export default function Home() {
 
 
       {/* Daily-box flow (home only): streak splash → ground chest → rewards */}
-      {settings && !mapShown && !shopOpen && !open && !settingsOpen && !sessionId ? (
+      {settings && !mapShown && !shopOpen && !chatOpen && !settingsOpen && !sessionId ? (
         <>
           {boxStage === 'streak' ? (
             <StreakSplash streak={streakCount} onDone={() => setBoxStage('ground')} />
@@ -391,7 +374,7 @@ export default function Home() {
         onClose={() => setGoalsOpen(false)}
         onTalk={() => {
           setGoalsOpen(false);
-          openDrawer();
+          openChat();
         }}
       />
       <StreakModal open={streakModalOpen} onClose={() => setStreakModalOpen(false)} />
@@ -426,13 +409,26 @@ export default function Home() {
         />
       ) : null}
 
-      {/* Chat drawer */}
+      {/* Chat drawer — slides over the lower ~75%, undimmed so the mascot
+          (holding its phone) stays visible in the band above; tap that band
+          to close */}
+      {chatOpen ? (
+        <Pressable
+          onPress={closeChat}
+          accessibilityLabel="Close chat"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: DRAWER_TOP,
+            zIndex: 30,
+          }}
+        />
+      ) : null}
       <Animated.View
         style={[
           drawerStyle,
-          // explicit height (not bottom:0) so the Chat's flex-1 white panel
-          // fills the drawer on RN-web (top+bottom doesn't size flex children).
-          // cream bg + rounded top mirror web's drawer (bg-[#FBEFC9] rounded-t-[28px]).
           {
             position: 'absolute',
             left: 0,
@@ -440,24 +436,15 @@ export default function Home() {
             top: DRAWER_TOP,
             height: SCREEN_H - DRAWER_TOP,
             zIndex: 40,
-            backgroundColor: '#FBEFC9',
-            borderTopLeftRadius: 28,
-            borderTopRightRadius: 28,
-            overflow: 'hidden',
+            shadowColor: '#000',
+            shadowOpacity: 0.12,
+            shadowRadius: 24,
+            shadowOffset: { width: 0, height: -8 },
           },
         ]}
-        pointerEvents={open ? 'auto' : 'none'}
+        pointerEvents={chatOpen ? 'auto' : 'none'}
       >
-        {/* keyboard avoidance lives inside Chat (animated padding driven by
-            keyboard frame events — KAV can't measure inside this translated
-            absolute drawer) */}
-        <Pressable
-          onPress={closeDrawer}
-          className="absolute top-2.5 right-3 z-20 w-9 h-9 rounded-full bg-white/85 items-center justify-center"
-        >
-          <Ionicons name="chevron-down" size={20} color="rgba(17,17,17,0.6)" />
-        </Pressable>
-        <Chat transparentTop active={open} />
+        <ChatScreen onClose={closeChat} />
       </Animated.View>
 
       {/* DEV state controls (top-left chip → panel); renders nothing in prod */}

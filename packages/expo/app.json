@@ -2,6 +2,7 @@
   "expo": {
     "name": "sidekick-mobile",
     "slug": "sidekick-mobile",
+    "owner": "cjenr",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -10,7 +11,14 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.cadesix.sidekick-mobile"
+      "bundleIdentifier": "com.cadesix.sidekick-mobile",
+      "appleTeamId": "7EZKSK82YK",
+      "infoPlist": {
+        "NSHealthShareUsageDescription": "Sidekick reads daily steps, active energy, sleep, and workout summaries for personalized goal support. If you choose to connect, Sidekick stores up to 30 days of summaries and processes them with its AI provider.",
+        "NSLocationWhenInUseUsageDescription": "Sidekick uses only your city while the app is open, so it can understand what’s nearby and keep local suggestions relevant.",
+        "NSLocalNetworkUsageDescription": "Sidekick connects to your local development server while you test the app on this iPhone.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -20,7 +28,13 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "web": {
       "output": "static",
@@ -40,11 +54,88 @@
           }
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-secure-store",
+      "expo-notifications",
+      "expo-web-browser",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Sidekick uses only your city while the app is open, so it can understand what’s nearby and keep local suggestions relevant."
+        }
+      ],
+      "@react-native-community/datetimepicker",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Sidekick uses the microphone so you can send voice notes in chat."
+        }
+      ],
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "background": true
+        }
+      ],
+      [
+        "react-native-device-activity",
+        {
+          "appleTeamId": "7EZKSK82YK",
+          "appGroup": "group.com.cadesix.sidekick-mobile"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "bundleIdentifier": "com.cadesix.sidekick-mobile.ShieldConfiguration",
+                  "targetName": "ShieldConfiguration",
+                  "entitlements": {
+                    "com.apple.developer.family-controls": true,
+                    "com.apple.security.application-groups": [
+                      "group.com.cadesix.sidekick-mobile"
+                    ]
+                  }
+                },
+                {
+                  "bundleIdentifier": "com.cadesix.sidekick-mobile.ShieldAction",
+                  "targetName": "ShieldAction",
+                  "entitlements": {
+                    "com.apple.developer.family-controls": true,
+                    "com.apple.security.application-groups": [
+                      "group.com.cadesix.sidekick-mobile"
+                    ]
+                  }
+                },
+                {
+                  "bundleIdentifier": "com.cadesix.sidekick-mobile.ActivityMonitorExtension",
+                  "targetName": "ActivityMonitorExtension",
+                  "entitlements": {
+                    "com.apple.developer.family-controls": true,
+                    "com.apple.security.application-groups": [
+                      "group.com.cadesix.sidekick-mobile"
+                    ]
+                  }
+                },
+                {
+                  "bundleIdentifier": "com.cadesix.sidekick-mobile.NotificationService",
+                  "targetName": "NotificationService"
+                }
+              ]
+            }
+          }
+        },
+        "projectId": "a7d12cd6-d264-465b-9199-fbaacd985bcd"
+      }
     }
   }
 }

@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useMemo, useState } from 'react';
-import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -26,6 +26,7 @@ import {
   type Rarity,
 } from '@sidekick/core';
 
+import { Pressable } from './Pressable';
 import { useDeferredFlag } from '../lib/useDeferredFlag';
 import { MANIFEST } from '../three/cosmetics-manifest';
 import { shopRender } from '../three/shop-renders';

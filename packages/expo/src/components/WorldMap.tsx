@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
   interpolate,
@@ -21,6 +21,7 @@ import {
   sessionFor,
 } from '@sidekick/core';
 
+import { Pressable } from './Pressable';
 import { type EnvironmentId } from '../three/biomes';
 import { ISLANDS, type Island } from '../lib/islands';
 import { loadSettings } from '../three/settings';
