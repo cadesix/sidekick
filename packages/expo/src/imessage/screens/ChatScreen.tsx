@@ -2,6 +2,7 @@ import { BlurView } from "expo-blur";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -22,6 +23,8 @@ import { useSidekickChat } from "../useSidekickChat";
 import { colors } from "../theme";
 import type { AudioAttachment, Message, ReactionType } from "../types";
 import { ChatInputBar } from "../components/ChatInputBar";
+import { Glass } from "../components/Glass";
+import { Icon } from "../components/Icon";
 import { SponsoredCard } from "~/components/SponsoredCard";
 import {
 	MessageRow,
@@ -38,6 +41,7 @@ const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
 
 const TYPING_ITEM = "typing";
 const ENTRY_ANIMATION_WINDOW = 1200;
+const SHEET_HEADER_HEIGHT = 54;
 
 /** Fraction of the screen the chat sheet covers; the mascot lives in the band above. */
 export const CHAT_SHEET_DETENT = 0.75;
@@ -50,12 +54,15 @@ interface OverlayState {
 
 /**
  * The chat, hosted inside the home screen's slide-up drawer (plain RN views,
- * so it renders on web too). Headerless: the mascot in the band above the
- * drawer IS the conversation identity. The composer stack is pinned to the
- * drawer bottom and rides the keyboard via the keyboard-controller translate.
+ * so it renders on web too). The mascot in the band above the drawer IS the
+ * conversation identity, so there's no iMessage-style header — just a slim row
+ * of glass buttons: close on the left, settings on the right. The composer
+ * stack is pinned to the drawer bottom and rides the keyboard via the
+ * keyboard-controller translate.
  */
-export function ChatScreen() {
+export function ChatScreen({ onClose }: { onClose: () => void }) {
 	const insets = useSafeAreaInsets();
+	const router = useRouter();
 	const { thread, messages, composerAd, typing, send, addReaction, removeMessage } =
 		useSidekickChat();
 
@@ -274,6 +281,37 @@ export function ChatScreen() {
 				/>
 			) : null}
 
+			<View style={styles.header} pointerEvents="box-none">
+				<LinearGradient
+					colors={["rgba(255,255,255,0.96)", "rgba(255,255,255,0.82)", "rgba(255,255,255,0)"]}
+					locations={[0, 0.55, 1]}
+					style={styles.headerFade}
+					pointerEvents="none"
+				/>
+				<View style={styles.headerRow} pointerEvents="box-none">
+					<Glass isInteractive style={styles.glassButton}>
+						<Pressable
+							hitSlop={12}
+							accessibilityLabel="Close chat"
+							onPress={onClose}
+							style={styles.glassPressable}
+						>
+							<Icon name="xmark" size={18} color={colors.blue} strokeWidth={2.5} />
+						</Pressable>
+					</Glass>
+					<Glass isInteractive style={styles.glassButton}>
+						<Pressable
+							hitSlop={12}
+							accessibilityLabel="Settings"
+							onPress={() => router.push("/settings")}
+							style={styles.glassPressable}
+						>
+							<Icon name="ellipsis" size={20} color={colors.blue} strokeWidth={2.5} />
+						</Pressable>
+					</Glass>
+				</View>
+			</View>
+
 			{plusOpen ? (
 				<Pressable
 					style={StyleSheet.absoluteFill}
@@ -353,7 +391,7 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 16,
 	},
 	topSpacer: {
-		height: 28,
+		height: SHEET_HEADER_HEIGHT + 16,
 	},
 	footer: {
 		position: "absolute",
@@ -370,5 +408,37 @@ const styles = StyleSheet.create({
 	},
 	replyScrim: {
 		backgroundColor: "rgba(255,255,255,0.5)",
+	},
+	header: {
+		position: "absolute",
+		top: 0,
+		left: 0,
+		right: 0,
+		zIndex: 10,
+	},
+	headerFade: {
+		position: "absolute",
+		top: 0,
+		left: 0,
+		right: 0,
+		height: SHEET_HEADER_HEIGHT + 30,
+	},
+	headerRow: {
+		height: SHEET_HEADER_HEIGHT,
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		paddingHorizontal: 12,
+	},
+	glassButton: {
+		width: 42,
+		height: 42,
+		borderRadius: 21,
+		borderCurve: "continuous",
+	},
+	glassPressable: {
+		flex: 1,
+		alignItems: "center",
+		justifyContent: "center",
 	},
 });

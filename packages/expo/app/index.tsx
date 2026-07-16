@@ -380,7 +380,7 @@ export default function Home() {
         ]}
         pointerEvents={chatOpen ? 'auto' : 'none'}
       >
-        <ChatScreen />
+        <ChatScreen onClose={closeChat} />
       </Animated.View>
 
       {/* DEV state controls (top-left chip → panel); renders nothing in prod */}
