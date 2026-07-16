@@ -4,7 +4,6 @@ import { z } from "zod";
 import { folders } from "@sidekick/db";
 import type { Database } from "@sidekick/db";
 import {
-  createDocument,
   deleteDocument,
   getDocument,
   listDocuments,

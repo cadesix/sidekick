@@ -18,8 +18,6 @@ interface ChatInputBarProps {
 	onRecordingChange: (recording: boolean) => void;
 }
 
-export const INPUT_BAR_MIN_HEIGHT = 56;
-
 export function ChatInputBar({
 	replyActive,
 	onSendText,
@@ -56,12 +54,11 @@ export function ChatInputBar({
 
 	// While recording, the detached button becomes an X that discards the take.
 	const handleLeftButton = () => {
+		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 		if (recording) {
-			Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 			onRecordingChange(false);
 			return;
 		}
-		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 		onTogglePlusMenu();
 	};
 

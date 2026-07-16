@@ -3,7 +3,6 @@ import {
   type Database,
   conversations,
   devicePushTokens,
-  messages,
   notificationPreferences,
   notificationOutbox,
   proactiveTurns,

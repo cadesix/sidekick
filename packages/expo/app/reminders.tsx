@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { GestureHandlerRootView, Swipeable } from "react-native-gesture-handler";
 import Animated, { FadeOut, LinearTransition } from "react-native-reanimated";
@@ -41,6 +41,12 @@ const WEEKDAY_INITIALS: Record<WeekdayCode, string> = {
   SA: "S",
   SU: "S",
 };
+
+const SECTIONS: { key: keyof ReminderSections; title: string }[] = [
+  { key: "today", title: "Today" },
+  { key: "upcoming", title: "Upcoming" },
+  { key: "paused", title: "Paused" },
+];
 
 function SectionLabel({ title }: { title: string }) {
   return (
@@ -341,35 +347,22 @@ export default function Reminders() {
 
           {isEmpty ? <EmptyState /> : null}
 
-          {sections && sections.today.length > 0 ? <SectionLabel title="Today" /> : null}
-          {(sections?.today ?? []).map((reminder) => (
-            <SwipeableRow
-              key={reminder.id}
-              reminder={reminder}
-              onOpen={() => setEditing(reminder)}
-              onDelete={() => onDelete(reminder.id)}
-            />
-          ))}
-
-          {sections && sections.upcoming.length > 0 ? <SectionLabel title="Upcoming" /> : null}
-          {(sections?.upcoming ?? []).map((reminder) => (
-            <SwipeableRow
-              key={reminder.id}
-              reminder={reminder}
-              onOpen={() => setEditing(reminder)}
-              onDelete={() => onDelete(reminder.id)}
-            />
-          ))}
-
-          {sections && sections.paused.length > 0 ? <SectionLabel title="Paused" /> : null}
-          {(sections?.paused ?? []).map((reminder) => (
-            <SwipeableRow
-              key={reminder.id}
-              reminder={reminder}
-              onOpen={() => setEditing(reminder)}
-              onDelete={() => onDelete(reminder.id)}
-            />
-          ))}
+          {SECTIONS.map(({ key, title }) => {
+            const rows = sections?.[key] ?? [];
+            return rows.length > 0 ? (
+              <Fragment key={key}>
+                <SectionLabel title={title} />
+                {rows.map((reminder) => (
+                  <SwipeableRow
+                    key={reminder.id}
+                    reminder={reminder}
+                    onOpen={() => setEditing(reminder)}
+                    onDelete={() => onDelete(reminder.id)}
+                  />
+                ))}
+              </Fragment>
+            ) : null;
+          })}
         </ScrollView>
 
         {editing ? (

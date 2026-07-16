@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { type Database, actionItems, checkIns, goals, progressEvents, users } from "@sidekick/db";
+import { type Database, actionItems, checkIns, goals, progressEvents } from "@sidekick/db";
 import { type HealthWorkout, healthWorkoutSchema, userTimezone } from "@sidekick/shared";
 
 /**

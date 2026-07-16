@@ -1,4 +1,4 @@
-import { and, desc, eq, lte, sql } from "drizzle-orm";
+import { and, desc, eq, lte } from "drizzle-orm";
 import { generateText, type LanguageModel } from "ai";
 import {
   type Database,

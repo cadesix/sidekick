@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import { z } from "zod";
-import { actionItems, checkIns, goals, progressEvents, users } from "@sidekick/db";
+import { actionItems, checkIns, goals, progressEvents } from "@sidekick/db";
 import type { Database } from "@sidekick/db";
 import {
   cadenceSchema,

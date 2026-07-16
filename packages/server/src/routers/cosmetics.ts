@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { type Database, checkIns, userCosmetics, users } from "@sidekick/db";
 import { getCosmetic, localDate, userTimezone } from "@sidekick/shared";

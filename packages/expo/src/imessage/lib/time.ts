@@ -56,26 +56,6 @@ export const formatSeparator = (timestamp: number, now: number): SeparatorLabel 
 	return { day, time: `at ${time}` };
 };
 
-// Conversation list right-aligned label: time today, "Yesterday", weekday, then date.
-export const formatListTime = (timestamp: number, now: number): string => {
-	const dayStart = startOfDay(timestamp);
-	const todayStart = startOfDay(now);
-	if (dayStart === todayStart) {
-		return formatClockTime(timestamp);
-	}
-	if (todayStart - dayStart === DAY) {
-		return "Yesterday";
-	}
-	if (todayStart - dayStart < 7 * DAY) {
-		return WEEKDAYS[new Date(timestamp).getDay()];
-	}
-	return new Date(timestamp).toLocaleDateString(undefined, {
-		month: "numeric",
-		day: "numeric",
-		year: "2-digit",
-	});
-};
-
 export const formatDuration = (seconds: number): string => {
 	const whole = Math.max(0, Math.round(seconds));
 	const minutes = Math.floor(whole / 60);

@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { reminders, users } from "@sidekick/db";
+import { reminders } from "@sidekick/db";
 import type { Database } from "@sidekick/db";
 import {
   computeNextFireAt,
