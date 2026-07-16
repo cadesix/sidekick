@@ -84,7 +84,6 @@ for (const mesh of root.listMeshes()) {
 if (!bodyPrim) throw new Error('no body primitive');
 
 const pos = bodyPrim.getAttribute('POSITION');
-const nrm = bodyPrim.getAttribute('NORMAL');
 const jo = bodyPrim.getAttribute('JOINTS_0');
 const we = bodyPrim.getAttribute('WEIGHTS_0');
 const idx = bodyPrim.getIndices();
