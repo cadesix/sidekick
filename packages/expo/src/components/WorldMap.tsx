@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   BOND_MAX,
+  isIslandUnlocked,
   isSessionStartable,
   nextSession,
   sessionFor,
@@ -124,9 +125,10 @@ export function WorldMap({
   const sessions = useSidekickContext((s) => s.sessions);
   // the island unlocked since they last looked — gets a "new" bubble
   const unseenIsland = useSidekickContext((s) => s.unseenIsland);
-  // real gating: Frostpeak is always open; every other island unlocks by
-  // completing its guided session (mirrors web isUnlocked)
-  const isUnlocked = (id: string) => id === 'frostpeak' || !!sessions[id]?.done;
+  // real gating: the first island is open from launch; every other unlocks by
+  // completing its guided session. The rule lives in @sidekick/core so the map
+  // and the store can't drift apart on it.
+  const isUnlocked = (id: string) => isIslandUnlocked(sessions, id);
 
   // the top notification rides in with the locked-island modal
   const notifShown = !!selected && !isUnlocked(selected.id);
@@ -312,6 +314,29 @@ export function WorldMap({
                   >
                     {unlocked ? (
                       <>
+                        {/* freshly opened and not yet looked at — matches the
+                            dot on the dock's map icon, and clears with it */}
+                        {a.id === unseenIsland ? (
+                          <View
+                            pointerEvents="none"
+                            style={{
+                              position: 'absolute',
+                              top: -9,
+                              right: 30,
+                              zIndex: 2,
+                              borderRadius: 999,
+                              backgroundColor: '#FF3B30',
+                              paddingHorizontal: 6,
+                              paddingVertical: 1.5,
+                              borderWidth: 1.5,
+                              borderColor: 'rgba(255,255,255,0.9)',
+                            }}
+                          >
+                            <Text style={{ fontSize: 9, fontWeight: '800', color: '#fff', letterSpacing: 0.4 }}>
+                              NEW
+                            </Text>
+                          </View>
+                        ) : null}
                         <View
                           style={{
                             width: 36,

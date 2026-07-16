@@ -105,12 +105,9 @@ for (let i = 0; i < pos.getCount(); i++) {
 }
 
 const V = [];
-const N = [];
 for (let i = 0; i < pos.getCount(); i++) {
   pos.getElement(i, tmp);
   V.push(toCon(tmp));
-  nrm.getElement(i, tmp);
-  N.push(toCon(tmp)); // pure axis swap, so normals remap the same way
 }
 
 const tris = [];
@@ -153,9 +150,6 @@ function halton(i, b) {
   }
   return r;
 }
-// tent distribution in -1..1: peaks at 0, so most stars hug the contour
-const tent = (i, b1, b2) => halton(i, b1) + halton(i, b2) - 1;
-
 function traceContour(m, w, h) {
   let sx = -1, sy = -1;
   for (let y = 0; y < h && sy < 0; y++) {
@@ -267,13 +261,35 @@ function surfaceZ(x, y, frontmost = true) {
 }
 
 // Walk a traced contour at even arc length and drop each point onto the head.
-function traceLoop(pathPx, count, toXY, zAt) {
+//
+// A sample is lost when its ray misses every triangle. A few is normal (the
+// contour rides the outermost pixel), but silence here is dangerous: a model or
+// face-sheet change could gut a feature and still write a plausible-looking
+// star-face.json, with the renderer happily closing a malformed loop. So the
+// loss is always reported, and a big one fails the build instead of shipping.
+const MISS_TOLERANCE = 0.1;
+
+function traceLoop(name, pathPx, count, toXY, zAt) {
   const out = [];
+  let missed = 0;
   for (const { p } of walk(pathPx, count)) {
     const [x, y] = toXY(p[0], p[1]);
     const z = zAt(x, y);
-    if (z === null) continue;
+    if (z === null) {
+      missed++;
+      continue;
+    }
     out.push(norm([x, y, z]));
+  }
+  if (missed) {
+    const detail = `${name}: ${missed}/${count} samples missed the head surface`;
+    if (missed / count > MISS_TOLERANCE) {
+      throw new Error(
+        `[star-face] ${detail} — over ${MISS_TOLERANCE * 100}%, so the traced feature is unreliable. ` +
+          `Check the GLB/face sheet before regenerating.`,
+      );
+    }
+    console.warn(`[star-face] ${detail} (within tolerance)`);
   }
   return out;
 }
@@ -294,7 +310,7 @@ const rimZ = (x, y) => {
   }
   return null;
 };
-const silhouette = traceLoop(traceContour(mask, RASTER, RASTER), SIL_POINTS, (px, py) => [unSx(px), unSy(py)], rimZ);
+const silhouette = traceLoop('head', traceContour(mask, RASTER, RASTER), SIL_POINTS, (px, py) => [unSx(px), unSy(py)], rimZ);
 
 // ------------------------------------------------------------ face from sheet
 const img = sharp(SHEET);
@@ -372,9 +388,9 @@ const faceZ = (x, y) => {
 
 const loops = [
   { name: 'head', points: silhouette },
-  { name: 'eyeL', points: traceLoop(blobPath(eyePx[0]), EYE_POINTS, faceXY, faceZ) },
-  { name: 'eyeR', points: traceLoop(blobPath(eyePx[1]), EYE_POINTS, faceXY, faceZ) },
-  { name: 'mouth', points: traceLoop(blobPath(mouthPx), MOUTH_POINTS, faceXY, faceZ) },
+  { name: 'eyeL', points: traceLoop('eyeL', blobPath(eyePx[0]), EYE_POINTS, faceXY, faceZ) },
+  { name: 'eyeR', points: traceLoop('eyeR', blobPath(eyePx[1]), EYE_POINTS, faceXY, faceZ) },
+  { name: 'mouth', points: traceLoop('mouth', blobPath(mouthPx), MOUTH_POINTS, faceXY, faceZ) },
 ];
 
 // ------------------------------------------------------------------- the dust

@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 import {
+  islandOpensWith,
   isSessionDone as coreIsSessionDone,
   isSessionStartable as coreIsSessionStartable,
   nextSession as coreNextSession,
@@ -70,7 +71,7 @@ export type SidekickContext = {
 // to a trait, then to something honest, when the extraction gave us nothing.
 export function astralNews(astral: Astral | null): string {
   if (astral?.archetype) return `astral card updated ✦ i've got you as "${astral.archetype}" now`;
-  if (astral?.traits.length) return `astral card updated ✦ you're more ${astral.traits[0]} than i realised`;
+  if (astral?.traits?.length) return `astral card updated ✦ you're more ${astral.traits[0]} than i realised`;
   return 'astral card updated ✦ i feel like i know you a bit better now';
 }
 
@@ -101,8 +102,11 @@ export const useSidekickContext = create<SidekickContext>()(
           // only overwrite the card when this session produced one — a failed
           // extraction must not wipe the reading earlier sessions earned
           astral: astral ?? st.astral,
-          // this session's island just opened — flag it until the map is seen
-          unseenIsland: def.id,
+          // Flag the island until the map is seen — but only if this
+          // completion actually OPENED it. The first island is unlocked from
+          // launch, so finishing its session opens nothing new and must not
+          // claim otherwise.
+          unseenIsland: islandOpensWith(def.id) ? def.id : st.unseenIsland,
           sessions: {
             ...st.sessions,
             [def.id]: {

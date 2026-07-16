@@ -31,7 +31,14 @@ const SIZE = 44;
 // centre-screen on a phone, so any fixed rightward offset ran the label off the
 // edge. Centring is measured, not guessed, because the row's width moves with
 // the score ("bond score 5%" vs "bond score 100%").
-const OFFSET_Y = -64;
+//
+// Vertically it must clear the speech bubble, which bottom-anchors at the same
+// head point and grows UPWARD as its line wraps (OverheadSpeech). Centring the
+// row removed the sideways clearance the old offset had, so the star started
+// painting over what the sidekick was saying. This sits above the bubble's
+// realistic reach: ~100px of wrapped text, plus the star's half-height and its
+// vertical drift.
+const OFFSET_Y = -150;
 
 // A lazy drift so it feels like it's floating rather than pinned. Two sines at
 // different rates (and out of phase) trace a slow wander instead of an obvious

@@ -184,6 +184,18 @@ export const sessionState = (sessions: SessionsState, id: string): SessionState 
 
 export const isSessionDone = (sessions: SessionsState, id: string): boolean => sessionState(sessions, id).done;
 
+// The first island is where you START — it's open from launch, and finishing its
+// session opens nothing new. Every other island opens when its own session
+// completes. Both facts were hardcoded as a bare 'frostpeak' literal at each
+// call site; they live here so the ladder owns its own rule.
+export const isIslandOpenAtStart = (id: string): boolean => SESSIONS[0]?.id === id;
+
+// does an island become newly available when its session completes?
+export const islandOpensWith = (id: string): boolean => !isIslandOpenAtStart(id);
+
+export const isIslandUnlocked = (sessions: SessionsState, id: string): boolean =>
+	isIslandOpenAtStart(id) || isSessionDone(sessions, id);
+
 // ladder: startable once every session before it (in SESSIONS order) is done
 export function isSessionStartable(sessions: SessionsState, id: string): boolean {
 	for (const s of SESSIONS) {
