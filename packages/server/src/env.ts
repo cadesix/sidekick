@@ -21,6 +21,10 @@ export type ServerEnv = {
   /** Paid inventory is opt-in; absent/false keeps Gravity in test mode. */
   GRAVITY_PRODUCTION?: string;
   EXPO_ACCESS_TOKEN?: string;
+  /** Resend API key for email OTP (19-auth.md); unset ⇒ codes logged to console. */
+  RESEND_API_KEY?: string;
+  /** Verified Resend sending address for email OTP (19-auth.md). */
+  RESEND_FROM_EMAIL?: string;
 };
 
 export function readEnv(): ServerEnv {
@@ -37,5 +41,7 @@ export function readEnv(): ServerEnv {
     GRAVITY_API_URL: env.GRAVITY_API_URL,
     GRAVITY_PRODUCTION: env.GRAVITY_PRODUCTION,
     EXPO_ACCESS_TOKEN: env.EXPO_ACCESS_TOKEN,
+    RESEND_API_KEY: env.RESEND_API_KEY,
+    RESEND_FROM_EMAIL: env.RESEND_FROM_EMAIL,
   };
 }

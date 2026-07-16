@@ -2,8 +2,8 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { type Database, adEvents, users } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
-import { type SponsoredAd, registerDevice, serveAd } from "@sidekick/server";
-import { createConversation, makeCaller, textModel } from "./helpers";
+import { type SponsoredAd, serveAd } from "@sidekick/server";
+import { createConversation, makeCaller, textModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -27,7 +27,7 @@ const SAMPLE_AD: SponsoredAd = {
 };
 
 async function servedAd(deviceId: string): Promise<{ userId: string; adUnitId: string }> {
-  const { userId } = await registerDevice(db, { deviceId });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const served = await serveAd(db, {
     userId,
@@ -62,7 +62,7 @@ test("impression and click endpoints write ad_events and echo the network urls",
 
 test("a user cannot log events against another user's ad", async () => {
   const { adUnitId } = await servedAd("track-owner");
-  const { userId: intruder } = await registerDevice(db, { deviceId: "track-intruder" });
+  const intruder = await createUser(db);
   const caller = makeCaller(db, textModel("hi"), intruder);
 
   const result = await caller.ads.impression({ adUnitId });

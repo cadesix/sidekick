@@ -11,8 +11,8 @@ import {
   buildContextView,
   decodeDeviceToolCalls,
 } from "@sidekick/shared";
-import { beginTurn, continueTurn, recordDeviceToolResult, registerDevice } from "@sidekick/server";
-import { createConversation, testStorage } from "./helpers";
+import { beginTurn, continueTurn, recordDeviceToolResult } from "@sidekick/server";
+import { createConversation, testStorage, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -57,7 +57,7 @@ function scriptedStreamModel(scripts: LanguageModelV2StreamPart[][]): LanguageMo
 }
 
 async function makeUser(deviceId: string): Promise<string> {
-  const { userId } = await registerDevice(db, { deviceId });
+  const userId = await createUser(db);
   await db.update(users).set({ name: "Maya", sidekickName: "Kick" }).where(eq(users.id, userId));
   return userId;
 }

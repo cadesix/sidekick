@@ -10,11 +10,10 @@ import {
   hasFrequencyHeadroom,
   markMessagesSensitive,
   recentWindowIsSensitive,
-  registerDevice,
   runAdDecision,
   serveAd,
 } from "@sidekick/server";
-import { createConversation } from "./helpers";
+import { createConversation, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -81,7 +80,7 @@ test("region-aware consent defaults (05: US opt-out, everywhere else opt-in)", (
 });
 
 test("a US user with no recorded choice gets ads (opt-out default) end to end", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "elig-us-default" });
+  const userId = await createUser(db);
   await db
     .update(users)
     .set({ ageBracket: "25-34", lastCountry: "US", timezone: "America/New_York" })
@@ -97,7 +96,7 @@ test("a US user with no recorded choice gets ads (opt-out default) end to end", 
 });
 
 test("a non-US user with no recorded choice never triggers a request", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "elig-eea-default" });
+  const userId = await createUser(db);
   await db
     .update(users)
     .set({ ageBracket: "25-34", lastCountry: "DE" })
@@ -113,7 +112,7 @@ test("a non-US user with no recorded choice never triggers a request", async () 
 });
 
 test("a minor NEVER triggers an ad request", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "elig-minor" });
+  const userId = await createUser(db);
   await db
     .update(users)
     .set({ ageBracket: "under-18", personalizedAdsConsent: true })
@@ -130,7 +129,7 @@ test("a minor NEVER triggers an ad request", async () => {
 });
 
 test("no consent → no request", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "elig-noconsent" });
+  const userId = await createUser(db);
   await db.update(users).set({ ageBracket: "25-34" }).where(eq(users.id, userId));
   const conversationId = await createConversation(db, userId);
   const turnMessageId = await seedMessages(conversationId, 2);
@@ -143,7 +142,7 @@ test("no consent → no request", async () => {
 });
 
 test("flag off → no request", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "elig-flagoff" });
+  const userId = await createUser(db);
   await db
     .update(users)
     .set({ ageBracket: "25-34", personalizedAdsConsent: true })
@@ -162,7 +161,7 @@ test("flag off → no request", async () => {
 });
 
 test("a sensitive recent moment suppresses the ad before any request", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "elig-sensitive" });
+  const userId = await createUser(db);
   await db
     .update(users)
     .set({ ageBracket: "25-34", personalizedAdsConsent: true })
@@ -185,7 +184,7 @@ test("a sensitive recent moment suppresses the ad before any request", async () 
 });
 
 test("frequency caps: too soon after the last ad, and the daily ceiling", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "elig-freq" });
+  const userId = await createUser(db);
   await db
     .update(users)
     .set({ ageBracket: "25-34", personalizedAdsConsent: true, timezone: "UTC" })

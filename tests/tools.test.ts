@@ -4,8 +4,7 @@ import { z } from "zod";
 import { type Database, memories, messages } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
 import { defineTool, dispatchTool, type ToolContext } from "@sidekick/shared";
-import { registerDevice } from "@sidekick/server";
-import { createConversation, makeCaller, textModel } from "./helpers";
+import { createConversation, makeCaller, textModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -42,7 +41,7 @@ const deviceTool = defineTool({
 });
 
 test("a server tool executes against Postgres and returns its result", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "tool-device-1" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const ctx: ToolContext = { db, userId, conversationId };
 
@@ -55,7 +54,7 @@ test("a server tool executes against Postgres and returns its result", async () 
 });
 
 test("a client tool has no server execution and round-trips via deviceToolResult", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "tool-device-2" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const ctx: ToolContext = { db, userId, conversationId };
 

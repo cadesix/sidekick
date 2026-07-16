@@ -1,7 +1,12 @@
 import { Image } from "expo-image";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeInDown, FadeOut } from "react-native-reanimated";
-import { type PendingAttachment, truncateFilename } from "../lib/attachments";
+import {
+	fileTypeLabel,
+	formatBytes,
+	type PendingAttachment,
+	truncateFilename,
+} from "../lib/attachments";
 import { colors } from "../theme";
 import { Icon } from "./Icon";
 
@@ -9,7 +14,7 @@ function RemoveBadge({ onPress }: { onPress: () => void }) {
 	return (
 		<Pressable
 			onPress={onPress}
-			hitSlop={6}
+			hitSlop={8}
 			style={styles.removeBadge}
 			accessibilityLabel="Remove attachment"
 		>
@@ -18,10 +23,29 @@ function RemoveBadge({ onPress }: { onPress: () => void }) {
 	);
 }
 
+/** An iMessage-style file chip: an icon tile, the filename, and "PDF · 2.3 MB". */
+function FileCard({ attachment }: { attachment: PendingAttachment }) {
+	return (
+		<View style={styles.fileCard}>
+			<View style={styles.fileIconTile}>
+				<Icon name="doc" size={20} color={colors.blue} />
+			</View>
+			<View style={styles.fileText}>
+				<Text style={styles.fileName} numberOfLines={1}>
+					{truncateFilename(attachment.filename, 16)}
+				</Text>
+				<Text style={styles.fileMeta} numberOfLines={1}>
+					{fileTypeLabel(attachment.mime, attachment.filename)} · {formatBytes(attachment.bytes)}
+				</Text>
+			</View>
+		</View>
+	);
+}
+
 /**
  * Picked attachments waiting above the input bar (09 §composer): image
- * thumbnails and file pills, dimmed with a spinner until ingest finishes; a
- * failed chip's caption becomes the tappable retry line.
+ * thumbnails and file cards, dimmed with a spinner only while ingest is still
+ * settling; a failed chip's caption becomes the tappable retry line.
  */
 export function PendingAttachmentRow({
 	attachments,
@@ -58,11 +82,8 @@ export function PendingAttachmentRow({
 										contentFit="cover"
 									/>
 								) : (
-									<View style={[styles.pill, settling ? styles.dimmed : null]}>
-										<Icon name="doc" size={15} color={colors.label} />
-										<Text style={styles.pillText} numberOfLines={1}>
-											{truncateFilename(attachment.filename, 18)}
-										</Text>
+									<View style={settling ? styles.dimmed : null}>
+										<FileCard attachment={attachment} />
 									</View>
 								)}
 								{settling ? (
@@ -88,33 +109,59 @@ export function PendingAttachmentRow({
 	);
 }
 
+const THUMBNAIL = 62;
+
 const styles = StyleSheet.create({
 	chips: {
 		gap: 10,
 		alignItems: "center",
 		paddingHorizontal: 14,
-		paddingTop: 8,
+		paddingTop: 10,
 		paddingBottom: 4,
 	},
 	thumbnail: {
-		width: 56,
-		height: 56,
-		borderRadius: 12,
+		width: THUMBNAIL,
+		height: THUMBNAIL,
+		borderRadius: 16,
+		borderCurve: "continuous",
+		borderWidth: StyleSheet.hairlineWidth,
+		borderColor: "rgba(0,0,0,0.08)",
+		backgroundColor: colors.gray6,
 	},
-	pill: {
+	fileCard: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 6,
-		height: 34,
-		paddingHorizontal: 12,
-		borderRadius: 17,
-		backgroundColor: colors.gray5,
+		gap: 10,
+		height: THUMBNAIL,
+		width: 168,
+		paddingHorizontal: 10,
+		borderRadius: 16,
+		borderCurve: "continuous",
+		backgroundColor: colors.gray6,
+		borderWidth: StyleSheet.hairlineWidth,
+		borderColor: "rgba(0,0,0,0.08)",
 	},
-	pillText: {
-		fontSize: 13,
-		fontWeight: "500",
+	fileIconTile: {
+		width: 40,
+		height: 40,
+		borderRadius: 10,
+		borderCurve: "continuous",
+		backgroundColor: "#FFFFFF",
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	fileText: {
+		flex: 1,
+		gap: 2,
+	},
+	fileName: {
+		fontSize: 14,
+		fontWeight: "600",
 		color: colors.label,
-		maxWidth: 150,
+	},
+	fileMeta: {
+		fontSize: 12,
+		color: colors.secondaryLabel,
 	},
 	dimmed: {
 		opacity: 0.5,
@@ -126,12 +173,14 @@ const styles = StyleSheet.create({
 	},
 	removeBadge: {
 		position: "absolute",
-		top: -5,
-		right: -5,
-		width: 18,
-		height: 18,
-		borderRadius: 9,
-		backgroundColor: colors.gray,
+		top: -6,
+		right: -6,
+		width: 22,
+		height: 22,
+		borderRadius: 11,
+		backgroundColor: "rgba(0,0,0,0.55)",
+		borderWidth: 1.5,
+		borderColor: "#FFFFFF",
 		alignItems: "center",
 		justifyContent: "center",
 	},

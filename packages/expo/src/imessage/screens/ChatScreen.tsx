@@ -362,7 +362,6 @@ export function ChatScreen({ onClose }: { onClose: () => void }) {
 					style={styles.inputFade}
 					pointerEvents="none"
 				/>
-				{plusOpen ? <PlusDrawer onSelect={handleDrawerAction} /> : null}
 				<Animated.View
 					style={inputBarPaddingStyle}
 					onLayout={(event) => {
@@ -379,16 +378,22 @@ export function ChatScreen({ onClose }: { onClose: () => void }) {
 						onRemove={attachments.remove}
 						onRetry={attachments.retry}
 					/>
-					<ChatInputBar
-						replyActive={replyTo !== undefined}
-						attachmentState={attachmentState}
-						onSendText={handleSendText}
-						onSendAudio={handleSendAudio}
-						onTogglePlusMenu={() => setPlusOpen((open) => !open)}
-						plusMenuOpen={plusOpen}
-						recording={recording}
-						onRecordingChange={setRecording}
-					/>
+					{/* The drawer anchors to the input bar (not the growing footer), so it
+					    always opens the same distance above the plus button — staged
+					    attachments and reply chains no longer push it up. */}
+					<View>
+						{plusOpen ? <PlusDrawer onSelect={handleDrawerAction} /> : null}
+						<ChatInputBar
+							replyActive={replyTo !== undefined}
+							attachmentState={attachmentState}
+							onSendText={handleSendText}
+							onSendAudio={handleSendAudio}
+							onTogglePlusMenu={() => setPlusOpen((open) => !open)}
+							plusMenuOpen={plusOpen}
+							recording={recording}
+							onRecordingChange={setRecording}
+						/>
+					</View>
 				</Animated.View>
 			</Animated.View>
 

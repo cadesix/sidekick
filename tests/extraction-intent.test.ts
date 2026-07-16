@@ -2,8 +2,8 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { eq } from "drizzle-orm";
 import { type Database, memories, messages, purchaseIntents } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
-import { registerDevice, runExtraction } from "@sidekick/server";
-import { createConversation, objectModel } from "./helpers";
+import { runExtraction } from "@sidekick/server";
+import { createConversation, objectModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -17,7 +17,7 @@ afterAll(async () => {
 });
 
 test("an intent op writes a purchase_intents row with a strength and a TTL, not a memory", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "intent-1" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   await db
     .insert(messages)
@@ -44,7 +44,7 @@ test("an intent op writes a purchase_intents row with a strength and a TTL, not 
 });
 
 test("an intent op with no content is skipped", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "intent-2" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   await db.insert(messages).values({ conversationId, role: "user", content: "hey", tokenEstimate: 2 });
 

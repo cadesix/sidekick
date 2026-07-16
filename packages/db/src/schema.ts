@@ -60,16 +60,17 @@ export const memoryKind = pgEnum("memory_kind", [
 ]);
 
 /**
- * A user. Onboarding-derived columns (name, ageBracket, gender, personality,
- * sidekickName, sidekickColor) are nullable because an account exists from the
- * first anonymous device registration, before the funnel fills them in
- * (01-architecture.md "anonymous device account"). The funnel's cold-start
- * transaction (user-memory.md §6) populates them.
+ * A user. Created by the first successful sign-in (19-auth.md) — email/phone
+ * come from the provider identity. Onboarding-derived columns (name, ageBracket,
+ * gender, personality, sidekickName, sidekickColor) are nullable because a fresh
+ * signup has a blank profile until the funnel's cold-start transaction
+ * (user-memory.md §6) populates them.
  */
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").unique(),
-  passwordHash: text("password_hash"),
+  phone: text("phone").unique(),
+  emailVerified: timestamp("email_verified", { withTimezone: true, mode: "date" }),
   name: text("name"),
   ageBracket: text("age_bracket"),
   gender: text("gender"),
@@ -106,9 +107,10 @@ export const users = pgTable("users", {
 });
 
 /**
- * Anonymous auth: one row per device, mapping an opaque bearer token to a user.
- * Registration is idempotent on deviceId, so a reinstall-less relaunch reuses
- * the same identity.
+ * Post-auth device metadata (19-auth.md): one row per installation, mapping a
+ * physical device to the user currently signed in on it. Push-token registration
+ * resolves through `(userId, deviceId)`. Upserted on `deviceId`, repointing
+ * `userId` so a device that signs into a different account moves with it.
  */
 export const devices = pgTable("devices", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -117,9 +119,66 @@ export const devices = pgTable("devices", {
     .references(() => users.id),
   deviceId: text("device_id").notNull().unique(),
   publicKey: text("public_key"),
-  token: text("token").notNull().unique(),
   createdAt: now(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+});
+
+/**
+ * Session credential (19-auth.md): the SHA-256 hash of an opaque bearer token,
+ * never the token itself. 30-day sliding expiry — every authed request pushes
+ * `expiresAt` forward. Logout soft-deletes via `deletedAt`.
+ */
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    hashedToken: text("hashed_token").notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
+    createdAt: now(),
+  },
+  (t) => [index("auth_sessions_user_id_idx").on(t.userId)],
+);
+
+/**
+ * A provider identity mapped to a user (19-auth.md). `(provider,
+ * providerAccountId)` is unique — the find-or-create key that signs an existing
+ * identity in or creates a new user. No merging.
+ */
+export const accounts = pgTable(
+  "accounts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    providerAccountId: text("provider_account_id").notNull(),
+    createdAt: now(),
+  },
+  (t) => [
+    uniqueIndex("accounts_provider_provider_account_id_idx").on(t.provider, t.providerAccountId),
+    index("accounts_user_id_idx").on(t.userId),
+  ],
+);
+
+/**
+ * Email OTP codes (19-auth.md). The SHA-256 hash of a 6-digit code with a 10-min
+ * expiry; prior codes are invalidated on re-request and verify consumes atomically
+ * with an `attempts < 5` guard.
+ */
+export const emailVerificationCodes = pgTable("email_verification_codes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  email: text("email").notNull(),
+  hashedCode: text("hashed_code").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  consumedAt: timestamp("consumed_at", { withTimezone: true, mode: "date" }),
+  invalidatedAt: timestamp("invalidated_at", { withTimezone: true, mode: "date" }),
+  createdAt: now(),
 });
 
 export const conversations = pgTable("conversations", {

@@ -4,8 +4,7 @@ import { type Database, attachments, messages, users } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
 import type { ModelMessage } from "ai";
 import { buildContextView, dispatchTool, allTools } from "@sidekick/shared";
-import { registerDevice } from "@sidekick/server";
-import { createConversation } from "./helpers";
+import { createConversation, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -59,7 +58,7 @@ function userMessages(view: { messages: ModelMessage[] }): ModelMessage[] {
 }
 
 test("only the 3 most-recent images render as image parts; older ones become [photo: caption]", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "view-img" });
+  const userId = await createUser(db);
   await db.update(users).set({ name: "Maya" }).where(eq(users.id, userId));
   const conversationId = await createConversation(db, userId);
 
@@ -88,7 +87,7 @@ test("only the 3 most-recent images render as image parts; older ones become [ph
 });
 
 test("a voice note's transcript is the content, prefixed [voice note]", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "view-voice" });
+  const userId = await createUser(db);
   await db.update(users).set({ name: "Maya" }).where(eq(users.id, userId));
   const conversationId = await createConversation(db, userId);
   const messageId = await addMessage(conversationId, "user", "");
@@ -105,7 +104,7 @@ test("a voice note's transcript is the content, prefixed [voice note]", async ()
 });
 
 test("a file shows full extracted text while recent, then ages out to [file: name — caption]", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "view-file" });
+  const userId = await createUser(db);
   await db.update(users).set({ name: "Maya" }).where(eq(users.id, userId));
   const conversationId = await createConversation(db, userId);
   const fileMessageId = await addMessage(conversationId, "user", "here's the lease");
@@ -144,7 +143,7 @@ test("a file shows full extracted text while recent, then ages out to [file: nam
 });
 
 test("read_attachment returns the full text of a ready attachment and errors on a pending one", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "view-read" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const messageId = await addMessage(conversationId, "user", "doc");
   const readyId = await addAttachment(userId, messageId, {

@@ -10,8 +10,7 @@ import {
 } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
 import { allTools, dispatchTool, type SidekickTool, type ToolContext } from "@sidekick/shared";
-import { registerDevice } from "@sidekick/server";
-import { createConversation } from "./helpers";
+import { createConversation, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -49,7 +48,7 @@ async function seedGoal(
 }
 
 test("log_checkin upserts a progress event and bumps memory_version", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "checkin-tool-1" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const { goalId, actionItemId } = await seedGoal(userId);
   const ctx: ToolContext = { db, userId, conversationId };
@@ -86,7 +85,7 @@ test("log_checkin upserts a progress event and bumps memory_version", async () =
 });
 
 test("log_checkin links to today's check-in row when one exists", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "checkin-tool-2" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const { goalId } = await seedGoal(userId);
   const ci = await db
@@ -106,7 +105,7 @@ test("log_checkin links to today's check-in row when one exists", async () => {
 });
 
 test("complete_check_in closes the open check-in", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "checkin-tool-3" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   await db.insert(checkIns).values({ userId, date: "2026-07-06", status: "opened" });
 
@@ -119,7 +118,7 @@ test("complete_check_in closes the open check-in", async () => {
 });
 
 test("complete_check_in creates today's row when none is open", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "checkin-tool-4" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
 
   await dispatchTool(tool("complete_check_in"), {}, { db, userId, conversationId });
@@ -130,7 +129,7 @@ test("complete_check_in creates today's row when none is open", async () => {
 });
 
 test("adjust_action_item renegotiates the cadence", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "checkin-tool-5" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const { goalId, actionItemId } = await seedGoal(userId, { type: "weekly", target: 3 });
   const ctx: ToolContext = { db, userId, conversationId };
@@ -148,8 +147,8 @@ test("adjust_action_item renegotiates the cadence", async () => {
 });
 
 test("tools reject a goal that isn't the caller's", async () => {
-  const { userId: owner } = await registerDevice(db, { deviceId: "checkin-tool-6a" });
-  const { userId: stranger } = await registerDevice(db, { deviceId: "checkin-tool-6b" });
+  const owner = await createUser(db);
+  const stranger = await createUser(db);
   const conversationId = await createConversation(db, stranger);
   const { goalId } = await seedGoal(owner);
 

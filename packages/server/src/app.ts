@@ -52,6 +52,42 @@ function parseByteRange(
   return { start, end };
 }
 
+/**
+ * Read a request body into memory but abort past `maxBytes`, so an oversized
+ * upload can't balloon server memory even when it lies about (or omits)
+ * `content-length`. Returns null once the cap is exceeded.
+ */
+async function readBodyWithLimit(
+  body: ReadableStream<Uint8Array> | null,
+  maxBytes: number,
+): Promise<Uint8Array | null> {
+  if (!body) {
+    return new Uint8Array(0);
+  }
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) {
+      break;
+    }
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
 async function serveTurnAd(
   services: Services,
   input: {
@@ -196,7 +232,32 @@ export function buildApp(services: Services) {
       return c.json({ error: "unauthorized" }, 401);
     }
     const key = c.req.path.slice("/blob/".length);
-    const bytes = new Uint8Array(await c.req.arrayBuffer());
+
+    /**
+     * Only bytes for an attachment THIS user reserved may be written, and never
+     * more than the row's already-limit-checked size (`createUpload` capped it
+     * per-kind). Without this, a client could declare 1KB at `createUploadUrl`
+     * then stream an unbounded body straight into memory — so we reject an
+     * oversized `content-length` up front and still stream-read under a hard cap,
+     * defeating a lying/absent length.
+     */
+    const reservation = await services.db
+      .select({ userId: attachments.userId, bytes: attachments.bytes })
+      .from(attachments)
+      .where(eq(attachments.storageKey, key))
+      .limit(1);
+    const row = reservation[0];
+    if (!row || row.userId !== ctx.userId) {
+      return c.json({ error: "not found" }, 404);
+    }
+    const declaredLength = Number(c.req.header("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > row.bytes) {
+      return c.json({ error: "payload too large" }, 413);
+    }
+    const bytes = await readBodyWithLimit(c.req.raw.body, row.bytes);
+    if (!bytes) {
+      return c.json({ error: "payload too large" }, 413);
+    }
     await services.storage.putObject(
       key,
       bytes,

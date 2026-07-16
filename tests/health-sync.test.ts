@@ -8,9 +8,9 @@ import {
   progressEvents,
 } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
-import { registerDevice, syncHealthDays } from "@sidekick/server";
+import { syncHealthDays } from "@sidekick/server";
 import { allTools, dispatchTool } from "@sidekick/shared";
-import { createConversation } from "./helpers";
+import { createConversation, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -24,7 +24,7 @@ afterAll(async () => {
 });
 
 async function fitnessUser(deviceId: string, actionSlug: string) {
-  const { userId } = await registerDevice(db, { deviceId });
+  const userId = await createUser(db);
   const goal = await db
     .insert(goals)
     .values({ userId, slug: "get-fit", label: "Get Fit", status: "active" })
@@ -44,7 +44,7 @@ async function fitnessUser(deviceId: string, actionSlug: string) {
 }
 
 test("sync upserts a day and re-sync updates in place (merge, no dup)", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "health-1" });
+  const userId = await createUser(db);
 
   await syncHealthDays(db, userId, [
     { date: "2026-07-05", steps: 4000, workouts: [] },
@@ -68,7 +68,7 @@ test("sync upserts a day and re-sync updates in place (merge, no dup)", async ()
 });
 
 test("sync retains only the newest 30 local calendar days", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "health-retention" });
+  const userId = await createUser(db);
   const days = Array.from({ length: 31 }, (_, offset) => {
     const date = new Date(Date.UTC(2026, 6, 31 - offset));
     return { date: date.toISOString().slice(0, 10), steps: 5000 + offset, workouts: [] };
@@ -81,7 +81,7 @@ test("sync retains only the newest 30 local calendar days", async () => {
 });
 
 test("health_summary reads only the consented server aggregate window", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "health-summary" });
+  const userId = await createUser(db);
   await syncHealthDays(db, userId, [
     { date: new Date().toISOString().slice(0, 10), steps: 8200, workouts: [] },
   ]);
@@ -187,7 +187,7 @@ test("user_stated outranks device: a device sync never overwrites a user event",
 });
 
 test("sleepStart before the target logs the sleep goal a hit; after logs missed", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "health-sleep" });
+  const userId = await createUser(db);
   const goal = await db
     .insert(goals)
     .values({ userId, slug: "sleep-better", label: "Sleep Better", status: "active" })

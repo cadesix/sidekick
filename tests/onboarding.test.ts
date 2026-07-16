@@ -7,9 +7,8 @@ import {
   goalContextSentence,
   identitySentence,
   preferenceSentence,
-  registerDevice,
 } from "@sidekick/server";
-import { makeCaller, textModel } from "./helpers";
+import { makeCaller, textModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -66,7 +65,7 @@ test("seed sentences render the exact onboarding memory strings", () => {
 });
 
 test("users.me is server-authoritative for onboarding completion", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "onboarding-me-1" });
+  const userId = await createUser(db);
   const before = await caller(userId).users.me();
   expect(before.onboardingComplete).toBe(false);
   expect(before.sidekickName).toBeNull();
@@ -84,7 +83,7 @@ test("users.me is server-authoritative for onboarding completion", async () => {
 });
 
 test("a chat-set reminder time survives a complete() without one", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "onboarding-remtime-1" });
+  const userId = await createUser(db);
   await db.update(users).set({ reminderTime: "20:30" }).where(eq(users.id, userId));
 
   const input = baseComplete();
@@ -96,7 +95,7 @@ test("a chat-set reminder time survives a complete() without one", async () => {
 });
 
 test("complete without any reminder time falls back to the default", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "onboarding-remtime-2" });
+  const userId = await createUser(db);
   const input = baseComplete();
   await caller(userId).onboarding.complete({ ...input, reminderTime: undefined });
   const me = await caller(userId).users.me();
@@ -104,7 +103,7 @@ test("complete without any reminder time falls back to the default", async () =>
 });
 
 test("updateProfile applies age-gate consequences for under-18", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "onboarding-age-1" });
+  const userId = await createUser(db);
   await caller(userId).users.updateProfile({ name: "Sam", ageBracket: "under-18", gender: "male" });
 
   const rows = await db
@@ -124,7 +123,7 @@ test("updateProfile applies age-gate consequences for under-18", async () => {
 });
 
 test("updateProfile leaves ads consent undecided for adults", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "onboarding-age-2" });
+  const userId = await createUser(db);
   await caller(userId).users.updateProfile({ ageBracket: "25-34" });
   const rows = await db
     .select({ consent: users.personalizedAdsConsent, gate: users.ageGatePassed })
@@ -135,7 +134,7 @@ test("updateProfile leaves ads consent undecided for adults", async () => {
 });
 
 test("complete seeds profile, goals, and the exact onboarding memories", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "onboarding-seed-1" });
+  const userId = await createUser(db);
   const result = await caller(userId).onboarding.complete(baseComplete());
   expect(result).toEqual({ ok: true, alreadyComplete: false });
 
@@ -163,7 +162,7 @@ test("complete seeds profile, goals, and the exact onboarding memories", async (
 });
 
 test("complete seeds one interest memory from declared interests", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "onboarding-interests-1" });
+  const userId = await createUser(db);
   await caller(userId).onboarding.complete(
     baseComplete({ interests: ["music", "gaming", "fitness"] }),
   );
@@ -176,7 +175,7 @@ test("complete seeds one interest memory from declared interests", async () => {
 });
 
 test("complete is idempotent — a re-run seeds nothing new", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "onboarding-idem-1" });
+  const userId = await createUser(db);
   await caller(userId).onboarding.complete(baseComplete());
   const again = await caller(userId).onboarding.complete(
     baseComplete({ sidekickName: "Different", reminderTime: "21:00" }),

@@ -1,8 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { type Database, messages } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
-import { registerDevice } from "@sidekick/server";
-import { createConversation, makeCaller, textModel } from "./helpers";
+import { createConversation, makeCaller, textModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -24,7 +23,7 @@ async function insert(conversationId: string, content: string): Promise<number> 
 }
 
 test("chat.history keyset-paginates newest-first", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "hist-1" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const ids: number[] = [];
   for (let i = 0; i < 5; i++) {
@@ -40,7 +39,7 @@ test("chat.history keyset-paginates newest-first", async () => {
 });
 
 test("chat.historyAround returns a centered chronological window", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "hist-2" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const ids: number[] = [];
   for (let i = 0; i < 5; i++) {
@@ -53,7 +52,7 @@ test("chat.historyAround returns a centered chronological window", async () => {
 });
 
 test("chat.search finds messages via Postgres FTS with a bolded snippet", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "hist-3" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   await insert(conversationId, "the quick brown fox runs fast");
   await insert(conversationId, "lazy dogs sleep all day");

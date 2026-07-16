@@ -3,8 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { type Database, messages, reminders, users } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
 import { allTools, dispatchTool, type SidekickTool, type ToolContext } from "@sidekick/shared";
-import { registerDevice } from "@sidekick/server";
-import { createConversation } from "./helpers";
+import { createConversation, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -34,7 +33,7 @@ async function run(name: string, input: unknown, ctx: ToolContext): Promise<Reco
 }
 
 async function setup(deviceId: string): Promise<ToolContext> {
-  const { userId } = await registerDevice(db, { deviceId });
+  const userId = await createUser(db);
   await db.update(users).set({ timezone: "America/New_York", name: "Maya" }).where(eq(users.id, userId));
   const conversationId = await createConversation(db, userId);
   await db

@@ -64,6 +64,16 @@ export function usePendingAttachments(): PendingAttachments {
 				width: attachment.width,
 				height: attachment.height,
 			});
+			// An image is sendable the moment its bytes land: the turn inlines the
+			// image bytes for the model, so it never needs the caption ingest to
+			// finish. That vision pass keeps running server-side (for when the image
+			// later scrolls out of the recent-image window) — the composer just
+			// doesn't wait on it. Files/voice notes still gate on ingest, since the
+			// model reads their extracted text / transcript.
+			if (attachment.kind === "image") {
+				patch(attachment.id, { attachmentId, status: "ready" });
+				return;
+			}
 			patch(attachment.id, { attachmentId, status: "processing" });
 			await pollReady(attachment.id, attachmentId);
 		} catch {

@@ -8,6 +8,13 @@
       "when": 1784168429568,
       "tag": "0000_high_leader",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784214843662,
+      "tag": "0001_tired_squadron_sinister",
+      "breakpoints": true
     }
   ]
 }
