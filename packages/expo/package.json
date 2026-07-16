@@ -11,7 +11,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "strip-glb": "node scripts/strip-glb.mjs"
+    "strip-glb": "node scripts/strip-glb.mjs",
+    "build-star-face": "node scripts/build-star-face.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

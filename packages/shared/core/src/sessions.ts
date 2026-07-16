@@ -188,7 +188,7 @@ export const isSessionDone = (sessions: SessionsState, id: string): boolean => s
 // session opens nothing new. Every other island opens when its own session
 // completes. Both facts were hardcoded as a bare 'frostpeak' literal at each
 // call site; they live here so the ladder owns its own rule.
-export const isIslandOpenAtStart = (id: string): boolean => SESSIONS[0]?.id === id;
+const isIslandOpenAtStart = (id: string): boolean => SESSIONS[0]?.id === id;
 
 // does an island become newly available when its session completes?
 export const islandOpensWith = (id: string): boolean => !isIslandOpenAtStart(id);

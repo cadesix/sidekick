@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
+  cancelAnimation,
   interpolate,
   useAnimatedStyle,
   useSharedValue,
@@ -60,18 +61,28 @@ export function StarChatButton({
 }) {
   const bond = useBond((s) => s.bond);
 
-  // a slow twinkle so it reads as invitation rather than chrome
+  // Twinkle (a slow shimmer, so it reads as invitation rather than chrome) and
+  // drift (a free-running 0→1 ramp the Lissajous reads off — linear and
+  // non-reversing, so the sines stay continuous instead of bouncing at the
+  // ends). Both are stopped while hidden: this component stays MOUNTED behind
+  // the map, shop, chat and the entire guided session, so left running they'd
+  // tick two worklets a frame into an invisible view — during the session, on
+  // top of the sky's own 550-star draw.
   const t = useSharedValue(0);
-  useEffect(() => {
-    t.value = withRepeat(withTiming(1, { duration: 2600, easing: Easing.inOut(Easing.quad) }), -1, true);
-  }, [t]);
-
-  // free-running 0→1 ramp the drift reads off. Linear and non-reversing, so the
-  // sines below stay continuous instead of bouncing at the ends.
   const drift = useSharedValue(0);
   useEffect(() => {
+    if (hidden) {
+      cancelAnimation(t);
+      cancelAnimation(drift);
+      return;
+    }
+    t.value = withRepeat(withTiming(1, { duration: 2600, easing: Easing.inOut(Easing.quad) }), -1, true);
     drift.value = withRepeat(withTiming(1, { duration: FLOAT_MS, easing: Easing.linear }), -1, false);
-  }, [drift]);
+    return () => {
+      cancelAnimation(t);
+      cancelAnimation(drift);
+    };
+  }, [hidden, t, drift]);
 
   // the score still pops when it goes up — the one bit of the old bond badge
   // worth keeping now the bar is gone

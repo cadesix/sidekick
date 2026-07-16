@@ -182,8 +182,7 @@ function traceContour(m, w, h) {
 }
 
 // even spacing along the path by arc length, not index, so long straight runs
-// don't hog stars and tight curves don't get starved. Also returns the local
-// tangent, which is what the jitter is thrown perpendicular to.
+// don't hog stars and tight curves don't get starved
 function walk(path, n) {
   if (path.length < 2) return [];
   const closed = [...path, path[0]];
@@ -198,14 +197,10 @@ function walk(path, n) {
     let k = 1;
     while (k < cum.length - 1 && cum[k] < target) k++;
     const t = (target - cum[k - 1]) / (cum[k] - cum[k - 1] || 1);
-    const p = [
+    out.push([
       closed[k - 1][0] + (closed[k][0] - closed[k - 1][0]) * t,
       closed[k - 1][1] + (closed[k][1] - closed[k - 1][1]) * t,
-    ];
-    const tx = closed[k][0] - closed[k - 1][0];
-    const ty = closed[k][1] - closed[k - 1][1];
-    const len = Math.hypot(tx, ty) || 1;
-    out.push({ p, perp: [-ty / len, tx / len] });
+    ]);
   }
   return out;
 }
@@ -271,7 +266,7 @@ const MISS_TOLERANCE = 0.1;
 function traceLoop(name, pathPx, count, toXY, zAt) {
   const out = [];
   let missed = 0;
-  for (const { p } of walk(pathPx, count)) {
+  for (const p of walk(pathPx, count)) {
     const [x, y] = toXY(p[0], p[1]);
     const z = zAt(x, y);
     if (z === null) {

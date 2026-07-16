@@ -1,9 +1,9 @@
 import { AREA_BIOME, type EnvironmentId } from '../three/biomes';
 
-// Island identity — the name/emoji/blurb an island is KNOWN by. The world map's
-// markers and the post-session unlock modal both name islands, so that naming
-// lives here rather than inside either screen. Map positions stay in WorldMap:
-// they're a property of the map art, not of the island.
+// Island identity — the name/emoji/blurb an island is KNOWN by, separated from
+// where the map art happens to put it. WorldMap composes the two
+// (`{...ISLANDS.frostpeak, left, top}`), so positions stay with the map and
+// identity stays here, ready for the next surface that needs to name an island.
 
 export type Island = {
   id: string;
@@ -22,5 +22,3 @@ export const ISLANDS: Record<string, Island> = {
   palmcove: { id: 'palmcove', name: 'Palm Cove', emoji: '🌴', color: '#7fd6b0', blurb: 'Tropical palm shore', biome: AREA_BIOME.palmcove },
   ember: { id: 'ember', name: 'Mount Ember', emoji: '🌋', color: '#ff8a5b', blurb: 'Smouldering volcano', biome: AREA_BIOME.ember },
 };
-
-export const islandFor = (id: string): Island | undefined => ISLANDS[id];

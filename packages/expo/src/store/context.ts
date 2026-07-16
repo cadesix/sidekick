@@ -71,6 +71,10 @@ export type SidekickContext = {
 // to a trait, then to something honest, when the extraction gave us nothing.
 export function astralNews(astral: Astral | null): string {
   if (astral?.archetype) return `astral card updated ✦ i've got you as "${astral.archetype}" now`;
+  // Defensive, not a live path: parseAnalysis won't produce a card without an
+  // archetype, so line above always wins. But `astral` rehydrates from
+  // unvalidated JSON with no persist version/migrate, so a corrupt or reshaped
+  // blob lands here rather than showing an empty line.
   if (astral?.traits?.length) return `astral card updated ✦ you're more ${astral.traits[0]} than i realised`;
   return 'astral card updated ✦ i feel like i know you a bit better now';
 }
