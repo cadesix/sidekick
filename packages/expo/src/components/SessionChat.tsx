@@ -67,11 +67,25 @@ const FALLBACK_ANALYSIS: Analysis = {
   traits: ['curious', 'open', 'worth knowing'],
 };
 
-// a poetic 2-4 word title; anything longer is a model that ignored the prompt
-const ARCHETYPE_MAX = 40;
+// A poetic 2-4 word title. Real ones run ~19-25 chars ("the restless
+// cartographer"), so this only bites a model that ignored the prompt — but it
+// cuts on a word boundary rather than mid-word, because the result is shown to
+// the user and spoken over the sidekick's head.
+const ARCHETYPE_MAX = 48;
 
-function parseAnalysis(a: unknown): Analysis {
-  if (!a || typeof a !== 'object') return FALLBACK_ANALYSIS;
+function capArchetype(s: string): string {
+  if (s.length <= ARCHETYPE_MAX) return s;
+  const cut = s.slice(0, ARCHETYPE_MAX);
+  const lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trim();
+}
+
+// null when the model gave us nothing usable — NOT a fallback card. The
+// difference is load-bearing: completeSession persists whatever it's handed and
+// only declines when the card is null, so fabricating one here would overwrite a
+// real reading earned by earlier sessions with "a sky still forming".
+function parseAnalysis(a: unknown): Analysis | null {
+  if (!a || typeof a !== 'object') return null;
   const o = a as Record<string, unknown>;
   const traits = Array.isArray(o.traits) ? o.traits.filter((t): t is string => typeof t === 'string').slice(0, 4) : [];
   return {
@@ -81,7 +95,7 @@ function parseAnalysis(a: unknown): Analysis {
     // able to break the layout.
     archetype:
       typeof o.archetype === 'string' && o.archetype.trim()
-        ? o.archetype.trim().slice(0, ARCHETYPE_MAX)
+        ? capArchetype(o.archetype.trim())
         : FALLBACK_ANALYSIS.archetype,
     reading: typeof o.reading === 'string' && o.reading.trim() ? o.reading.trim() : FALLBACK_ANALYSIS.reading,
     traits: traits.length ? traits : FALLBACK_ANALYSIS.traits,
