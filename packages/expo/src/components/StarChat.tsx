@@ -20,6 +20,7 @@ import {
   sessionForPhase,
   type ControllerTurn,
   type PersonalityArtifact,
+  type SessionDef,
 } from '@sidekick/core';
 
 import { MSG_SHADOW, STREAM_GAP_MS, StreamedText, TypingDots, streamDurationMs } from './chat-stream';
@@ -230,13 +231,31 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
       .map((m) => `${m.role === 'bot' ? 'sidekick' : 'user'}: ${m.text}`)
       .join('\n');
 
+  // Commit one chapter to the server: pay catalog rewards + persist the extraction
+  // (and optional card), patch the snapshot, flag the island, and mark that home
+  // has a real update to speak. Swallows transient failures (offline / server
+  // error) — retryUnconfirmedChapters re-fires them on the next open, idempotently.
+  const commitCompletion = async (
+    def: SessionDef,
+    fields: Record<string, string>,
+    card: { archetype: string; reading: string; traits: string[] } | null,
+  ) => {
+    try {
+      const result = await completeSession(def.id, { fields, notes: [], astral: card });
+      patchSessionComplete(queryClient, def.id, result);
+      if (islandOpensWith(def.id)) useSidekickContext.getState().markUnseenIsland(def.id);
+      didUpdate.current = true; // only claim "card updated" once the snapshot is patched
+    } catch {
+      // transient failure — retried on next open by retryUnconfirmedChapters
+    }
+  };
+
   // chapter boundary: deepen the astral card from everything learned + the card
-  // they already have, then record chapter completion in the context store —
-  // which pays bond, merges fields, and unlocks the matching island (islands are
-  // folded in one-per-chapter, no longer the anchor). The conversation keeps
-  // flowing (not awaited), but the card writes are CHAINED so a later chapter can
-  // never land its card before an earlier one and stale-overwrite it. All writes
-  // are to the persisted store, so they complete safely even after unmount.
+  // they already have, then record chapter completion via the server (pays bond,
+  // persists fields, unlocks the matching island — islands are folded in
+  // one-per-chapter, no longer the anchor). The conversation keeps flowing (not
+  // awaited), but the card writes are CHAINED so a later chapter can never land
+  // its card before an earlier one and stale-overwrite it.
   // withCard=false records a chapter's rewards/island/fields WITHOUT sending an
   // astral (the server overwrites users.astral with any card it's handed). Used by
   // the catch-up retry for earlier chapters, so re-completing a stale earlier
@@ -255,17 +274,7 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
         card = art ? { archetype: art.archetype, reading: art.reading, traits: art.traits } : null;
         if (isSessionDone(snapshotSessions(snapshot()), def.id)) return; // guard post-await (idempotent)
       }
-      try {
-        // server pays catalog rewards by sessionId + persists the extraction/card;
-        // patch the snapshot so bond, the card, and island unlock update at home.
-        const result = await completeSession(def.id, { fields: flattenFields(c), notes: [], astral: card });
-        patchSessionComplete(queryClient, def.id, result);
-        if (islandOpensWith(def.id)) useSidekickContext.getState().markUnseenIsland(def.id);
-        didUpdate.current = true; // only claim "card updated" once the snapshot is actually patched
-      } catch {
-        // transient failure (offline / server error): retried on the next open by
-        // retryUnconfirmedChapters. Idempotent + server replay-safe, so no double-pay.
-      }
+      await commitCompletion(def, flattenFields(c), card);
     });
   };
 
@@ -291,15 +300,7 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
       // sees it and skips — no double reward and no re-writing the reveal artifact.
       if (useStarChat.getState().done) return;
       if (def && c && !isSessionDone(snapshotSessions(snapshot()), def.id)) {
-        try {
-          const result = await completeSession(def.id, { fields: flattenFields(c), notes: [], astral: card });
-          patchSessionComplete(queryClient, def.id, result);
-          if (islandOpensWith(def.id)) useSidekickContext.getState().markUnseenIsland(def.id);
-          didUpdate.current = true;
-        } catch {
-          // transient failure: the reading still shows (local artifact); server
-          // completion is retried on the next open by retryUnconfirmedChapters.
-        }
+        await commitCompletion(def, flattenFields(c), card);
       } else {
         didUpdate.current = true; // already server-complete (a resume re-finalize)
       }
