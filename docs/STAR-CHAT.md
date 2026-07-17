@@ -1,11 +1,23 @@
-# Onboarding Conversation — Build Plan
+# Star Chat — Build Plan
 
-Status: design, pre-implementation. This is the spec we build from; no code yet.
+Status: design. Engine + runner built (a first slice); this is the spec they
+implement.
 
-The onboarding is a **guided personality reading that doubles as getting to know
-the user**. It replaces the current scripted star-chat beats with a
-near-fully-generative conversation bounded by a hard floor of information we must
-collect. It ends in a personalized personality artifact.
+Star Chat is a **guided personality reading that doubles as getting to know the
+user** — a single, long, near-fully-generative conversation bounded by a hard
+floor of information we must collect, ending in a personalized personality
+artifact.
+
+**This is NOT the app's initial onboarding funnel.** That funnel (goals →
+habits) is a separate, untouched step that runs first (see §2A). Star Chat is the
+*progressive onboarding* — "progressive" because it's long and reveals the user
+progressively, not because anything paces it.
+
+**Structure — one continuous, resumable conversation.** It moves through the ~6
+chapters in a single flow. There are **no islands, no map gating, and no daily
+cap** (the old 6 island-gated sessions are retired for this). Ideally the user
+finishes in their first sitting; persisted state lets them break it across
+sittings if they prefer. It supersedes the current scripted star-chat beats.
 
 ---
 
@@ -52,8 +64,8 @@ and off-device entirely.
 
 ## 2A. Warm start — what we already know
 
-This conversation is **not** the user's first contact. A lightweight functional
-onboarding (the habit-tracker setup) runs first and already collects:
+Star Chat is **not** the user's first contact. The initial onboarding funnel (the
+lightweight goals/habit setup) runs first and already collects:
 
 - **Goals** — what the user wants to work on.
 - **Daily habits** — the tracker generates a habit list from those goals.
@@ -87,10 +99,11 @@ conversation still leads, and a user who contradicts the prior overrides it.
   threads the user opens. It carries a checklist of must-have fields it is
   directed to *absolutely* obtain. If the natural flow isn't surfacing one (or a
   checkpoint is near), it stops threading and asks it directly — gracefully.
-- **Phases are checkpoints, not segments.** Six phases bound length, guarantee
-  coverage, and make progress felt — without a "Q8 of 25" counter. Inside a
-  phase the conversation is free; the seams are lightly scripted (a tentative
-  read + a progress line + a transition).
+- **Phases are checkpoints within one conversation, not separate sessions.** Six
+  phases bound length, guarantee coverage, and make progress felt — without a
+  "Q8 of 25" counter. They are NOT islands or gated sessions; the user flows
+  through them continuously. Inside a phase the conversation is free; the seams
+  are lightly scripted (a tentative read + a progress line + a transition).
 - **React first, ask second. One follow-up max. Bridge from the last answer.**
 - **Escape valve.** If a user deflects a must-have, ask once more directly, then
   mark it `declined` and move on. Never a third time. This is what keeps it from
@@ -308,9 +321,12 @@ me" spell faster than a right one builds it.
 - **Phase complete** when must-haves are `high`/`partial`/`declined` (not
   `unknown`) or the cap trips.
 - **Conversation complete** when all phases are complete. Total ≈ 20–28
-  exchanges, but it *feels* shorter because it reacts and flows. Because it's
-  progressive onboarding, length is acceptable — the phases are the reason people
-  don't bail.
+  exchanges, but it *feels* shorter because it reacts and flows.
+- **One sitting, but resumable.** No daily cap and no gating — the aim is that a
+  user finishes in their first sitting. Persisted state (phase, per-field
+  confidence, message log) lets anyone who drops out resume exactly where they
+  left off. Length is acceptable *because* it's the progressive onboarding, and
+  the phases are what keep people from bailing (a felt end is always in sight).
 
 ---
 
@@ -344,33 +360,44 @@ we go.
 
 ---
 
-## 13. Migration from current code
+## 13. What's built, and how it re-homes into Star Chat
+
+A first slice is built (as `onboarding.*` — to be **renamed to `star-chat.*`**):
+- `@sidekick/core/onboarding.ts` — the engine: phases, field floor, controller
+  prompt, reducers, artifact pass. Pure, ~90% reusable as-is.
+- `store/onboarding.ts` — persisted ConvoState + message log + age.
+- `components/OnboardingChat.tsx` — the runner loop.
+- `components/chat-stream.tsx` — shared streaming primitives.
+- `app/onboarding.tsx` — a standalone test route (**to be removed**; this is not
+  an onboarding entry).
+
+Re-homing work:
 
 | File | Today | Becomes |
 |---|---|---|
-| `packages/shared/core/src/sessions.ts` | fixed beats per session | phase defs + field inventory (must-have/nice-to-have per phase) |
-| `packages/expo/src/components/SessionChat.tsx` | walks beats, LLM writes acks + final extraction | the controller loop (§6/§7), streams `message`, applies `fieldUpdates` |
-| `packages/expo/src/store/context.ts` | astral card + fields/notes | thin display cache of the server memory file; per-field status/evidence for cross-session personalization |
-| *(new)* server memory + ad stores | — | both artifacts server-side (§2); memory file served back to power "it remembers me", ad profile governed |
+| the built engine/store/runner | named `onboarding.*`, standalone `/onboarding` route | renamed `star-chat.*`, launched from the Star Chat entry (`StarChatButton`) |
+| `packages/shared/core/src/sessions.ts` | 6 island sessions + ladder + map gating | retired for Star Chat — the island/ladder/map gating is dropped; phases replace it |
+| `packages/expo/src/components/SessionChat.tsx` | walks scripted beats | superseded by the generative runner |
+| `packages/expo/src/store/context.ts` | astral card + fields/notes, per-island | the astral card becomes the **progressive reading** deepened each chapter; final chapter carries the evidence insights |
+| *(new)* server memory + ad stores | — | both artifacts server-side (§2) |
 | *(new)* server inference pass | — | derives the ad profile from the transcript, server-side, consent+age gated |
-| *(new)* pre-seed bridge | — | maps the habit-tracker onboarding's goal + habits into seeded FieldStates (§2A) |
-| *(new)* age gate | — | onboarding entry step |
-
-The chapters/questions already drafted become the **seed material and field
-inventory** per phase — reused as the LLM's raw material, not thrown out.
+| *(new)* pre-seed bridge | — | maps the funnel's goal + habits into seeded FieldStates (§2A) |
 
 ---
 
 ## 14. Open decisions
 
-- **Goals ownership:** resolved — a lightweight habit-tracker onboarding runs
-  *first* and collects goal + habits; this conversation inherits them pre-seeded
-  (§2A) and *deepens* the why. Goal stays must-have #11 but arrives filled.
-- **How the prior profile reaches the controller** — shape of the pre-seed payload
-  (goal + habits → seeded FieldStates + a motivation hypothesis).
-- **Where the inference pass runs / when** (end of onboarding vs. rolling).
-- **Do we show the memory file to the user** as a trust feature (recommended, TBD
-  when).
-- **Exact age-gate copy + threshold handling** for under-18 (experience-only,
-  no ad profile).
+- **Islands / map / ladder:** resolved — dropped for Star Chat. It's one
+  continuous conversation, not island-gated sessions.
+- **Pacing:** resolved — no daily cap; aim for one sitting, resume supported.
+- **Bond / rewards:** with islands gone, how does bond (the "how much the sidekick
+  knows" meter) grow — per chapter completed within the one conversation? (Likely
+  yes; numbers TBD, and the old map thresholds no longer apply.)
+- **Astral card vs. final artifact:** keep the card as the progressive per-chapter
+  reading and add the evidence-cited insights on the last chapter — confirm.
+- **Must-have enforcement:** per-chapter soft, with cross-chapter dedup (a skipped
+  must-have can be mopped up later since the profile accumulates) — confirm.
+- **Server inference pass:** where/when it runs (end vs. rolling).
+- **Show the memory file to the user** as a trust feature (recommended, TBD when).
+- **Age-gate copy + under-18 handling** (experience-only, no ad profile).
 ```
