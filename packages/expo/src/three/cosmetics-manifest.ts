@@ -22,6 +22,7 @@ export type SlotDef = {
   defaultColor?: string;
   scale?: number; // rigid-attach only: multiply the authored local scale
   offset?: [number, number, number]; // rigid-attach only: nudge in bone-local space
+  rotate?: [number, number, number]; // rigid-attach only: euler degrees, bone-local, pivots on the bone origin
   variants: Variant[];
 };
 export type Manifest = Record<string, SlotDef>;

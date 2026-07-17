@@ -22,6 +22,21 @@ const ILLUSTRATE = resolve(ROOT, ".illustrate");
 const SHOP_RENDERS_DIR = resolve(ROOT, "public", "shop-renders");
 // The live cosmetics catalog the Asset Manager's workbench can write tuning into.
 const COSMETICS_MANIFEST = resolve(ROOT, "public", "cosmetics", "manifest.json");
+// The curated SHOP catalog (which item+variant/color instances may rotate into
+// the shop). Lives in @sidekick/core so the product consumes it; the Asset
+// Manager's "add to catalog" button writes here across the package boundary.
+const SHOP_CATALOG_FILE = resolve(ROOT, "..", "shared", "core", "src", "shop-catalog.json");
+// Body "skins": cel-shaded base-character looks (flat color + shadow/softness/rim
+// tuning) authored in the Asset Manager. Lives beside the cosmetics manifest.
+const SKINS_FILE = resolve(ROOT, "public", "cosmetics", "skins.json");
+// Generated skin textures (albedo maps) land here and are served statically.
+const SKINS_TEX_DIR = resolve(ROOT, "public", "cosmetics", "skins");
+// Skin "materials": named uniform presets for the shared cel-effect shader, with
+// a `shipped` curation flag. Authored/curated in the Asset Manager.
+const MATERIALS_FILE = resolve(ROOT, "public", "cosmetics", "materials.json");
+// Outfits: "kits" that bundle an optional material + a set of cosmetic parts
+// (the dino/cactus model). A pure outfit has material:null; a skin+kit sets one.
+const OUTFITS_FILE = resolve(ROOT, "public", "cosmetics", "outfits.json");
 const REFS_DIR = join(ILLUSTRATE, "refs");
 const STUDIO_DIR = join(ILLUSTRATE, "studio");
 const SHEETS_DIR = join(STUDIO_DIR, "sheets");
@@ -520,6 +535,187 @@ async function handleShopRender(req: IncomingMessage, res: ServerResponse) {
 	json(res, 200, { ok: true, file: `/shop-renders/${safe}.png` });
 }
 
+// ---- curated shop catalog --------------------------------------------------
+// A committed list in @sidekick/core of the configured instances (item+variant
+// or item+color) that may appear / rotate in the shop, keyed by renderKey
+// (`${slot}-${variantId}` | `${slot}-c${hexWithoutHash}`). Gated by core's
+// buildCatalogProducts(); the Asset Manager authors it.
+type CatalogEntry = { renderKey: string; slot: string; variantId?: string; color?: string };
+
+async function loadCatalog(): Promise<CatalogEntry[]> {
+	if (!existsSync(SHOP_CATALOG_FILE)) return [];
+	try {
+		const parsed = JSON.parse(await readFile(SHOP_CATALOG_FILE, "utf8"));
+		return Array.isArray(parsed) ? parsed : [];
+	} catch {
+		return [];
+	}
+}
+
+async function writeCatalog(entries: CatalogEntry[]) {
+	// stable order (by renderKey) keeps the committed diff clean and reviewable
+	const sorted = [...entries].sort((a, b) => a.renderKey.localeCompare(b.renderKey));
+	await writeFile(SHOP_CATALOG_FILE, `${JSON.stringify(sorted, null, 2)}\n`);
+}
+
+// Derive the renderKey the shop/economy use, so the workbench never has to.
+function renderKeyOf(e: { slot: string; variantId?: string; color?: string }): string | null {
+	if (e.color) return `${e.slot}-c${e.color.replace(/^#/, "")}`;
+	if (e.variantId) return `${e.slot}-${e.variantId}`;
+	return null;
+}
+
+async function handleCatalogAdd(req: IncomingMessage, res: ServerResponse) {
+	const body = JSON.parse((await readBody(req)) || "{}") as {
+		slot?: string;
+		variantId?: string;
+		color?: string;
+	};
+	if (!body.slot || (!body.variantId && !body.color)) {
+		return json(res, 400, { error: "expected { slot, variantId? | color? }" });
+	}
+	const renderKey = renderKeyOf(body as CatalogEntry);
+	if (!renderKey) return json(res, 400, { error: "could not derive renderKey" });
+	const entries = await loadCatalog();
+	if (!entries.some((e) => e.renderKey === renderKey)) {
+		const entry: CatalogEntry = { renderKey, slot: body.slot };
+		if (body.color) entry.color = body.color;
+		else entry.variantId = body.variantId;
+		entries.push(entry);
+		await writeCatalog(entries);
+	}
+	json(res, 200, { ok: true, renderKey, entries: await loadCatalog() });
+}
+
+async function handleCatalogRemove(req: IncomingMessage, res: ServerResponse) {
+	const { renderKey } = JSON.parse((await readBody(req)) || "{}") as { renderKey?: string };
+	if (!renderKey) return json(res, 400, { error: "expected { renderKey }" });
+	const entries = (await loadCatalog()).filter((e) => e.renderKey !== renderKey);
+	await writeCatalog(entries);
+	json(res, 200, { ok: true, renderKey, entries });
+}
+
+// ---- body skins ------------------------------------------------------------
+// The client owns the full list (add/edit/reorder in the Asset Manager) and
+// POSTs it back verbatim, mirroring the assets-store pattern.
+async function loadSkins(): Promise<unknown[]> {
+	if (!existsSync(SKINS_FILE)) return [];
+	try {
+		const parsed = JSON.parse(await readFile(SKINS_FILE, "utf8"));
+		return Array.isArray(parsed) ? parsed : [];
+	} catch {
+		return [];
+	}
+}
+
+async function listSkinTextures(): Promise<string[]> {
+	if (!existsSync(SKINS_TEX_DIR)) return [];
+	const files = await readdir(SKINS_TEX_DIR);
+	return files
+		.filter((f) => /\.(png|webp|jpe?g)$/i.test(f))
+		.sort()
+		.reverse() // newest-ish first (uuid names aren't chronological, but stable)
+		.map((f) => `/cosmetics/skins/${f}`);
+}
+
+// Generate a body-skin albedo texture from a prompt via gpt-image-2 (same key/
+// pipeline as /generate), save it under public/cosmetics/skins, return its URL.
+async function handleSkinTexture(req: IncomingMessage, res: ServerResponse, apiKey: string) {
+	if (!apiKey) return json(res, 500, { error: "OPENAI_API_KEY not set" });
+	let payload: { prompt?: string; quality?: string };
+	try {
+		payload = JSON.parse((await readBody(req)) || "{}");
+	} catch {
+		return json(res, 400, { error: "invalid JSON body" });
+	}
+	const desc = (payload.prompt ?? "").trim();
+	if (!desc) return json(res, 400, { error: "prompt is required" });
+	// steer toward a flat, edge-to-edge, seamless swatch so it maps cleanly onto
+	// the body and can tile — no 3D objects, no baked lighting/shadows.
+	const prompt = `A seamless, tileable texture swatch of ${desc}. Flat top-down, evenly lit, no shadows or highlights, no 3D objects or scene, fills the entire frame edge to edge, crisp and richly detailed.`;
+	const apiRes = await fetch("https://api.openai.com/v1/images/generations", {
+		method: "POST",
+		headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+		body: JSON.stringify({
+			model: "gpt-image-2",
+			prompt,
+			size: "1024x1024",
+			quality: payload.quality || "high",
+			n: 1,
+			output_format: "png",
+			background: "opaque",
+		}),
+	});
+	if (!apiRes.ok) {
+		const text = await apiRes.text();
+		return json(res, apiRes.status, { error: `OpenAI ${apiRes.status}: ${text}` });
+	}
+	const data = await apiRes.json();
+	if (!data.data?.length) return json(res, 502, { error: "no image returned" });
+	await mkdir(SKINS_TEX_DIR, { recursive: true });
+	const file = `tex-${randomUUID().slice(0, 8)}.png`;
+	await writeFile(join(SKINS_TEX_DIR, file), Buffer.from(data.data[0].b64_json, "base64"));
+	json(res, 200, { url: `/cosmetics/skins/${file}`, usage: data.usage ?? null });
+}
+
+async function handleSkinsSave(req: IncomingMessage, res: ServerResponse) {
+	let payload: { skins?: unknown[] };
+	try {
+		payload = JSON.parse((await readBody(req)) || "{}");
+	} catch {
+		return json(res, 400, { error: "invalid JSON body" });
+	}
+	if (!Array.isArray(payload.skins)) return json(res, 400, { error: "expected { skins: [...] }" });
+	await writeFile(SKINS_FILE, `${JSON.stringify(payload.skins, null, 2)}\n`);
+	json(res, 200, { ok: true, skins: payload.skins });
+}
+
+async function loadMaterials(): Promise<unknown[]> {
+	if (!existsSync(MATERIALS_FILE)) return [];
+	try {
+		const parsed = JSON.parse(await readFile(MATERIALS_FILE, "utf8"));
+		return Array.isArray(parsed) ? parsed : [];
+	} catch {
+		return [];
+	}
+}
+
+async function handleMaterialsSave(req: IncomingMessage, res: ServerResponse) {
+	let payload: { materials?: unknown[] };
+	try {
+		payload = JSON.parse((await readBody(req)) || "{}");
+	} catch {
+		return json(res, 400, { error: "invalid JSON body" });
+	}
+	if (!Array.isArray(payload.materials))
+		return json(res, 400, { error: "expected { materials: [...] }" });
+	await writeFile(MATERIALS_FILE, `${JSON.stringify(payload.materials, null, 2)}\n`);
+	json(res, 200, { ok: true, materials: payload.materials });
+}
+
+async function loadOutfits(): Promise<unknown[]> {
+	if (!existsSync(OUTFITS_FILE)) return [];
+	try {
+		const parsed = JSON.parse(await readFile(OUTFITS_FILE, "utf8"));
+		return Array.isArray(parsed) ? parsed : [];
+	} catch {
+		return [];
+	}
+}
+
+async function handleOutfitsSave(req: IncomingMessage, res: ServerResponse) {
+	let payload: { outfits?: unknown[] };
+	try {
+		payload = JSON.parse((await readBody(req)) || "{}");
+	} catch {
+		return json(res, 400, { error: "invalid JSON body" });
+	}
+	if (!Array.isArray(payload.outfits))
+		return json(res, 400, { error: "expected { outfits: [...] }" });
+	await writeFile(OUTFITS_FILE, `${JSON.stringify(payload.outfits, null, 2)}\n`);
+	json(res, 200, { ok: true, outfits: payload.outfits });
+}
+
 // Persist workbench tuning into public/cosmetics/manifest.json: { item, scale,
 // offset }. Neutral values (scale 1, offset 0,0,0) delete the keys so untuned
 // items stay clean, matching the true-size authoring convention.
@@ -597,6 +793,28 @@ export function sidekickStudioPlugin(apiKey: string): PluginOption {
 						return await handleShopRender(req, res);
 					if (req.method === "POST" && url === "/manifest-tune")
 						return await handleManifestTune(req, res);
+					if (req.method === "GET" && url === "/catalog")
+						return json(res, 200, { entries: await loadCatalog() });
+					if (req.method === "POST" && url === "/catalog-add")
+						return await handleCatalogAdd(req, res);
+					if (req.method === "POST" && url === "/catalog-remove")
+						return await handleCatalogRemove(req, res);
+					if (req.method === "GET" && url === "/skins")
+						return json(res, 200, { skins: await loadSkins() });
+					if (req.method === "POST" && url === "/skins")
+						return await handleSkinsSave(req, res);
+					if (req.method === "GET" && url === "/skin-textures")
+						return json(res, 200, { textures: await listSkinTextures() });
+					if (req.method === "POST" && url === "/skin-texture")
+						return await handleSkinTexture(req, res, apiKey);
+					if (req.method === "GET" && url === "/materials")
+						return json(res, 200, { materials: await loadMaterials() });
+					if (req.method === "POST" && url === "/materials")
+						return await handleMaterialsSave(req, res);
+					if (req.method === "GET" && url === "/outfits")
+						return json(res, 200, { outfits: await loadOutfits() });
+					if (req.method === "POST" && url === "/outfits")
+						return await handleOutfitsSave(req, res);
 					return next();
 				} catch (e) {
 					json(res, 500, { error: e instanceof Error ? e.message : String(e) });

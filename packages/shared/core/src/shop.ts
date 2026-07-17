@@ -7,6 +7,7 @@
 // restock picks the same items on web and native (given the same date seed).
 
 import { hashStr, mulberry32 } from './rng';
+import shopCatalogJson from './shop-catalog.json';
 
 // per-item base price; textured variant editions step up from it (+5 per index),
 // solid-color editions sell flat at the base. This map is the single tuning
@@ -151,6 +152,63 @@ export function buildProducts(catalog: ShopCatalog): Product[] {
         tex: def.variants[0]?.tex,
         tint: c,
       });
+  }
+  return out;
+}
+
+// ---- curated catalog --------------------------------------------------------
+
+// The hand-curated inventory of what may appear / rotate in the shop. Authored
+// in shop-catalog.json (committed source of truth), edited from the Asset
+// Manager's "add to catalog" button. Each entry references one configured
+// instance by its renderKey (the same `${slot}-${variantId}` / `${slot}-c${hex}`
+// key the economy store and shop-render art use), so no migration is needed.
+// buildProducts() expands the whole manifest × palette; buildCatalogProducts()
+// gates that down to just these entries — the shop offers ONLY cataloged items.
+export type CatalogEntry = {
+  renderKey: string;
+  slot: string; // manifest item key (e.g. "beanie"), not the mutual-exclusion group
+  variantId?: string;
+  color?: string;
+};
+
+export const SHOP_CATALOG: readonly CatalogEntry[] = shopCatalogJson as CatalogEntry[];
+
+// The purchasable set, built DIRECTLY from the curated catalog (not by filtering
+// the manifest×palette expansion) so a catalog entry can carry ANY color the
+// Asset Manager's picker chose — not just the 12 palette swatches. This is what
+// the shop UI and todaysShop() consume; buildProducts() alone offers everything.
+export function buildCatalogProducts(catalog: ShopCatalog): Product[] {
+  const { slotLabel, manifest } = catalog;
+  const out: Product[] = [];
+  for (const e of SHOP_CATALOG) {
+    const def = manifest[e.slot];
+    if (!def) continue;
+    const base = PRICE[e.slot] ?? DEFAULT_PRICE;
+    const label = slotLabel[e.slot] ?? e.slot;
+    if (e.color) {
+      out.push({
+        slot: e.slot,
+        color: e.color,
+        name: `${COLOR_NAMES[e.color] ?? e.color} ${label}`,
+        cost: base,
+        renderKey: e.renderKey,
+        tex: def.variants[0]?.tex,
+        tint: e.color,
+      });
+    } else if (e.variantId) {
+      const i = def.variants.findIndex((v) => v.id === e.variantId);
+      if (i < 0) continue;
+      const v = def.variants[i];
+      out.push({
+        slot: e.slot,
+        variantId: v.id,
+        name: `${v.name} ${label}`,
+        cost: base + i * 5,
+        renderKey: e.renderKey,
+        tex: v.tex,
+      });
+    }
   }
   return out;
 }

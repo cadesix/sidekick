@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 
 import {
-  buildProducts,
+  buildCatalogProducts,
   localDay,
   rarityOf,
   todaysShop,
@@ -317,10 +317,12 @@ export function ShopSheet({
   const active = useDeferredFlag(open, { offDelay: 320 });
   const revealed = useDeferredFlag(open, { onDelay: 120 });
 
-  // catalog is static (manifest is bundled); the daily drop derives from it
+  // catalog is static (manifest is bundled); the daily drop derives from it.
+  // buildCatalogProducts gates the offer set to the curated shop-catalog.json
+  // (authored in the Asset Manager) — only cataloged items can rotate in.
   const products = useMemo(
     () =>
-      buildProducts({
+      buildCatalogProducts({
         slots: WARDROBE_SLOTS,
         slotLabel: SLOT_LABEL,
         colors: SHOP_COLORS,

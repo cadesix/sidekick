@@ -1,0 +1,87 @@
+[
+  {
+    "renderKey": "backpack-red",
+    "slot": "backpack",
+    "variantId": "red"
+  },
+  {
+    "renderKey": "beanie-charcoal",
+    "slot": "beanie",
+    "variantId": "charcoal"
+  },
+  {
+    "renderKey": "boots-brown",
+    "slot": "boots",
+    "variantId": "brown"
+  },
+  {
+    "renderKey": "crown-gold",
+    "slot": "crown",
+    "variantId": "gold"
+  },
+  {
+    "renderKey": "earring-gold",
+    "slot": "earring",
+    "variantId": "gold"
+  },
+  {
+    "renderKey": "flower-c4a8fe0",
+    "slot": "flower",
+    "color": "#4a8fe0"
+  },
+  {
+    "renderKey": "flower-ce069a8",
+    "slot": "flower",
+    "color": "#e069a8"
+  },
+  {
+    "renderKey": "flower-white",
+    "slot": "flower",
+    "variantId": "white"
+  },
+  {
+    "renderKey": "glasses-black",
+    "slot": "glasses",
+    "variantId": "black"
+  },
+  {
+    "renderKey": "hat-forest",
+    "slot": "hat",
+    "variantId": "forest"
+  },
+  {
+    "renderKey": "hoodie-heather",
+    "slot": "hoodie",
+    "variantId": "heather"
+  },
+  {
+    "renderKey": "scarf-red",
+    "slot": "scarf",
+    "variantId": "red"
+  },
+  {
+    "renderKey": "shirt-ce4553b",
+    "slot": "shirt",
+    "color": "#e4553b"
+  },
+  {
+    "renderKey": "shirt-coral",
+    "slot": "shirt",
+    "variantId": "coral"
+  },
+  {
+    "renderKey": "shirt-sky",
+    "slot": "shirt",
+    "variantId": "sky"
+  },
+  {
+    "renderKey": "sneakers-white",
+    "slot": "sneakers",
+    "variantId": "white"
+  },
+  {
+    "renderKey": "wizard-purple",
+    "slot": "wizard",
+    "variantId": "purple"
+  }
+]

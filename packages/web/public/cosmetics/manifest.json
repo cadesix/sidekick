@@ -234,10 +234,10 @@
     "slot": "hat",
     "model": "/cosmetics/hat/crown-v1.glb",
     "attach": "bone:Head",
-    "scale": 0.76,
+    "scale": 0.65,
     "offset": [
-      0,
-      0.028,
+      0.005,
+      0.035,
       0
     ],
     "variants": [
@@ -253,6 +253,11 @@
         "tex": "/cosmetics/hat/silver.webp",
         "roughness": 0.3
       }
+    ],
+    "rotate": [
+      0,
+      0,
+      9
     ]
   },
   "sneakers": {
@@ -352,6 +357,11 @@
         "name": "Forest",
         "tex": "/cosmetics/back/bp-forest.webp"
       }
+    ],
+    "offset": [
+      0,
+      0.010152741980735,
+      -0.0035409182085430124
     ]
   },
   "headphones": {
@@ -447,7 +457,8 @@
         "color": "#5a9e4d",
         "roughness": 0.7
       }
-    ]
+    ],
+    "scale": 0.93
   },
   "propeller": {
     "slot": "hat",
@@ -607,6 +618,16 @@
         "roughness": 0.25,
         "metalness": 0.85
       }
+    ],
+    "offset": [
+      -0.005,
+      0.01,
+      0
+    ],
+    "rotate": [
+      0,
+      0,
+      -7
     ]
   },
   "flower": {
@@ -632,6 +653,12 @@
         "color": "#8fb7e8",
         "roughness": 0.6
       }
+    ],
+    "scale": 1.26,
+    "offset": [
+      0.035,
+      -0.026,
+      0
     ]
   },
   "earbow": {
@@ -681,6 +708,72 @@
         "name": "Forest",
         "color": "#3f7a4d",
         "roughness": 0.95
+      }
+    ],
+    "scale": 0.67
+  },
+  "dino-hood": {
+    "model": "/cosmetics/dino/hood-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "green",
+        "name": "Dino Green",
+        "color": "#4e9e3a",
+        "roughness": 0.6
+      }
+    ]
+  },
+  "dino-tail": {
+    "model": "/cosmetics/dino/tail-v1.glb",
+    "attach": "bone:Spine01",
+    "slot": "back",
+    "variants": [
+      {
+        "id": "green",
+        "name": "Dino Green",
+        "color": "#4e9e3a",
+        "roughness": 0.6
+      }
+    ]
+  },
+  "cactus-spikes": {
+    "model": "/cosmetics/cactus/spikes-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "pale",
+        "name": "Pale Spine",
+        "color": "#e6e8c8",
+        "roughness": 0.7
+      }
+    ]
+  },
+  "cactus-flower": {
+    "model": "/cosmetics/cactus/flower-v1.glb",
+    "attach": "bone:Head",
+    "slot": "ear",
+    "variants": [
+      {
+        "id": "pink",
+        "name": "Bloom",
+        "color": "#ef77a8",
+        "roughness": 0.6
+      }
+    ]
+  },
+  "dino-body": {
+    "model": "/cosmetics/dino/body-v1.glb",
+    "attach": "skinned",
+    "slot": "shirt",
+    "variants": [
+      {
+        "id": "green",
+        "name": "Dino Green",
+        "color": "#4e9e3a",
+        "roughness": 0.6
       }
     ]
   }

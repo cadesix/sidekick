@@ -14,6 +14,7 @@ import BiomesPreview from "./biomes-preview";
 import ItemRender from "./item-render";
 import ActionComposer from "./action-composer";
 import AssetManager from "./asset-manager";
+import ShopAdmin from "./shop-admin";
 
 // Minimal path routing: /home and /home2 show post-funnel home variants, /sidekick is the
 // character-iteration studio, /admin is the dev-only admin hub (Chat Lab + Studio),
@@ -35,6 +36,10 @@ export default function App() {
 	// Dev-only: cosmetics asset catalog + 3D workbench (see file docs)
 	if (import.meta.env.DEV && path === "/asset-manager") {
 		return <AssetManager />;
+	}
+	// Dev-only: shop merchandising admin — daily-drop preview + catalog (see file docs)
+	if (import.meta.env.DEV && path === "/shop-admin") {
+		return <ShopAdmin />;
 	}
 	if (path === "/sidekick-3d") {
 		return <Sidekick3D />;

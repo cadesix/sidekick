@@ -22,6 +22,10 @@ JOBS = [
     ("boots",    f"{COS}/shoes/boots-v1.glb",     [((0.5, -0.22, 0.07), FEET), ((0.05, 0.55, 0.05), FEET)]),
     ("glasses",  f"{COS}/glasses/base-v1.glb",    [((0.42, 0.0, 0.16), FACE), ((0.3, -0.28, 0.18), FACE)]),
     ("backpack", f"{COS}/back/backpack-v1.glb",   [((-0.55, -0.3, 0.16), BACK), ((0.02, -0.6, 0.09), BACK)]),
+    ("dino-hood", f"{COS}/dino/hood-v1.glb",       [((0.6, 0.0, 0.18), HEAD), ((0.35, -0.45, 0.22), HEAD)]),
+    ("dino-tail", f"{COS}/dino/tail-v1.glb",       [((-0.55, -0.3, 0.14), BACK), ((0.02, -0.6, 0.09), BACK)]),
+    ("cactus-spikes", f"{COS}/cactus/spikes-v1.glb", [((0.6, 0.0, 0.18), HEAD), ((0.35, -0.45, 0.22), HEAD)]),
+    ("cactus-flower", f"{COS}/cactus/flower-v1.glb", [((0.5, 0.0, 0.2), HEAD), ((0.3, -0.4, 0.22), HEAD)]),
 ]
 
 only = os.environ.get("ONLY")

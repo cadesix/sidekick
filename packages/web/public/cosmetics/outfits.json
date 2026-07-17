@@ -1,0 +1,35 @@
+[
+  {
+    "id": "dino",
+    "name": "Dinosaur",
+    "kind": "outfit",
+    "material": null,
+    "parts": [
+      {
+        "item": "dino-body"
+      },
+      {
+        "item": "dino-hood"
+      },
+      {
+        "item": "dino-tail"
+      }
+    ],
+    "note": "Full onesie — keeps the sidekick skin, adds a green body suit (torso+arms+legs) + crested hood + spiked tail."
+  },
+  {
+    "id": "cactus",
+    "name": "Cactus",
+    "kind": "skin+kit",
+    "material": "cactus-green",
+    "parts": [
+      {
+        "item": "cactus-spikes"
+      },
+      {
+        "item": "cactus-flower"
+      }
+    ],
+    "note": "Becomes a cactus — green cactus material + real parts: cactus-spikes (Head spines) + cactus-flower (crown bloom)."
+  }
+]
