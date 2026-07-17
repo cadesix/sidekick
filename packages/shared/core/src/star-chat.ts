@@ -85,12 +85,13 @@ export const PHASES: PhaseDef[] = [
 		index: 1,
 		label: 'Your world',
 		goal: 'get the shape of their life and where they come from',
-		feel: 'warm, easy on-ramp — like meeting someone, not a form',
+		feel: 'warm, easy on-ramp, like meeting someone, not a form',
 		seeds: [
-			'what\'s your life like these days — what do you spend most of your time on?',
-			'where are you living now, and who\'s around you day to day?',
-			'is that where you grew up, or did you find your way there?',
-			'what was it like where you come from — the place, the household, the vibe?',
+			'so what do you do day to day, work, school, both?',
+			'where are you living these days?',
+			'who\'s around day to day, family, roommates, partner, solo?',
+			'is that where you grew up, or did you end up there?',
+			'what was it like where you grew up?',
 		],
 	},
 	{
@@ -99,21 +100,21 @@ export const PHASES: PhaseDef[] = [
 		goal: 'learn their social energy and what lights them up',
 		feel: 'light, playful',
 		seeds: [
-			'do people kind of refill you, or do you need your alone time to reset?',
-			'what\'s on repeat right now — music, shows, games, whatever you can\'t shut up about?',
-			'how do you actually unwind? the real version, not the aesthetic one',
-			'who do you actually talk to most?',
+			'do people recharge you, or do you need alone time to reset?',
+			'what\'s on repeat right now, music, shows, games?',
+			'how do you actually unwind? the real version',
+			'who do you talk to most?',
 		],
 	},
 	{
 		index: 3,
 		label: 'How you\'re wired',
-		goal: 'read the personality core — how they decide and plan',
-		feel: 'curious; ok to flag "personality question" here',
+		goal: 'read the personality core, how they decide and plan',
+		feel: 'curious, ok to flag a quick personality question here',
 		seeds: [
-			'when you\'ve got a big decision, do you go with your gut or think it to death?',
-			'are you more of a planner, or do you figure it out as you go?',
-			'what do people get completely wrong about you?',
+			'big decision, gut or overthink it?',
+			'are you a planner, or figure it out as you go?',
+			'what do people get wrong about you?',
 		],
 	},
 	{
@@ -122,21 +123,21 @@ export const PHASES: PhaseDef[] = [
 		goal: 'find what really motivates them and what "winning" means to them',
 		feel: 'reflective',
 		seeds: [
-			'what actually drives you — proving people wrong, freedom, the people you love, peace of mind?',
+			'what actually drives you, freedom, winning, the people you love, peace?',
 			'whose life do you low-key look at and think "yeah, that"?',
-			'what does a genuinely good day look like? a normal one, not a vacation',
+			'what does a genuinely good normal day look like?',
 		],
 	},
 	{
 		index: 5,
 		label: 'How you live',
-		goal: 'learn their taste and how they spend — framed as getting their style, never as a survey',
+		goal: 'learn their taste and how they spend, framed as getting their style, never as a survey',
 		feel: 'fun, taste-focused',
 		seeds: [
-			'where does your money happily go — what do you splurge on vs skimp on?',
-			'what\'s something you bought recently that you\'re a little obsessed with?',
-			'any brands or aesthetics you\'re just drawn to?',
-			'what are you saving up for, or dreaming about buying?',
+			'where does your money happily go?',
+			'what\'d you buy recently that you love?',
+			'any brands or aesthetics you\'re drawn to?',
+			'saving up for anything?',
 		],
 	},
 	{
@@ -145,9 +146,9 @@ export const PHASES: PhaseDef[] = [
 		goal: 'understand what trips them up, and deepen the goal they already set',
 		feel: 'real, gentle, forward-looking',
 		seeds: [
-			'real talk — what gets in your way the most?',
-			'when you procrastinate, what does it actually look like?',
-			'you\'ve got a goal already — what\'s the deeper why underneath it?',
+			'real talk, what gets in your way most?',
+			'when you procrastinate, what does it look like?',
+			'you\'ve got a goal already, what\'s the deeper why under it?',
 		],
 	},
 ];
@@ -272,41 +273,48 @@ function renderState(state: ConvoState): string {
 	const lines = FIELDS.map((f) => {
 		const fs = state.fields[f.id];
 		if (!fs || fs.status === 'unknown') return `- ${f.id} (${f.label}): unknown`;
-		const seed = fs.source === 'onboarding' ? ' [from earlier onboarding — deepen, don\'t re-ask]' : '';
+		const seed = fs.source === 'onboarding' ? ' [from earlier onboarding, deepen not re-ask]' : '';
 		return `- ${f.id}: ${fs.status}${fs.value ? ` (${fs.value})` : ''}${seed}`;
 	});
 	return lines.join('\n');
 }
 
 const CONTROLLER_RULES = `Do this every turn:
-1. React first. Respond to what they just said like a friend would — reflect it, react, show you heard them. Never jump straight to the next question.
-2. Extract every fact/signal from their message into fieldUpdates, each with a short evidence quote from their own words.
+1. React first. Respond to what they just said like a friend would: reflect it, react, show you heard them. Never jump straight to the next question.
+2. Extract every fact and signal from their message into fieldUpdates, each with a short evidence quote from their own words.
 3. One thread max. If their answer opened an interesting thread and you haven't already followed one, ask a single curious follow-up. Otherwise move on. Never interrogate one topic.
-4. Advance. Pick the most important still-unknown must-have for this phase and bridge into it from what they just said. If nothing bridges and a must-have is still missing near the end of the phase, just ask it directly and gently ("okay, personality question —").
+4. Advance. Pick the most important still-unknown must-have for this chapter and bridge into it from what they just said. If nothing bridges and a must-have is still missing near the end of the chapter, just ask it directly and gently, like "ok quick personality one,".
 5. Never re-ask anything STATE already knows. Deepen pre-seeded fields, don't collect them.
-6. About once per phase, offer a tentative read ("starting to get the sense you're someone who…") and invite them to confirm or correct it.
-7. Vary the rhythm — don't stack heavy questions back to back.
+6. About once per chapter, offer a tentative read like "starting to get the sense you're someone who..." and invite them to confirm or correct it.
+7. Vary the rhythm. Don't stack heavy questions back to back.
+8. Keep questions direct and low-effort. Prefer a quick, concrete question they can answer instantly over an abstract, open-ended one.
 
 Escape valve: if a must-have is still unknown after you asked it directly once and they deflected, mark it declined (confidence "high", value "declined") and move on. Never ask a third time.`;
 
 // The per-turn driver system prompt, with STATE + the current phase injected.
+// The voice mirrors PERSONA_PROMPT (packages/shared/app): warm, texty, lowercase,
+// never AI-sounding. Kept inline (not imported) because core can't depend on the
+// app layer and the accountability-specific persona content doesn't fit here.
 export function buildControllerPrompt(state: ConvoState): string {
 	const phase = phaseDef(state.phase);
 	const musts = missingMustHaves(state, state.phase)
-		.map((f) => `${f.id} (${f.label}${f.hint ? ` — ${f.hint}` : ''})`)
+		.map((f) => `${f.id} (${f.label}${f.hint ? `: ${f.hint}` : ''})`)
 		.join(', ');
 	const nearCap = state.turnsInPhase >= PHASE_TURN_CAP - 1;
 	const hyp =
 		state.motivationHypothesis && state.phase >= 4
-			? `\nWorking hypothesis about their motivation (from the goal they already set): ${state.motivationHypothesis}. Treat it as a guess to TEST, not a fact — confirm or override it in conversation.`
+			? `\nWorking hypothesis about their motivation (from the goal they already set): ${state.motivationHypothesis}. Treat it as a guess to TEST, not a fact, so confirm or override it in conversation.`
 			: '';
 	return (
-		`You are the voice of the user's sidekick, guiding them through a personality reading that doubles as getting to know them. ` +
-		`Warm, curious, a little playful — texting energy, lowercase, brief, no em-dash. This is a conversation, not an interview.\n\n` +
-		`STATE — what you already know (never re-ask these):\n${renderState(state)}\n\n` +
-		`CURRENT CHAPTER: "${phase?.label}" — ${phase?.goal}. Tone: ${phase?.feel}.\n` +
-		`Must-haves still needed this chapter: ${musts || '(none — you can move on)'}.\n` +
-		(nearCap ? `You're near the end of this chapter: make sure any missing must-have gets asked directly this turn.\n` : '') +
+		`You are the user's sidekick, texting them: a warm, slightly cheeky, caring friend. ` +
+		`You're guiding them through a personality reading that doubles as getting to know them. ` +
+		`Voice: short, casual, lowercase, warm, a little cheeky, like texting a close friend. Usually a quick reaction plus one question. ` +
+		`Write like a real person, never like an AI: no em dashes (use a comma or a period), no title case, no markdown, no lists, nothing corporate or assistant-y. an occasional emoji is fine. ` +
+		`This is a conversation, not an interview.\n\n` +
+		`STATE, what you already know (never re-ask these):\n${renderState(state)}\n\n` +
+		`CURRENT CHAPTER: "${phase?.label}", ${phase?.goal}. Tone: ${phase?.feel}.\n` +
+		`Must-haves still needed this chapter: ${musts || '(none, you can move on)'}.\n` +
+		(nearCap ? `You're near the end of this chapter, so make sure any missing must-have gets asked directly this turn.\n` : '') +
 		(phase?.seeds.length ? `Questions you can draw on or reshape (don't read them verbatim if a bridge fits better): ${phase.seeds.join(' / ')}\n` : '') +
 		hyp +
 		`\n\n${CONTROLLER_RULES}\n\n` +
@@ -360,7 +368,7 @@ export function profileDigest(state: ConvoState): string {
 	return FIELDS.map((f) => {
 		const fs = state.fields[f.id];
 		if (!isFilled(fs) || fs?.value === 'declined') return null;
-		const ev = fs?.evidence?.length ? ` — said: "${fs.evidence.join('"; "')}"` : '';
+		const ev = fs?.evidence?.length ? `, said: "${fs.evidence.join('"; "')}"` : '';
 		return `${f.label}: ${fs?.value}${ev}`;
 	})
 		.filter(Boolean)
@@ -386,7 +394,7 @@ export function flattenFields(state: ConvoState): Record<string, string> {
 // take archetype/reading/traits.
 export function buildCardPrompt(state: ConvoState, prior: { archetype: string; reading: string; traits: string[] } | null): string {
 	return (
-		`You are writing the user's "astral card" — a warm, almost-astrology personality reading — from an ongoing get-to-know-you conversation. ` +
+		`You are writing the user's "astral card", a warm, almost-astrology personality reading, from an ongoing get-to-know-you conversation. ` +
 		(prior ? `This is an UPDATE: keep what still rings true and deepen it with what's new.\n` : `Build it from what they've shared so far.\n`) +
 		(prior ? `Their card now:\narchetype: ${prior.archetype}\nreading: ${prior.reading}\ntraits: ${prior.traits.join(', ')}\n\n` : '') +
 		`Everything learned so far:\n${profileDigest(state)}\n\n` +

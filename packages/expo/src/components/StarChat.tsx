@@ -39,11 +39,11 @@ const KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
 // usable offline.
 
 const OPENING = [
-  "hey — i'm gonna get to know you through a conversation,",
+  "hey, i'm gonna get to know you through a little conversation,",
   'then give you a personality read: how you think, connect, and move through life ✦',
 ];
-const AGE_Q = 'first though — how old are you?';
-const PHASE1_OPENER = 'ok, love it. so tell me about your life these days — what do you spend most of your time on?';
+const AGE_Q = 'first though, how old are you?';
+const PHASE1_OPENER = 'ok cool. so what do you do day to day, work, school, both?';
 const SCRIPTED_NUDGE = 'mm, say more?';
 
 const FALLBACK_ARTIFACT: PersonalityArtifact = {
@@ -237,7 +237,7 @@ export function StarChat({ onDone }: { onDone: () => void }) {
     const m = text.match(/\d{1,3}/);
     const n = m ? parseInt(m[0], 10) : NaN;
     if (!n || n < 5 || n > 120) {
-      showBot("just a number's fine — how old are you?");
+      showBot("just a number's fine, how old are you?");
       return;
     }
     useStarChat.getState().setAge(n < 18 ? '<18' : '18+');
