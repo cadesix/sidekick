@@ -54,15 +54,16 @@ describe("decideStyle", () => {
     }
   });
 
-  test("fires traits at roughly their configured rate (loose band, cooldown-adjusted)", () => {
+  test("multi-send is frequent (structural, benign); word-quirks stay rare (anti-uncanny)", () => {
     const decisions = simulate(V1, 1000);
-    const multi = decisions.filter((d) => d.fired.includes("multisend")).length / 1000;
-    // baseRate 0.5 with cooldown 1 caps the effective rate near ~0.4-0.5.
-    expect(multi).toBeGreaterThan(0.25);
-    expect(multi).toBeLessThan(0.55);
-    // most turns have NO quirks stacked — the anti-uncanny guarantee
-    const empty = decisions.filter((d) => d.fired.length === 0).length / 1000;
-    expect(empty).toBeGreaterThan(0.1);
+    const rate = (id: string) => decisions.filter((d) => (d.fired as string[]).includes(id)).length / 1000;
+    // splitting a multi-sentence reply reads as normal texting, so it fires often
+    expect(rate("multisend")).toBeGreaterThan(0.6);
+    expect(rate("multisend")).toBeLessThan(0.95);
+    // the quirks that read uncanny when frequent stay rare
+    expect(rate("typo")).toBeLessThan(0.12);
+    expect(rate("bangspace")).toBeLessThan(0.2);
+    expect(rate("elongation")).toBeLessThan(0.35);
   });
 
   test("a dependency trait only fires when its prerequisite fired the same turn", () => {
@@ -155,7 +156,7 @@ describe("golden — v1 config behavior is pinned", () => {
         "-",
         "abbrev",
         "multisend,elongation",
-        "-",
+        "multisend",
         "abbrev,bangspace",
         "multisend",
       ]

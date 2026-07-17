@@ -11,9 +11,10 @@ const V1: StyleConfig = {
   description: "first controller config — moderate multi-send, light quirks",
   maxTraitsPerTurn: 2,
   traits: [
-      // multi-send is code-applied (splitIntoBubbles), so it's reliable; cooldown 1
-      // stops two burst-replies back to back.
-      { id: "multisend", kind: "transform", baseRate: 0.5, cooldown: 1 },
+      // multi-send is code-applied (splitIntoBubbles), so it's reliable. High rate
+      // + no cooldown = most multi-sentence replies split into a burst (a single
+      // sentence never splits, so this stays natural).
+      { id: "multisend", kind: "transform", baseRate: 0.85, cooldown: 0 },
       // the model writes these — only prompted on turns they're enabled.
       {
         id: "elongation",
