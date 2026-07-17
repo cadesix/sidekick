@@ -1,30 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
-import {
-  Dimensions,
-  Keyboard,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-  type TextStyle,
-} from 'react-native';
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withDelay,
-  withRepeat,
-  withTiming,
-} from 'react-native-reanimated';
+import { Dimensions, Keyboard, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { sessionFor, type SessionDef } from '@sidekick/core';
 
+import { MSG_SHADOW, STREAM_GAP_MS, StreamedText, TypingDots, streamDurationMs } from './chat-stream';
 import { SliderRow } from './look-controls';
 import { starFaceSnippet, useStarFaceConfig } from '../store/starFaceConfig';
 import { useSidekickContext, type Astral, type ContextNote } from '../store/context';
+import { llm } from '../lib/openai';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
@@ -42,7 +28,6 @@ const { height: SCREEN_H } = Dimensions.get('window');
 type Msg = { role: 'bot' | 'user'; text: string };
 type Phase = 'asking' | 'answer' | 'probe' | 'extracting' | 'confirm' | 'done';
 
-const KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
 const NAME = 'sidekick';
 
 // What the star chat is — shown ONCE, on the user's very first session. Every
@@ -117,34 +102,6 @@ function parseAnalysis(a: unknown): Analysis | null {
   };
 }
 
-// one OpenAI turn with a custom inline system prompt → the reply text (or null
-// on no-key / error, so callers can fall back to a scripted line). `maxTokens`
-// defaults small (acks are one line); the extraction pass needs more room since
-// its JSON now carries fields + notes + recap + the astral analysis — too tight
-// and the JSON truncates mid-object, JSON.parse throws, and the whole
-// extraction (incl. the session's profile data) is silently lost.
-async function llm(system: string, user: string, maxTokens = 200): Promise<string | null> {
-  if (!KEY) return null;
-  try {
-    const r = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${KEY}` },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ],
-        max_tokens: maxTokens,
-      }),
-    });
-    const data = await r.json();
-    const reply = data?.choices?.[0]?.message?.content;
-    return typeof reply === 'string' && reply.trim() ? reply.trim() : null;
-  } catch {
-    return null;
-  }
-}
 
 // one short in-voice reaction to an answer (optionally with ONE follow-up)
 async function fetchAck(def: SessionDef, ask: string, answer: string, probe: boolean): Promise<string | null> {
@@ -280,68 +237,6 @@ function StarFaceTuner() {
   );
 }
 
-function Dot({ delay }: { delay: number }) {
-  const v = useSharedValue(0.3);
-  useEffect(() => {
-    v.value = withDelay(delay, withRepeat(withTiming(1, { duration: 500 }), -1, true));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const style = useAnimatedStyle(() => ({ opacity: v.value }));
-  return <Animated.View style={style} className="w-2 h-2 rounded-full bg-white/70" />;
-}
-
-
-function TypingDots() {
-  return (
-    <View className="flex-row gap-1 py-1">
-      <Dot delay={0} />
-      <Dot delay={160} />
-      <Dot delay={320} />
-    </View>
-  );
-}
-
-// Reveals `text` a few characters at a time — a typewriter so the sidekick's
-// lines stream in rather than appearing whole. The scripted acks arrive as full
-// strings, so this is cosmetic; onReveal lets the parent keep the newest line in
-// view as it grows. Streams once on mount (message keys are stable + append-only,
-// so it never re-types an already-shown line).
-const STREAM_CPS = 42; // characters per second
-// how long StreamedText takes to fully reveal `text`, so the sequencer can hold
-// the next bot line until this one has finished streaming (one at a time)
-const STREAM_GAP_MS = 260; // breath between lines, after one finishes
-function streamDurationMs(text: string): number {
-  return Math.ceil(text.length * (1000 / STREAM_CPS));
-}
-// keeps white text legible where it overlaps the constellation's white stars
-const MSG_SHADOW = {
-  textShadowColor: 'rgba(0,0,0,0.6)',
-  textShadowOffset: { width: 0, height: 1 },
-  textShadowRadius: 4,
-} as const;
-
-function StreamedText({
-  text,
-  className,
-  style,
-  onReveal,
-}: {
-  text: string;
-  className?: string;
-  style?: TextStyle;
-  onReveal?: () => void;
-}) {
-  const [shown, setShown] = useState(1);
-  useEffect(() => {
-    if (shown >= text.length) return;
-    const id = setTimeout(() => {
-      setShown((n) => Math.min(text.length, n + 1));
-      onReveal?.();
-    }, 1000 / STREAM_CPS);
-    return () => clearTimeout(id);
-  }, [shown, text, onReveal]);
-  return <Text className={className} style={style}>{text.slice(0, shown)}</Text>;
-}
 
 export function SessionChat({
   sessionId,

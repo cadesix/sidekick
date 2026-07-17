@@ -85,6 +85,10 @@ export const useSidekickContext = create<SidekickContext>()(
         })),
 
       completeSession: (def, extracted, astral) => {
+        // idempotent: a session is completed (and paid) exactly once. Guards
+        // against re-entry from either runner (Star Chat's dive-out/resume, the
+        // legacy SessionChat celebrate path) double-firing bond/coins.
+        if (get().sessions[def.id]?.done) return;
         const ts = Date.now();
         set((st) => ({
           fields: { ...st.fields, ...extracted.fields },

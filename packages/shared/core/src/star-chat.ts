@@ -14,6 +14,8 @@
 // PROMPT, and the pure reducers/parsers. The app layer owns the network call,
 // persistence, and UI.
 
+import { SESSIONS, type SessionDef } from './sessions';
+
 // ---- fields ----------------------------------------------------------------
 
 export type FieldStatus = 'unknown' | 'partial' | 'high' | 'declined';
@@ -66,7 +68,6 @@ export const FIELDS: FieldDef[] = [
 ];
 
 export const FIELD_IDS: ReadonlySet<string> = new Set(FIELDS.map((f) => f.id));
-export const fieldDef = (id: string): FieldDef | undefined => FIELDS.find((f) => f.id === id);
 
 // ---- phases ----------------------------------------------------------------
 
@@ -156,6 +157,13 @@ export const PHASES: PhaseDef[] = [
 export const PHASE_COUNT = PHASES.length;
 export const phaseDef = (index: number): PhaseDef | undefined => PHASES.find((p) => p.index === index);
 
+// The legacy island `sessions` are folded in one-per-chapter: completing chapter
+// N records SESSIONS[N-1] (pays its bond/coins, unlocks its island). Owning the
+// mapping here — where both tables live — keeps the runner from indexing the
+// legacy array by hand (a silent desync if either table is reordered/resized).
+// PHASES.length and SESSIONS.length are expected to match.
+export const sessionForPhase = (phase: number): SessionDef | undefined => SESSIONS[phase - 1];
+
 // soft cap: after this many exchanges in a phase, the controller must ask any
 // remaining must-haves directly, then we advance regardless.
 export const PHASE_TURN_CAP = 5;
@@ -217,8 +225,6 @@ export const missingMustHaves = (state: ConvoState, phase: number): FieldDef[] =
 // advance when the floor is met, or the soft cap forces it
 export const readyToAdvance = (state: ConvoState): boolean =>
 	missingMustHaves(state, state.phase).length === 0 || state.turnsInPhase >= PHASE_TURN_CAP;
-
-export const isComplete = (state: ConvoState): boolean => state.phase > PHASE_COUNT;
 
 // ---- controller turn (LLM I/O) ---------------------------------------------
 
@@ -322,34 +328,42 @@ export function buildControllerPrompt(state: ConvoState): string {
 	);
 }
 
-// tolerant parse of the controller's JSON reply → a ControllerTurn, or null if
-// unusable (caller falls back to a scripted nudge). Pure.
-export function parseControllerTurn(raw: string): ControllerTurn | null {
+// strip an optional ```json fence, JSON.parse, and swallow errors → a plain
+// object or null. Shared by the two tolerant LLM-reply parsers below.
+function parseJsonLoose(raw: string): Record<string, unknown> | null {
 	try {
 		const cleaned = raw.replace(/^```(json)?/m, '').replace(/```\s*$/m, '').trim();
-		const o = JSON.parse(cleaned) as Record<string, unknown>;
-		const message = typeof o.message === 'string' ? o.message.trim() : '';
-		if (!message) return null;
-		const fieldUpdates = Array.isArray(o.fieldUpdates)
-			? o.fieldUpdates
-					.filter((u): u is Record<string, unknown> => !!u && typeof u === 'object')
-					.map((u) => ({
-						id: String(u.id ?? ''),
-						value: String(u.value ?? ''),
-						evidence: typeof u.evidence === 'string' ? u.evidence : undefined,
-						confidence: u.confidence === 'high' ? ('high' as const) : ('partial' as const),
-					}))
-					.filter((u) => u.id && u.value)
-			: [];
-		return {
-			message,
-			fieldUpdates,
-			tentativeRead: typeof o.tentativeRead === 'string' && o.tentativeRead.trim() ? o.tentativeRead.trim() : undefined,
-			phaseComplete: o.phaseComplete === true,
-		};
+		const o = JSON.parse(cleaned);
+		return o && typeof o === 'object' && !Array.isArray(o) ? (o as Record<string, unknown>) : null;
 	} catch {
 		return null;
 	}
+}
+
+// tolerant parse of the controller's JSON reply → a ControllerTurn, or null if
+// unusable (caller falls back to a scripted nudge). Pure.
+export function parseControllerTurn(raw: string): ControllerTurn | null {
+	const o = parseJsonLoose(raw);
+	if (!o) return null;
+	const message = typeof o.message === 'string' ? o.message.trim() : '';
+	if (!message) return null;
+	const fieldUpdates = Array.isArray(o.fieldUpdates)
+		? o.fieldUpdates
+				.filter((u): u is Record<string, unknown> => !!u && typeof u === 'object')
+				.map((u) => ({
+					id: String(u.id ?? ''),
+					value: String(u.value ?? ''),
+					evidence: typeof u.evidence === 'string' ? u.evidence : undefined,
+					confidence: u.confidence === 'high' ? ('high' as const) : ('partial' as const),
+				}))
+				.filter((u) => u.id && u.value)
+		: [];
+	return {
+		message,
+		fieldUpdates,
+		tentativeRead: typeof o.tentativeRead === 'string' && o.tentativeRead.trim() ? o.tentativeRead.trim() : undefined,
+		phaseComplete: o.phaseComplete === true,
+	};
 }
 
 // ---- final artifact --------------------------------------------------------
@@ -414,28 +428,24 @@ export function buildArtifactPrompt(state: ConvoState): string {
 }
 
 export function parseArtifact(raw: string): PersonalityArtifact | null {
-	try {
-		const cleaned = raw.replace(/^```(json)?/m, '').replace(/```\s*$/m, '').trim();
-		const o = JSON.parse(cleaned) as Record<string, unknown>;
-		const archetype = typeof o.archetype === 'string' ? o.archetype.trim() : '';
-		if (!archetype) return null;
-		const traits = Array.isArray(o.traits)
-			? o.traits.filter((t): t is string => typeof t === 'string' && !!t.trim()).map((t) => t.trim()).slice(0, 5)
-			: [];
-		const insights = Array.isArray(o.insights)
-			? o.insights
-					.filter((i): i is Record<string, unknown> => !!i && typeof i === 'object')
-					.map((i) => ({ claim: String(i.claim ?? ''), because: String(i.because ?? '') }))
-					.filter((i) => i.claim && i.because)
-					.slice(0, 6)
-			: [];
-		return {
-			archetype,
-			reading: typeof o.reading === 'string' ? o.reading.trim() : '',
-			traits,
-			insights,
-		};
-	} catch {
-		return null;
-	}
+	const o = parseJsonLoose(raw);
+	if (!o) return null;
+	const archetype = typeof o.archetype === 'string' ? o.archetype.trim() : '';
+	if (!archetype) return null;
+	const traits = Array.isArray(o.traits)
+		? o.traits.filter((t): t is string => typeof t === 'string' && !!t.trim()).map((t) => t.trim()).slice(0, 5)
+		: [];
+	const insights = Array.isArray(o.insights)
+		? o.insights
+				.filter((i): i is Record<string, unknown> => !!i && typeof i === 'object')
+				.map((i) => ({ claim: String(i.claim ?? ''), because: String(i.because ?? '') }))
+				.filter((i) => i.claim && i.because)
+				.slice(0, 6)
+		: [];
+	return {
+		archetype,
+		reading: typeof o.reading === 'string' ? o.reading.trim() : '',
+		traits,
+		insights,
+	};
 }

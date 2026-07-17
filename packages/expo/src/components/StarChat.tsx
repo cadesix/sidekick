@@ -6,7 +6,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   PHASE_COUNT,
-  SESSIONS,
   buildArtifactPrompt,
   buildCardPrompt,
   buildControllerPrompt,
@@ -15,6 +14,7 @@ import {
   parseControllerTurn,
   phaseDef,
   readyToAdvance,
+  sessionForPhase,
   type ControllerTurn,
   type PersonalityArtifact,
 } from '@sidekick/core';
@@ -23,9 +23,9 @@ import { MSG_SHADOW, STREAM_GAP_MS, StreamedText, TypingDots, streamDurationMs }
 import { useSidekickContext } from '../store/context';
 import { useGoals } from '../store/goals';
 import { useStarChat } from '../store/star-chat';
+import { llm } from '../lib/openai';
 
 const { height: SCREEN_H } = Dimensions.get('window');
-const KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
 
 // The Star Chat runner (docs/STAR-CHAT.md): a generative-with-a-floor personality
 // reading. The engine (phases, must-have floor, per-turn prompt, reducers) lives
@@ -76,37 +76,6 @@ type Stage = 'chat' | 'generating' | 'artifact';
 // across a StarChat unmount/remount — the final card can never be overwritten by
 // a still-pending earlier chapter's card. There is only ever one Star Chat.
 let cardChain: Promise<void> = Promise.resolve();
-
-const LLM_TIMEOUT_MS = 20000;
-async function llm(system: string, user: string, maxTokens: number): Promise<string | null> {
-  if (!KEY) return null;
-  // bound the call so a hung request can't freeze the UI (typing/generating) or
-  // stall the card chain forever — on timeout it aborts and callers fall back.
-  const ctrl = new AbortController();
-  const to = setTimeout(() => ctrl.abort(), LLM_TIMEOUT_MS);
-  try {
-    const r = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${KEY}` },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ],
-        max_tokens: maxTokens,
-      }),
-      signal: ctrl.signal,
-    });
-    const data = await r.json();
-    const reply = data?.choices?.[0]?.message?.content;
-    return typeof reply === 'string' && reply.trim() ? reply.trim() : null;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(to);
-  }
-}
 
 export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
   const insets = useSafeAreaInsets();
@@ -260,7 +229,7 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
   // are to the persisted store, so they complete safely even after unmount.
   const completeChapter = (phase: number) => {
     cardChain = cardChain.then(async () => {
-      const def = SESSIONS[phase - 1];
+      const def = sessionForPhase(phase);
       const c = useStarChat.getState().convo;
       if (!def || !c) return;
       const prior = useSidekickContext.getState().astral;
@@ -284,7 +253,7 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
     const c = useStarChat.getState().convo;
     const raw = c ? await llm(buildArtifactPrompt(c), 'write the artifact now.', 520) : null;
     const art = (raw && parseArtifact(raw)) || FALLBACK_ARTIFACT;
-    const def = SESSIONS[phase - 1];
+    const def = sessionForPhase(phase);
     const card = { archetype: art.archetype, reading: art.reading, traits: art.traits };
     // Land the final card THROUGH the same chain as the chapter cards, so it can
     // never be overwritten by a still-pending earlier-chapter card write (final
