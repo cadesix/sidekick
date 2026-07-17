@@ -1,6 +1,7 @@
 """Dino tail (rigid, `back` slot -> Spine01) -> cosmetics/dino/tail-v1.glb.
-A tapered tail curving off the lower back, with a small dorsal spike row. Part of
-the Dinosaur OUTFIT. Back surface ~x -0.023..-0.034; waist z ~0.046-0.054.
+Tapered spiked tail whose ROOT is seated on the real lower-back surface (ray-cast,
+so it meets the body flush along the true normal) then curls back and up. Part of
+the Dinosaur OUTFIT.
 """
 import bpy, bmesh, sys, os
 from mathutils import Vector
@@ -9,44 +10,37 @@ import coslib as C
 
 body, rig = C.load_master()
 
+# seat the root on the actual lower-back surface
+root, nrm = C.surface_hit(body, Vector((0.0, 0.0, 0.058)), Vector((-1.0, 0.0, 0.0)))
+if root is None:
+    root, nrm = Vector((-0.030, 0.0, 0.058)), Vector((-1.0, 0.0, 0.0))
+out = nrm.normalized()                 # outward from the back (~ -x)
+p0 = root - out * 0.006                # bury the root slightly so there's no gap
+
 ob = C.bm_new_obj("DinoTail")
 me = ob.data
 bm = bmesh.new()
-
-# tail path: off the lower back (-x), dipping then curling up at the tip
+# path grows outward along the back normal, dips, then curls up at the tip
 path = [
-    Vector((-0.028, 0.0, 0.062)),
-    Vector((-0.050, 0.0, 0.052)),
-    Vector((-0.072, 0.0, 0.050)),
-    Vector((-0.091, 0.0, 0.058)),
-    Vector((-0.104, 0.0, 0.073)),
+    p0,
+    p0 + out * 0.024 + Vector((0, 0, -0.008)),
+    p0 + out * 0.048 + Vector((0, 0, -0.010)),
+    p0 + out * 0.068 + Vector((0, 0, 0.000)),
+    p0 + out * 0.082 + Vector((0, 0, 0.016)),
 ]
-verts = C.add_tube(bm, path, lambda t: 0.015 * (1 - t) + 0.0022, nseg=12,
-                   taper_ends=False, cap=True)
+C.add_tube(bm, path, lambda t: 0.016 * (1 - t) + 0.0022, nseg=12, taper_ends=False, cap=True)
 
-# small spikes along the top of the first two thirds
-SPIKES = [
-    (-0.040, 0.0, 0.061, 0.010),
-    (-0.062, 0.0, 0.059, 0.009),
-    (-0.083, 0.0, 0.062, 0.007),
-]
-for (sx, sy, sz, h) in SPIKES:
-    hw, bd = 0.005, 0.005
-    b0 = bm.verts.new((sx + hw, bd, sz))
-    b1 = bm.verts.new((sx - hw, bd, sz))
-    b2 = bm.verts.new((sx - hw, -bd, sz))
-    b3 = bm.verts.new((sx + hw, -bd, sz))
-    apex = bm.verts.new((sx - hw * 0.3, 0.0, sz + h))
-    bm.faces.new((b0, b1, b2, b3))
-    for a, c in [(b0, b1), (b1, b2), (b2, b3), (b3, b0)]:
-        bm.faces.new((a, c, apex))
+# small dorsal spikes on the top of the first two thirds, seated on the path
+for i in (1, 2, 3):
+    base = path[i] + Vector((0, 0, 0.011 - 0.001 * i))
+    C.seat_spike(bm, base, Vector((0.15, 0, 1)).normalized(), 0.010 - 0.001 * i, 0.004, nseg=4)
 
 bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
 for f in bm.faces:
     f.smooth = True
 bm.to_mesh(me); bm.free()
 
-C.set_material(ob, "DinoMat", (0.26, 0.55, 0.24), 0.6)  # dino green
+C.set_material(ob, "DinoMat", (0.26, 0.55, 0.24), 0.6)
 C.smart_uv(ob)
 C.rigid_parent(ob, rig, "Spine01")
 C.export([ob], rig, f"{C.COSDIR}/dino/tail-v1.glb", wip=C.wip("dino_tail"))

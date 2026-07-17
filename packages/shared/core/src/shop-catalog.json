@@ -55,6 +55,11 @@
     "variantId": "heather"
   },
   {
+    "renderKey": "onesie-body-astro",
+    "slot": "onesie-body",
+    "variantId": "astro"
+  },
+  {
     "renderKey": "scarf-red",
     "slot": "scarf",
     "variantId": "red"

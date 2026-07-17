@@ -17,7 +17,8 @@ mw = body.matrix_world; mwi = mw.inverted()
 
 NECK_Z = 0.100     # clean neck hole (head sticks out above)
 ANKLE_Z = 0.014    # hem at the ankles (feet bare)
-OFFSET = 0.0036    # a touch puffier than the shirt
+WRIST_Y = 0.072    # sleeves end at the wrist (paws stay bare) — arms are out at bind
+OFFSET = 0.0038    # a touch puffier than the shirt
 TARGET_TRIS = 1600
 THICK = 0.0024
 EXCLUDE_SUB = ("Head",)  # keep the WHOLE body below the head
@@ -50,6 +51,8 @@ def cut(co, no, **kw):
     bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
 cut((0, 0, NECK_Z), (0, 0, 1), clear_outer=True)   # trim neck stub -> clean collar
 cut((0, 0, ANKLE_Z), (0, 0, 1), clear_inner=True)  # remove feet below the ankle
+cut((0, WRIST_Y, 0), (0, 1, 0), clear_outer=True)  # sleeve ends at the wrist (+y arm)
+cut((0, -WRIST_Y, 0), (0, 1, 0), clear_inner=True) # sleeve ends at the wrist (-y arm)
 
 bm.normal_update()
 for v in bm.verts:
@@ -77,6 +80,8 @@ for v in bm.verts:
         p.z = NECK_Z; v.co = mwi @ p
     elif abs(p.z - ANKLE_Z) < 0.008:
         p.z = ANKLE_Z; v.co = mwi @ p
+    elif abs(abs(p.y) - WRIST_Y) < 0.008:
+        p.y = math.copysign(WRIST_Y, p.y); v.co = mwi @ p
 for _ in range(14):
     bv = [v for v in bm.verts if any(len(e.link_faces) == 1 for e in v.link_edges)]
     np_ = {}

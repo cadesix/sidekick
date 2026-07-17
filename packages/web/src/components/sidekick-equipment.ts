@@ -24,6 +24,7 @@ export type Variant = {
 	roughness?: number;
 	metalness?: number;
 	emissive?: string;
+	opacity?: number; // <1 = see-through (e.g. the astronaut helmet)
 };
 export type SlotDef = {
 	model: string;
@@ -126,6 +127,7 @@ export function createCosmetics(
 		roughness: v.roughness,
 		metalness: v.metalness,
 		emissive: v.emissive,
+		opacity: v.opacity,
 	});
 
 	const applyVariant = (slot: string) => {

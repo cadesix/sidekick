@@ -451,6 +451,7 @@ export type ItemLook = {
 	roughness?: number;
 	metalness?: number;
 	emissive?: string;
+	opacity?: number; // <1 = see-through (astronaut helmet, visors, glass)
 };
 
 // builds a single item material (shirt/hat/…) in the ACTIVE shading mode, so
@@ -493,6 +494,11 @@ export function makeItemMaterial(
 	if (look.roughness !== undefined && "roughness" in m) m.roughness = look.roughness;
 	if (look.metalness !== undefined && "metalness" in m) m.metalness = look.metalness;
 	if (look.emissive !== undefined && "emissive" in m) m.emissive = new THREE.Color(look.emissive);
+	if (look.opacity !== undefined && look.opacity < 1) {
+		m.transparent = true;
+		m.opacity = look.opacity;
+		m.depthWrite = false;
+	}
 	return mat;
 }
 

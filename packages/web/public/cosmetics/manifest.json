@@ -356,6 +356,12 @@
         "id": "forest",
         "name": "Forest",
         "tex": "/cosmetics/back/bp-forest.webp"
+      },
+      {
+        "id": "white",
+        "name": "White",
+        "color": "#dfe4ea",
+        "roughness": 0.5
       }
     ],
     "offset": [
@@ -735,6 +741,12 @@
         "name": "Dino Green",
         "color": "#4e9e3a",
         "roughness": 0.6
+      },
+      {
+        "id": "red",
+        "name": "Red",
+        "color": "#c33028",
+        "roughness": 0.6
       }
     ]
   },
@@ -774,6 +786,427 @@
         "name": "Dino Green",
         "color": "#4e9e3a",
         "roughness": 0.6
+      }
+    ]
+  },
+  "onesie-body": {
+    "model": "/cosmetics/onesie/body-v1.glb",
+    "attach": "skinned",
+    "slot": "shirt",
+    "variants": [
+      {
+        "id": "cat",
+        "color": "#8f96a0",
+        "roughness": 0.6
+      },
+      {
+        "id": "dog",
+        "color": "#c79a5e",
+        "roughness": 0.6
+      },
+      {
+        "id": "bunny",
+        "color": "#eef0ef",
+        "roughness": 0.6
+      },
+      {
+        "id": "frog",
+        "color": "#6cbe46",
+        "roughness": 0.6
+      },
+      {
+        "id": "bear",
+        "color": "#8a5a34",
+        "roughness": 0.6
+      },
+      {
+        "id": "shark",
+        "color": "#6f97b8",
+        "roughness": 0.6
+      },
+      {
+        "id": "astro",
+        "color": "#eef1f5",
+        "roughness": 0.5
+      },
+      {
+        "id": "robot",
+        "color": "#a8b0ba",
+        "roughness": 0.4,
+        "metalness": 0.6
+      },
+      {
+        "id": "mummy",
+        "color": "#e6e0d0",
+        "roughness": 0.8
+      },
+      {
+        "id": "devil",
+        "color": "#c33028",
+        "roughness": 0.6
+      },
+      {
+        "id": "fox",
+        "color": "#df7a3a",
+        "roughness": 0.6
+      },
+      {
+        "id": "angel",
+        "color": "#eef1f5",
+        "roughness": 0.6
+      },
+      {
+        "id": "chef",
+        "color": "#f4f5f6",
+        "roughness": 0.7
+      },
+      {
+        "id": "bee",
+        "color": "#f2c230",
+        "roughness": 0.6
+      },
+      {
+        "id": "ninja",
+        "color": "#23262b",
+        "roughness": 0.6
+      },
+      {
+        "id": "wizard",
+        "color": "#6a4bbf",
+        "roughness": 0.6
+      },
+      {
+        "id": "royal",
+        "color": "#b0322e",
+        "roughness": 0.6
+      }
+    ]
+  },
+  "onesie-plain-hood": {
+    "model": "/cosmetics/onesie/plain-hood-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "frog",
+        "color": "#6cbe46"
+      },
+      {
+        "id": "robot",
+        "color": "#a8b0ba",
+        "roughness": 0.4,
+        "metalness": 0.6
+      },
+      {
+        "id": "mummy",
+        "color": "#e6e0d0",
+        "roughness": 0.85
+      },
+      {
+        "id": "ninja",
+        "color": "#23262b"
+      }
+    ]
+  },
+  "onesie-cat-hood": {
+    "model": "/cosmetics/onesie/cat-hood-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "cat",
+        "color": "#8f96a0"
+      },
+      {
+        "id": "fox",
+        "color": "#df7a3a"
+      }
+    ]
+  },
+  "onesie-dog-hood": {
+    "model": "/cosmetics/onesie/dog-hood-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "dog",
+        "color": "#c79a5e"
+      }
+    ]
+  },
+  "onesie-bunny-hood": {
+    "model": "/cosmetics/onesie/bunny-hood-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "bunny",
+        "color": "#eef0ef"
+      }
+    ]
+  },
+  "onesie-bear-hood": {
+    "model": "/cosmetics/onesie/bear-hood-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "bear",
+        "color": "#8a5a34"
+      }
+    ]
+  },
+  "onesie-shark-hood": {
+    "model": "/cosmetics/onesie/shark-hood-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "shark",
+        "color": "#6f97b8"
+      }
+    ]
+  },
+  "onesie-devil-hood": {
+    "model": "/cosmetics/onesie/devil-hood-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "devil",
+        "color": "#c33028"
+      }
+    ]
+  },
+  "onesie-nose": {
+    "model": "/cosmetics/onesie/nose-v1.glb",
+    "attach": "bone:Head",
+    "slot": "ear",
+    "variants": [
+      {
+        "id": "pink",
+        "color": "#e08aa0"
+      },
+      {
+        "id": "dark",
+        "color": "#2a2320"
+      }
+    ]
+  },
+  "onesie-eyes": {
+    "model": "/cosmetics/onesie/frog-eyes-v1.glb",
+    "attach": "bone:Head",
+    "slot": "glasses",
+    "variants": [
+      {
+        "id": "frog",
+        "color": "#edefe6"
+      }
+    ]
+  },
+  "onesie-antenna": {
+    "model": "/cosmetics/onesie/antenna-v1.glb",
+    "attach": "bone:Head",
+    "slot": "glasses",
+    "variants": [
+      {
+        "id": "metal",
+        "color": "#aab0ba",
+        "roughness": 0.4,
+        "metalness": 0.7
+      }
+    ]
+  },
+  "onesie-helmet": {
+    "model": "/cosmetics/onesie/helmet-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "clear",
+        "color": "#dfeaf5",
+        "roughness": 0.1,
+        "opacity": 0.28
+      }
+    ]
+  },
+  "onesie-chest": {
+    "model": "/cosmetics/onesie/chest-panel-v1.glb",
+    "attach": "bone:Spine01",
+    "slot": "neck",
+    "variants": [
+      {
+        "id": "grey",
+        "color": "#aab0ba",
+        "roughness": 0.4,
+        "metalness": 0.5
+      }
+    ]
+  },
+  "onesie-halo": {
+    "model": "/cosmetics/onesie/halo-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "gold",
+        "color": "#f0c64a",
+        "roughness": 0.3,
+        "metalness": 0.6,
+        "emissive": "#3a2c08"
+      }
+    ]
+  },
+  "onesie-wings": {
+    "model": "/cosmetics/onesie/wings-v1.glb",
+    "attach": "bone:Spine01",
+    "slot": "back",
+    "variants": [
+      {
+        "id": "white",
+        "color": "#f2f4f7",
+        "roughness": 0.6
+      },
+      {
+        "id": "clear",
+        "color": "#eaf2fb",
+        "roughness": 0.2,
+        "opacity": 0.55
+      }
+    ]
+  },
+  "onesie-toque": {
+    "model": "/cosmetics/onesie/toque-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "white",
+        "color": "#f6f6f5",
+        "roughness": 0.7
+      }
+    ]
+  },
+  "onesie-headband": {
+    "model": "/cosmetics/onesie/headband-v1.glb",
+    "attach": "bone:Head",
+    "slot": "glasses",
+    "variants": [
+      {
+        "id": "red",
+        "color": "#c53026",
+        "roughness": 0.6
+      }
+    ]
+  },
+  "onesie-bee-antennae": {
+    "model": "/cosmetics/onesie/bee-antennae-v1.glb",
+    "attach": "bone:Head",
+    "slot": "glasses",
+    "variants": [
+      {
+        "id": "black",
+        "color": "#26221e",
+        "roughness": 0.5
+      }
+    ]
+  },
+  "onesie-pointy-hood": {
+    "model": "/cosmetics/onesie/pointy-hood-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "cat",
+        "color": "#8f96a0"
+      },
+      {
+        "id": "fox",
+        "color": "#df7a3a"
+      }
+    ]
+  },
+  "onesie-floppy-hood": {
+    "model": "/cosmetics/onesie/floppy-hood-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "dog",
+        "color": "#c79a5e"
+      }
+    ]
+  },
+  "onesie-long-hood": {
+    "model": "/cosmetics/onesie/long-hood-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "bunny",
+        "color": "#eef0ef"
+      }
+    ]
+  },
+  "onesie-plain-ovoid-hood": {
+    "model": "/cosmetics/onesie/plain-ovoid-hood-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "frog",
+        "color": "#6cbe46"
+      }
+    ]
+  },
+  "onesie-fin-hood": {
+    "model": "/cosmetics/onesie/fin-hood-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "shark",
+        "color": "#6f97b8"
+      }
+    ]
+  },
+  "onesie-horn-hood": {
+    "model": "/cosmetics/onesie/horn-hood-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "devil",
+        "color": "#c33028"
+      }
+    ]
+  },
+  "onesie-wrapped-hood": {
+    "model": "/cosmetics/onesie/wrapped-hood-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "mummy",
+        "color": "#e6e0d0",
+        "roughness": 0.85
+      },
+      {
+        "id": "ninja",
+        "color": "#23262b"
+      }
+    ]
+  },
+  "onesie-box-hood": {
+    "model": "/cosmetics/onesie/box-hood-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "robot",
+        "color": "#a8b0ba",
+        "roughness": 0.4,
+        "metalness": 0.6
       }
     ]
   }
