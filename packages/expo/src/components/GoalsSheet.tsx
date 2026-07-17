@@ -16,7 +16,7 @@ import { useGoals } from '../store/goals';
 // icons from web aren't bundled into the Expo app. So instead of an <Image>, we
 // render an Ionicon placeholder (mapped per slug) inside a per-goal colored dot.
 
-const SHEET_H = Math.round(Dimensions.get('window').height * 0.55);
+const SHEET_H = Math.round(Dimensions.get('window').height * 0.72);
 
 const DONE = '#12C93E';
 const TALK = '#0a84ff';
@@ -149,8 +149,8 @@ function GoalCard({
     >
       <Pressable
         onPress={onToggleExpand}
-        className="flex-row items-center px-3.5 py-2.5"
-        style={{ gap: 12 }}
+        className="flex-row items-center px-3.5 py-4"
+        style={{ gap: 12, minHeight: 68 }}
       >
         <View
           className="h-10 w-10 shrink-0 rounded-xl items-center justify-center"

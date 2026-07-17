@@ -101,7 +101,12 @@ export type SidekickController = {
 // Bump on every edit — logged at context creation so the debug loop can verify
 // the bundle it launched is actually the code it just changed (Metro sometimes
 // serves stale bundles; see scripts/sim-snap.sh).
-export const BUILD_MARKER = 'build-053-star-face-module';
+export const BUILD_MARKER = 'build-054-cam-clamp';
+
+// Lowest the orbiting eye may drop, in world Y. The meadow surface is ~0; this
+// keeps the camera just above it so a downward drag never reveals the ground's
+// underside (see the per-frame pitch clamp in the animate loop).
+const GROUND_EYE_MIN = 0.15;
 
 // Whether the production home renders through the bloom composer. Off: web
 // /home5 renders direct (no post) with antialias, so we match it. Flip on only
@@ -330,11 +335,28 @@ export function createSidekickRenderer(
   // fill, which is what makes the meadow read lighter + warmer than direct light
   // alone. (PMREM uses a half-float render target — fine on WebGL2/Expo Web; if
   // a native expo-gl build can't allocate it, guard this behind a try/catch.)
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const envScene = makeEnvScene();
-  scene.environment = pmrem.fromScene(envScene, 0.04).texture;
-  (scene as THREE.Scene & { environmentIntensity?: number }).environmentIntensity = s.envIntensity;
-  pmrem.dispose();
+  // PMREM's half-float render target needs EXT_color_buffer_float, which real
+  // WebGL2 (Expo Web) has but iOS expo-gl does NOT. Without it the float RT is
+  // framebuffer-incomplete, scene.environment comes out black, and the Lambert
+  // meadow loses its warm indirect fill — rendering markedly darker than web
+  // (the exact symptom seen on device). So only take the true IBL path when the
+  // float RT is actually renderable; otherwise approximate the env's warm diffuse
+  // irradiance with a flat ambient fill tuned to match Expo Web's look.
+  const canPMREM =
+    renderer.capabilities.isWebGL2 && renderer.extensions.has('EXT_color_buffer_float');
+  if (canPMREM) {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const envScene = makeEnvScene();
+    scene.environment = pmrem.fromScene(envScene, 0.04).texture;
+    (scene as THREE.Scene & { environmentIntensity?: number }).environmentIntensity =
+      s.envIntensity;
+    pmrem.dispose();
+  } else {
+    // warm cream matches the env sky/key panels; gain compensates for a flat
+    // ambient lacking the bright IBL panels. Tune ENV_FILL_GAIN to taste on device.
+    const ENV_FILL_GAIN = 1.15;
+    scene.add(new THREE.AmbientLight(new THREE.Color('#ffe9d2'), s.envIntensity * ENV_FILL_GAIN));
+  }
 
   // shadows: shadowOpacity defaults to 0 (no visible shadow), so we skip the
   // shadow map on mobile for perf. Re-enable when a lawn shadow is wanted.
@@ -906,7 +928,19 @@ export function createSidekickRenderer(
     camOff.copy(camBasePos).sub(camBaseTarget);
     camSph.setFromVector3(camOff);
     camSph.theta += fr.camYaw;
-    camSph.phi = THREE.MathUtils.clamp(camSph.phi + fr.camPitch, 0.3, Math.PI - 0.3);
+    // Clamp the pitch so the orbit can never drop the eye below the meadow and
+    // reveal the ground's underside. Spherical y = radius*cos(phi), so the
+    // largest phi keeping camera.y ≥ GROUND_EYE_MIN is acos of that ratio —
+    // computed per frame so it holds across framings (target height + distance
+    // both vary). Derived, not a fixed angle: the hero framing already sits near
+    // horizontal, so a constant cap would shove it upward.
+    const cosFloor = THREE.MathUtils.clamp(
+      (GROUND_EYE_MIN - camBaseTarget.y) / Math.max(0.001, camSph.radius),
+      -1,
+      1,
+    );
+    const maxPhi = Math.min(Math.PI - 0.3, Math.acos(cosFloor));
+    camSph.phi = THREE.MathUtils.clamp(camSph.phi + fr.camPitch, 0.3, maxPhi);
     camera.position.setFromSpherical(camSph).add(camBaseTarget);
     camera.lookAt(camBaseTarget);
 

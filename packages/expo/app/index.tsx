@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Dimensions, Pressable, View } from 'react-native';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { Dimensions, Pressable, View, AppState, type AppStateStatus } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -21,14 +23,15 @@ import { HomeDock } from '../src/components/HomeDock';
 import { type EnvironmentId } from '../src/three/biomes';
 import { useDailyBox } from '../src/store/dailyBox';
 import { speak } from '../src/store/speech';
+import { useBond } from '../src/store/bond';
 import { useStreak } from '../src/store/streak';
-import { boxTier, nextSession as coreNextSession, type BoxReward } from '@sidekick/core';
+import { boxTier, BOND_MAX, nextSession as coreNextSession, type BoxReward } from '@sidekick/core';
 import { SettingsSheet } from '../src/components/SettingsSheet';
 import { ShopSheet } from '../src/components/ShopSheet';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { WorldMap } from '../src/components/WorldMap';
 import type { Framing, SidekickController } from '../src/three/renderer';
-import { hydrateSettings, loadSettings, type SidekickSettings } from '../src/three/settings';
+import { hydrateSettings, loadSettings, refreshTimeOfDay, type SidekickSettings } from '../src/three/settings';
 import type { CosmeticsControls } from '../src/three/wardrobe';
 import { useDeferredFlag } from '../src/lib/useDeferredFlag';
 
@@ -44,10 +47,15 @@ const HERO_FRAMING: Framing = {
   fov: 41.1,
 };
 
+// The chat sheet covers ~82% of the screen (CHAT_SHEET_DETENT), so the mascot
+// gets only the thin band at the top. It has to be small: at the old fov 30 / z 6
+// the mascot filled ~half the view and overflowed the band. Wider fov + more
+// distance shrinks it, and the low target aims down so the head rides near the
+// top of frame (= the visible band) rather than centre. Tune-by-eye values.
 const CHAT_FRAMING: Framing = {
-  pos: [0, 1.2, 6.0],
-  target: [0, -0.75, 0],
-  fov: 30,
+  pos: [0, 1.4, 7.6],
+  target: [0, -1.2, 0],
+  fov: 46,
 };
 
 // Opening the map: the camera rapidly rockets up + back (pull away from the
@@ -155,6 +163,24 @@ export default function Home() {
   useEffect(() => {
     hydrateSettings().then(() => setSettings(loadSettings()));
   }, []);
+  // The scene time-of-day tracks the real clock. hydrate sets it at launch; this
+  // catches a session left open across a boundary (dusk → night) when the app
+  // comes back to the foreground, and re-applies the matching preset live.
+  useEffect(() => {
+    const onChange = (next: AppStateStatus) => {
+      if (next !== 'active') return;
+      if (refreshTimeOfDay()) {
+        setSettings((prev) => {
+          if (!prev) return prev;
+          const updated = { ...prev, timeOfDay: loadSettings().timeOfDay };
+          controller?.applySettings(updated);
+          return updated;
+        });
+      }
+    };
+    const sub = AppState.addEventListener('change', onChange);
+    return () => sub.remove();
+  }, [controller]);
   // travel to a biome: swap the 3D world, close the map, and drop an arrival
   // line (bubble after the map reveal shrinks so it pops over the visible
   // character) — mirrors home5.tsx onTravel.
@@ -284,14 +310,21 @@ export default function Home() {
           <Pressable
             onPress={() => setAppearanceOpen(true)}
             accessibilityLabel="Appearance"
-            style={{ height: 40, width: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+            style={{ height: 52, width: 52, borderRadius: 26, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
           >
             {/* the live head avatar IS the closet button (mirrors web home5).
                 Freeze it while the Closet is open so its GL context isn't
                 competing with the sheet's image load + studio crossfade. */}
-            <SidekickAvatar size={40} style={{ transform: [{ scale: 1.1 }] }} paused={appearanceOpen} />
+            <SidekickAvatar size={52} style={{ transform: [{ scale: 1.1 }] }} paused={appearanceOpen} />
           </Pressable>
           <StreakPill onPress={() => setStreakModalOpen(true)} />
+          <Pressable
+            onPress={() => router.push('/settings')}
+            accessibilityLabel="Settings"
+            style={{ height: 52, width: 52, borderRadius: 26, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Ionicons name="settings-outline" size={26} color="#404040" />
+          </Pressable>
         </View>
       ) : null}
 
@@ -340,6 +373,11 @@ export default function Home() {
               setSessionId(null);
               const line = astralNews(useSidekickContext.getState().astral);
               setTimeout(() => speak(line, 6000), 2600);
+              // if the bond isn't full yet, nudge them to keep going — a beat
+              // after the astral line so it reads as a second thought
+              if (useBond.getState().bond < BOND_MAX) {
+                setTimeout(() => speak("let's complete our bond ✦", 5000), 9200);
+              }
             }}
           />
         </View>

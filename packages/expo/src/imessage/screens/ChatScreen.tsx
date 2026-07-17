@@ -2,7 +2,6 @@ import { BlurView } from "expo-blur";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -55,14 +54,13 @@ interface OverlayState {
 /**
  * The chat, hosted inside the home screen's slide-up drawer (plain RN views,
  * so it renders on web too). The mascot in the band above the drawer IS the
- * conversation identity, so there's no iMessage-style header — just a slim row
- * of glass buttons: close on the left, settings on the right. The composer
+ * conversation identity, so there's no iMessage-style header — just a grabber
+ * (slide down to dismiss) and a close button on the right. The composer
  * stack is pinned to the drawer bottom and rides the keyboard via the
  * keyboard-controller translate.
  */
 export function ChatScreen({ onClose }: { onClose: () => void }) {
 	const insets = useSafeAreaInsets();
-	const router = useRouter();
 	const { thread, messages, composerAd, typing, send, addReaction, removeMessage } =
 		useSidekickChat();
 
@@ -288,6 +286,11 @@ export function ChatScreen({ onClose }: { onClose: () => void }) {
 					style={styles.headerFade}
 					pointerEvents="none"
 				/>
+				{/* grabber: signals the sheet slides down to dismiss */}
+				<View style={styles.grabberWrap} pointerEvents="none">
+					<View style={styles.grabber} />
+				</View>
+				{/* close on the RIGHT now; settings moved to the home screen's gear */}
 				<View style={styles.headerRow} pointerEvents="box-none">
 					<Glass isInteractive style={styles.glassButton}>
 						<Pressable
@@ -297,16 +300,6 @@ export function ChatScreen({ onClose }: { onClose: () => void }) {
 							style={styles.glassPressable}
 						>
 							<Icon name="xmark" size={18} color={colors.blue} strokeWidth={2.5} />
-						</Pressable>
-					</Glass>
-					<Glass isInteractive style={styles.glassButton}>
-						<Pressable
-							hitSlop={12}
-							accessibilityLabel="Settings"
-							onPress={() => router.push("/settings")}
-							style={styles.glassPressable}
-						>
-							<Icon name="ellipsis" size={20} color={colors.blue} strokeWidth={2.5} />
 						</Pressable>
 					</Glass>
 				</View>
@@ -427,8 +420,21 @@ const styles = StyleSheet.create({
 		height: SHEET_HEADER_HEIGHT,
 		flexDirection: "row",
 		alignItems: "center",
-		justifyContent: "space-between",
+		justifyContent: "flex-end",
 		paddingHorizontal: 12,
+	},
+	grabberWrap: {
+		position: "absolute",
+		top: 8,
+		left: 0,
+		right: 0,
+		alignItems: "center",
+	},
+	grabber: {
+		width: 36,
+		height: 5,
+		borderRadius: 3,
+		backgroundColor: "rgba(60,60,67,0.3)",
 	},
 	glassButton: {
 		width: 42,

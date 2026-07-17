@@ -159,8 +159,10 @@ export function makeCelMaterial(
       uCelSoft: { value: 0.015 + 0.6 * THREE.MathUtils.clamp(s.celSoftness, 0, 1) },
       uCelShadow: { value: new THREE.Color(scene.shadeColor).multiply(envTint) },
       uCelAmt: { value: s.celShadowAmt },
-      uRimColor: { value: new THREE.Color(s.celRimColor).multiply(envTint) },
-      uRimStrength: { value: s.celRimStrength },
+      // rim = the per-time-of-day scene rim (used un-tinted, matching the scene
+      // rim light); width stays a global shape knob
+      uRimColor: { value: new THREE.Color(scene.rimColor) },
+      uRimStrength: { value: scene.rimIntensity },
       uRimWidth: { value: s.celRimWidth },
     },
   ]) as Record<string, THREE.IUniform>;
@@ -214,8 +216,8 @@ export function retintCelMaterial(
   (u.uCelShadow.value as THREE.Color).set(scene.shadeColor).multiply(envTint);
   u.uCelAmt.value = s.celShadowAmt;
   if (u.uRimColor) {
-    (u.uRimColor.value as THREE.Color).set(s.celRimColor).multiply(envTint);
-    u.uRimStrength.value = s.celRimStrength;
+    (u.uRimColor.value as THREE.Color).set(scene.rimColor);
+    u.uRimStrength.value = scene.rimIntensity;
     u.uRimWidth.value = s.celRimWidth;
   }
 }

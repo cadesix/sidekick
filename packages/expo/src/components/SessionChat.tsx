@@ -8,6 +8,7 @@ import {
   Text,
   TextInput,
   View,
+  type TextStyle,
 } from 'react-native';
 import Animated, {
   Easing,
@@ -300,6 +301,48 @@ function TypingDots() {
   );
 }
 
+// Reveals `text` a few characters at a time — a typewriter so the sidekick's
+// lines stream in rather than appearing whole. The scripted acks arrive as full
+// strings, so this is cosmetic; onReveal lets the parent keep the newest line in
+// view as it grows. Streams once on mount (message keys are stable + append-only,
+// so it never re-types an already-shown line).
+const STREAM_CPS = 42; // characters per second
+// how long StreamedText takes to fully reveal `text`, so the sequencer can hold
+// the next bot line until this one has finished streaming (one at a time)
+const STREAM_GAP_MS = 260; // breath between lines, after one finishes
+function streamDurationMs(text: string): number {
+  return Math.ceil(text.length * (1000 / STREAM_CPS));
+}
+// keeps white text legible where it overlaps the constellation's white stars
+const MSG_SHADOW = {
+  textShadowColor: 'rgba(0,0,0,0.6)',
+  textShadowOffset: { width: 0, height: 1 },
+  textShadowRadius: 4,
+} as const;
+
+function StreamedText({
+  text,
+  className,
+  style,
+  onReveal,
+}: {
+  text: string;
+  className?: string;
+  style?: TextStyle;
+  onReveal?: () => void;
+}) {
+  const [shown, setShown] = useState(1);
+  useEffect(() => {
+    if (shown >= text.length) return;
+    const id = setTimeout(() => {
+      setShown((n) => Math.min(text.length, n + 1));
+      onReveal?.();
+    }, 1000 / STREAM_CPS);
+    return () => clearTimeout(id);
+  }, [shown, text, onReveal]);
+  return <Text className={className} style={style}>{text.slice(0, shown)}</Text>;
+}
+
 export function SessionChat({
   sessionId,
   onClose,
@@ -385,7 +428,9 @@ export function SessionChat({
       later(() => {
         setTyping(false);
         setMsgs((m) => [...m, { role: 'bot', text }]);
-        later(next, 300);
+        // one at a time: don't start the next line until this one has fully
+        // streamed in, or two would type simultaneously
+        later(next, streamDurationMs(text) + STREAM_GAP_MS);
       }, 600);
     };
     next();
@@ -519,7 +564,8 @@ export function SessionChat({
         setPhase('probe');
         return;
       }
-      later(nextBeat, 350);
+      // let the ack finish streaming before the next beat's question types in
+      later(nextBeat, streamDurationMs(ack) + STREAM_GAP_MS);
     } else {
       // offline/errored: keep the session moving with a scripted ack
       showBotThen(['love that'], nextBeat);
@@ -547,46 +593,35 @@ export function SessionChat({
         </Pressable>
       </View>
 
-      {/* clear focal zone up top — the constellation + stars live here, nothing
-          covers them (the messages sit in the panel below) */}
-      <View style={{ height: SCREEN_H * 0.32 }} pointerEvents="none" />
-
-      {/* lower panel: a semi-transparent night-glass container holding the
-          scrolling messages + input, so the sky stays the focal point above */}
-      <Animated.View
-        style={[
-          {
-            flex: 1,
-            backgroundColor: 'rgba(12,8,28,0.55)',
-            borderTopLeftRadius: 28,
-            borderTopRightRadius: 28,
-            borderTopWidth: 1,
-            borderColor: 'rgba(255,255,255,0.08)',
-            overflow: 'hidden',
-          },
-          kbPad,
-        ]}
-      >
+      {/* No container: the conversation sits directly over the night sky and its
+          star-constellation head. Messages bottom-anchor and push UP as you chat
+          (contentContainerStyle flex-end), so the sky stays clear above until the
+          chat fills it. Text is inked for legibility over the stars. */}
+      <Animated.View style={[{ flex: 1, overflow: 'hidden' }, kbPad]}>
         {STAR_FACE_TUNING ? (
           <StarFaceTuner />
         ) : (
         <ScrollView
           ref={scrollRef}
           style={{ flex: 1 }}
-          className="px-4 pt-4"
-          contentContainerStyle={{ paddingBottom: 12, gap: 12 }}
+          className="px-4"
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-end', paddingBottom: 12, paddingTop: 24, gap: 12 }}
           showsVerticalScrollIndicator={false}
         >
-          {/* no bubbles — just white text. bot lines left, user lines right. the
-              sidekick's head lives once in the header (no per-line GL contexts) */}
+          {/* no bubbles — just text. bot lines left (streamed in), user right. */}
           {msgs.map((m, i) =>
             m.role === 'bot' ? (
               <View key={i} style={{ maxWidth: '90%' }} className="self-start">
-                <Text className="text-[15px] leading-[22px] text-white">{m.text}</Text>
+                <StreamedText
+                  text={m.text}
+                  className="text-[16px] leading-[23px] text-white"
+                  style={MSG_SHADOW}
+                  onReveal={() => scrollRef.current?.scrollToEnd({ animated: false })}
+                />
               </View>
             ) : (
               <View key={i} style={{ maxWidth: '84%' }} className="self-end">
-                <Text className="text-[15px] leading-[22px] text-white text-right">{m.text}</Text>
+                <Text style={MSG_SHADOW} className="text-[16px] leading-[23px] text-white text-right">{m.text}</Text>
               </View>
             ),
           )}
