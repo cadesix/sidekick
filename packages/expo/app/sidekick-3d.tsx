@@ -149,6 +149,10 @@ export default function SidekickLookEditor() {
             <GuiSlider label="fov" value={s.fov} min={15} max={70} onChange={(v) => setTop('fov', v)} />
           </GuiFolder>
 
+          {/* Everything that varies with time of day lives here, under one
+              grouping. The "scene" picker at the top switches which preset
+              (day / evening / night) every control below edits. Anything NOT in
+              this folder is global — the same across all three times. */}
           <GuiFolder title="Time of Day" defaultOpen>
             <GuiSelect label="scene" value={s.timeOfDay} options={TIME_OPTS} onChange={(id) => setTop('timeOfDay', id as TimeOfDay)} />
             <GuiColor label="sky top" value={sc.skyTop} onChange={(v) => setScene('skyTop', v)} />
@@ -163,6 +167,17 @@ export default function SidekickLookEditor() {
             <GuiColor label="rock color" value={sc.rock} onChange={(v) => setScene('rock', v)} />
             <GuiColor label="char tint" value={sc.charTint} onChange={(v) => setScene('charTint', v)} />
             <GuiColor label="shade color" value={sc.shadeColor} onChange={(v) => setScene('shadeColor', v)} />
+            {/* lighting — also per time of day */}
+            <GuiColor label="key color" value={sc.keyColor} onChange={(v) => setScene('keyColor', v)} />
+            <GuiSlider label="key intensity" value={sc.keyIntensity} min={0} max={4} onChange={(v) => setScene('keyIntensity', v)} />
+            <GuiColor label="fill color" value={sc.fillColor} onChange={(v) => setScene('fillColor', v)} />
+            <GuiSlider label="fill intensity" value={sc.fillIntensity} min={0} max={3} onChange={(v) => setScene('fillIntensity', v)} />
+            <GuiColor label="rim color" value={sc.rimColor} onChange={(v) => setScene('rimColor', v)} />
+            <GuiSlider label="rim intensity" value={sc.rimIntensity} min={0} max={4} onChange={(v) => setScene('rimIntensity', v)} />
+            <GuiColor label="hemi sky" value={sc.hemiSky} onChange={(v) => setScene('hemiSky', v)} />
+            <GuiColor label="hemi ground" value={sc.hemiGround} onChange={(v) => setScene('hemiGround', v)} />
+            <GuiSlider label="hemi intensity" value={sc.hemiIntensity} min={0} max={2} onChange={(v) => setScene('hemiIntensity', v)} />
+            <GuiSlider label="exposure" value={sc.exposure} min={0.3} max={2.5} onChange={(v) => setScene('exposure', v)} />
           </GuiFolder>
 
           <GuiFolder title="Environment">
@@ -183,19 +198,6 @@ export default function SidekickLookEditor() {
             <GuiToggle label="outline" value={s.outline} onChange={(v) => setTop('outline', v)} />
             <GuiSlider label="outline width" value={s.outlineWidth} min={0} max={0.02} onChange={(v) => setTop('outlineWidth', v)} />
             <GuiColor label="outline color" value={s.outlineColor} onChange={(v) => setTop('outlineColor', v)} />
-          </GuiFolder>
-
-          <GuiFolder title="Lighting">
-            <GuiColor label="key color" value={sc.keyColor} onChange={(v) => setScene('keyColor', v)} />
-            <GuiSlider label="key intensity" value={sc.keyIntensity} min={0} max={4} onChange={(v) => setScene('keyIntensity', v)} />
-            <GuiColor label="fill color" value={sc.fillColor} onChange={(v) => setScene('fillColor', v)} />
-            <GuiSlider label="fill intensity" value={sc.fillIntensity} min={0} max={3} onChange={(v) => setScene('fillIntensity', v)} />
-            <GuiColor label="rim color" value={sc.rimColor} onChange={(v) => setScene('rimColor', v)} />
-            <GuiSlider label="rim intensity" value={sc.rimIntensity} min={0} max={4} onChange={(v) => setScene('rimIntensity', v)} />
-            <GuiColor label="hemi sky" value={sc.hemiSky} onChange={(v) => setScene('hemiSky', v)} />
-            <GuiColor label="hemi ground" value={sc.hemiGround} onChange={(v) => setScene('hemiGround', v)} />
-            <GuiSlider label="hemi intensity" value={sc.hemiIntensity} min={0} max={2} onChange={(v) => setScene('hemiIntensity', v)} />
-            <GuiSlider label="exposure" value={sc.exposure} min={0.3} max={2.5} onChange={(v) => setScene('exposure', v)} />
           </GuiFolder>
 
           <GuiFolder title="Bloom">

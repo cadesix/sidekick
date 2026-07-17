@@ -1,6 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Alert, Dimensions, Pressable, View } from 'react-native';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { Alert, AppState, Dimensions, Pressable, View, type AppStateStatus } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -12,7 +14,9 @@ import { DevPanel } from '../src/components/DevPanel';
 import { GoalsSheet } from '../src/components/GoalsSheet';
 import { StreakModal } from '../src/components/StreakModal';
 import { SessionChat, STAR_FACE_TUNING } from '../src/components/SessionChat';
+import { StarChat } from '../src/components/StarChat';
 import { StarChatButton } from '../src/components/StarChatButton';
+import { useStarChat } from '../src/store/star-chat';
 import { useStarFaceConfig } from '../src/store/starFaceConfig';
 import { useSidekickContext, type Astral } from '../src/store/context';
 import { SidekickAvatar } from '../src/components/SidekickAvatar';
@@ -21,13 +25,13 @@ import { StreakPill } from '../src/components/StreakPill';
 import { HomeDock } from '../src/components/HomeDock';
 import { type EnvironmentId } from '../src/three/biomes';
 import { speak } from '../src/store/speech';
-import { nextSession as coreNextSession } from '@sidekick/core';
+import { BOND_MAX, nextSession as coreNextSession } from '@sidekick/core';
 import { SettingsSheet } from '../src/components/SettingsSheet';
 import { ShopSheet } from '../src/components/ShopSheet';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { WorldMap } from '../src/components/WorldMap';
 import type { Framing, SidekickController } from '../src/three/renderer';
-import { hydrateSettings, loadSettings, saveSettings, type SidekickSettings } from '../src/three/settings';
+import { hydrateSettings, loadSettings, refreshTimeOfDay, saveSettings, type SidekickSettings } from '../src/three/settings';
 import type { CosmeticsControls } from '../src/three/wardrobe';
 import { useDeferredFlag } from '../src/lib/useDeferredFlag';
 import { claimDailyBox, type BoxContents } from '../src/lib/api';
@@ -48,10 +52,15 @@ const HERO_FRAMING: Framing = {
   fov: 41.1,
 };
 
+// The chat sheet covers ~82% of the screen (CHAT_SHEET_DETENT), so the mascot
+// gets only the thin band at the top. It has to be small: at the old fov 30 / z 6
+// the mascot filled ~half the view and overflowed the band. Wider fov + more
+// distance shrinks it, and the low target aims down so the head rides near the
+// top of frame (= the visible band) rather than centre. Tune-by-eye values.
 const CHAT_FRAMING: Framing = {
-  pos: [0, 1.2, 6.0],
-  target: [0, -0.75, 0],
-  fov: 30,
+  pos: [0, 1.4, 7.6],
+  target: [0, -1.2, 0],
+  fov: 46,
 };
 
 // Opening the map: the camera rapidly rockets up + back (pull away from the
@@ -122,6 +131,11 @@ export default function Home() {
   // world environment (map travel) + the active guided session (if any)
   const [environment, setEnvironment] = useState<EnvironmentId>('meadow');
   const [sessionId, setSessionId] = useState<string | null>(null);
+  // the continuous Star Chat (the progressive-onboarding personality reading).
+  // Shares the guided-session sky choreography below via `skyMode`; the legacy
+  // per-island SessionChat path (map taps) still uses sessionId.
+  const [starChatOpen, setStarChatOpen] = useState(false);
+  const skyMode = !!sessionId || starChatOpen;
   // TEMPORARY: live star-face look-dev, driven by the sliders in SessionChat.
   // Only pushed while tuning — otherwise the persisted config would override the
   // constants baked into renderer.ts, and a stale device config would silently
@@ -145,8 +159,8 @@ export default function Home() {
   // sidekick (~1.1s), then `cosmosPanned` → pan up + night crossfade + head
   // look-up, then `chatReady` → the interface fades in once we're in the sky.
   // Both flip false immediately when the session ends (useDeferredFlag offDelay 0).
-  const cosmosPanned = useDeferredFlag(!!sessionId, { onDelay: 1100 });
-  const chatReady = useDeferredFlag(!!sessionId, { onDelay: 2900 });
+  const cosmosPanned = useDeferredFlag(skyMode, { onDelay: 1100 });
+  const chatReady = useDeferredFlag(skyMode, { onDelay: 2900 });
   // daily-box flow: streak splash → ground chest → rewards modal → done
   const [boxStage, setBoxStage] = useState<'init' | 'streak' | 'ground' | 'rewards' | 'done'>('init');
   const [boxReward, setBoxReward] = useState<BoxContents | null>(null);
@@ -166,6 +180,24 @@ export default function Home() {
       .then(() => hydrateSkinFromMirror())
       .then(() => setSettings(loadSettings()));
   }, []);
+  // The scene time-of-day tracks the real clock. hydrate sets it at launch; this
+  // catches a session left open across a boundary (dusk → night) when the app
+  // comes back to the foreground, and re-applies the matching preset live.
+  useEffect(() => {
+    const onChange = (next: AppStateStatus) => {
+      if (next !== 'active') return;
+      if (refreshTimeOfDay()) {
+        setSettings((prev) => {
+          if (!prev) return prev;
+          const updated = { ...prev, timeOfDay: loadSettings().timeOfDay };
+          controller?.applySettings(updated);
+          return updated;
+        });
+      }
+    };
+    const sub = AppState.addEventListener('change', onChange);
+    return () => sub.remove();
+  }, [controller]);
 
   // Server-driven cosmetics (plan 20 decision 10): when the snapshot lands —
   // cold start, foreground refetch, or a mutation patch — the server's equipped
@@ -273,7 +305,7 @@ export default function Home() {
         <SidekickCanvas
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           framing={
-            sessionId
+            skyMode
               ? cosmosPanned
                 ? COSMOS_FRAMING // pan up to the sky (after the home beat)
                 : HERO_FRAMING // land on home first
@@ -301,7 +333,7 @@ export default function Home() {
       {/* what the sidekick is saying, over its head (hidden while a full
           surface covers the scene). The bond score lives on the star now. */}
       {settings ? (
-        <OverheadSpeech overhead={overhead} hidden={mapShown || shopOpen || chatOpen || settingsOpen || !!sessionId}>
+        <OverheadSpeech overhead={overhead} hidden={mapShown || shopOpen || chatOpen || settingsOpen || skyMode}>
           <SpeechBubble />
         </OverheadSpeech>
       ) : null}
@@ -312,13 +344,13 @@ export default function Home() {
       {settings && snapshot && nextStarChat ? (
         <StarChatButton
           overhead={overhead}
-          hidden={mapShown || shopOpen || chatOpen || settingsOpen || !!sessionId}
-          onPress={() => setSessionId(nextStarChat.id)}
+          hidden={mapShown || shopOpen || chatOpen || settingsOpen || skyMode}
+          onPress={() => setStarChatOpen(true)}
         />
       ) : null}
 
       {/* top-right cluster: appearance + goals + streak (hidden under surfaces) */}
-      {!mapShown && !shopOpen && !chatOpen && !sessionId ? (
+      {!mapShown && !shopOpen && !chatOpen && !skyMode ? (
         <View
           style={{ position: 'absolute', top: insets.top + 8, right: 16, zIndex: 25, flexDirection: 'row', gap: 8, alignItems: 'center' }}
           pointerEvents="box-none"
@@ -326,21 +358,28 @@ export default function Home() {
           <Pressable
             onPress={() => setAppearanceOpen(true)}
             accessibilityLabel="Appearance"
-            style={{ height: 40, width: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+            style={{ height: 52, width: 52, borderRadius: 26, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
           >
             {/* the live head avatar IS the closet button (mirrors web home5).
                 Freeze it while the Closet is open so its GL context isn't
                 competing with the sheet's image load + studio crossfade. */}
-            <SidekickAvatar size={40} style={{ transform: [{ scale: 1.1 }] }} paused={appearanceOpen} />
+            <SidekickAvatar size={52} style={{ transform: [{ scale: 1.1 }] }} paused={appearanceOpen} />
           </Pressable>
           <StreakPill onPress={() => setStreakModalOpen(true)} />
+          <Pressable
+            onPress={() => router.push('/settings')}
+            accessibilityLabel="Settings"
+            style={{ height: 52, width: 52, borderRadius: 26, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Ionicons name="settings-outline" size={26} color="#404040" />
+          </Pressable>
         </View>
       ) : null}
 
       {/* iOS-style home dock — the sheets slide up OVER it; only the
           full-screen map reveal hides it */}
       <HomeDock
-        hidden={mapShown || !!sessionId}
+        hidden={mapShown || skyMode}
         mapDot={!!unseenIsland}
         onMessages={openChat}
         onShop={() => setShopOpen(true)}
@@ -383,6 +422,32 @@ export default function Home() {
               setSessionId(null);
               const line = astralNews(snapshot?.astral ?? null);
               setTimeout(() => speak(line, 6000), 2600);
+              // if the bond isn't full yet, nudge them to keep going — a beat
+              // after the astral line so it reads as a second thought
+              if ((snapshot?.bond ?? 0) < BOND_MAX) {
+                setTimeout(() => speak("let's complete our bond ✦", 5000), 9200);
+              }
+            }}
+          />
+        </View>
+      ) : null}
+
+      {/* Star Chat — the continuous personality reading. Same sky choreography as
+          a guided session (pan up → chat fades in once chatReady). */}
+      {starChatOpen && chatReady ? (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 60 }}>
+          <StarChat
+            onDone={(updated) => {
+              setStarChatOpen(false);
+              // only react if a chapter actually landed — a quick open-then-leave
+              // shouldn't have the sidekick claim the card updated.
+              if (!updated) return;
+              const line = astralNews(snapshot?.astral ?? null);
+              setTimeout(() => speak(line, 6000), 2600);
+              // if there's more of the reading left, invite them back whenever
+              if (coreNextSession(sessions)) {
+                setTimeout(() => speak('we can do your next astral chat whenever you\'re ready ✦', 5000), 9200);
+              }
             }}
           />
         </View>
@@ -390,7 +455,7 @@ export default function Home() {
 
 
       {/* Daily-box flow (home only): streak splash → ground chest → rewards */}
-      {settings && !mapShown && !shopOpen && !chatOpen && !settingsOpen && !sessionId ? (
+      {settings && !mapShown && !shopOpen && !chatOpen && !settingsOpen && !skyMode ? (
         <>
           {boxStage === 'streak' ? (
             <StreakSplash streak={streakCount} onDone={() => setBoxStage('ground')} />
@@ -520,7 +585,12 @@ export default function Home() {
       </Animated.View>
 
       {/* DEV state controls (top-left chip → panel); renders nothing in prod */}
-      <DevPanel />
+      <DevPanel
+        onJumpToReveal={() => {
+          useStarChat.getState().devSeedArtifact();
+          setStarChatOpen(true);
+        }}
+      />
     </View>
   );
 }

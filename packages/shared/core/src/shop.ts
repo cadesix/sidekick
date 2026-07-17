@@ -8,6 +8,7 @@
 import { CATALOG } from './catalog';
 import type { ProductKind, WardrobeSlot } from './catalog';
 import { hashStr, mulberry32 } from './rng';
+import shopCatalogJson from './shop-catalog.json';
 
 // per-item base price; textured variant editions step up from it (+5 per index),
 // solid-color editions sell flat at the base. This map is the single tuning
@@ -145,6 +146,29 @@ export function buildProducts(textures?: Record<string, TexRef>): Product[] {
   }
   return out;
 }
+
+// ---- curated catalog --------------------------------------------------------
+
+// The hand-curated inventory of what may appear / rotate in the shop. Authored
+// in shop-catalog.json (committed source of truth), edited from the Asset
+// Manager's "add to catalog" button. Each entry references one configured
+// instance by its renderKey (the same `${slot}-${variantId}` / `${slot}-c${hex}`
+// key the economy store and shop-render art use), so no migration is needed.
+// buildProducts() expands the whole manifest × palette; buildCatalogProducts()
+// gates that down to just these entries — the shop offers ONLY cataloged items.
+export type CatalogEntry = {
+  renderKey: string;
+  slot: string; // manifest item key (e.g. "beanie"), not the mutual-exclusion group
+  variantId?: string;
+  color?: string;
+};
+
+export const SHOP_CATALOG: readonly CatalogEntry[] = shopCatalogJson as CatalogEntry[];
+
+// NOTE: `buildCatalogProducts` (the shop-catalog-gated product set from the
+// parallel shop workstream) was dropped here during the main merge — its
+// `ShopCatalog` type didn't survive and it wasn't consumed by the current
+// (server-driven) shop UI. Re-introduce it with the rest of that workstream.
 
 // ---- daily rotation ---------------------------------------------------------
 

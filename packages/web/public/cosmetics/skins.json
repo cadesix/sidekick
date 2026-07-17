@@ -1,0 +1,46 @@
+[
+  {
+    "id": "default",
+    "name": "Classic",
+    "bodyColor": "#ffbb29",
+    "shadowColor": "#c98f52",
+    "shadowAmt": 0.501,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35
+  },
+  {
+    "id": "mint",
+    "name": "Mint",
+    "bodyColor": "#7fd1a8",
+    "shadowColor": "#3f8f73",
+    "shadowAmt": 0.5,
+    "softness": 0.08,
+    "rimColor": "#eafff5",
+    "rimStrength": 0.25,
+    "rimWidth": 0.35
+  },
+  {
+    "id": "blush",
+    "name": "Blush",
+    "bodyColor": "#f2a6c0",
+    "shadowColor": "#c56f92",
+    "shadowAmt": 0.5,
+    "softness": 0.05,
+    "rimColor": "#fff0f6",
+    "rimStrength": 0.2,
+    "rimWidth": 0.35
+  },
+  {
+    "id": "slate",
+    "name": "Slate",
+    "bodyColor": "#9aa6b5",
+    "shadowColor": "#586374",
+    "shadowAmt": 0.55,
+    "softness": 0,
+    "rimColor": "#eaf2ff",
+    "rimStrength": 0.45,
+    "rimWidth": 0.4
+  }
+]

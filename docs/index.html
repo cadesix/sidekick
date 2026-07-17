@@ -130,6 +130,7 @@ th { font-weight: 600; color: var(--muted); font-size: 12.5px; text-transform: u
       <a class="navlink" data-slug="guided-sessions" href="#guided-sessions">Guided Sessions — UX + Content Design</a>
       <a class="navlink" data-slug="monorepo" href="#monorepo">The Sidekick monorepo</a>
       <a class="navlink" data-slug="sync-plan" href="#sync-plan">Web ↔ iOS sync plan (HISTORICAL — superseded)</a>
+      <a class="navlink" data-slug="star-chat" href="#star-chat">Star Chat — Build Plan</a>
     <p class="foot">Generated snapshot — after editing docs, rerun<br><code>node docs/build-index.mjs</code></p>
   </nav>
   <main>
@@ -155,12 +156,17 @@ th { font-weight: 600; color: var(--muted); font-size: 12.5px; text-transform: u
       <a class="card" href="#monorepo">
         <h2>The Sidekick monorepo</h2>
         <p>Sidekick is a cel-shaded 3D mascot buddy — a full-screen three.js character with a chat drawer, cosmetics shop, guided sessions, and world map.</p>
-        <span class="meta">MONOREPO.md · 5 min read · updated Jul 15, 2026</span>
+        <span class="meta">MONOREPO.md · 6 min read · updated Jul 16, 2026</span>
       </a>
       <a class="card" href="#sync-plan">
         <h2>Web ↔ iOS sync plan (HISTORICAL — superseded)</h2>
         <p>Original intent (obsolete): develop and tweak in the web app (packages/web), then port to the RN app (packages/expo) for prod.</p>
-        <span class="meta">SYNC-PLAN.md · 5 min read · updated Jul 15, 2026</span>
+        <span class="meta">SYNC-PLAN.md · 5 min read · updated Jul 16, 2026</span>
+      </a>
+      <a class="card" href="#star-chat">
+        <h2>Star Chat — Build Plan</h2>
+        <p>Status: design. Engine + runner built (a first slice); this is the spec they implement.</p>
+        <span class="meta">STAR-CHAT.md · 13 min read · updated Jul 16, 2026</span>
       </a>
       </div>
     </section>
@@ -343,7 +349,7 @@ th { font-weight: 600; color: var(--muted); font-size: 12.5px; text-transform: u
       <header class="dochead">
         <a class="back" href="#">← All docs</a>
         <h1>The Sidekick monorepo</h1>
-        <div class="meta">5 min read · updated Jul 15, 2026 · <a href="MONOREPO.md">open MONOREPO.md</a></div>
+        <div class="meta">6 min read · updated Jul 16, 2026 · <a href="MONOREPO.md">open MONOREPO.md</a></div>
         <nav class="toc"><a href="#monorepo--the-core-idea-one-universal-expo-app">The core idea: ONE universal Expo app</a><a href="#monorepo--repo-structure">Repo structure</a><a href="#monorepo--running-things">Running things</a><a href="#monorepo--assets-canonical-source-is-still-packages-web-public-for-now">Assets — canonical source is still `packages/web/public/` (for now)</a><a href="#monorepo--retiring-packages-web-what-actually-blocks-deletion">Retiring `packages/web` — what actually blocks deletion</a><a href="#monorepo--tooling-conventions-don-t-fight-these">Tooling conventions (don't fight these)</a></nav>
       </header>
       <p>Sidekick is a cel-shaded 3D mascot buddy — a full-screen three.js character with a chat drawer, cosmetics shop, guided sessions, and world map.</p>
@@ -369,26 +375,40 @@ th { font-weight: 600; color: var(--muted); font-size: 12.5px; text-transform: u
 ├── package.json            workspace root — pnpm dev = Expo Web; pnpm.overrides pins three
 ├── pnpm-workspace.yaml     packages/*, packages/config/*, packages/shared/*
 ├── .npmrc                  node-linker=hoisted (required for Expo/Metro)
+├── pnpm-lock.yaml          single lockfile for everything
 ├── docs/                   this file, creative-brief, token-economy, guided-sessions
+├── plans/                  design docs for the chat/server stack (00–16)
+├── tests/                  vitest suite for server/db/shared (+ pure expo chat modules)
 ├── tools/char-pipeline/    Blender cosmetics authoring pipeline (writes into web/public — see Assets)
 └── packages/
     ├── expo/               @sidekick/expo — THE app (iOS + web from one codebase)
     │   ├── app/                           expo-router routes (index = home, sidekick-3d = look-dev)
     │   ├── src/three/                     imperative three.js scene (future @sidekick/three)
-    │   ├── src/components/                RN UI (dock, chat, shop, map, sessions, …)
+    │   ├── src/components/                RN UI (dock, shop, map, sessions, …)
+    │   ├── src/features/chat/             chat sheet: streaming turns, search, device tools
+    │   ├── src/lib/                       tRPC client (api.ts), anonymous auth, notifications
     │   ├── src/store/                     zustand stores (persistence via AsyncStorage)
+    │   ├── targets/                       iOS NotificationService extension
     │   ├── assets/                        bundled GLBs/textures (DERIVED — see Assets)
     │   └── scripts/                       strip-glb.mjs, sync-cosmetics.mjs
+    ├── server/             @sidekick/server — Hono + tRPC backend (Vercel deploy via api/)
+    │   ├── src/chat/                      chat turn engine (streaming, compaction)
+    │   ├── src/routers/                   tRPC routers (chat, goals, documents, reminders, …)
+    │   └── src/…                          ads, checkins, memory, notifications, rewards
+    ├── db/                 @sidekick/db — drizzle schema + migrations (postgres; PGlite in tests)
     ├── shared/
-    │   └── core/           @sidekick/core — platform-agnostic logic + tables
+    │   ├── core/           @sidekick/core — platform-agnostic logic + tables
+    │   └── app/            @sidekick/shared — product domain logic shared by server + expo
+    │                       (prompts, model tools, conversation/context, stream frame protocol)
     ├── web/                @sidekick/web — DEPRECATED Vite reference (do not develop here)
     │   ├── src/components/sidekick-*.ts   pre-refactor three.js scene (reference)
     │   ├── public/cosmetics/              still the CANONICAL asset source (see Assets)
     │   └── api/chat.js                    Vercel serverless chat endpoint (legacy deploy)
     ├── landing/            marketing site (Next.js) — independent of everything above
     └── config/
-        ├── tsconfig/       @sidekick/tsconfig — shared TS configs
+        ├── tsconfig/       @sidekick/tsconfig — shared TS configs (base, node, react-vite)
         └── tailwind/       @sidekick/tailwind-config — shared Tailwind preset (brand tokens)</code></pre>
+<p>The chat stack is a vertical slice through four packages: the expo chat sheet (<code>src/features/chat/</code>) talks to <code>@sidekick/server</code> (tRPC at <code>/trpc</code>, raw streaming at <code>/chat/stream</code> + <code>/chat/continue</code>), which runs the turn engine against <code>@sidekick/db</code> using the prompts/tools/frame-protocol in <code>@sidekick/shared</code>. Run it locally with <code>pnpm dev:server</code> (needs <code>DATABASE_URL</code> + <code>ANTHROPIC_API_KEY</code>; see <code>packages/server/.env.example</code>) and point the app at it via <code>EXPO_PUBLIC_API_URL</code>. <code>pnpm test</code> covers this whole stack with PGlite and mocked models — no keys or database needed.</p>
 <h2 id="monorepo--running-things">Running things</h2>
 <pre><code>pnpm install                          # once, at the root
 pnpm dev                              # Expo Web — browser preview of the real app
@@ -397,7 +417,7 @@ pnpm --filter @sidekick/expo start    # Metro for an existing dev client
 pnpm typecheck                        # all packages
 pnpm dev:vite                         # deprecated Vite reference — explicit request only</code></pre>
 <p>Anything 3D must ultimately be verified on a <strong>physical iOS device</strong> — the simulator's GL stack is unreliable (blank scenes, z-fight artifacts; see <code>packages/expo/README.md</code>). Expo Web is the fast iteration loop; the device is the truth for rendering.</p>
-<p>Chat: expo uses <code>EXPO_PUBLIC_OPENAI_API_KEY</code> (see <code>packages/expo/.env.example</code>) or falls back to canned replies. The legacy Vite deploy on Vercel uses <code>packages/web/api/chat.js</code> with <code>OPENAI_API_KEY</code>.</p>
+<p>Chat: expo talks to <code>@sidekick/server</code> — point it at a local server with <code>EXPO_PUBLIC_API_URL</code> and run <code>pnpm dev:server</code> (see the chat stack above). The legacy Vite deploy on Vercel still uses <code>packages/web/api/chat.js</code> with <code>OPENAI_API_KEY</code>.</p>
 <h2 id="monorepo--assets-canonical-source-is-still-packages-web-public-for-now">Assets — canonical source is still <code>packages/web/public/</code> (for now)</h2>
 <p>This is the one place the deprecated package is still load-bearing:</p>
 <ol><li>The Blender char-pipeline (<code>tools/char-pipeline/</code>) authors the rig and cosmetics and writes GLBs into <code>packages/web/public/cosmetics/</code> + <code>packages/web/public/sidekick-rigged.glb</code>. The asset contracts live next to them (<code>public/3d-assets/*.md</code>, <code>public/cosmetics/*.md</code>).</li><li><code>packages/expo/scripts/sync-cosmetics.mjs</code> mirrors that catalog into the expo bundle: GLBs are texture-stripped (three's GLTFLoader can't decode embedded GLB images in RN), <code>.webp</code> variants become <code>.png</code> (expo-gl can't decode webp), and <code>src/three/cosmetics-manifest.ts</code> is <strong>generated</strong> from <code>manifest.json</code>. Re-run it whenever the web catalog changes.</li><li>Never edit expo's derived assets or the generated manifest by hand.</li></ol>
@@ -413,7 +433,7 @@ pnpm dev:vite                         # deprecated Vite reference — explicit r
       <header class="dochead">
         <a class="back" href="#">← All docs</a>
         <h1>Web ↔ iOS sync plan (HISTORICAL — superseded)</h1>
-        <div class="meta">5 min read · updated Jul 15, 2026 · <a href="SYNC-PLAN.md">open SYNC-PLAN.md</a></div>
+        <div class="meta">5 min read · updated Jul 16, 2026 · <a href="SYNC-PLAN.md">open SYNC-PLAN.md</a></div>
         <nav class="toc"><a href="#sync-plan--0-prerequisites-one-time-do-first">0. Prerequisites (one-time, do first)</a><a href="#sync-plan--1-shared-core-one-source-of-truth-for-pure-logic">1. Shared core — one source of truth for pure logic</a><a href="#sync-plan--2-config-bake-from-the-editor-don-t-hand-copy">2. Config — bake from the editor, don't hand-copy</a><a href="#sync-plan--3-assets-scripted-one-way-pipeline-web-mobile">3. Assets — scripted one-way pipeline (web → mobile)</a><a href="#sync-plan--4-port-protocol-process-per-feature">4. Port protocol — process per feature</a><a href="#sync-plan--5-platform-gotchas-keep-them-executable">5. Platform gotchas — keep them executable</a><a href="#sync-plan--6-verification-trust-screenshots-not-vibes">6. Verification — trust screenshots, not vibes</a><a href="#sync-plan--sequencing">Sequencing</a></nav>
       </header>
       <blockquote><p><strong>Status (2026-07-15): SUPERSEDED.</strong> The premise of this doc — develop in the Vite web app, port to the RN app, keep two implementations in parity — is dead. The repo has collapsed to <strong>one universal Expo app</strong> (<code>packages/expo</code>, running on iOS and in the browser via Expo Web), with shared logic in <code>@sidekick/core</code>. <code>packages/web</code> is a deprecated reference being retired; there is no two-way parity contract to maintain anymore.</p><p><strong>Current model:</strong> root <code>CLAUDE.md</code> (rules) + <code>docs/MONOREPO.md</code> (architecture, asset pipeline, web-retirement checklist).</p><p>Still worth reading here, as reference only: the platform gotchas (§5 — they now live executable-form in <code>packages/expo/README.md</code>) and the shared-vs-platform-specific inventory (§1's table, useful when checking whether anything in <code>packages/web</code> remains unported). Everything else — sync scripts, PARITY.md, port protocol, screenshot parity harness — is obsolete and was never built.</p></blockquote>
@@ -441,11 +461,165 @@ pnpm dev:vite                         # deprecated Vite reference — explicit r
 <ol><li>Commit + remote this repo (unblocks everything).</li><li><code>PARITY.md</code> + <code>PORTING-RULES.md</code> (an hour, pure writing).</li><li><code>sync-assets</code> with manifest codegen (highest drift-risk kill).</li><li><code>shared/</code> extraction starting with settings/presets + manifest schema + GLSL strings, then <code>bake-config</code>.</li><li>three version alignment experiment.</li><li>Screenshot harness last (nice-to-have once the above holds).</li></ol>
 
     </article>
+
+<article id="doc-star-chat" hidden>
+      <header class="dochead">
+        <a class="back" href="#">← All docs</a>
+        <h1>Star Chat — Build Plan</h1>
+        <div class="meta">13 min read · updated Jul 16, 2026 · <a href="STAR-CHAT.md">open STAR-CHAT.md</a></div>
+        <nav class="toc"><a href="#star-chat--1-objectives-in-priority-order">1. Objectives (in priority order)</a><a href="#star-chat--2-two-artifacts-one-conversation">2. Two artifacts, one conversation</a><a href="#star-chat--2a-warm-start-what-we-already-know">2A. Warm start — what we already know</a><a href="#star-chat--3-experience-model">3. Experience model</a><a href="#star-chat--4-field-model">4. Field model</a><a href="#star-chat--5-phases-six">5. Phases (six)</a><a href="#star-chat--6-per-turn-controller-loop">6. Per-turn controller loop</a><a href="#star-chat--7-controller-prompt-draft">7. Controller prompt (draft)</a><a href="#star-chat--8-state-schema">8. State schema</a><a href="#star-chat--9-checkpoint-reads-progress">9. Checkpoint reads &amp; progress</a><a href="#star-chat--10-caps-completion">10. Caps &amp; completion</a><a href="#star-chat--11-compliance-guardrails">11. Compliance guardrails</a><a href="#star-chat--12-final-personality-artifact">12. Final personality artifact</a><a href="#star-chat--13-what-s-built-and-how-it-re-homes-into-star-chat">13. What's built, and how it re-homes into Star Chat</a><a href="#star-chat--14-open-decisions">14. Open decisions</a></nav>
+      </header>
+      <p>Status: design. Engine + runner built (a first slice); this is the spec they implement.</p>
+<p>Star Chat is a <strong>guided personality reading that doubles as getting to know the user</strong> — a single, long, near-fully-generative conversation bounded by a hard floor of information we must collect, ending in a personalized personality artifact.</p>
+<p><strong>This is NOT the app's initial onboarding funnel.</strong> That funnel (goals → habits) is a separate, untouched step that runs first (see §2A). Star Chat is the <em>progressive onboarding</em> — "progressive" because it's long and reveals the user progressively, not because anything paces it.</p>
+<p><strong>Structure — one continuous, resumable conversation.</strong> It moves through the ~6 chapters in a single flow. There are <strong>no islands, no map gating, and no daily cap</strong> (the old 6 island-gated sessions are retired for this). Ideally the user finishes in their first sitting; persisted state lets them break it across sittings if they prefer. It supersedes the current scripted star-chat beats.</p>
+<hr>
+<h2 id="star-chat--1-objectives-in-priority-order">1. Objectives (in priority order)</h2>
+<ol><li><strong>Make the user feel known.</strong> The conversation seeds a per-user context/memory file rich enough that in sessions 1–3 the sidekick visibly <em>remembers</em> them and personalizes — the core retention driver. This is the top priority.</li><li><strong>Build a monetizable profile.</strong> Collect enough to derive a valuable advertiser profile: socioeconomic band, household role, purchase-decision status, life stage, category and brand affinities, purchase intent.</li></ol>
+<p><strong>The rule that makes these reinforce instead of fight:</strong> every commercial signal is extracted as a <em>byproduct of a genuinely personal conversation</em>, never asked as a market-research question. The moment it feels like a survey, objective #1 collapses (guarded answers, lower data quality) — which also poisons #2. Feel is not in tension with monetization; it protects it.</p>
+<p><strong>Corollary — most ad value is inferred, not asked.</strong> We ask ~11 personal anchors; the commercial dimensions are <em>derived</em> from them after the fact. Rich profile, human conversation.</p>
+<hr>
+<h2 id="star-chat--2-two-artifacts-one-conversation">2. Two artifacts, one conversation</h2>
+<p>The same transcript feeds two separate stores. Keep them separate.</p>
+<div class="tablewrap"><table><thead><tr><th></th><th><strong>Memory file</strong></th><th><strong>Ad profile</strong></th></tr></thead><tbody><tr><td>Audience</td><td>user-facing</td><td>advertiser-facing</td></tr><tr><td>Content</td><td>facts, traits, tastes, goals, evidence</td><td>inferred segments + affinities</td></tr><tr><td>Transparency</td><td>showable ("here's what I remember about you")</td><td>governed, consent-gated</td></tr><tr><td>Storage</td><td><strong>server-side</strong> (fetched to display)</td><td><strong>server-side</strong>, never leaves the server</td></tr><tr><td>Populated by</td><td>conversational extraction</td><td>inference pass over the transcript</td></tr></tbody></table></div>
+<p><strong>Both artifacts live server-side.</strong> The device holds at most a display cache of the memory file; the ad profile never touches the client. Rationale: trust is the product. The memory file is a feature you can flaunt (and serve back cross-session to power the "it remembers me" feel); the ad profile is back-end, consent-gated, and off-device entirely.</p>
+<hr>
+<h2 id="star-chat--2a-warm-start-what-we-already-know">2A. Warm start — what we already know</h2>
+<p>Star Chat is <strong>not</strong> the user's first contact. The initial onboarding funnel (the lightweight goals/habit setup) runs first and already collects:</p>
+<ul><li><strong>Goals</strong> — what the user wants to work on.</li><li><strong>Daily habits</strong> — the tracker generates a habit list from those goals.</li></ul>
+<p>So we enter this conversation with a <strong>prior profile</strong>, and two things follow:</p>
+<ol><li><strong>Pre-seed the state; never re-ask.</strong> Fields the prior onboarding already filled (goal, and anything the habits imply) start <code>partial</code>/<code>high</code>, not <code>unknown</code>. The controller <em>deepens</em> them instead of collecting them cold — which itself sells the "it already knows me" feeling. Opening a personality reading already holding your goal is a stronger first beat than asking for it.</li></ol>
+<ol><li><strong>Goal → underlying desire is a seeded hypothesis.</strong> A stated goal implies a <em>why</em>: fitness → look/feel better, confidence; read-more → be (or be seen as) smarter. We seed that inferred desire as a <strong>testable hypothesis</strong> for core motivation (must-have #8), not a fact — the sidekick confirms or overrides it in conversation ("you set a fitness goal — is that more about how you feel, how you look, or proving you can?"). Confirming it deepens the read <em>and</em> is a perfect tentative-read moment.</li></ol>
+<p><strong>Weighting:</strong> this is a <em>factor</em>, not the spine. The goal→desire prior nudges the motivation hypothesis and seeds ad category/intent signal (fitness → activewear, supplements, wearables; read-more → books, courses, status goods) — but the conversation still leads, and a user who contradicts the prior overrides it.</p>
+<hr>
+<h2 id="star-chat--3-experience-model">3. Experience model</h2>
+<ul><li><strong>Generative with a floor.</strong> The LLM drives the conversation freely and follows threads the user opens. It carries a checklist of must-have fields it is directed to <em>absolutely</em> obtain. If the natural flow isn't surfacing one (or a checkpoint is near), it stops threading and asks it directly — gracefully.</li><li><strong>Phases are checkpoints within one conversation, not separate sessions.</strong> Six phases bound length, guarantee coverage, and make progress felt — without a "Q8 of 25" counter. They are NOT islands or gated sessions; the user flows through them continuously. Inside a phase the conversation is free; the seams are lightly scripted (a tentative read + a progress line + a transition).</li><li><strong>React first, ask second. One follow-up max. Bridge from the last answer.</strong></li><li><strong>Escape valve.</strong> If a user deflects a must-have, ask once more directly, then mark it <code>declined</code> and move on. Never a third time. This is what keeps it from ever feeling like an interrogation.</li></ul>
+<hr>
+<h2 id="star-chat--4-field-model">4. Field model</h2>
+<p>Three kinds of field.</p>
+<h3 id="star-chat--4a-must-have-floor-asked-conversational-the-llm-must-get-these">4a. Must-have floor (asked, conversational) — the LLM must get these</h3>
+<p>Who they are / context:</p>
+<ol><li><strong>Life stage + occupation</strong> — work / school / both / figuring it out</li><li><strong>Location</strong> — city / region (not precise geo)</li><li><strong>Living situation + household</strong> — who's around day to day: partner or single, kids or not, roommates, solo</li><li><strong>Formative background</strong> — where / how they grew up (light, one beat)</li></ol>
+<p>Personality core:</p>
+<ol><li><strong>Social energy</strong> — recharge alone or around people</li><li><strong>Decision style</strong> — gut or analysis</li><li><strong>Planning style</strong> — structure or wing-it</li><li><strong>Core motivation</strong> — freedom / achievement / connection / security</li></ol>
+<p>Patterns / actionable:</p>
+<ol><li><strong>Stress response</strong> — what they do when it's hard</li><li><strong>Biggest blocker</strong> — what gets in their own way</li></ol>
+<p>Next chapter:</p>
+<ol><li><strong>Primary goal / desired future</strong></li></ol>
+<p>None are asked as form fields. "Who's in your world day to day?" yields relationship status, kids, and living situation at once. Occupation and location fall out of "what's your life like these days / where are you." The ad profile reads all of this off the transcript.</p>
+<h3 id="star-chat--4b-nice-to-have-pool-grabbed-on-threads-never-forced">4b. Nice-to-have pool (grabbed on threads, never forced)</h3>
+<p>interests / what's on repeat · how they unwind · comforts · who they talk to most · values / what "winning" looks like · whose life they admire · specific fears · the shape of their procrastination · what they've tried that didn't stick · growth areas · upbringing detail.</p>
+<p>Plus the <strong>lifestyle / purchase-signal</strong> fields (Phase 5 — commercially prioritized, still never interrogated): money style (splurge vs skimp) · a recent purchase they love · brands / aesthetics · where they shop · treats &amp; rituals · travel · subscriptions · what they're saving up for or dreaming about.</p>
+<p>To the user these read as "the sidekick learning my taste," which <em>also</em> deepens objective #1. Same words, two payloads.</p>
+<h3 id="star-chat--4c-inferred-commercial-profile-derived-never-asked-server-side">4c. Inferred commercial profile (derived, never asked) — server-side</h3>
+<div class="tablewrap"><table><thead><tr><th>Inferred field</th><th>Derived from</th></tr></thead><tbody><tr><td>Socioeconomic band</td><td>occupation + location + spend talk</td></tr><tr><td>Life-stage segment</td><td>age band + occupation + household</td></tr><tr><td>Household role / decision-maker likelihood</td><td>living situation + who they care for</td></tr><tr><td>Household composition</td><td>relationship status, kids, dependents</td></tr><tr><td>Geo (region/DMA)</td><td>location</td></tr><tr><td>Disposable-income / spend propensity</td><td>splurge-vs-skimp, recent purchases</td></tr><tr><td>Price sensitivity</td><td>splurge-vs-skimp framing</td></tr><tr><td>Category affinities</td><td>interests + purchases + comforts</td></tr><tr><td>Brand affinities</td><td>brands / aesthetics mentioned</td></tr><tr><td>Purchase intent / in-market signals</td><td>saving-for, wants, dreaming-about</td></tr><tr><td>Media / platform habits</td><td>apps, subscriptions</td></tr><tr><td>Underlying desire → category affinity</td><td><strong>stated goal (from prior onboarding)</strong> + its confirmed why</td></tr></tbody></table></div>
+<p>Each inferred field carries a <strong>source</strong> (which asked fields produced it) and a <strong>confidence</strong>. Nothing here is surfaced in conversation.</p>
+<hr>
+<h2 id="star-chat--5-phases-six">5. Phases (six)</h2>
+<p>Progress is shown as dimensions, never a counter.</p>
+<div class="tablewrap"><table><thead><tr><th>#</th><th>Phase (user-facing label)</th><th>Must-haves filled here</th><th>Feel</th></tr></thead><tbody><tr><td>1</td><td><strong>Your world</strong></td><td>life/occupation, location, household, background</td><td>warm, easy on-ramp</td></tr><tr><td>2</td><td><strong>Your energy</strong></td><td>5 social energy (+ interests, comforts)</td><td>light, playful</td></tr><tr><td>3</td><td><strong>How you're wired</strong></td><td>6 decision, 7 planning</td><td>curious, "personality question"</td></tr><tr><td>4</td><td><strong>What drives you</strong></td><td>8 core motivation (+ values)</td><td>reflective</td></tr><tr><td>5</td><td><strong>How you live</strong></td><td><em>(lifestyle / purchase harvest)</em></td><td>fun, taste-focused</td></tr><tr><td>6</td><td><strong>Your patterns &amp; next chapter</strong></td><td>9 stress, 10 blocker, (11 goal — <em>deepen</em>)</td><td>real, gentle, forward-looking</td></tr></tbody></table></div>
+<p>Phase 5 is the commercial harvester dressed as a taste chapter. Phase 6 lands the actionable and <strong>deepens the already-known goal</strong> (the <em>why</em> behind it — see §2A), so the artifact and the first real session have somewhere to go. Because goal arrives pre-seeded from the habit-tracker onboarding, Phase 6 confirms/enriches it rather than collecting it cold.</p>
+<p>A phase ends when its must-haves reach confidence <strong>or</strong> a soft turn cap trips (§10), whichever first.</p>
+<hr>
+<h2 id="star-chat--6-per-turn-controller-loop">6. Per-turn controller loop</h2>
+<p>Each assistant turn:</p>
+<ol><li><strong>React</strong> naturally to the answer.</li><li><strong>Extract</strong> every fact/signal into field updates (value + short evidence quote).</li><li><strong>Update confidence</strong> across fields.</li><li><strong>Decide follow-up:</strong> one curious follow-up if the answer opened a thread and we haven't followed one this beat; else move on.</li><li><strong>Select</strong> the most important still-unknown must-have for this phase.</li><li><strong>Bridge</strong> into it from what they just said; if nothing bridges and a must-have is still missing near the cap, ask it directly and gently.</li><li><strong>Ask</strong> one short, low-friction question.</li><li>Occasionally (~once/phase) offer a <strong>tentative read</strong> and invite correction.</li></ol>
+<hr>
+<h2 id="star-chat--7-controller-prompt-draft">7. Controller prompt (draft)</h2>
+<p>System prompt for the per-turn driver:</p>
+<pre><code>You are the voice of the user's sidekick, guiding them through a personality
+reading that doubles as getting to know them. Warm, curious, a little playful —
+texting energy, lowercase, brief. This is a conversation, not an interview.
+
+Each turn you get: the conversation so far, and STATE — the fields you're
+learning (each unknown / partial / known), the current phase, and that phase's
+must-have fields. STATE may arrive PRE-FILLED from the earlier habit-tracker
+onboarding (their goal, and hints from their habits). Treat those as already
+known: reference and deepen them, never re-collect them. Where a goal is known,
+you may open by testing the WHY behind it as a tentative read ("you set a fitness
+goal — is that more about how you feel, how you look, or proving you can?").
+
+Do this every turn:
+1. React first. Respond to what they just said like a friend would — reflect it,
+   react, show you heard them. Never jump straight to the next question.
+2. Extract. Pull every fact and signal from their message into fieldUpdates,
+   each with a short evidence quote from their words.
+3. One thread. If their answer opened an interesting thread and you haven't
+   already followed one this beat, ask a single curious follow-up. Otherwise move
+   on. Never interrogate one topic.
+4. Advance. Pick the most important still-unknown must-have for this phase and
+   bridge into it from something they just said. If nothing bridges naturally and
+   a must-have is still missing near the end of the phase, just ask it directly
+   and gently ("okay, personality question —").
+5. Never re-ask what STATE already knows.
+6. About once per phase, offer a tentative read ("starting to get the sense
+   you're someone who…") and invite them to confirm or correct it.
+7. Vary the emotional rhythm — don't stack heavy questions back to back.
+
+Escape valve: if a must-have is still unknown after you asked it directly once
+and they deflected, mark it declined and move on. Never ask a third time.
+
+Return JSON:
+{
+  "message": "&lt;what the sidekick says next&gt;",
+  "fieldUpdates": [{ "id": "...", "value": "...", "evidence": "...", "confidence": "partial|high" }],
+  "tentativeRead": "&lt;optional&gt;",
+  "phaseComplete": true|false
+}</code></pre>
+<p>Model: start on the small/fast tier (current chat uses gpt-4o-mini) for cost and latency; the transcript + compact STATE is the whole payload. Stream <code>message</code>.</p>
+<hr>
+<h2 id="star-chat--8-state-schema">8. State schema</h2>
+<pre><code>type FieldStatus = 'unknown' | 'partial' | 'high' | 'declined';
+
+interface FieldState {
+  id: string;
+  status: FieldStatus;
+  value?: string;
+  evidence?: string[];   // short quotes, drive the artifact's "here's why"
+  source?: 'onboarding' | 'conversation' | 'inferred'; // 'onboarding' = pre-seeded, deepen don't re-ask
+}
+
+interface ConvoState {
+  phase: number;              // 0..6
+  turnsInPhase: number;
+  fields: Record&lt;string, FieldState&gt;;
+  tone: 'light' | 'personal' | 'reflective';
+  lastQuestionStyle?: string; // avoid repeating styles back to back
+  ageBand?: string;           // from the gate
+}</code></pre>
+<p>The controller receives a compacted view of <code>fields</code> (id + status + value) so it never re-asks and always knows what's left.</p>
+<hr>
+<h2 id="star-chat--9-checkpoint-reads-progress">9. Checkpoint reads &amp; progress</h2>
+<p>At each phase seam:</p>
+<ul><li><strong>Tentative read</strong> built from that phase's evidence ("starting to see someone who values freedom but wants enough control to feel secure — sound right?"). Correctable; a correction is itself a high-value field update.</li><li><strong>Progress line</strong> in model dimensions, not counts ("good read on your social energy, still figuring out what really drives you").</li></ul>
+<p>Keep reads to ~one per phase — a wrong read that's overused erodes the "it gets me" spell faster than a right one builds it.</p>
+<hr>
+<h2 id="star-chat--10-caps-completion">10. Caps &amp; completion</h2>
+<ul><li><strong>Soft turn cap per phase:</strong> ~3–5 exchanges. Hitting it forces the remaining must-haves to be asked directly, then advances.</li><li><strong>Phase complete</strong> when must-haves are <code>high</code>/<code>partial</code>/<code>declined</code> (not <code>unknown</code>) or the cap trips.</li><li><strong>Conversation complete</strong> when all phases are complete. Total ≈ 20–28 exchanges, but it <em>feels</em> shorter because it reacts and flows.</li><li><strong>One sitting, but resumable.</strong> No daily cap and no gating — the aim is that a user finishes in their first sitting. Persisted state (phase, per-field confidence, message log) lets anyone who drops out resume exactly where they left off. Length is acceptable <em>because</em> it's the progressive onboarding, and the phases are what keep people from bailing (a felt end is always in sight).</li></ul>
+<hr>
+<h2 id="star-chat--11-compliance-guardrails">11. Compliance guardrails</h2>
+<ul><li><strong>Age is NOT collected in this flow.</strong> Age handling (and any hard verification gate) lives elsewhere in the product — Star Chat neither asks for nor derives it.</li><li><strong>Sensitive categories stay out of the ad profile:</strong> health, sexuality, religion, precise location, financial-account data. The memory file may <em>notice</em> emotional content for personalization; it just never feeds targeting.</li><li><strong>Consent/disclosure:</strong> the ad use must be disclosed and consented in the privacy flow. The inference pass runs server-side over the transcript, gated on that consent and on age ≥ 18.</li></ul>
+<hr>
+<h2 id="star-chat--12-final-personality-artifact">12. Final personality artifact</h2>
+<p>Earned from the conversation, not assigned from a template. May include: archetype, MBTI/Enneagram-style read, defining traits, emotional patterns, core motivations, strengths, blind spots, accountability style, ideal support, growth recommendations.</p>
+<p><strong>Every important conclusion cites evidence from the transcript.</strong> Not "you're highly independent" but "you seem highly independent — you described handling stress alone, trusting yourself to figure things out, and feeling most energized with freedom over your time." This is why <code>FieldState.evidence</code> stores quotes as we go.</p>
+<hr>
+<h2 id="star-chat--13-what-s-built-and-how-it-re-homes-into-star-chat">13. What's built, and how it re-homes into Star Chat</h2>
+<p>A first slice is built (as <code>onboarding.*</code> — to be <strong>renamed to <code>star-chat.*</code></strong>):</p>
+<ul><li><code>@sidekick/core/onboarding.ts</code> — the engine: phases, field floor, controller prompt, reducers, artifact pass. Pure, ~90% reusable as-is.</li><li><code>store/onboarding.ts</code> — persisted ConvoState + message log + age.</li><li><code>components/OnboardingChat.tsx</code> — the runner loop.</li><li><code>components/chat-stream.tsx</code> — shared streaming primitives.</li><li><code>app/onboarding.tsx</code> — a standalone test route (<strong>to be removed</strong>; this is not an onboarding entry).</li></ul>
+<p>Re-homing work:</p>
+<div class="tablewrap"><table><thead><tr><th>File</th><th>Today</th><th>Becomes</th></tr></thead><tbody><tr><td>the built engine/store/runner</td><td>named <code>onboarding.*</code>, standalone <code>/onboarding</code> route</td><td>renamed <code>star-chat.*</code>, launched from the Star Chat entry (<code>StarChatButton</code>)</td></tr><tr><td><code>packages/shared/core/src/sessions.ts</code></td><td>6 island sessions + ladder + map gating</td><td>retired for Star Chat — the island/ladder/map gating is dropped; phases replace it</td></tr><tr><td><code>packages/expo/src/components/SessionChat.tsx</code></td><td>walks scripted beats</td><td>superseded by the generative runner</td></tr><tr><td><code>packages/expo/src/store/context.ts</code></td><td>astral card + fields/notes, per-island</td><td>the astral card becomes the <strong>progressive reading</strong> deepened each chapter; final chapter carries the evidence insights</td></tr><tr><td><em>(new)</em> server memory + ad stores</td><td>—</td><td>both artifacts server-side (§2)</td></tr><tr><td><em>(new)</em> server inference pass</td><td>—</td><td>derives the ad profile from the transcript, server-side, consent+age gated</td></tr><tr><td><em>(new)</em> pre-seed bridge</td><td>—</td><td>maps the funnel's goal + habits into seeded FieldStates (§2A)</td></tr></tbody></table></div>
+<hr>
+<h2 id="star-chat--14-open-decisions">14. Open decisions</h2>
+<ul><li><strong>Islands / map / ladder:</strong> resolved — dropped for Star Chat. It's one continuous conversation, not island-gated sessions.</li><li><strong>Pacing:</strong> resolved — no daily cap; aim for one sitting, resume supported.</li><li><strong>Bond / rewards:</strong> with islands gone, how does bond (the "how much the sidekick knows" meter) grow — per chapter completed within the one conversation? (Likely yes; numbers TBD, and the old map thresholds no longer apply.)</li><li><strong>Astral card vs. final artifact:</strong> keep the card as the progressive per-chapter reading and add the evidence-cited insights on the last chapter — confirm.</li><li><strong>Must-have enforcement:</strong> per-chapter soft, with cross-chapter dedup (a skipped must-have can be mopped up later since the profile accumulates) — confirm.</li><li><strong>Server inference pass:</strong> where/when it runs (end vs. rolling).</li><li><strong>Show the memory file to the user</strong> as a trust feature (recommended, TBD when).</li><li><strong>Age-gate copy + under-18 handling</strong> (experience-only, no ad profile).</li></ul>
+<pre><code></code></pre>
+
+    </article>
   </main>
 </div>
 <script>
 (function () {
-  var slugs = ["creative-brief","token-economy","guided-sessions","monorepo","sync-plan"];
+  var slugs = ["creative-brief","token-economy","guided-sessions","monorepo","sync-plan","star-chat"];
   function route() {
     var hash = decodeURIComponent(location.hash.slice(1));
     var slug = slugs.find(function (s) { return hash === s || hash.indexOf(s + "--") === 0; }) || "";

@@ -28,9 +28,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    height: 40,
-    paddingHorizontal: 12,
-    borderRadius: 20,
+    height: 52,
+    paddingHorizontal: 16,
+    borderRadius: 999, // fully rounded pill
     backgroundColor: 'rgba(255,255,255,0.92)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -38,6 +38,6 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
   },
-  icon: { width: 22, height: 22, resizeMode: 'contain' },
+  icon: { width: 28, height: 28, resizeMode: 'contain' },
   count: { fontSize: 16, fontWeight: '800', color: '#1a1a1a' },
 });

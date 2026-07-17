@@ -36,6 +36,18 @@ export type ScenePreset = {
 
 export const TIMES: TimeOfDay[] = ['day', 'evening', 'night'];
 
+// The active time-of-day follows the real clock, not a stored value: the meadow
+// is bright at midday, warm at dusk, dark at night. Only the SELECTOR is
+// clock-driven — the three presets themselves (s.scenes.*) stay persisted, so
+// the look-dev editor still tunes each one. The DEV time picker overrides this
+// for the session; the next launch resolves back to the clock.
+export function timeOfDayNow(now: Date = new Date()): TimeOfDay {
+  const h = now.getHours();
+  if (h >= 20 || h < 6) return 'night'; // 8pm–6am
+  if (h >= 17) return 'evening'; // 5pm–8pm
+  return 'day'; // 6am–5pm
+}
+
 export const SCENE_DEFAULTS: Record<TimeOfDay, ScenePreset> = {
   day: {
     skyTop: '#3ea1cc',
@@ -48,18 +60,18 @@ export const SCENE_DEFAULTS: Record<TimeOfDay, ScenePreset> = {
     grassBase: '#519d2d',
     grassTip: '#93cf4f',
     rock: '#8b8f96',
-    charTint: '#ffffff',
-    shadeColor: '#c98f52',
+    charTint: '#fbffff',
+    shadeColor: '#ea7c09',
     keyColor: '#fff4dc',
     keyIntensity: 1.5,
     fillColor: '#a9c9ff',
     fillIntensity: 0.5,
     rimColor: '#ffffff',
-    rimIntensity: 1.0,
+    rimIntensity: 0,
     hemiSky: '#dcefff',
     hemiGround: '#8a9560',
-    hemiIntensity: 0.55,
-    exposure: 0.92,
+    hemiIntensity: 0.85,
+    exposure: 0.916,
   },
   evening: {
     skyTop: '#40407a',
@@ -78,8 +90,8 @@ export const SCENE_DEFAULTS: Record<TimeOfDay, ScenePreset> = {
     keyIntensity: 1.3,
     fillColor: '#5b6bc4',
     fillIntensity: 0.5,
-    rimColor: '#ffe0a8',
-    rimIntensity: 1.7,
+    rimColor: '#ff5c00',
+    rimIntensity: 0.651,
     hemiSky: '#ffcf9a',
     hemiGround: '#3a3560',
     hemiIntensity: 0.5,
@@ -96,14 +108,14 @@ export const SCENE_DEFAULTS: Record<TimeOfDay, ScenePreset> = {
     grassBase: '#274115',
     grassTip: '#235421',
     rock: '#3a4358',
-    charTint: '#7e8ec2',
+    charTint: '#7e91cc',
     shadeColor: '#3a4a70',
-    keyColor: '#aebfe6',
-    keyIntensity: 0.65,
+    keyColor: '#3f7aff',
+    keyIntensity: 0.954,
     fillColor: '#3a4a80',
     fillIntensity: 0.4,
-    rimColor: '#cdd8f5',
-    rimIntensity: 0.8,
+    rimColor: '#0046ff',
+    rimIntensity: 0.127,
     hemiSky: '#2a3a66',
     hemiGround: '#0f1529',
     hemiIntensity: 0.36,
@@ -136,8 +148,6 @@ export type SidekickSettings = {
   celShadowColor: string;
   celSoftness: number;
   celShadowAmt: number;
-  celRimColor: string;
-  celRimStrength: number;
   celRimWidth: number;
   goochCool: string;
   goochWarm: string;
@@ -194,7 +204,7 @@ export type SidekickSettings = {
   camTarget: [number, number, number] | null;
 };
 
-// Baked 2026-07-10 from the user's LIVE browser look-dev state
+// Baked 2026-07-16 from the user's LIVE browser look-dev state
 // (localStorage "sidekick3d-settings-v2" — the approved look), NOT the web
 // repo's DEFAULT_SETTINGS, which lag the tuned state (outline, cel shadow,
 // face placement, grass height/clumping and scene colors all differ).
@@ -209,12 +219,10 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
   toonShadowAmt: 0.506,
   rampMid: '#ffb061',
   rampLight: '#ffedc4',
-  celBodyColor: '#a988e0',
-  celShadowColor: '#7d63b0',
+  celBodyColor: '#f2b13c',
+  celShadowColor: '#c98f52',
   celSoftness: 0,
   celShadowAmt: 0.463,
-  celRimColor: '#ffffff',
-  celRimStrength: 1,
   celRimWidth: 0.32455,
   goochCool: '#7a86b8',
   goochWarm: '#fff1d6',
@@ -240,7 +248,7 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
   grassHill: '#5aa838',
   grassBase: '#519d2d',
   grassTip: '#93cf4f',
-  grassHeight: 1.18,
+  grassHeight: 1.007,
   grassClumping: 1,
   tint: '#ffffff',
   roughness: 1,
@@ -268,7 +276,7 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
   // NOTE: web home4 drives a real shadow map with this; mobile has no shadow
   // map yet (expo-gl risk), so the value is carried but inert
   shadowOpacity: 0.2316,
-  fov: 19.455,
+  fov: 25.214,
   camPos: [-0.8622328104178634, 0.8720766906255945, 5.542186848594252],
   camTarget: [0, 0.7, 0],
 };
@@ -289,23 +297,38 @@ export function loadSettings(): SidekickSettings {
 export async function hydrateSettings(): Promise<void> {
   try {
     const raw = await AsyncStorage.getItem(SETTINGS_KEY);
-    if (!raw) return;
-    const saved = JSON.parse(raw) as Partial<SidekickSettings>;
-    const merged = { ...clone(DEFAULT_SETTINGS), ...saved };
-    // deep-merge the scene presets so newly-added preset fields survive an
-    // older saved `scenes` object (shallow spread would drop them)
-    const savedScenes = saved.scenes as
-      | Partial<Record<TimeOfDay, Partial<ScenePreset>>>
-      | undefined;
-    merged.scenes = {
-      day: { ...SCENE_DEFAULTS.day, ...savedScenes?.day },
-      evening: { ...SCENE_DEFAULTS.evening, ...savedScenes?.evening },
-      night: { ...SCENE_DEFAULTS.night, ...savedScenes?.night },
-    };
-    current = merged;
+    if (raw) {
+      const saved = JSON.parse(raw) as Partial<SidekickSettings>;
+      const merged = { ...clone(DEFAULT_SETTINGS), ...saved };
+      // deep-merge the scene presets so newly-added preset fields survive an
+      // older saved `scenes` object (shallow spread would drop them)
+      const savedScenes = saved.scenes as
+        | Partial<Record<TimeOfDay, Partial<ScenePreset>>>
+        | undefined;
+      merged.scenes = {
+        day: { ...SCENE_DEFAULTS.day, ...savedScenes?.day },
+        evening: { ...SCENE_DEFAULTS.evening, ...savedScenes?.evening },
+        night: { ...SCENE_DEFAULTS.night, ...savedScenes?.night },
+      };
+      current = merged;
+    }
   } catch {
     // unreadable saved state — keep defaults
   }
+  // the active time follows the clock, whatever was persisted. Runs on every
+  // path so the renderer's first synchronous loadSettings() is already correct
+  // (no flash of last-saved time), and WorldMap's loadSettings() read too.
+  current.timeOfDay = timeOfDayNow();
+}
+
+// Re-resolve the active time from the clock without persisting — for the app
+// foreground refresh, so a session left open across a boundary catches up.
+// Returns true when it actually changed. Does NOT touch the persisted presets.
+export function refreshTimeOfDay(): boolean {
+  const tod = timeOfDayNow();
+  if (tod === current.timeOfDay) return false;
+  current = { ...current, timeOfDay: tod };
+  return true;
 }
 
 export function saveSettings(s: SidekickSettings): void {

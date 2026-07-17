@@ -15,6 +15,7 @@ import {
   type Snapshot,
 } from '../lib/api';
 import { patchSnapshot, SNAPSHOT_QUERY_KEY, type SnapshotPatch, useSnapshot } from '../lib/state';
+import { useStarChat } from '../store/star-chat';
 
 // DEV-only user-state panel — the RN counterpart of the web app's dev chip
 // (packages/web/src/components/dev-panel.tsx). A tiny "DEV" chip pinned top-LEFT
@@ -36,7 +37,7 @@ const COIN_STEPS = [-1000, -100, 100, 1000, 5000];
 const BOND_PRESETS = [10, 25, 40, 55, 70, 85, 100];
 const STREAK_PRESETS = [1, 3, 6, 9, 13, 29, 89, 364];
 
-export function DevPanel() {
+export function DevPanel({ onJumpToReveal }: { onJumpToReveal?: () => void }) {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -78,14 +79,21 @@ export function DevPanel() {
     devResetDailyBox()
       .then((r) => settle({ stateVersion: r.stateVersion, coins: r.coins }))
       .catch(onError);
-  const relockMap = () =>
+  // reset the CLIENT-side Star Chat conversation too (its phase/messages/artifact
+  // live in the local star-chat store, not the server snapshot) — else the
+  // continuous conversation resumes from AsyncStorage and looks un-wiped.
+  const relockMap = () => {
+    useStarChat.getState().reset();
     devResetSessions()
       .then((r) => settle({ stateVersion: r.stateVersion, coins: r.coins, bond: r.bond }))
       .catch(onError);
-  const wipeProfile = () =>
+  };
+  const wipeProfile = () => {
+    useStarChat.getState().reset();
     devResetProfile()
       .then((r) => settle({ stateVersion: r.stateVersion, coins: r.coins, bond: r.bond }))
       .catch(onError);
+  };
 
   return (
     <>
@@ -131,6 +139,7 @@ export function DevPanel() {
           <Row label="Guided chats">
             <Btn label="Re-lock map (progress only)" onPress={relockMap} wide />
             <Btn label="Wipe guided chats (+ profile)" onPress={wipeProfile} wide />
+            {onJumpToReveal ? <Btn label="Jump to astral reveal" onPress={onJumpToReveal} wide /> : null}
           </Row>
         </ScrollView>
       ) : null}

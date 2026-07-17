@@ -144,6 +144,7 @@ for (const [id, def] of Object.entries(manifest)) {
     attach: def.attach,
     scale: def.scale,
     offset: def.offset,
+    rotate: def.rotate,
     variants,
   });
 }
@@ -190,6 +191,7 @@ const fmtEntry = (e) => {
   lines.push(`    attach: '${e.attach}',`);
   if (e.scale !== undefined) lines.push(`    scale: ${e.scale},`);
   if (e.offset) lines.push(`    offset: [${e.offset.join(', ')}],`);
+  if (e.rotate) lines.push(`    rotate: [${e.rotate.join(', ')}],`);
   lines.push('    variants: [');
   for (const v of e.variants) lines.push(fmtVariant(v));
   lines.push('    ],');
@@ -221,6 +223,7 @@ export type SlotDef = {
   defaultColor?: string;
   scale?: number; // rigid-attach only: multiply the authored local scale
   offset?: [number, number, number]; // rigid-attach only: nudge in bone-local space
+  rotate?: [number, number, number]; // rigid-attach only: euler degrees, bone-local, pivots on the bone origin
   variants: Variant[];
 };
 export type Manifest = Record<string, SlotDef>;

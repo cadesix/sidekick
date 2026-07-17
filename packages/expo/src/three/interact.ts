@@ -107,7 +107,8 @@ export function createInteraction(opts: {
   const hover = new THREE.Vector2(); // last touch pos while the finger is down
   let touching = false;
   const lookPoint = new THREE.Vector3();
-  let lookHoldUntil = -1; // taps hold his gaze on the point for a beat
+  const LOOK_HOLD = 0.8; // seconds a tap holds his gaze before it eases back
+  let lookHoldUntil = -1; // taps hold his gaze on the point briefly (LOOK_HOLD)
   const plane = new THREE.Plane();
   const camDir = new THREE.Vector3();
   const boneWorld = new THREE.Vector3();
@@ -219,7 +220,7 @@ export function createInteraction(opts: {
     // tap: look at the point, and poked parts react physically
     ndc.set(x, y);
     pointerPoint(lookPoint);
-    lookHoldUntil = now + 2.2;
+    lookHoldUntil = now + LOOK_HOLD;
     if (part === 'body') squash.kick(1.1);
     if (part === 'head') {
       headPitch.kick(-2.2); // little startled head-bob

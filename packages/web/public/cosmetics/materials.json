@@ -1,0 +1,406 @@
+[
+  {
+    "id": "classic",
+    "name": "Classic",
+    "shipped": true,
+    "bodyColor": "#f2b13c",
+    "shadowColor": "#c98f52",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35
+  },
+  {
+    "id": "glossy-coral",
+    "name": "Glossy Coral",
+    "shipped": true,
+    "bodyColor": "#f57e63",
+    "shadowColor": "#c85f4a",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "fx": {
+      "spec": 0.7,
+      "specPower": 40
+    }
+  },
+  {
+    "id": "irid-grape",
+    "name": "Iridescent Grape",
+    "shipped": true,
+    "bodyColor": "#a988e0",
+    "shadowColor": "#7d63b0",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "fx": {
+      "irid": 0.65,
+      "iridScale": 3
+    }
+  },
+  {
+    "id": "holo-sky",
+    "name": "Holo Sky",
+    "shipped": false,
+    "bodyColor": "#5fa8e0",
+    "shadowColor": "#3f7db0",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "fx": {
+      "irid": 0.95,
+      "iridScale": 6,
+      "spec": 0.35,
+      "specPower": 28
+    }
+  },
+  {
+    "id": "pearl-bubble",
+    "name": "Pearl Bubblegum",
+    "shipped": false,
+    "bodyColor": "#f28cc0",
+    "shadowColor": "#c86a99",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "fx": {
+      "irid": 0.35,
+      "iridScale": 2,
+      "spec": 0.28,
+      "specPower": 60,
+      "specColor": "#fff3f8"
+    }
+  },
+  {
+    "id": "chrome-slate",
+    "name": "Chrome Slate",
+    "shipped": false,
+    "bodyColor": "#9aa6b5",
+    "shadowColor": "#586374",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "fx": {
+      "spec": 1,
+      "specPower": 14,
+      "rimBoost": 0.5
+    }
+  },
+  {
+    "id": "metal-ink",
+    "name": "Metallic Ink",
+    "shipped": false,
+    "bodyColor": "#3a3f47",
+    "shadowColor": "#1c1f26",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "fx": {
+      "spec": 0.6,
+      "specPower": 24,
+      "velvet": 0.25,
+      "velvetColor": "#22304a"
+    }
+  },
+  {
+    "id": "velvet-ruby",
+    "name": "Velvet Ruby",
+    "shipped": false,
+    "bodyColor": "#e0455f",
+    "shadowColor": "#a52c44",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "fx": {
+      "velvet": 0.6,
+      "velvetColor": "#050a14"
+    }
+  },
+  {
+    "id": "neon-lime",
+    "name": "Neon Lime",
+    "shipped": false,
+    "bodyColor": "#b6d94a",
+    "shadowColor": "#7fa02f",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "fx": {
+      "emissive": 0.5,
+      "rimBoost": 0.9
+    }
+  },
+  {
+    "id": "candy-mint",
+    "name": "Candy Mint",
+    "shipped": false,
+    "bodyColor": "#6cc98f",
+    "shadowColor": "#4a9b6b",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "fx": {
+      "spec": 0.5,
+      "specPower": 48,
+      "irid": 0.18
+    }
+  },
+  {
+    "id": "teal-irid",
+    "name": "Iridescent Teal",
+    "shipped": false,
+    "bodyColor": "#2fb0a0",
+    "shadowColor": "#1d7d72",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "fx": {
+      "irid": 0.65,
+      "iridScale": 3
+    }
+  },
+  {
+    "id": "rose-gold",
+    "name": "Rose Gold",
+    "shipped": false,
+    "bodyColor": "#e8a8a0",
+    "shadowColor": "#c07a72",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "fx": {
+      "spec": 0.6,
+      "specPower": 24,
+      "velvet": 0.25,
+      "velvetColor": "#22304a"
+    }
+  },
+  {
+    "id": "aurora",
+    "name": "Aurora",
+    "shipped": false,
+    "bodyColor": "#2fb0a0",
+    "shadowColor": "#1d7d72",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "fx": {
+      "irid": 0.95,
+      "iridScale": 6,
+      "spec": 0.35,
+      "specPower": 28
+    }
+  },
+  {
+    "id": "obsidian",
+    "name": "Obsidian",
+    "shipped": false,
+    "bodyColor": "#3a3f47",
+    "shadowColor": "#1c1f26",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "fx": {
+      "spec": 1,
+      "specPower": 14,
+      "rimBoost": 0.5
+    }
+  },
+  {
+    "id": "sherbet",
+    "name": "Sherbet",
+    "shipped": false,
+    "bodyColor": "#f2b13c",
+    "shadowColor": "#c98f52",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "fx": {
+      "spec": 0.5,
+      "specPower": 48,
+      "irid": 0.18
+    }
+  },
+  {
+    "id": "velour-grape",
+    "name": "Velour Grape",
+    "shipped": false,
+    "bodyColor": "#a988e0",
+    "shadowColor": "#7d63b0",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "fx": {
+      "velvet": 0.6,
+      "velvetColor": "#050a14"
+    }
+  },
+  {
+    "id": "ghost",
+    "name": "Ghost",
+    "shipped": false,
+    "bodyColor": "#5fa8e0",
+    "shadowColor": "#3f7db0",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "opacity": 0.4
+  },
+  {
+    "id": "jelly-mint",
+    "name": "Jelly Mint",
+    "shipped": false,
+    "bodyColor": "#6cc98f",
+    "shadowColor": "#4a9b6b",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "opacity": 0.6,
+    "fx": {
+      "spec": 0.7,
+      "specPower": 40
+    }
+  },
+  {
+    "id": "frost",
+    "name": "Frost",
+    "shipped": false,
+    "bodyColor": "#5fa8e0",
+    "shadowColor": "#3f7db0",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "opacity": 0.7,
+    "fx": {
+      "irid": 0.35,
+      "iridScale": 2,
+      "spec": 0.28,
+      "specPower": 60,
+      "specColor": "#fff3f8"
+    }
+  },
+  {
+    "id": "holo-ghost",
+    "name": "Hologram Ghost",
+    "shipped": false,
+    "bodyColor": "#a988e0",
+    "shadowColor": "#7d63b0",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "opacity": 0.5,
+    "fx": {
+      "irid": 0.95,
+      "iridScale": 6,
+      "spec": 0.35,
+      "specPower": 28
+    }
+  },
+  {
+    "id": "bubble-glass",
+    "name": "Bubble Glass",
+    "shipped": false,
+    "bodyColor": "#f28cc0",
+    "shadowColor": "#c86a99",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "opacity": 0.65,
+    "fx": {
+      "spec": 0.7,
+      "specPower": 40
+    }
+  },
+  {
+    "id": "irid-ghost",
+    "name": "Iridescent Ghost",
+    "shipped": false,
+    "bodyColor": "#5fa8e0",
+    "shadowColor": "#3f7db0",
+    "shadowAmt": 0.5,
+    "softness": 0,
+    "rimColor": "#fff2dc",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "opacity": 0.55,
+    "fx": {
+      "irid": 0.65,
+      "iridScale": 3
+    }
+  },
+  {
+    "id": "oil-slick",
+    "name": "Oil Slick",
+    "shipped": false,
+    "bodyColor": "#ffffff",
+    "shadowColor": "#8a8f9a",
+    "shadowAmt": 0.45,
+    "softness": 0.05,
+    "rimColor": "#ffffff",
+    "rimStrength": 0,
+    "rimWidth": 0.35,
+    "tex": "/cosmetics/skins/tex-54522881.png",
+    "texRepeat": 2,
+    "fx": {
+      "irid": 0.5,
+      "iridScale": 4
+    }
+  },
+  {
+    "id": "cactus-green",
+    "name": "Cactus",
+    "shipped": false,
+    "bodyColor": "#4f9e3f",
+    "shadowColor": "#2f6b28",
+    "shadowAmt": 0.55,
+    "softness": 0.06,
+    "rimColor": "#cbe6a0",
+    "rimStrength": 0.12,
+    "rimWidth": 0.35,
+    "fx": {
+      "velvet": 0.18,
+      "velvetColor": "#1e3a17"
+    }
+  }
+]

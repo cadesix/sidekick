@@ -115,7 +115,7 @@ export const SESSIONS: SessionDef[] = [
 		minutes: 4,
 		bond: 7,
 		coins: 30,
-		intro: ["this island's about how your brain works", "no wrong answers, just true ones"],
+		intro: ["this one's about how your brain works", "no wrong answers, just true ones"],
 		beats: [
 			{ id: "personality", ask: ["describe your personality in one line. whatever comes first"], probe: true },
 			{ id: "planner", ask: ["planner or wing-it person?"] },
@@ -160,7 +160,7 @@ export const SESSIONS: SessionDef[] = [
 		bond: 8,
 		coins: 40,
 		sensitive: true,
-		intro: ["last island. the real stuff", "no judgment in here. ever"],
+		intro: ["last one. the real stuff", "no judgment in here. ever"],
 		beats: [
 			{ id: "blocker", ask: ["real talk: what gets in your way the most?"] },
 			{ id: "procrastinate", ask: ["when you procrastinate, what does it actually look like?"] },

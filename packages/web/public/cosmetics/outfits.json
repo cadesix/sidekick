@@ -1,0 +1,359 @@
+[
+  {
+    "id": "dino",
+    "name": "Dinosaur",
+    "kind": "outfit",
+    "material": null,
+    "parts": [
+      {
+        "item": "dino-body"
+      },
+      {
+        "item": "dino-hood"
+      },
+      {
+        "item": "dino-tail"
+      }
+    ],
+    "note": "Full onesie — keeps the sidekick skin, adds a green body suit (torso+arms+legs) + crested hood + spiked tail."
+  },
+  {
+    "id": "cactus",
+    "name": "Cactus",
+    "kind": "skin+kit",
+    "material": "cactus-green",
+    "parts": [
+      {
+        "item": "cactus-spikes"
+      },
+      {
+        "item": "cactus-flower"
+      }
+    ],
+    "note": "Becomes a cactus — green cactus material + real parts: cactus-spikes (Head spines) + cactus-flower (crown bloom)."
+  },
+  {
+    "id": "cat",
+    "name": "Cat",
+    "kind": "outfit",
+    "material": null,
+    "parts": [
+      {
+        "item": "onesie-body",
+        "variantId": "cat"
+      },
+      {
+        "item": "onesie-pointy-hood",
+        "variantId": "cat"
+      },
+      {
+        "item": "onesie-nose",
+        "variantId": "pink"
+      }
+    ]
+  },
+  {
+    "id": "dog",
+    "name": "Dog",
+    "kind": "outfit",
+    "material": null,
+    "parts": [
+      {
+        "item": "onesie-body",
+        "variantId": "dog"
+      },
+      {
+        "item": "onesie-floppy-hood",
+        "variantId": "dog"
+      },
+      {
+        "item": "onesie-nose",
+        "variantId": "dark"
+      }
+    ]
+  },
+  {
+    "id": "bunny",
+    "name": "Bunny",
+    "kind": "outfit",
+    "material": null,
+    "parts": [
+      {
+        "item": "onesie-body",
+        "variantId": "bunny"
+      },
+      {
+        "item": "onesie-long-hood",
+        "variantId": "bunny"
+      }
+    ]
+  },
+  {
+    "id": "frog",
+    "name": "Frog",
+    "kind": "outfit",
+    "material": null,
+    "parts": [
+      {
+        "item": "onesie-body",
+        "variantId": "frog"
+      },
+      {
+        "item": "onesie-plain-ovoid-hood",
+        "variantId": "frog"
+      },
+      {
+        "item": "onesie-eyes",
+        "variantId": "frog"
+      }
+    ]
+  },
+  {
+    "id": "bear",
+    "name": "Bear",
+    "kind": "outfit",
+    "material": null,
+    "parts": [
+      {
+        "item": "onesie-body",
+        "variantId": "bear"
+      },
+      {
+        "item": "onesie-bear-hood",
+        "variantId": "bear"
+      },
+      {
+        "item": "onesie-nose",
+        "variantId": "dark"
+      }
+    ]
+  },
+  {
+    "id": "shark",
+    "name": "Shark",
+    "kind": "outfit",
+    "material": null,
+    "parts": [
+      {
+        "item": "onesie-body",
+        "variantId": "shark"
+      },
+      {
+        "item": "onesie-fin-hood",
+        "variantId": "shark"
+      }
+    ]
+  },
+  {
+    "id": "astronaut",
+    "name": "Astronaut",
+    "kind": "outfit",
+    "material": null,
+    "parts": [
+      {
+        "item": "onesie-body",
+        "variantId": "astro"
+      },
+      {
+        "item": "onesie-helmet",
+        "variantId": "clear"
+      },
+      {
+        "item": "onesie-chest",
+        "variantId": "grey"
+      },
+      {
+        "item": "backpack",
+        "variantId": "white"
+      }
+    ]
+  },
+  {
+    "id": "robot",
+    "name": "Robot",
+    "kind": "outfit",
+    "material": null,
+    "parts": [
+      {
+        "item": "onesie-body",
+        "variantId": "robot"
+      },
+      {
+        "item": "onesie-box-hood",
+        "variantId": "robot"
+      },
+      {
+        "item": "onesie-antenna",
+        "variantId": "metal"
+      },
+      {
+        "item": "onesie-chest",
+        "variantId": "grey"
+      }
+    ]
+  },
+  {
+    "id": "mummy",
+    "name": "Mummy",
+    "kind": "outfit",
+    "material": null,
+    "parts": [
+      {
+        "item": "onesie-body",
+        "variantId": "mummy"
+      },
+      {
+        "item": "onesie-wrapped-hood",
+        "variantId": "mummy"
+      }
+    ]
+  },
+  {
+    "id": "devil",
+    "name": "Devil",
+    "kind": "outfit",
+    "material": null,
+    "parts": [
+      {
+        "item": "onesie-body",
+        "variantId": "devil"
+      },
+      {
+        "item": "onesie-horn-hood",
+        "variantId": "devil"
+      },
+      {
+        "item": "dino-tail",
+        "variantId": "red"
+      }
+    ]
+  },
+  {
+    "id": "fox",
+    "name": "Fox",
+    "kind": "outfit",
+    "material": null,
+    "parts": [
+      {
+        "item": "onesie-body",
+        "variantId": "fox"
+      },
+      {
+        "item": "onesie-pointy-hood",
+        "variantId": "fox"
+      },
+      {
+        "item": "onesie-nose",
+        "variantId": "dark"
+      }
+    ]
+  },
+  {
+    "id": "angel",
+    "name": "Angel",
+    "kind": "outfit",
+    "material": null,
+    "parts": [
+      {
+        "item": "onesie-body",
+        "variantId": "angel"
+      },
+      {
+        "item": "onesie-halo",
+        "variantId": "gold"
+      },
+      {
+        "item": "onesie-wings",
+        "variantId": "white"
+      }
+    ]
+  },
+  {
+    "id": "chef",
+    "name": "Chef",
+    "kind": "outfit",
+    "material": null,
+    "parts": [
+      {
+        "item": "onesie-body",
+        "variantId": "chef"
+      },
+      {
+        "item": "onesie-toque",
+        "variantId": "white"
+      }
+    ]
+  },
+  {
+    "id": "bee",
+    "name": "Bee",
+    "kind": "outfit",
+    "material": null,
+    "parts": [
+      {
+        "item": "onesie-body",
+        "variantId": "bee"
+      },
+      {
+        "item": "onesie-bee-antennae",
+        "variantId": "black"
+      },
+      {
+        "item": "onesie-wings",
+        "variantId": "clear"
+      }
+    ]
+  },
+  {
+    "id": "ninja",
+    "name": "Ninja",
+    "kind": "outfit",
+    "material": null,
+    "parts": [
+      {
+        "item": "onesie-body",
+        "variantId": "ninja"
+      },
+      {
+        "item": "onesie-wrapped-hood",
+        "variantId": "ninja"
+      },
+      {
+        "item": "onesie-headband",
+        "variantId": "red"
+      }
+    ]
+  },
+  {
+    "id": "wizard",
+    "name": "Wizard",
+    "kind": "outfit",
+    "material": null,
+    "parts": [
+      {
+        "item": "onesie-body",
+        "variantId": "wizard"
+      },
+      {
+        "item": "wizard",
+        "variantId": "purple"
+      }
+    ]
+  },
+  {
+    "id": "royal",
+    "name": "Royal",
+    "kind": "outfit",
+    "material": null,
+    "parts": [
+      {
+        "item": "onesie-body",
+        "variantId": "royal"
+      },
+      {
+        "item": "crown",
+        "variantId": "gold"
+      }
+    ]
+  }
+]

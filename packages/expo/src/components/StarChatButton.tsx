@@ -25,7 +25,7 @@ import type { OverheadTarget } from './SidekickCanvas';
 //
 // Hidden once every session is done: there's nothing left to open.
 
-const SIZE = 44;
+const SIZE = 48; // pill height (BADGE 36 + 6 padding each side) — vertical centering
 // The tracked point is the head BONE — the top of the head. Sit ABOVE it, so the
 // star reads as hanging in the SKY the chat pans up into rather than as a button
 // stuck to the character.
@@ -136,71 +136,85 @@ export function StarChatButton({
         rowW.value = e.nativeEvent.layout.width;
       }}
     >
-      <View style={styles.starWrap} pointerEvents="box-none">
-        <Animated.View pointerEvents="none" style={[styles.glow, glowStyle]} />
-        <Pressable
-          onPress={onPress}
-          accessibilityLabel="Start a star chat"
-          style={({ pressed }) => [styles.hit, { transform: [{ scale: pressed ? 0.9 : 1 }] }]}
-        >
-          <Animated.View style={starStyle}>
-            <Text style={styles.star}>✦</Text>
-          </Animated.View>
-        </Pressable>
-      </View>
-      <Animated.Text style={[styles.label, labelStyle]} pointerEvents="none">
-        bond score {bond}%
-      </Animated.Text>
+      {/* one pill = one tap target: the star and the bond score sit inside it,
+          and tapping anywhere on it opens the star chat */}
+      <Pressable
+        onPress={onPress}
+        accessibilityLabel={`Start a star chat — bond score ${bond} percent`}
+        style={({ pressed }) => [styles.pill, { transform: [{ scale: pressed ? 0.96 : 1 }] }]}
+      >
+        <View style={styles.starWrap}>
+          <Animated.View pointerEvents="none" style={[styles.glow, glowStyle]} />
+          <View style={styles.starBadge}>
+            <Animated.View style={starStyle}>
+              <Text style={styles.star}>✦</Text>
+            </Animated.View>
+          </View>
+        </View>
+        <Animated.Text style={[styles.label, labelStyle]}>bond score {bond}%</Animated.Text>
+      </Pressable>
     </Animated.View>
   );
 }
+
+const BADGE = 36; // the purple star disc inside the pill
 
 const styles = StyleSheet.create({
   box: {
     position: 'absolute',
     top: 0,
     left: 0,
+    zIndex: 26,
+  },
+  // the whole pill is the tap target
+  pill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    zIndex: 26,
+    paddingLeft: 6,
+    paddingRight: 15,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 4,
   },
   starWrap: {
-    width: SIZE,
-    height: SIZE,
+    width: BADGE,
+    height: BADGE,
     alignItems: 'center',
     justifyContent: 'center',
   },
   glow: {
     position: 'absolute',
-    width: SIZE,
-    height: SIZE,
-    borderRadius: SIZE / 2,
+    width: BADGE + 8,
+    height: BADGE + 8,
+    borderRadius: (BADGE + 8) / 2,
     backgroundColor: '#C9BCFF',
   },
-  hit: {
-    width: SIZE,
-    height: SIZE,
-    borderRadius: SIZE / 2,
+  starBadge: {
+    width: BADGE,
+    height: BADGE,
+    borderRadius: BADGE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(122,90,248,0.9)',
+    backgroundColor: 'rgba(122,90,248,0.95)',
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.85)',
+    borderColor: 'rgba(255,255,255,0.9)',
   },
   star: {
-    fontSize: 20,
-    lineHeight: 24,
+    fontSize: 18,
+    lineHeight: 22,
     color: '#fff',
   },
-  // matches the old bond badge's type: mono, inked so it survives a bright sky
+  // dark ink now — it sits inside a light pill, not over the open sky
   label: {
     fontFamily: 'monospace',
     fontSize: 14,
     fontWeight: '700',
-    color: '#fff',
-    textShadowColor: 'rgba(0,0,0,0.55)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    color: '#1a1a1a',
   },
 });

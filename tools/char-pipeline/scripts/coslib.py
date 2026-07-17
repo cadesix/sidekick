@@ -60,6 +60,38 @@ def dup_region(body, name, exclude_sub=(), keep=None):
     return ob
 
 
+def surface_hit(body, world_origin, world_dir):
+    """Ray-cast the ACTUAL body mesh from world_origin along world_dir. Returns
+    (world_point, world_normal) of the first hit, or (None, None). Use to SEAT a
+    prop flush on the real surface (follows the ears/curves) instead of guessing a
+    point on an idealized sphere — the fix for props that float off the head."""
+    mw = body.matrix_world; mwi = mw.inverted()
+    o = mwi @ Vector(world_origin)
+    d = (mwi.to_3x3() @ Vector(world_dir)).normalized()
+    hit, loc, nrm, idx = body.ray_cast(o, d)
+    if not hit:
+        return None, None
+    return mw @ loc, (mw.to_3x3() @ nrm).normalized()
+
+
+def seat_spike(bm, base, normal, length, rr, nseg=6):
+    """Build a small cone seated at `base` pointing along `normal` (world space).
+    Returns the ring+apex verts. Used to plant spikes/studs on a sampled surface."""
+    up = Vector(normal).normalized()
+    ref = Vector((0, 0, 1)) if abs(up.z) < 0.9 else Vector((1, 0, 0))
+    u = up.cross(ref).normalized()
+    w = up.cross(u).normalized()
+    tip = Vector(base) + up * length
+    ring = [bm.verts.new(Vector(base) - up * (rr * 0.4)
+                         + u * (rr * math.cos(2 * math.pi * k / nseg))
+                         + w * (rr * math.sin(2 * math.pi * k / nseg))) for k in range(nseg)]
+    apex = bm.verts.new(tip)
+    for k in range(nseg):
+        bm.faces.new((ring[k], ring[(k + 1) % nseg], apex))
+    bm.faces.new(ring)
+    return ring + [apex]
+
+
 def dup_geo(body, name, filt):
     """Duplicate the body and keep only polys whose WORLD centroid passes filt.
     Use for regions where vertex-group dominance frontiers are patchy (e.g.

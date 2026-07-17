@@ -11,8 +11,8 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.cadesix.sidekick-mobile",
-      "appleTeamId": "7EZKSK82YK",
+      "bundleIdentifier": "com.sanssoftware.sidekick",
+      "appleTeamId": "DNCJ9P24DP",
       "infoPlist": {
         "NSHealthShareUsageDescription": "Sidekick reads daily steps, active energy, sleep, and workout summaries for personalized goal support. If you choose to connect, Sidekick stores up to 30 days of summaries and processes them with its AI provider.",
         "NSLocationWhenInUseUsageDescription": "Sidekick uses only your city while the app is open, so it can understand what’s nearby and keep local suggestions relevant.",
@@ -81,8 +81,8 @@
       [
         "react-native-device-activity",
         {
-          "appleTeamId": "7EZKSK82YK",
-          "appGroup": "group.com.cadesix.sidekick-mobile"
+          "appleTeamId": "DNCJ9P24DP",
+          "appGroup": "group.com.sanssoftware.sidekick"
         }
       ]
     ],
@@ -98,37 +98,37 @@
             "ios": {
               "appExtensions": [
                 {
-                  "bundleIdentifier": "com.cadesix.sidekick-mobile.ShieldConfiguration",
+                  "bundleIdentifier": "com.sanssoftware.sidekick.ShieldConfiguration",
                   "targetName": "ShieldConfiguration",
                   "entitlements": {
                     "com.apple.developer.family-controls": true,
                     "com.apple.security.application-groups": [
-                      "group.com.cadesix.sidekick-mobile"
+                      "group.com.sanssoftware.sidekick"
                     ]
                   }
                 },
                 {
-                  "bundleIdentifier": "com.cadesix.sidekick-mobile.ShieldAction",
+                  "bundleIdentifier": "com.sanssoftware.sidekick.ShieldAction",
                   "targetName": "ShieldAction",
                   "entitlements": {
                     "com.apple.developer.family-controls": true,
                     "com.apple.security.application-groups": [
-                      "group.com.cadesix.sidekick-mobile"
+                      "group.com.sanssoftware.sidekick"
                     ]
                   }
                 },
                 {
-                  "bundleIdentifier": "com.cadesix.sidekick-mobile.ActivityMonitorExtension",
+                  "bundleIdentifier": "com.sanssoftware.sidekick.ActivityMonitorExtension",
                   "targetName": "ActivityMonitorExtension",
                   "entitlements": {
                     "com.apple.developer.family-controls": true,
                     "com.apple.security.application-groups": [
-                      "group.com.cadesix.sidekick-mobile"
+                      "group.com.sanssoftware.sidekick"
                     ]
                   }
                 },
                 {
-                  "bundleIdentifier": "com.cadesix.sidekick-mobile.NotificationService",
+                  "bundleIdentifier": "com.sanssoftware.sidekick.NotificationService",
                   "targetName": "NotificationService"
                 }
               ]

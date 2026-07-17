@@ -13,3 +13,4 @@ export * from './streak';
 export * from './daily-box';
 export * from './shop';
 export * from './sessions';
+export * from './star-chat';
