@@ -892,17 +892,6 @@
         "color": "#6cbe46"
       },
       {
-        "id": "robot",
-        "color": "#a8b0ba",
-        "roughness": 0.4,
-        "metalness": 0.6
-      },
-      {
-        "id": "mummy",
-        "color": "#e6e0d0",
-        "roughness": 0.85
-      },
-      {
         "id": "ninja",
         "color": "#23262b"
       }
@@ -1207,6 +1196,18 @@
         "color": "#a8b0ba",
         "roughness": 0.4,
         "metalness": 0.6
+      }
+    ]
+  },
+  "onesie-mummy-hood": {
+    "model": "/cosmetics/onesie/mummy-hood-v1.glb",
+    "attach": "bone:Head",
+    "slot": "hat",
+    "variants": [
+      {
+        "id": "mummy",
+        "color": "#e6e0d0",
+        "roughness": 0.85
       }
     ]
   }

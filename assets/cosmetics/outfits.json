@@ -43,7 +43,7 @@
         "variantId": "cat"
       },
       {
-        "item": "onesie-pointy-hood",
+        "item": "onesie-cat-hood",
         "variantId": "cat"
       },
       {
@@ -63,7 +63,7 @@
         "variantId": "dog"
       },
       {
-        "item": "onesie-floppy-hood",
+        "item": "onesie-dog-hood",
         "variantId": "dog"
       },
       {
@@ -83,7 +83,7 @@
         "variantId": "bunny"
       },
       {
-        "item": "onesie-long-hood",
+        "item": "onesie-bunny-hood",
         "variantId": "bunny"
       }
     ]
@@ -99,7 +99,7 @@
         "variantId": "frog"
       },
       {
-        "item": "onesie-plain-ovoid-hood",
+        "item": "onesie-plain-hood",
         "variantId": "frog"
       },
       {
@@ -139,7 +139,7 @@
         "variantId": "shark"
       },
       {
-        "item": "onesie-fin-hood",
+        "item": "onesie-shark-hood",
         "variantId": "shark"
       }
     ]
@@ -203,7 +203,7 @@
         "variantId": "mummy"
       },
       {
-        "item": "onesie-wrapped-hood",
+        "item": "onesie-mummy-hood",
         "variantId": "mummy"
       }
     ]
@@ -219,7 +219,7 @@
         "variantId": "devil"
       },
       {
-        "item": "onesie-horn-hood",
+        "item": "onesie-devil-hood",
         "variantId": "devil"
       },
       {
@@ -239,7 +239,7 @@
         "variantId": "fox"
       },
       {
-        "item": "onesie-pointy-hood",
+        "item": "onesie-cat-hood",
         "variantId": "fox"
       },
       {
@@ -315,7 +315,7 @@
         "variantId": "ninja"
       },
       {
-        "item": "onesie-wrapped-hood",
+        "item": "onesie-plain-hood",
         "variantId": "ninja"
       },
       {
