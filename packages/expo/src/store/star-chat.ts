@@ -36,9 +36,6 @@ type StarChatStore = {
   // started yet, so goal arrives pre-known and never re-asked.
   start: () => void;
   pushMsg: (m: StarChatMsg) => void;
-  // functional age gate: under-18s still get the experience but are excluded
-  // from the (server-side, later) ad-profile pipeline.
-  setAge: (band: string) => void;
   applyTurn: (turn: ControllerTurn) => void;
   advance: () => void;
   finish: (artifact: PersonalityArtifact | null) => void;
@@ -60,8 +57,6 @@ export const useStarChat = create<StarChatStore>()(
       },
 
       pushMsg: (m) => set((s) => ({ msgs: [...s.msgs, m] })),
-
-      setAge: (band) => set((s) => (s.convo ? { convo: { ...s.convo, ageBand: band } } : {})),
 
       applyTurn: (turn) =>
         set((s) => (s.convo ? { convo: coreApplyTurn(s.convo, turn) } : {})),

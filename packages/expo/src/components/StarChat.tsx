@@ -46,15 +46,6 @@ const OPENING = [
 const PHASE1_OPENER = 'ok cool. so what do you do day to day, work, school, both?';
 const SCRIPTED_NUDGE = 'mm, say more?';
 
-// derive the compliance age band once the controller has learned their age (it
-// asks casually a beat in, per the field hint — no scripted gate up front).
-function deriveAgeBand() {
-  const c = useStarChat.getState().convo;
-  if (!c || c.ageBand || !c.fields.age?.value) return;
-  const n = parseInt(c.fields.age.value.match(/\d{1,3}/)?.[0] ?? '', 10);
-  if (n >= 5 && n <= 120) useStarChat.getState().setAge(n < 18 ? '<18' : '18+');
-}
-
 const FALLBACK_ARTIFACT: PersonalityArtifact = {
   archetype: 'a sky still forming',
   reading:
@@ -160,7 +151,7 @@ export function StarChat({ onDone }: { onDone: () => void }) {
   }, [kb]);
   const kbPad = useAnimatedStyle(() => ({ paddingBottom: kb.value }));
 
-  // kick off: fresh → opening + age gate; resume → jump to where they were
+  // kick off: fresh → opening + first question; resume → jump to where they were
   useEffect(() => {
     useStarChat.getState().start();
     const st = useStarChat.getState();
@@ -228,7 +219,6 @@ export function StarChat({ onDone }: { onDone: () => void }) {
     const turn: ControllerTurn =
       (raw && parseControllerTurn(raw)) || { message: SCRIPTED_NUDGE, fieldUpdates: [], phaseComplete: false };
     useStarChat.getState().applyTurn(turn); // folds fields, bumps the phase turn counter
-    deriveAgeBand(); // capture the compliance band if this turn learned their age
     const next = useStarChat.getState().convo!;
     const advancing = readyToAdvance(next);
     const ending = advancing && next.phase >= PHASE_COUNT;

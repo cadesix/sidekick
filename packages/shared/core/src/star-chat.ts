@@ -37,7 +37,6 @@ export const FIELDS: FieldDef[] = [
 	{ id: 'location', label: 'where they live now', phase: 1, mustHave: true, hint: 'city or region, not precise address' },
 	{ id: 'household', label: 'who they live with', phase: 1, mustHave: true, hint: 'partner/single, kids, roommates, solo' },
 	{ id: 'background', label: 'where/how they grew up', phase: 1, mustHave: true, hint: 'formative place + household, kept light' },
-	{ id: 'age', label: 'their age', phase: 1, mustHave: true, hint: 'a number; ask it casually a beat in, never as the very first question' },
 	// Phase 2 — Your energy (social + interests)
 	{ id: 'social_energy', label: 'introvert/extravert energy', phase: 2, mustHave: true, hint: 'recharge alone or around people' },
 	{ id: 'interests', label: 'what they are into', phase: 2, mustHave: false },
@@ -174,7 +173,6 @@ export type ConvoState = {
 	phase: number; // 1..PHASE_COUNT, or PHASE_COUNT+1 once complete
 	turnsInPhase: number;
 	fields: Record<string, FieldState>;
-	ageBand?: string;
 	// goal → inferred desire, seeded from the habit-tracker onboarding. The
 	// controller tests it as a hypothesis for core_motivation; it never asserts it.
 	motivationHypothesis?: string;
