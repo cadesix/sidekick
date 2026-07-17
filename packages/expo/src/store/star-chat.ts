@@ -40,6 +40,23 @@ type StarChatStore = {
   advance: () => void;
   finish: (artifact: PersonalityArtifact | null) => void;
   reset: () => void;
+  // DEV-only (DevPanel): jump straight to the end state so the astral-card reveal
+  // sequence can be previewed without chatting through every chapter.
+  devSeedArtifact: () => void;
+};
+
+// a full sample card for the dev jump-to-reveal (archetype + traits + reading +
+// evidence insights), so the modal layout can be eyeballed with real-ish content.
+const DEV_SAMPLE_ARTIFACT: PersonalityArtifact = {
+  archetype: 'the quiet strategist',
+  reading:
+    "you read the room before you commit, watching more than you let on. under the calm there's real drive, you just don't need an audience for it. when you care about something you go all in, quietly and completely.",
+  traits: ['observant', 'driven', 'self-contained', 'loyal'],
+  insights: [
+    { claim: 'you lead with your head', because: 'you weighed big decisions like a spreadsheet before moving' },
+    { claim: 'you recharge alone', because: 'you said people are great but you need your own time to reset' },
+    { claim: "you're quietly competitive", because: 'proving people wrong came up more than once' },
+  ],
 };
 
 export const useStarChat = create<StarChatStore>()(
@@ -66,6 +83,17 @@ export const useStarChat = create<StarChatStore>()(
       finish: (artifact) => set({ artifact, done: true }),
 
       reset: () => set({ convo: null, msgs: [], artifact: null, done: false }),
+
+      devSeedArtifact: () =>
+        set({
+          convo: initConvoState({}), // non-null so the runner resumes instead of re-opening
+          msgs: [
+            { role: 'bot', text: "ok that's everything i wanted to ask ✦" },
+            { role: 'bot', text: 'let me pull your reading together…' },
+          ],
+          artifact: DEV_SAMPLE_ARTIFACT,
+          done: true,
+        }),
     }),
     {
       name: 'sidekick_starchat_v1',

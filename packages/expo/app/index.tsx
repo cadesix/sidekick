@@ -15,6 +15,7 @@ import { StreakModal } from '../src/components/StreakModal';
 import { SessionChat, STAR_FACE_TUNING } from '../src/components/SessionChat';
 import { StarChat } from '../src/components/StarChat';
 import { StarChatButton } from '../src/components/StarChatButton';
+import { useStarChat } from '../src/store/star-chat';
 import { useStarFaceConfig } from '../src/store/starFaceConfig';
 import { useSidekickContext, type Astral } from '../src/store/context';
 import { SidekickAvatar } from '../src/components/SidekickAvatar';
@@ -524,7 +525,12 @@ export default function Home() {
       </Animated.View>
 
       {/* DEV state controls (top-left chip → panel); renders nothing in prod */}
-      <DevPanel />
+      <DevPanel
+        onJumpToReveal={() => {
+          useStarChat.getState().devSeedArtifact();
+          setStarChatOpen(true);
+        }}
+      />
     </View>
   );
 }

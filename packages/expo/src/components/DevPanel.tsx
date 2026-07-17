@@ -29,7 +29,7 @@ import { useStreak } from '../store/streak';
 
 const SHOW_DEV = true;
 
-export function DevPanel() {
+export function DevPanel({ onJumpToReveal }: { onJumpToReveal?: () => void }) {
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
 
@@ -131,6 +131,7 @@ export function DevPanel() {
           <Row label="Guided chats">
             <Btn label="Re-lock map (progress only)" onPress={resetSessions} wide />
             <Btn label="Wipe guided chats (+ profile)" onPress={wipeGuidedChats} wide />
+            {onJumpToReveal ? <Btn label="Jump to astral reveal" onPress={onJumpToReveal} wide /> : null}
           </Row>
 
           <Pressable onPress={resetProfile} style={styles.resetBtn}>
