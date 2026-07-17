@@ -2,7 +2,7 @@
 
 The Sidekick mascot ("Glim"): a glossy vinyl-toy yellow bear-like character
 with an oversized bobble head, huge round ears, stubby limbs, and a
-sprite-sheet-driven face. Shipped mesh: **`packages/web/public/sidekick-rigged.glb`**
+sprite-sheet-driven face. Shipped mesh: **`assets/sidekick-rigged.glb`**
 (internally `yellow_final_v9`; source blend in `blender/`).
 
 ## Provenance (one paragraph of history)
@@ -42,7 +42,7 @@ World: center z=0.137, radius 0.043 (top z=0.181 clears the crown tufts at
 0.185). UV: the disc is inscribed in [0,1] — disc center = UV(0.5, 0.5), disc
 rim touches the UV square's edge midpoints. The app maps a 4×4 sprite sheet via
 UV offset/repeat; keep face art inside the inscribed circle. Full app contract:
-`packages/web/public/3d-assets/facesprite-contract.md`.
+`assets/3d-assets/facesprite-contract.md`.
 Authoring script: `scripts/face_patch_circ.py` (takes in/out paths via CLI).
 
 ## Measurement table (raw units, bind pose — what the build scripts tune against)

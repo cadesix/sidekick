@@ -2,7 +2,7 @@
 //
 // Metro requires bundled assets to be static require() calls, so the catalog
 // ships as this module rather than a fetched JSON file. Structure mirrors the
-// canonical packages/web/public/cosmetics/manifest.json — model/tex are Metro
+// canonical assets/cosmetics/manifest.json — model/tex are Metro
 // module refs instead of URL strings, and variant textures are PNG (converted
 // from the canonical .webp; expo-gl can't decode .webp). The phone slot reuses
 // the already-bundled stripped mascot phone GLB.

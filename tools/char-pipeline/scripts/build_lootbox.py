@@ -1,6 +1,6 @@
 """Daily loot chest — a WORLD PROP, not a cosmetic: it sits on the ground next
 to the character (daily box faucet, docs/token-economy.md). No rig, no skin.
-Output: packages/web/public/props/lootbox-v1.glb
+Output: assets/props/lootbox-v1.glb
 
 Meshes split two ways: by material so the web runtime can retint per box tier
 (base/silver/gold) by material name, and lid-vs-body so the lid can hinge open
@@ -29,7 +29,7 @@ from mathutils import Matrix, Vector
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
 import coslib as C
 
-OUT = os.path.join(C.REPO, "packages", "web", "public", "props", "lootbox-v1.glb")
+OUT = os.path.join(C.REPO, "assets", "props", "lootbox-v1.glb")
 
 # ---------------- proportions ----------------
 W = 1.00          # body width (x)

@@ -8,8 +8,8 @@ from mathutils import Vector
 PIPE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # tools/char-pipeline
 REPO = os.path.dirname(os.path.dirname(PIPE))                        # monorepo root
 MASTER = os.path.join(PIPE, "blender", "character_master.blend")
-COSDIR = os.path.join(REPO, "packages", "web", "public", "cosmetics")
-CHAR_GLB = os.path.join(REPO, "packages", "web", "public", "sidekick-rigged.glb")  # == yellow_final_v9
+COSDIR = os.path.join(REPO, "assets", "cosmetics")
+CHAR_GLB = os.path.join(REPO, "assets", "sidekick-rigged.glb")  # == yellow_final_v9
 WIPDIR = os.path.join(PIPE, ".wip")
 
 

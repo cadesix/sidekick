@@ -3,7 +3,7 @@
 // the server and the app both build the shop product list from. Slot ids plus
 // variant ids/display names only — no texture refs or asset paths (those live
 // in each app's own manifest). Derived from the canonical
-// packages/web/public/cosmetics/manifest.json; re-run the sync script whenever
+// assets/cosmetics/manifest.json; re-run the sync script whenever
 // the art catalog changes. Variant order is load-bearing (prices step by index).
 
 export type CatalogSlotId =

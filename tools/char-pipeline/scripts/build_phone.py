@@ -1,5 +1,5 @@
 """Phone prop, parented to the R_Hand bone (rigid, not skinned).
-Per public/3d-assets/phone-spec.md:
+Per assets/3d-assets/phone-spec.md:
   - rounded-rectangle slab (PhoneBody) + separate slightly-proud inset screen
     (PhoneScreen), two meshes / two own materials, both children of R_Hand.
   - raw dims ~0.030 x 0.014 x 0.0024 (runtime ~0.15 tall on the 1.0 character).
