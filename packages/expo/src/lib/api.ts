@@ -232,6 +232,35 @@ export async function streamChatTurn(
 }
 
 /**
+ * DEV Chat Lab turn (see server `/dev/chat-lab`): runs the real prod model on an
+ * ephemeral transcript with a caller-supplied system prompt, streaming plain
+ * text deltas. No tools/frames, no persistence — so the wire is raw text and we
+ * can skip `drainStreamFrames` entirely. Throws if the server is unreachable or
+ * rejects (dev-gated / unauthorized).
+ */
+export async function streamChatLab(
+  body: { system?: string; messages: { role: "user" | "assistant"; content: string }[] },
+  onDelta: (delta: string) => void,
+): Promise<void> {
+  const response = await streamingFetch(`${API_BASE}/dev/chat-lab`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok || !response.body) {
+    throw new Error(`chat lab failed (${response.status})`);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    const text = decoder.decode(value, { stream: true });
+    if (text.length > 0) onDelta(text);
+  }
+}
+
+/**
  * Resume a turn after its device-tools posted results (12). POSTs to
  * `/chat/continue` with no user text; the server re-reads the tool-call/result
  * rows and streams the follow-up into the same assistant bubble. Returns any

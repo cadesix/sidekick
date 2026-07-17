@@ -7,6 +7,20 @@ const LLM_TIMEOUT_MS = 20000;
 // runner (SessionChat) and the Star Chat runner — on mobile there's no server, so
 // both call OpenAI directly when EXPO_PUBLIC_OPENAI_API_KEY is set.
 export async function llm(system: string, user: string, maxTokens = 200): Promise<string | null> {
+  return llmChat(system, [{ role: 'user', content: user }], maxTokens);
+}
+
+export type ChatMsg = { role: 'user' | 'assistant'; content: string };
+
+// Multi-turn variant of `llm`: an arbitrary system prompt + a running message
+// list → the next assistant line. Same gpt-4o-mini / timeout / null-on-failure
+// contract as `llm` (which now delegates here). Used by the Chat Lab dev tool to
+// iterate on the sidekick voice with a live-editable system prompt.
+export async function llmChat(
+  system: string,
+  messages: ChatMsg[],
+  maxTokens = 200,
+): Promise<string | null> {
   if (!KEY) return null;
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), LLM_TIMEOUT_MS);
@@ -16,10 +30,7 @@ export async function llm(system: string, user: string, maxTokens = 200): Promis
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${KEY}` },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ],
+        messages: [{ role: 'system', content: system }, ...messages],
         max_tokens: maxTokens,
       }),
       signal: ctrl.signal,

@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BOND_MAX, BOND_MIN } from '@sidekick/core';
@@ -110,6 +111,10 @@ export function DevPanel({ onJumpToReveal }: { onJumpToReveal?: () => void }) {
           style={[styles.panel, { top: Math.max(insets.top, 16) + 34 }]}
           contentContainerStyle={styles.panelContent}
         >
+          <Row label="Labs">
+            <Btn label="Open dev tools →" onPress={() => router.push('/dev')} wide />
+          </Row>
+
           <Row label="Bond" value={`${bond}%`}>
             {BOND_PRESETS.map((v) => (
               <Btn key={v} label={String(v)} onPress={() => setBondTo(v)} />

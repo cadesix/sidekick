@@ -29,7 +29,10 @@ function ConnectedApp() {
         <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
         <Stack.Screen name="focus-setup" options={{ presentation: 'modal' }} />
         <Stack.Screen name="health-setup" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="dev/index" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="dev/chat-lab" options={{ presentation: 'modal' }} />
         <Stack.Screen name="dev/ad-preview" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="dev/face-sheet" options={{ presentation: 'modal' }} />
       </Stack>
     </>
   );
