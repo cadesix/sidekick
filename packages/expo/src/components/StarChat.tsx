@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
-import { Dimensions, Keyboard, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Dimensions, Keyboard, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -45,6 +45,21 @@ const OPENING = [
 ];
 const PHASE1_OPENER = 'ok cool. so what do you do day to day, work, school, both?';
 const SCRIPTED_NUDGE = 'mm, say more?';
+
+// The chat sits over the 3D night sky, and the sidekick's star-head constellation
+// floats in the upper area behind it. Rather than cover the top with a scrim
+// (which would hide the head too), we ALPHA-fade the messages themselves toward
+// the top, so the head shows straight through where the text dissolves. A long,
+// gentle ramp: fully gone at the very top, fully solid by ~45% (roughly the
+// bottom of the head). Web-only for now (react-native-web forwards the CSS mask);
+// iOS parity would want @react-native-masked-view/masked-view.
+const FADE_TOP =
+  Platform.OS === 'web'
+    ? ({
+        maskImage: 'linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.55) 30%, black 46%)',
+        WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.55) 30%, black 46%)',
+      } as object)
+    : null;
 
 const FALLBACK_ARTIFACT: PersonalityArtifact = {
   archetype: 'a sky still forming',
@@ -268,7 +283,7 @@ export function StarChat({ onDone }: { onDone: () => void }) {
       <Animated.View style={[{ flex: 1, overflow: 'hidden' }, kbPad]}>
         <ScrollView
           ref={scrollRef}
-          style={{ flex: 1 }}
+          style={[{ flex: 1 }, FADE_TOP]}
           className="px-4"
           contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-end', paddingBottom: 12, paddingTop: 24, gap: 12 }}
           showsVerticalScrollIndicator={false}
