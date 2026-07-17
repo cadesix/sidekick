@@ -1,0 +1,349 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useRef, useState } from 'react';
+import { Dimensions, Keyboard, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import {
+  PHASE_COUNT,
+  buildArtifactPrompt,
+  buildControllerPrompt,
+  parseArtifact,
+  parseControllerTurn,
+  phaseDef,
+  readyToAdvance,
+  type ControllerTurn,
+  type PersonalityArtifact,
+} from '@sidekick/core';
+
+import { MSG_SHADOW, STREAM_GAP_MS, StreamedText, TypingDots, streamDurationMs } from './chat-stream';
+import { useOnboarding } from '../store/onboarding';
+
+const { height: SCREEN_H } = Dimensions.get('window');
+const KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+
+// The onboarding conversation runner (docs/ONBOARDING-CONVERSATION.md): a
+// generative-with-a-floor personality reading. The engine (phases, must-have
+// floor, per-turn prompt, reducers) lives in @sidekick/core; this drives the
+// loop — age gate → phase-1 opener → each user answer feeds the controller,
+// which reacts + extracts + steers — and renders the earned artifact at the end.
+//
+// LLM: no server on mobile, so we call OpenAI directly when
+// EXPO_PUBLIC_OPENAI_API_KEY is set. With no key the flow still walks (scripted
+// nudges advance by the phase cap) and ends on a fallback artifact, so it's
+// usable offline.
+
+const OPENING = [
+  "hey — i'm gonna get to know you through a conversation,",
+  'then give you a personality read: how you think, connect, and move through life ✦',
+];
+const AGE_Q = 'first though — how old are you?';
+const PHASE1_OPENER = 'ok, love it. so tell me about your life these days — what do you spend most of your time on?';
+const SCRIPTED_NUDGE = 'mm, say more?';
+
+const FALLBACK_ARTIFACT: PersonalityArtifact = {
+  archetype: 'a sky still forming',
+  reading:
+    "we've only just started mapping you, but there's already a lot up there worth knowing. the more we talk, the clearer it gets. ✦",
+  traits: ['curious', 'open', 'worth knowing'],
+  insights: [],
+};
+
+type Stage = 'age' | 'chat' | 'generating' | 'artifact';
+
+async function llm(system: string, user: string, maxTokens: number): Promise<string | null> {
+  if (!KEY) return null;
+  try {
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${KEY}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+        max_tokens: maxTokens,
+      }),
+    });
+    const data = await r.json();
+    const reply = data?.choices?.[0]?.message?.content;
+    return typeof reply === 'string' && reply.trim() ? reply.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function OnboardingChat({ onDone }: { onDone: () => void }) {
+  const insets = useSafeAreaInsets();
+  const msgs = useOnboarding((s) => s.msgs);
+  const artifact = useOnboarding((s) => s.artifact);
+  const convo = useOnboarding((s) => s.convo);
+
+  const [stage, setStage] = useState<Stage>('age');
+  const [input, setInput] = useState('');
+  const [typing, setTyping] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // messages already persisted when we mounted render as plain text; only lines
+  // appended this session stream in (so a resume doesn't re-type the backlog).
+  const streamFrom = useRef(useOnboarding.getState().msgs.length);
+
+  const later = (fn: () => void, ms: number) => {
+    const t = setTimeout(fn, ms);
+    timers.current.push(t);
+  };
+  useEffect(() => () => timers.current.forEach((t) => clearTimeout(t)), []);
+
+  // keep the newest line in view
+  useEffect(() => {
+    const id = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+    return () => clearTimeout(id);
+  }, [msgs, typing, stage]);
+
+  // stream one bot line: typing → push → hold until it finishes → callback
+  const showBot = (text: string, after?: () => void) => {
+    setTyping(true);
+    later(() => {
+      setTyping(false);
+      useOnboarding.getState().pushMsg({ role: 'bot', text });
+      later(() => after?.(), streamDurationMs(text) + STREAM_GAP_MS);
+    }, 550);
+  };
+  // stream several bot lines one at a time, then callback
+  const showSeq = (texts: string[], after?: () => void) => {
+    let i = 0;
+    const next = () => {
+      if (i >= texts.length) return after?.();
+      const t = texts[i];
+      i += 1;
+      showBot(t, next);
+    };
+    next();
+  };
+
+  // fade the surface in with the sky
+  const enter = useSharedValue(0);
+  useEffect(() => {
+    enter.value = withTiming(1, { duration: 700, easing: Easing.out(Easing.cubic) });
+  }, [enter]);
+  const rootStyle = useAnimatedStyle(() => ({ opacity: enter.value }));
+
+  // slide input up with the keyboard
+  const kb = useSharedValue(0);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardWillShow', (e) => {
+      kb.value = withTiming(e.endCoordinates.height, { duration: e.duration || 250, easing: Easing.out(Easing.cubic) });
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60);
+    });
+    const hide = Keyboard.addListener('keyboardWillHide', (e) => {
+      kb.value = withTiming(0, { duration: e.duration || 250, easing: Easing.out(Easing.cubic) });
+    });
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [kb]);
+  const kbPad = useAnimatedStyle(() => ({ paddingBottom: kb.value }));
+
+  // kick off: fresh → opening + age gate; resume → jump to where they were
+  useEffect(() => {
+    useOnboarding.getState().start();
+    const st = useOnboarding.getState();
+    if (st.done) {
+      setStage('artifact');
+      return;
+    }
+    if (st.msgs.length === 0) {
+      setStage('age');
+      showSeq([...OPENING, AGE_Q]);
+    } else {
+      setStage(st.convo?.ageBand ? 'chat' : 'age');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const recentTranscript = () =>
+    useOnboarding
+      .getState()
+      .msgs.slice(-12)
+      .map((m) => `${m.role === 'bot' ? 'sidekick' : 'user'}: ${m.text}`)
+      .join('\n');
+
+  const generateArtifact = async () => {
+    setStage('generating');
+    setTyping(true);
+    const c = useOnboarding.getState().convo;
+    const raw = c ? await llm(buildArtifactPrompt(c), 'write the artifact now.', 520) : null;
+    const art = (raw && parseArtifact(raw)) || FALLBACK_ARTIFACT;
+    setTyping(false);
+    useOnboarding.getState().finish(art);
+    setStage('artifact');
+  };
+
+  // one controller turn: react + extract + steer, then advance on the floor
+  const runController = async () => {
+    const c = useOnboarding.getState().convo;
+    if (!c) return;
+    setTyping(true);
+    const raw = await llm(buildControllerPrompt(c), recentTranscript(), 340);
+    setTyping(false);
+    const turn: ControllerTurn =
+      (raw && parseControllerTurn(raw)) || { message: SCRIPTED_NUDGE, fieldUpdates: [], phaseComplete: false };
+    useOnboarding.getState().applyTurn(turn); // folds fields, bumps the phase turn counter
+    const next = useOnboarding.getState().convo!;
+    const advancing = readyToAdvance(next);
+    const ending = advancing && next.phase >= PHASE_COUNT;
+    showBot(turn.message, () => {
+      if (ending) {
+        showSeq(["that's everything i wanted to ask ✦", 'let me pull your reading together…'], () => void generateArtifact());
+      } else if (advancing) {
+        useOnboarding.getState().advance();
+      }
+    });
+  };
+
+  const handleAge = (text: string) => {
+    const m = text.match(/\d{1,3}/);
+    const n = m ? parseInt(m[0], 10) : NaN;
+    if (!n || n < 5 || n > 120) {
+      showBot("just a number's fine — how old are you?");
+      return;
+    }
+    useOnboarding.getState().setAge(n < 18 ? '<18' : '18+');
+    showBot(PHASE1_OPENER, () => setStage('chat'));
+  };
+
+  const busy = typing || stage === 'generating';
+  const submit = () => {
+    const text = input.trim();
+    if (!text || busy) return;
+    setInput('');
+    useOnboarding.getState().pushMsg({ role: 'user', text });
+    if (stage === 'age') handleAge(text);
+    else if (stage === 'chat') void runController();
+  };
+
+  const chapter = convo && stage === 'chat' ? phaseDef(convo.phase)?.label : undefined;
+  const sendDisabled = !input.trim() || busy;
+
+  return (
+    <Animated.View style={[{ height: SCREEN_H, paddingTop: insets.top }, rootStyle]}>
+      {/* header: dive-out + the current chapter as the only progress cue */}
+      <View className="px-4 pb-2.5 pt-3 flex-row items-center justify-between" pointerEvents="box-none">
+        <Pressable
+          onPress={onDone}
+          accessibilityLabel="Leave onboarding"
+          className="w-9 h-9 rounded-full bg-white/15 items-center justify-center"
+        >
+          <Ionicons name="chevron-down" size={20} color="rgba(255,255,255,0.8)" />
+        </Pressable>
+        {chapter ? (
+          <Text className="text-[11px] font-bold uppercase tracking-[2px] text-white/50" style={MSG_SHADOW}>
+            {chapter}
+          </Text>
+        ) : (
+          <View />
+        )}
+      </View>
+
+      <Animated.View style={[{ flex: 1, overflow: 'hidden' }, kbPad]}>
+        <ScrollView
+          ref={scrollRef}
+          style={{ flex: 1 }}
+          className="px-4"
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-end', paddingBottom: 12, paddingTop: 24, gap: 12 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {msgs.map((m, i) =>
+            m.role === 'bot' ? (
+              <View key={i} style={{ maxWidth: '90%' }} className="self-start">
+                {i >= streamFrom.current ? (
+                  <StreamedText
+                    text={m.text}
+                    className="text-[16px] leading-[23px] text-white"
+                    style={MSG_SHADOW}
+                    onReveal={() => scrollRef.current?.scrollToEnd({ animated: false })}
+                  />
+                ) : (
+                  <Text className="text-[16px] leading-[23px] text-white" style={MSG_SHADOW}>
+                    {m.text}
+                  </Text>
+                )}
+              </View>
+            ) : (
+              <View key={i} style={{ maxWidth: '84%' }} className="self-end">
+                <Text style={MSG_SHADOW} className="text-[16px] leading-[23px] text-white text-right">
+                  {m.text}
+                </Text>
+              </View>
+            ),
+          )}
+          {typing ? (
+            <View className="self-start">
+              <TypingDots />
+            </View>
+          ) : null}
+
+          {stage === 'artifact' && artifact ? (
+            <View className="mt-2 rounded-3xl border border-[#C9BCFF]/25 bg-[#170f2e]/80 p-5">
+              <View className="flex-row items-center gap-1.5">
+                <Text className="text-[12px] text-[#C9BCFF]">✦</Text>
+                <Text className="text-[11px] font-extrabold uppercase tracking-[2px] text-[#C9BCFF]">your reading</Text>
+              </View>
+              <Text className="mt-2 text-[21px] font-extrabold leading-[26px] text-white">{artifact.archetype}</Text>
+              {artifact.traits.length ? (
+                <View className="mt-2.5 flex-row flex-wrap gap-1.5">
+                  {artifact.traits.map((t, i) => (
+                    <View key={i} className="rounded-full border border-white/10 bg-white/10 px-2.5 py-1">
+                      <Text className="text-[12px] font-semibold text-[#E7E0FF]">{t}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+              <Text className="mt-3.5 text-[14.5px] leading-[22px] text-[#E7E0FF]/90">{artifact.reading}</Text>
+              {artifact.insights.length ? (
+                <View className="mt-4 gap-3">
+                  {artifact.insights.map((ins, i) => (
+                    <View key={i}>
+                      <Text className="text-[14px] font-bold text-white">{ins.claim}</Text>
+                      <Text className="mt-0.5 text-[13px] leading-[19px] text-[#E7E0FF]/70">{ins.because}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+        </ScrollView>
+
+        <View className="px-3 pt-2 border-t border-white/10" style={{ paddingBottom: Math.max(insets.bottom, 12) + 8 }}>
+          {stage === 'artifact' ? (
+            <Pressable onPress={onDone} className="rounded-full bg-[#7A5AF8] py-3.5 items-center">
+              <Text className="text-[16px] font-bold text-white">Continue</Text>
+            </Pressable>
+          ) : (
+            <View className="flex-row items-center gap-2">
+              <TextInput
+                value={input}
+                onChangeText={setInput}
+                placeholder={stage === 'age' ? 'your age…' : 'message'}
+                placeholderTextColor="rgba(17,17,17,0.4)"
+                className="flex-1 rounded-full bg-white/90 px-5 py-3 text-[15px] text-[#111]"
+                onSubmitEditing={submit}
+                returnKeyType="send"
+                keyboardType={stage === 'age' ? 'number-pad' : 'default'}
+              />
+              <Pressable
+                onPress={submit}
+                disabled={sendDisabled}
+                className={`w-11 h-11 rounded-full bg-[#7A5AF8] items-center justify-center ${sendDisabled ? 'opacity-40' : ''}`}
+              >
+                <Ionicons name="arrow-up" size={20} color="#fff" />
+              </Pressable>
+            </View>
+          )}
+        </View>
+      </Animated.View>
+    </Animated.View>
+  );
+}

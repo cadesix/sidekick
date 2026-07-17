@@ -12,3 +12,4 @@ export * from './daily-box';
 export * from './goals';
 export * from './shop';
 export * from './sessions';
+export * from './onboarding';
