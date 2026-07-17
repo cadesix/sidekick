@@ -395,8 +395,11 @@ export default function Home() {
       {starChatOpen && chatReady ? (
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 60 }}>
           <StarChat
-            onDone={() => {
+            onDone={(updated) => {
               setStarChatOpen(false);
+              // only react if a chapter actually landed — a quick open-then-leave
+              // shouldn't have the sidekick claim the card updated.
+              if (!updated) return;
               const line = astralNews(useSidekickContext.getState().astral);
               setTimeout(() => speak(line, 6000), 2600);
               // if there's more of the reading left, invite them back whenever

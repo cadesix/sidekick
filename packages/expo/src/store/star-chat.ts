@@ -31,6 +31,9 @@ type StarChatStore = {
   msgs: StarChatMsg[];
   artifact: PersonalityArtifact | null;
   done: boolean;
+  // false until AsyncStorage rehydrates; the runner waits for it before start()
+  // so a cold-launch open can't clobber an in-progress persisted conversation.
+  hydrated: boolean;
 
   // begin (idempotent): seed ConvoState from the funnel goals if we haven't
   // started yet, so goal arrives pre-known and never re-asked.
@@ -66,6 +69,7 @@ export const useStarChat = create<StarChatStore>()(
       msgs: [],
       artifact: null,
       done: false,
+      hydrated: false,
 
       start: () => {
         if (get().convo) return; // resume — don't wipe an in-progress conversation
@@ -99,6 +103,9 @@ export const useStarChat = create<StarChatStore>()(
       name: 'sidekick_starchat_v1',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (s) => ({ convo: s.convo, msgs: s.msgs, artifact: s.artifact, done: s.done }),
+      onRehydrateStorage: () => (state) => {
+        if (state) state.hydrated = true;
+      },
     },
   ),
 );

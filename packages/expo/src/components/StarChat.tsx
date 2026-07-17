@@ -21,6 +21,7 @@ import {
 
 import { MSG_SHADOW, STREAM_GAP_MS, StreamedText, TypingDots, streamDurationMs } from './chat-stream';
 import { useSidekickContext } from '../store/context';
+import { useGoals } from '../store/goals';
 import { useStarChat } from '../store/star-chat';
 
 const { height: SCREEN_H } = Dimensions.get('window');
@@ -71,8 +72,18 @@ const FALLBACK_ARTIFACT: PersonalityArtifact = {
 
 type Stage = 'chat' | 'generating' | 'artifact';
 
+// Serializes all astral-card writes (chapter + final), module-scoped so it holds
+// across a StarChat unmount/remount — the final card can never be overwritten by
+// a still-pending earlier chapter's card. There is only ever one Star Chat.
+let cardChain: Promise<void> = Promise.resolve();
+
+const LLM_TIMEOUT_MS = 20000;
 async function llm(system: string, user: string, maxTokens: number): Promise<string | null> {
   if (!KEY) return null;
+  // bound the call so a hung request can't freeze the UI (typing/generating) or
+  // stall the card chain forever — on timeout it aborts and callers fall back.
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), LLM_TIMEOUT_MS);
   try {
     const r = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -85,37 +96,60 @@ async function llm(system: string, user: string, maxTokens: number): Promise<str
         ],
         max_tokens: maxTokens,
       }),
+      signal: ctrl.signal,
     });
     const data = await r.json();
     const reply = data?.choices?.[0]?.message?.content;
     return typeof reply === 'string' && reply.trim() ? reply.trim() : null;
   } catch {
     return null;
+  } finally {
+    clearTimeout(to);
   }
 }
 
-export function StarChat({ onDone }: { onDone: () => void }) {
+export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
   const insets = useSafeAreaInsets();
   const msgs = useStarChat((s) => s.msgs);
   const artifact = useStarChat((s) => s.artifact);
   const convo = useStarChat((s) => s.convo);
+  const hydrated = useStarChat((s) => s.hydrated);
+  const goalsHydrated = useGoals((s) => s.hydrated);
 
   const [stage, setStage] = useState<Stage>('chat');
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
+  // locked for the whole span of one turn (LLM + bot stream + boundary callback),
+  // so a second send can't fire while a chapter advance is still pending — which
+  // would double-advance and double-pay bond.
+  const [working, setWorking] = useState(false);
   // at the end the card isn't shown inline; a teaser box opens it as a reveal modal
   const [revealOpen, setRevealOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  // messages already persisted when we mounted render as plain text; only lines
+  const mounted = useRef(true);
+  const started = useRef(false);
+  // true once any chapter has actually completed this session; gates the home
+  // reaction so a quick open-then-leave doesn't falsely claim the card updated.
+  const didUpdate = useRef(false);
+  // messages already present when we start render as plain text; only lines
   // appended this session stream in (so a resume doesn't re-type the backlog).
-  const streamFrom = useRef(useStarChat.getState().msgs.length);
+  // Set in the kickoff effect, after hydration, so it reflects the real backlog.
+  const streamFrom = useRef(Number.MAX_SAFE_INTEGER);
 
   const later = (fn: () => void, ms: number) => {
-    const t = setTimeout(fn, ms);
+    const t = setTimeout(() => {
+      if (mounted.current) fn();
+    }, ms);
     timers.current.push(t);
   };
-  useEffect(() => () => timers.current.forEach((t) => clearTimeout(t)), []);
+  useEffect(
+    () => () => {
+      mounted.current = false;
+      timers.current.forEach((t) => clearTimeout(t));
+    },
+    [],
+  );
 
   // keep the newest line in view
   useEffect(() => {
@@ -168,22 +202,47 @@ export function StarChat({ onDone }: { onDone: () => void }) {
   }, [kb]);
   const kbPad = useAnimatedStyle(() => ({ paddingBottom: kb.value }));
 
-  // kick off: fresh → opening + first question; resume → jump to where they were
+  // kick off once both stores have hydrated (else start() could clobber an
+  // in-progress persisted conversation or seed without the funnel goals):
+  // fresh → opening + first question; resume → jump to where they were.
   useEffect(() => {
+    if (!hydrated || !goalsHydrated || started.current) return;
+    started.current = true;
     useStarChat.getState().start();
     const st = useStarChat.getState();
+    streamFrom.current = st.msgs.length; // whatever's already here renders plain
     if (st.done) {
       setStage('artifact');
       return;
     }
     setStage('chat');
-    if (st.msgs.length === 0) {
+    // resume that already reached the final boundary but left before finalizing
+    // (dive-out in the wrap-up window): finalize now instead of stranding them.
+    if (st.convo && st.convo.phase >= PHASE_COUNT && readyToAdvance(st.convo)) {
+      void finishConversation(st.convo.phase);
+      return;
+    }
+    // Fresh start, or interrupted mid-opening (the first question was never
+    // delivered): (re)deliver the opening, clearing any half-shown lines so they
+    // don't duplicate. Safe: no user data exists before the first answer. Once
+    // PHASE1_OPENER is present, the opening is done and we fall through (a
+    // delivered-but-unanswered first question is just a normal awaiting-answer).
+    if (!st.msgs.some((m) => m.text === PHASE1_OPENER) && !st.msgs.some((m) => m.role === 'user')) {
+      if (st.msgs.length) useStarChat.setState({ msgs: [] });
+      streamFrom.current = 0;
       // open warm, then straight into the first real (direct) question; the
       // sidekick asks age itself a beat in, per the age field's hint.
       showSeq([...OPENING], () => showBot(PHASE1_OPENER));
+      return;
+    }
+    // a turn was interrupted mid-LLM (trailing user message, unanswered): re-run
+    // the controller instead of stranding it. A trailing BOT message is a normal
+    // resume (a question awaiting the user's answer) and needs nothing.
+    if (st.msgs.length && st.msgs[st.msgs.length - 1].role === 'user') {
+      void runController();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [hydrated, goalsHydrated]);
 
   const recentTranscript = () =>
     useStarChat
@@ -195,62 +254,107 @@ export function StarChat({ onDone }: { onDone: () => void }) {
   // chapter boundary: deepen the astral card from everything learned + the card
   // they already have, then record chapter completion in the context store —
   // which pays bond, merges fields, and unlocks the matching island (islands are
-  // folded in one-per-chapter, no longer the anchor). Fire-and-forget so the
-  // conversation keeps flowing; the refreshed card lands over the head at home.
-  const completeChapter = async (phase: number) => {
-    const def = SESSIONS[phase - 1];
-    const c = useStarChat.getState().convo;
-    if (!def || !c) return;
-    const prior = useSidekickContext.getState().astral;
-    const raw = await llm(buildCardPrompt(c, prior), 'write it now.', 460);
-    const art = raw ? parseArtifact(raw) : null;
-    const card = art ? { archetype: art.archetype, reading: art.reading, traits: art.traits } : null;
-    useSidekickContext.getState().completeSession(def, { fields: flattenFields(c), notes: [] }, card);
+  // folded in one-per-chapter, no longer the anchor). The conversation keeps
+  // flowing (not awaited), but the card writes are CHAINED so a later chapter can
+  // never land its card before an earlier one and stale-overwrite it. All writes
+  // are to the persisted store, so they complete safely even after unmount.
+  const completeChapter = (phase: number) => {
+    cardChain = cardChain.then(async () => {
+      const def = SESSIONS[phase - 1];
+      const c = useStarChat.getState().convo;
+      if (!def || !c) return;
+      const prior = useSidekickContext.getState().astral;
+      if (useSidekickContext.getState().isSessionDone(def.id)) return; // already completed
+      const raw = await llm(buildCardPrompt(c, prior), 'write it now.', 460);
+      const art = raw ? parseArtifact(raw) : null;
+      const card = art ? { archetype: art.archetype, reading: art.reading, traits: art.traits } : null;
+      // guard again post-await (idempotent): never pay bond/coins twice for a chapter
+      if (useSidekickContext.getState().isSessionDone(def.id)) return;
+      useSidekickContext.getState().completeSession(def, { fields: flattenFields(c), notes: [] }, card);
+    });
   };
 
   // last chapter: build the full artifact (with the evidence-cited insights) as
   // the payoff, and land the final card + last island via completeSession.
   const finishConversation = async (phase: number) => {
-    setStage('generating');
-    setTyping(true);
+    if (mounted.current) {
+      setStage('generating');
+      setTyping(true);
+    }
     const c = useStarChat.getState().convo;
     const raw = c ? await llm(buildArtifactPrompt(c), 'write the artifact now.', 520) : null;
     const art = (raw && parseArtifact(raw)) || FALLBACK_ARTIFACT;
-    setTyping(false);
     const def = SESSIONS[phase - 1];
-    if (def && c) {
-      const card = { archetype: art.archetype, reading: art.reading, traits: art.traits };
-      useSidekickContext.getState().completeSession(def, { fields: flattenFields(c), notes: [] }, card);
+    const card = { archetype: art.archetype, reading: art.reading, traits: art.traits };
+    // Land the final card THROUGH the same chain as the chapter cards, so it can
+    // never be overwritten by a still-pending earlier-chapter card write (final
+    // card must win). Idempotent: the isSessionDone check + completeSession run
+    // with no await between them, so a dive-out + reopen double-finalize pays once.
+    cardChain = cardChain.then(() => {
+      // fully idempotent: a dive-out + reopen can start a second finalize. Both
+      // route through this one chain, so the first sets done and any later one
+      // sees it and skips — no double reward and no re-writing the reveal artifact.
+      if (useStarChat.getState().done) return;
+      if (def && c && !useSidekickContext.getState().isSessionDone(def.id)) {
+        useSidekickContext.getState().completeSession(def, { fields: flattenFields(c), notes: [] }, card);
+      }
+      useStarChat.getState().finish(art);
+    });
+    await cardChain;
+    didUpdate.current = true;
+    if (mounted.current) {
+      setTyping(false);
+      setWorking(false);
+      setStage('artifact');
     }
-    useStarChat.getState().finish(art);
-    setStage('artifact');
   };
 
-  // one controller turn: react + extract + steer, then advance on the floor
+  // one controller turn: react + extract + steer, then advance on the floor. The
+  // `working` lock spans the whole turn so a second send can't race the advance.
   const runController = async () => {
     const c = useStarChat.getState().convo;
     if (!c) return;
+    setWorking(true);
     setTyping(true);
     const raw = await llm(buildControllerPrompt(c), recentTranscript(), 340);
-    setTyping(false);
+    if (!mounted.current) return; // dove out before applyTurn — nothing applied, resume re-runs it
     const turn: ControllerTurn =
       (raw && parseControllerTurn(raw)) || { message: SCRIPTED_NUDGE, fieldUpdates: [], phaseComplete: false };
+    // Apply the turn, do the boundary's STORE side, AND persist the reply — all
+    // synchronously — so the store is always consistent: once a user answer is
+    // processed the transcript ends with the bot reply. (So a trailing USER
+    // message on resume unambiguously means the turn wasn't applied → safe to
+    // re-run; and a dive-out mid-stream can't drop the chapter completion.)
     useStarChat.getState().applyTurn(turn); // folds fields, bumps the phase turn counter
     const next = useStarChat.getState().convo!;
     const advancing = readyToAdvance(next);
     const ending = advancing && next.phase >= PHASE_COUNT;
     const completedPhase = next.phase; // the chapter whose floor we just filled
-    showBot(turn.message, () => {
+    if (advancing) {
+      didUpdate.current = true;
+      if (!ending) {
+        useStarChat.getState().advance();
+        completeChapter(completedPhase);
+      }
+    }
+    setTyping(false);
+    useStarChat.getState().pushMsg({ role: 'bot', text: turn.message });
+    // let the reply stream in, then finalize (ending) or unlock input. If the user
+    // leaves first this won't fire, but the store is already consistent: resume
+    // sees the persisted reply (no re-run) and the finalize-on-resume branch
+    // catches an ending.
+    later(() => {
       if (ending) {
         showSeq(["that's everything i wanted to ask ✦", 'let me pull your reading together…'], () => void finishConversation(completedPhase));
-      } else if (advancing) {
-        useStarChat.getState().advance();
-        void completeChapter(completedPhase);
+      } else {
+        setWorking(false);
       }
-    });
+    }, streamDurationMs(turn.message) + STREAM_GAP_MS);
   };
 
-  const busy = typing || stage === 'generating';
+  // !convo → not started/hydrated yet: block sends so a pre-start message can't be
+  // pushed and then wiped when start() seeds a fresh conversation.
+  const busy = !convo || typing || working || stage === 'generating';
   const submit = () => {
     const text = input.trim();
     if (!text || busy) return;
@@ -267,7 +371,7 @@ export function StarChat({ onDone }: { onDone: () => void }) {
       {/* header: dive-out + the current chapter as the only progress cue */}
       <View className="px-4 pb-2.5 pt-3 flex-row items-center justify-between" pointerEvents="box-none">
         <Pressable
-          onPress={onDone}
+          onPress={() => onDone(didUpdate.current)}
           accessibilityLabel="Leave onboarding"
           className="w-9 h-9 rounded-full bg-white/15 items-center justify-center"
         >
@@ -362,7 +466,7 @@ export function StarChat({ onDone }: { onDone: () => void }) {
       </Animated.View>
 
       {stage === 'artifact' && revealOpen && artifact ? (
-        <AstralReveal artifact={artifact} onContinue={onDone} />
+        <AstralReveal artifact={artifact} onContinue={() => onDone(true)} />
       ) : null}
     </Animated.View>
   );
