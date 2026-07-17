@@ -14,3 +14,4 @@ export * from './daily-box';
 export * from './shop';
 export * from './sessions';
 export * from './star-chat';
+export * from './style';

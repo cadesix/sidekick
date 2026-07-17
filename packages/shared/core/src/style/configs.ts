@@ -1,0 +1,45 @@
+import type { StyleConfig } from "./types";
+
+// Versioned style configs. THIS is the file you iterate on. To try something new:
+// copy the latest config to a new id ("v2"), tweak its rates/traits, point
+// DEFAULT_STYLE_CONFIG_ID (or the lab) at it, and compare. The old versions stay
+// intact and golden-tested, so you can always roll back by flipping the id — no
+// prompt or processor you liked ever gets clobbered.
+
+export const STYLE_CONFIGS: Record<string, StyleConfig> = {
+  v1: {
+    id: "v1",
+    description: "first controller config — moderate multi-send, light quirks",
+    maxTraitsPerTurn: 2,
+    traits: [
+      // multi-send is code-applied (splitIntoBubbles), so it's reliable; cooldown 1
+      // stops two burst-replies back to back.
+      { id: "multisend", kind: "transform", baseRate: 0.5, cooldown: 1 },
+      // the model writes these — only prompted on turns they're enabled.
+      {
+        id: "elongation",
+        kind: "directive",
+        baseRate: 0.25,
+        cooldown: 2,
+        directive: "you may stretch the last letter of ONE emphatic word (sooo, yesss, noo).",
+      },
+      {
+        id: "abbrev",
+        kind: "directive",
+        baseRate: 0.4,
+        cooldown: 0,
+        directive: "casual texting abbreviations are fine when they fit: lmk, jk, hbu, wyd, rn, ofc, wdym.",
+      },
+      // code-applied quirks — rare, with real cooldowns so they never cluster.
+      { id: "bangspace", kind: "transform", baseRate: 0.15, cooldown: 3 },
+      { id: "typo", kind: "transform", baseRate: 0.07, cooldown: 5 },
+    ],
+  },
+};
+
+export const DEFAULT_STYLE_CONFIG_ID = "v1";
+
+/** Resolve a config id to its config, falling back to the default. */
+export function getStyleConfig(id: string = DEFAULT_STYLE_CONFIG_ID): StyleConfig {
+  return STYLE_CONFIGS[id] ?? STYLE_CONFIGS[DEFAULT_STYLE_CONFIG_ID];
+}
