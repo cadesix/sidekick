@@ -28,8 +28,9 @@ const KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
 
 // The Star Chat runner (docs/STAR-CHAT.md): a generative-with-a-floor personality
 // reading. The engine (phases, must-have floor, per-turn prompt, reducers) lives
-// in @sidekick/core; this drives the loop — age gate → phase-1 opener → each user
-// answer feeds the controller, which reacts + extracts + steers. Each chapter
+// in @sidekick/core; this drives the loop: warm opener, then a direct first
+// question, then each user answer feeds the controller, which reacts + extracts
+// + steers (and asks their age itself a beat in, not as a cold gate). Each chapter
 // boundary deepens the astral card + pays bond + unlocks the matching island; the
 // last chapter renders the earned artifact.
 //
@@ -42,9 +43,17 @@ const OPENING = [
   "hey, i'm gonna get to know you through a little conversation,",
   'then give you a personality read: how you think, connect, and move through life ✦',
 ];
-const AGE_Q = 'first though, how old are you?';
 const PHASE1_OPENER = 'ok cool. so what do you do day to day, work, school, both?';
 const SCRIPTED_NUDGE = 'mm, say more?';
+
+// derive the compliance age band once the controller has learned their age (it
+// asks casually a beat in, per the field hint — no scripted gate up front).
+function deriveAgeBand() {
+  const c = useStarChat.getState().convo;
+  if (!c || c.ageBand || !c.fields.age?.value) return;
+  const n = parseInt(c.fields.age.value.match(/\d{1,3}/)?.[0] ?? '', 10);
+  if (n >= 5 && n <= 120) useStarChat.getState().setAge(n < 18 ? '<18' : '18+');
+}
 
 const FALLBACK_ARTIFACT: PersonalityArtifact = {
   archetype: 'a sky still forming',
@@ -54,7 +63,7 @@ const FALLBACK_ARTIFACT: PersonalityArtifact = {
   insights: [],
 };
 
-type Stage = 'age' | 'chat' | 'generating' | 'artifact';
+type Stage = 'chat' | 'generating' | 'artifact';
 
 async function llm(system: string, user: string, maxTokens: number): Promise<string | null> {
   if (!KEY) return null;
@@ -85,7 +94,7 @@ export function StarChat({ onDone }: { onDone: () => void }) {
   const artifact = useStarChat((s) => s.artifact);
   const convo = useStarChat((s) => s.convo);
 
-  const [stage, setStage] = useState<Stage>('age');
+  const [stage, setStage] = useState<Stage>('chat');
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -159,11 +168,11 @@ export function StarChat({ onDone }: { onDone: () => void }) {
       setStage('artifact');
       return;
     }
+    setStage('chat');
     if (st.msgs.length === 0) {
-      setStage('age');
-      showSeq([...OPENING, AGE_Q]);
-    } else {
-      setStage(st.convo?.ageBand ? 'chat' : 'age');
+      // open warm, then straight into the first real (direct) question; the
+      // sidekick asks age itself a beat in, per the age field's hint.
+      showSeq([...OPENING], () => showBot(PHASE1_OPENER));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -219,6 +228,7 @@ export function StarChat({ onDone }: { onDone: () => void }) {
     const turn: ControllerTurn =
       (raw && parseControllerTurn(raw)) || { message: SCRIPTED_NUDGE, fieldUpdates: [], phaseComplete: false };
     useStarChat.getState().applyTurn(turn); // folds fields, bumps the phase turn counter
+    deriveAgeBand(); // capture the compliance band if this turn learned their age
     const next = useStarChat.getState().convo!;
     const advancing = readyToAdvance(next);
     const ending = advancing && next.phase >= PHASE_COUNT;
@@ -233,25 +243,13 @@ export function StarChat({ onDone }: { onDone: () => void }) {
     });
   };
 
-  const handleAge = (text: string) => {
-    const m = text.match(/\d{1,3}/);
-    const n = m ? parseInt(m[0], 10) : NaN;
-    if (!n || n < 5 || n > 120) {
-      showBot("just a number's fine, how old are you?");
-      return;
-    }
-    useStarChat.getState().setAge(n < 18 ? '<18' : '18+');
-    showBot(PHASE1_OPENER, () => setStage('chat'));
-  };
-
   const busy = typing || stage === 'generating';
   const submit = () => {
     const text = input.trim();
     if (!text || busy) return;
     setInput('');
     useStarChat.getState().pushMsg({ role: 'user', text });
-    if (stage === 'age') handleAge(text);
-    else if (stage === 'chat') void runController();
+    if (stage === 'chat') void runController();
   };
 
   const chapter = convo && stage === 'chat' ? phaseDef(convo.phase)?.label : undefined;
@@ -356,12 +354,11 @@ export function StarChat({ onDone }: { onDone: () => void }) {
               <TextInput
                 value={input}
                 onChangeText={setInput}
-                placeholder={stage === 'age' ? 'your age…' : 'message'}
+                placeholder="message"
                 placeholderTextColor="rgba(17,17,17,0.4)"
                 className="flex-1 rounded-full bg-white/90 px-5 py-3 text-[15px] text-[#111]"
                 onSubmitEditing={submit}
                 returnKeyType="send"
-                keyboardType={stage === 'age' ? 'number-pad' : 'default'}
               />
               <Pressable
                 onPress={submit}

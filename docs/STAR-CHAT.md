@@ -185,8 +185,7 @@ Progress is shown as dimensions, never a counter.
 
 | # | Phase (user-facing label) | Must-haves filled here | Feel |
 |---|---|---|---|
-| 0 | *(age gate — functional, see §11)* | age band | quick, one tap/line |
-| 1 | **Your world** | 1 life/occupation, 2 location, 3 household, 4 background | warm, easy on-ramp |
+| 1 | **Your world** | life/occupation, location, household, background, **age** | warm, easy on-ramp |
 | 2 | **Your energy** | 5 social energy (+ interests, comforts) | light, playful |
 | 3 | **How you're wired** | 6 decision, 7 planning | curious, "personality question" |
 | 4 | **What drives you** | 8 core motivation (+ values) | reflective |
@@ -332,10 +331,12 @@ me" spell faster than a right one builds it.
 
 ## 11. Age gate & compliance guardrails
 
-- **Age gate before Phase 1** (functional, not conversational). Collect age band.
-  Under-18 users get the *personality experience* but are **excluded from the
-  ad-profile pipeline** (COPPA / GDPR-K / app-store rules). Cheap now, a real
-  liability if retrofitted.
+- **Age is asked conversationally, early in Phase 1** (a Phase-1 must-have), not
+  as a cold gate before the conversation — leading with "how old are you?" kills
+  the warm open. The compliance **age band** is derived from the answer. Under-18
+  users get the *personality experience* but are **excluded from the ad-profile
+  pipeline** (COPPA / GDPR-K / app-store rules). A *hard* verification gate (vs.
+  this soft conversational ask) is deferred to the server side.
 - **Sensitive categories stay out of the ad profile:** health, sexuality,
   religion, precise location, financial-account data. The memory file may *notice*
   emotional content for personalization; it just never feeds targeting.
