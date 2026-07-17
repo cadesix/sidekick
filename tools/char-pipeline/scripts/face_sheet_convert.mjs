@@ -1,5 +1,5 @@
 // Face-sheet transparent conversion: white-background sprite sheet (gpt-image
-// output) → RGBA sheet for the FaceSprite plane (public/face-sheet-vN.png).
+// output) → RGBA sheet for the FaceSprite plane (assets/face-sheet-vN.png).
 //
 // The naive approach — keying alpha off whiteness globally — deletes the white
 // teeth and eye glints. Instead, background is identified by FLOOD FILL from
@@ -11,12 +11,12 @@
 //
 // Usage: node tools/char-pipeline/scripts/face_sheet_convert.mjs \
 //          tools/char-pipeline/face-sheet-source.png \
-//          packages/web/public/face-sheet-v5.png
+//          assets/face-sheet-v6.png
 // Run from the repo root (resolves sharp from the root node_modules).
 
 import sharp from "sharp";
 
-const [src = "tools/char-pipeline/face-sheet-source.png", out = "packages/web/public/face-sheet-v5.png"] =
+const [src = "tools/char-pipeline/face-sheet-source.png", out = "assets/face-sheet-v6.png"] =
 	process.argv.slice(2);
 
 const OUT_SIZE = 2048; // 4×4 grid of 512px cells (facesprite-contract.md)

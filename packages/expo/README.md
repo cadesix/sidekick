@@ -9,9 +9,9 @@ SDK 54, expo-router, NativeWind, Zustand, Reanimated, a GL layer (`expo-gl` +
 (`src/three/` — the future `@sidekick/three`), and shared platform-agnostic
 logic from `@sidekick/core`.
 
-(Historical note: this started as a port of the deprecated Vite app's `/home4`
-— `packages/web`, now reference-only. Feature notes below that say "was
-sidekick-*.ts" refer to that reference implementation.)
+(Historical note: this started as a port of an earlier Vite app's `/home4`
+scene, since deleted. Feature notes below that say "was sidekick-*.ts" refer to
+that original implementation.)
 
 ## Running
 
@@ -130,6 +130,6 @@ src/
 assets/models/           texture-stripped GLBs
 assets/cosmetics/        slot GLBs (stripped) + variant PNGs (from web .webp)
 assets/images/           world-map-day.webp
-assets/textures/         face-sheet-v3.png
+assets/textures/         face-sheet-v6.png
 scripts/strip-glb.mjs    GLB texture stripper (mascot + phone + cosmetics)
 ```

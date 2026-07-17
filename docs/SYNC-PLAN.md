@@ -1,5 +1,8 @@
 # Web ↔ iOS sync plan (HISTORICAL — superseded)
 
+> **Note (2026-07-17):** `packages/web` has now been deleted; this doc is fully
+> historical and describes a state of the repo that no longer exists.
+
 > **Status (2026-07-15): SUPERSEDED.** The premise of this doc — develop in
 > the Vite web app, port to the RN app, keep two implementations in parity —
 > is dead. The repo has collapsed to **one universal Expo app**

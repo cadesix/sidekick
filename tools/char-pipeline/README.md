@@ -1,7 +1,7 @@
 # char-pipeline — cosmetic & character authoring tools
 
 Headless-Blender pipeline that authors the character's cosmetic items (GLBs in
-`packages/web/public/cosmetics/`) against the canonical rig. Read
+`assets/cosmetics/`) against the canonical rig. Read
 **`CHARACTER.md`** (in this directory) for who the character is, the rig
 contract, and the measurement table every script here is tuned against.
 
@@ -9,13 +9,10 @@ This is the *authoring* pipeline only. The character *generation* lab (Tripo /
 Hunyuan experiments, retopo/rig runs, old meshes and renders, ~900MB) is a
 local archive outside this repo.
 
-> **Note (2026-07-15):** `packages/web` (the Vite app) is deprecated, but its
-> `public/` directory is still the **canonical asset home** this pipeline
-> writes into — the Expo app derives its bundled copies from there via
-> `packages/expo/scripts/sync-cosmetics.mjs`. After adding/changing an item,
-> re-run that sync so the real app picks it up. The asset home will relocate
-> before `packages/web` is deleted (see `docs/MONOREPO.md`), at which point
-> the output paths here get repointed.
+> **Canonical asset home:** the top-level `assets/` directory at the repo root.
+> This pipeline writes there, and the Expo app derives its bundled copies from
+> it via `packages/expo/scripts/sync-cosmetics.mjs`. After adding/changing an
+> item, re-run that sync so the real app picks it up.
 
 ## Prerequisites
 
@@ -32,10 +29,10 @@ blender/character_master.blend   canonical rig — frozen bind-pose source of tr
                                  Do not modify it; a changed bind pose silently
                                  breaks runtime rebinding for every skinned item.
 blender/yellow_final_v9.blend    source of the shipped character
-                                 (== packages/web/public/sidekick-rigged.glb)
+                                 (== assets/sidekick-rigged.glb)
 scripts/coslib.py                shared authoring lib (garment + rigid patterns)
 scripts/build_<item>.py          one script per item, output committed under
-                                 packages/web/public/cosmetics/<slot>/
+                                 assets/cosmetics/<slot>/
 scripts/render_shop.py           render any/all items on the character for review
 scripts/render_cap.py|phone.py   per-item render helpers
 scripts/gen_shop_textures.py     variant webp textures (Blender image API, no PIL)
@@ -49,7 +46,7 @@ scripts/face_patch_circ.py       FaceSprite disc authoring (character, not cosme
 ```bash
 B=/Applications/Blender.app/Contents/MacOS/Blender
 
-# (re)build one item — writes packages/web/public/cosmetics/<slot>/<item>.glb
+# (re)build one item — writes assets/cosmetics/<slot>/<item>.glb
 $B --background --python tools/char-pipeline/scripts/build_hat.py
 
 # regenerate all variant textures
@@ -73,21 +70,26 @@ $B --background --python tools/char-pipeline/scripts/pose_verify.py -- \
    bone prop → `build_phone.py`).
 2. Build + export, then render it on the character (`render_shop.py`) and
    **look at the images** before shipping.
-3. Register it in `packages/web/public/cosmetics/manifest.json` (see
+3. Register it in `assets/cosmetics/manifest.json` (see
    `SHOP-NOTES.md` there for the `slot` field semantics) and add variant
    textures via `gen_shop_textures.py`.
-4. Refresh the Shop's static product PNGs (`public/shop-renders/`) by running
-   the app's `/item-render` route. With the web dev server on :3100 this works
-   headlessly (real GPU; do NOT pass --disable-gpu or --virtual-time-budget —
-   both stall WebGL; macOS has no `timeout`, hence the perl alarm):
+4. Refresh the Shop's static product PNGs (`assets/shop-renders/`). These were
+   rendered headlessly by an `/item-render` route that lived in the now-deleted
+   Vite app (served on :3100). The route has not yet been re-hosted in Expo Web,
+   so **there is currently no automated regen path** — the existing PNGs in
+   `assets/shop-renders/` remain the source. If you add/change a cosmetic and
+   need fresh product renders, port the `/item-render` route into `packages/expo`
+   (Expo Web) first. The headless-Chrome recipe that drove it (real GPU; do NOT
+   pass --disable-gpu or --virtual-time-budget — both stall WebGL; macOS has no
+   `timeout`, hence the perl alarm) still applies once a route URL exists:
 
    ```bash
    perl -e 'alarm shift; exec @ARGV' 120 \
      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
      --headless=new --no-first-run --enable-unsafe-swiftshader \
      --user-data-dir=/tmp/chrome-itemrender \
-     "http://localhost:3100/item-render?slots=<item1>,<item2>"
+     "http://localhost:<expo-web-port>/item-render?slots=<item1>,<item2>"
    ```
 
 Runtime/app-side contracts live next to the assets:
-`packages/web/public/cosmetics/{CANONICAL-SKELETON.md, IMPLEMENTATION-CONTRACT.md, SHOP-NOTES.md}`.
+`assets/cosmetics/{CANONICAL-SKELETON.md, IMPLEMENTATION-CONTRACT.md, SHOP-NOTES.md}`.

@@ -14,37 +14,31 @@ with a chat drawer, cosmetics shop, guided sessions, and world map.
   │   Browser (Expo Web / react-native-web)              │
   └──────────────────────────────────────────────────────┘
               ▲ imports
-  ┌──────────────────────────────┐   ┌────────────────────────────┐
-  │ @sidekick/core               │   │ packages/web (DEPRECATED)  │
-  │ platform-agnostic logic:     │   │ Vite reference app — port  │
-  │ economy, shop, sessions,     │   │ FROM it, never develop IN  │
-  │ goals, streak, bond, rng     │   │ it; deleted after Phase 4  │
-  └──────────────────────────────┘   └────────────────────────────┘
+  ┌──────────────────────────────┐
+  │ @sidekick/core               │
+  │ platform-agnostic logic:     │
+  │ economy, shop, sessions,     │
+  │ goals, streak, bond, rng     │
+  └──────────────────────────────┘
 ```
 
 - **`@sidekick/expo` is the product and the dev surface.** It ships to iOS
   users AND is what you run in the browser day-to-day. "Run it in web" always
-  means Expo Web from this package — never the Vite app. All new features land
-  here (or in `@sidekick/core`), full stop.
+  means Expo Web from this package. All features land here (or in
+  `@sidekick/core`), full stop.
 - **`@sidekick/core` is where platform-agnostic logic lives** — pure functions
   and data with zero DOM/RN/expo imports (economy, shop catalog, guided
-  sessions, goals, streaks, bond, daily box, seeded rng). App layers own
-  persistence (AsyncStorage/localStorage) and UI; core owns the numbers.
-- **`@sidekick/web` is a deprecated reference implementation.** It's the
-  pre-refactor Vite + React DOM app, kept only so remaining unported behavior
-  and look-dev values can be read off it. It receives no new features. It is
-  retired (deleted) once its last real dependencies are migrated — see the
-  checklist below.
+  sessions, goals, streaks, bond, daily box, seeded rng). The app layer owns
+  persistence (AsyncStorage) and UI; core owns the numbers.
 - **`@sidekick/three` (planned)** — the imperative three.js scene currently
   lives in `packages/expo/src/three/` (renderer, shading, cosmetics, grass,
   face, interact, biomes). Extracting it into a shared package is the intended
   end state; until that lands, treat `packages/expo/src/three/` as its home.
 
-The hard rules (from the root `CLAUDE.md`, which every agent must read first):
-**never hand-port or reimplement features between the two apps, and never
-duplicate logic/state/3D code across them.** Porting from the deprecated
-reference is one-way and terminal — once behavior lives in expo/core, the web
-copy is dead code awaiting deletion.
+The hard rule (from the root `CLAUDE.md`, which every agent must read first):
+**`packages/expo` + `@sidekick/core` are the single source of truth — never
+reintroduce duplicated logic, state, or 3D code.** The old Vite reference app
+(`packages/web`) has been deleted.
 
 ## Repo structure
 
@@ -54,10 +48,11 @@ sidekick/
 ├── pnpm-workspace.yaml     packages/*, packages/config/*, packages/shared/*
 ├── .npmrc                  node-linker=hoisted (required for Expo/Metro)
 ├── pnpm-lock.yaml          single lockfile for everything
+├── assets/                 canonical art source (cosmetics, GLBs, maps — see Assets)
 ├── docs/                   this file, creative-brief, token-economy, guided-sessions
 ├── plans/                  design docs for the chat/server stack (00–16)
 ├── tests/                  vitest suite for server/db/shared (+ pure expo chat modules)
-├── tools/char-pipeline/    Blender cosmetics authoring pipeline (writes into web/public — see Assets)
+├── tools/char-pipeline/    Blender cosmetics authoring pipeline (writes into assets/ — see Assets)
 └── packages/
     ├── expo/               @sidekick/expo — THE app (iOS + web from one codebase)
     │   ├── app/                           expo-router routes (index = home, sidekick-3d = look-dev)
@@ -78,10 +73,6 @@ sidekick/
     │   ├── core/           @sidekick/core — platform-agnostic logic + tables
     │   └── app/            @sidekick/shared — product domain logic shared by server + expo
     │                       (prompts, model tools, conversation/context, stream frame protocol)
-    ├── web/                @sidekick/web — DEPRECATED Vite reference (do not develop here)
-    │   ├── src/components/sidekick-*.ts   pre-refactor three.js scene (reference)
-    │   ├── public/cosmetics/              still the CANONICAL asset source (see Assets)
-    │   └── api/chat.js                    Vercel serverless chat endpoint (legacy deploy)
     ├── landing/            marketing site (Next.js) — independent of everything above
     └── config/
         ├── tsconfig/       @sidekick/tsconfig — shared TS configs (base, node, react-vite)
@@ -105,7 +96,6 @@ pnpm dev                              # Expo Web — browser preview of the real
 pnpm --filter @sidekick/expo ios      # iOS dev client (NOT Expo Go — expo-gl is native)
 pnpm --filter @sidekick/expo start    # Metro for an existing dev client
 pnpm typecheck                        # all packages
-pnpm dev:vite                         # deprecated Vite reference — explicit request only
 ```
 
 Anything 3D must ultimately be verified on a **physical iOS device** — the
@@ -115,39 +105,36 @@ the truth for rendering.
 
 Chat: expo talks to `@sidekick/server` — point it at a local server with
 `EXPO_PUBLIC_API_URL` and run `pnpm dev:server` (see the chat stack above). The
-legacy Vite deploy on Vercel still uses `packages/web/api/chat.js` with
-`OPENAI_API_KEY`.
+old Vite serverless chat endpoint (`packages/web/api/chat.js`) is gone with the
+package.
 
-## Assets — canonical source is still `packages/web/public/` (for now)
+## Assets — canonical source is the top-level `assets/`
 
-This is the one place the deprecated package is still load-bearing:
+Canonical art lives at the repo root in **`assets/`** (moved there when
+`packages/web` was deleted). Layout:
+
+```
+assets/
+├── cosmetics/              slot GLBs + manifest.json + .md contracts
+├── shop-renders/           static product PNGs for the shop
+├── props/                  bone-parented props (phone, …)
+├── 3d-assets/              facesprite-contract.md + other 3D contracts
+├── sidekick-rigged.glb     shipped character mesh
+├── face-sheet-v6.png       face expression atlas
+├── world-map-day.webp      world map art (+ quests day/evening/night variants)
+└── .illustrate/            illustration working files
+```
 
 1. The Blender char-pipeline (`tools/char-pipeline/`) authors the rig and
-   cosmetics and writes GLBs into `packages/web/public/cosmetics/` +
-   `packages/web/public/sidekick-rigged.glb`. The asset contracts live next to
-   them (`public/3d-assets/*.md`, `public/cosmetics/*.md`).
+   cosmetics and writes GLBs into `assets/cosmetics/` + `assets/
+   sidekick-rigged.glb`. The asset contracts live next to them
+   (`assets/3d-assets/*.md`, `assets/cosmetics/*.md`).
 2. `packages/expo/scripts/sync-cosmetics.mjs` mirrors that catalog into the
    expo bundle: GLBs are texture-stripped (three's GLTFLoader can't decode
    embedded GLB images in RN), `.webp` variants become `.png` (expo-gl can't
    decode webp), and `src/three/cosmetics-manifest.ts` is **generated** from
-   `manifest.json`. Re-run it whenever the web catalog changes.
+   `manifest.json`. Re-run it whenever the canonical catalog changes.
 3. Never edit expo's derived assets or the generated manifest by hand.
-
-**Before `packages/web` can be deleted, this canonical asset home (plus the
-`.md` contracts beside it) must move** — e.g. to a top-level `assets/` or into
-`packages/expo` — and `sync-cosmetics.mjs` + the char-pipeline scripts
-repointed. Until then, deleting web deletes the art source.
-
-## Retiring `packages/web` — what actually blocks deletion
-
-- [ ] Port or consciously drop any remaining web-only behavior worth keeping
-      (check against the reference before assuming parity).
-- [ ] Move the canonical asset source + asset contract docs out of
-      `packages/web/public/` and repoint `sync-cosmetics.mjs` and
-      `tools/char-pipeline`.
-- [ ] Decide the fate of the Vercel deploy (`packages/web` root directory,
-      `api/chat.js`) — replace with an Expo Web export or shut it down.
-- [ ] Migrate anything still referencing web paths (docs, scripts, memory).
 
 ## Tooling conventions (don't fight these)
 
