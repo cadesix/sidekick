@@ -54,12 +54,11 @@ describe("decideStyle", () => {
     }
   });
 
-  test("multi-send is frequent (structural, benign); word-quirks stay rare (anti-uncanny)", () => {
+  test("multi-send always fires (2 sentences -> 2 messages); word-quirks stay rare (anti-uncanny)", () => {
     const decisions = simulate(V1, 1000);
     const rate = (id: string) => decisions.filter((d) => (d.fired as string[]).includes(id)).length / 1000;
-    // splitting a multi-sentence reply reads as normal texting, so it fires often
-    expect(rate("multisend")).toBeGreaterThan(0.6);
-    expect(rate("multisend")).toBeLessThan(0.95);
+    // multi-send is deterministic now: every eligible turn (the transform no-ops on single-sentence replies)
+    expect(rate("multisend")).toBe(1);
     // the quirks that read uncanny when frequent stay rare
     expect(rate("typo")).toBeLessThan(0.12);
     expect(rate("bangspace")).toBeLessThan(0.2);
@@ -153,11 +152,11 @@ describe("golden — v1 config behavior is pinned", () => {
     // Regenerate intentionally if you change v1; a silent shift fails here.
     expect(seq).toMatchInlineSnapshot(`
       [
-        "-",
-        "abbrev",
+        "multisend",
+        "multisend,abbrev",
         "multisend,elongation",
         "multisend",
-        "abbrev,bangspace",
+        "multisend,abbrev",
         "multisend",
       ]
     `);

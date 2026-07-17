@@ -11,10 +11,11 @@ const V1: StyleConfig = {
   description: "first controller config — moderate multi-send, light quirks",
   maxTraitsPerTurn: 2,
   traits: [
-      // multi-send is code-applied (splitIntoBubbles), so it's reliable. High rate
-      // + no cooldown = most multi-sentence replies split into a burst (a single
-      // sentence never splits, so this stays natural).
-      { id: "multisend", kind: "transform", baseRate: 0.85, cooldown: 0 },
+      // multi-send is code-applied (splitIntoBubbles), so it's reliable. baseRate 1
+      // = ALWAYS split — any multi-sentence reply becomes multiple bubbles. A
+      // single-sentence reply never splits (the transform no-ops), so it stays
+      // natural; this just makes "2 sentences -> 2 messages" deterministic.
+      { id: "multisend", kind: "transform", baseRate: 1, cooldown: 0 },
       // the model writes these — only prompted on turns they're enabled.
       {
         id: "elongation",
