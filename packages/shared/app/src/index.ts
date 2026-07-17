@@ -19,6 +19,5 @@ export * from "./prompts";
 export * from "./tools";
 export * from "./focus";
 export * from "./goals";
-export * from "./cosmetics";
 export * from "./documents/store";
 export * from "./reminders";

@@ -2,8 +2,8 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { type Database, goals, memories, memorySuppressions, messages, users } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
-import { projectAdProfile, registerDevice } from "@sidekick/server";
-import { createConversation, makeCaller, textModel } from "./helpers";
+import { projectAdProfile } from "@sidekick/server";
+import { createConversation, makeCaller, textModel, createUser, createUserSession } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -17,7 +17,7 @@ afterAll(async () => {
 });
 
 test("memory.list, forget and edit drive the transparency surface", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "mr-1" });
+  const userId = await createUser(db);
   const seeded = await db
     .insert(memories)
     .values([
@@ -49,7 +49,7 @@ test("memory.list, forget and edit drive the transparency surface", async () => 
 });
 
 test("ad projection allowlists only interests + goals and excludes sensitive kinds", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "mr-2" });
+  const userId = await createUser(db);
   await db
     .update(users)
     .set({ ageBracket: "25-34", gender: "female", personalizedAdsConsent: true, lastRegion: "IL" })
@@ -72,7 +72,7 @@ test("ad projection allowlists only interests + goals and excludes sensitive kin
 });
 
 test("ad projection marks minors and non-consenting users ineligible with no interests", async () => {
-  const minor = await registerDevice(db, { deviceId: "mr-3" });
+  const minor = await createUserSession(db);
   await db
     .update(users)
     .set({ ageBracket: "under-18", personalizedAdsConsent: true })
@@ -82,7 +82,7 @@ test("ad projection marks minors and non-consenting users ineligible with no int
   expect(minorProfile.eligible).toBe(false);
   expect(minorProfile.interests).toEqual([]);
 
-  const noConsent = await registerDevice(db, { deviceId: "mr-4" });
+  const noConsent = await createUserSession(db);
   await db
     .update(users)
     .set({ ageBracket: "25-34", personalizedAdsConsent: false })
@@ -92,7 +92,7 @@ test("ad projection marks minors and non-consenting users ineligible with no int
 });
 
 test("the post-turn safety valve flags a marathon tail and schedules background work", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "mr-5" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   for (let i = 0; i < 20; i++) {
     await db

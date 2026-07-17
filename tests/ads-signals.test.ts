@@ -8,11 +8,10 @@ import {
   type SponsoredAd,
   deviceSignalsFromHeaders,
   recordAdEvent,
-  registerDevice,
   runAdDecision,
   serveAd,
 } from "@sidekick/server";
-import { createConversation, makeCaller, textModel } from "./helpers";
+import { createConversation, makeCaller, textModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -39,7 +38,7 @@ function headers(map: Record<string, string>): (name: string) => string | undefi
 }
 
 async function eligibleUser(deviceId: string): Promise<string> {
-  const { userId } = await registerDevice(db, { deviceId });
+  const userId = await createUser(db);
   await db
     .update(users)
     .set({

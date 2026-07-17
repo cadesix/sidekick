@@ -1,7 +1,9 @@
 import type { Database } from "@sidekick/db";
 import type { FeatureFlags } from "@sidekick/shared";
 import type { LanguageModel, TranscriptionModel } from "ai";
-import { resolveUserId } from "./auth";
+import type { AuthEmailSender } from "./auth/email";
+import { getSessionFromAuthHeader } from "./auth/sessions";
+import type { SmsSender } from "./auth/sms";
 import type { AdDeviceSignals, AdNetworkClient } from "./ads/gravity";
 import type { Storage } from "./storage";
 
@@ -25,28 +27,25 @@ export type Services = {
   captionModel: LanguageModel;
   /** Audio transcription model; absent when unconfigured (09 §audio). */
   transcriptionModel?: TranscriptionModel;
+  /** Guided-session acks + extraction (plan 20 decision 9) — the client's old direct-OpenAI calls. */
+  sessionModel: LanguageModel;
   /** Ad network (05); null until a Gravity key is configured — ads off. */
   adNetwork: AdNetworkClient | null;
+  /** Email OTP delivery (19-auth.md); Resend in prod, console.log in dev. */
+  authEmail: AuthEmailSender;
+  /** SMS OTP send/verify (19-auth.md); Twilio Verify, throws if unconfigured. */
+  sms: SmsSender;
 };
 
 /** Per-request tRPC context. `userId` is null until the caller is authenticated. */
 export type AppContext = Services & {
   userId: string | null;
+  /** The resolved session's id — carried so `auth.logout` can revoke it. */
+  sessionId: string | null;
   installationId?: string;
   /** Real client device signals from the request headers, for ad requests (05). */
   device?: AdDeviceSignals;
 };
-
-function parseBearer(authorization: string | null): string | null {
-  if (!authorization) {
-    return null;
-  }
-  const prefix = "Bearer ";
-  if (!authorization.startsWith(prefix)) {
-    return null;
-  }
-  return authorization.slice(prefix.length);
-}
 
 export async function createRequestContext(
   services: Services,
@@ -54,6 +53,12 @@ export async function createRequestContext(
   device?: AdDeviceSignals,
   installationId?: string,
 ): Promise<AppContext> {
-  const userId = await resolveUserId(services.db, parseBearer(authorization));
-  return { ...services, userId, device, installationId };
+  const session = await getSessionFromAuthHeader(services.db, authorization);
+  return {
+    ...services,
+    userId: session?.userId ?? null,
+    sessionId: session?.sessionId ?? null,
+    device,
+    installationId,
+  };
 }

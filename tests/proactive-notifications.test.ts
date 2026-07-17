@@ -28,7 +28,7 @@ import {
   type PushTicket,
 } from "@sidekick/server";
 import { and, eq } from "drizzle-orm";
-import { objectModel } from "./helpers";
+import { objectModel, createUserSession } from "./helpers";
 
 class TestPushProvider implements PushProvider {
   sent: PushMessage[] = [];
@@ -61,7 +61,7 @@ afterAll(async () => close());
 
 async function eligibleAccount(label: string, lastUserMessageAt: Date) {
   const installationId = `proactive-${label}`;
-  const account = await registerDevice(db, { deviceId: installationId });
+  const account = await createUserSession(db);
   const userRows = await db
     .update(users)
     .set({
@@ -73,6 +73,7 @@ async function eligibleAccount(label: string, lastUserMessageAt: Date) {
     .where(eq(users.id, account.userId))
     .returning({ id: users.id });
   expect(userRows).toHaveLength(1);
+  await registerDevice(db, account.userId, { deviceId: installationId });
   const conversationRows = await db
     .insert(conversations)
     .values({ userId: account.userId, kind: "main", lastUserMessageAt })

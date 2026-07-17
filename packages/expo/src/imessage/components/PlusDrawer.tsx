@@ -11,8 +11,10 @@ import { colors } from "../theme";
 import { Glass } from "./Glass";
 import { Icon, type IconName } from "./Icon";
 
+export type DrawerAction = "camera" | "photos" | "audio" | "file" | "location";
+
 interface DrawerItem {
-	key: string;
+	key: DrawerAction;
 	label: string;
 	icon: IconName;
 }
@@ -20,15 +22,13 @@ interface DrawerItem {
 const ITEMS: DrawerItem[] = [
 	{ key: "camera", label: "Camera", icon: "camera" },
 	{ key: "photos", label: "Photos", icon: "photo" },
-	{ key: "stickers", label: "Stickers", icon: "smile" },
 	{ key: "audio", label: "Audio", icon: "audio" },
+	{ key: "file", label: "Files", icon: "folder" },
 	{ key: "location", label: "Location", icon: "location" },
-	{ key: "more", label: "More", icon: "ellipsis" },
 ];
 
 interface PlusDrawerProps {
-	onSelectAudio: () => void;
-	onClose: () => void;
+	onSelect: (action: DrawerAction) => void;
 }
 
 // The whole panel grows out of the plus button as one piece, rather than the
@@ -84,7 +84,7 @@ function DrawerRow({ item, onPress }: { item: DrawerItem; onPress: () => void })
 
 // The iOS 26 plus menu: a Liquid Glass sheet floating just above the plus
 // button, riding the keyboard with the input bar.
-export function PlusDrawer({ onSelectAudio, onClose }: PlusDrawerProps) {
+export function PlusDrawer({ onSelect }: PlusDrawerProps) {
 	return (
 		<Animated.View entering={drawerEnter} exiting={drawerExit} style={styles.container}>
 			<Glass style={styles.panel}>
@@ -94,11 +94,7 @@ export function PlusDrawer({ onSelectAudio, onClose }: PlusDrawerProps) {
 						item={item}
 						onPress={() => {
 							Haptics.selectionAsync();
-							if (item.key === "audio") {
-								onSelectAudio();
-								return;
-							}
-							onClose();
+							onSelect(item.key);
 						}}
 					/>
 				))}
@@ -111,8 +107,11 @@ const styles = StyleSheet.create({
 	container: {
 		position: "absolute",
 		left: 12,
-		bottom: "100%",
-		marginBottom: 4,
+		// A fixed rise above the wrapper's bottom edge: the input bar's 8px bottom
+		// padding + the 40px (bottom-aligned) plus button + a 4px gap. Anchoring to
+		// the bottom keeps the menu put while the composer bubble grows (staged
+		// attachments, multiline text).
+		bottom: 52,
 		zIndex: 30,
 		transformOrigin: "bottom left",
 		shadowColor: "#000000",

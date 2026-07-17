@@ -15,8 +15,8 @@ import {
   STREAM_META_PREFIX,
   type ToolContext,
 } from "@sidekick/shared";
-import { beginTurn, registerDevice, startOnboardingChat } from "@sidekick/server";
-import { generateModel, makeCaller, testStorage, textModel } from "./helpers";
+import { beginTurn, startOnboardingChat } from "@sidekick/server";
+import { generateModel, makeCaller, testStorage, textModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -78,7 +78,7 @@ const text = (t: string): LanguageModelV2StreamPart[] => [
 ];
 
 test("startOnboardingChat seeds the conversation, planless goals, and an LLM intro — idempotently", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "ob-chat-start" });
+  const userId = await createUser(db);
   await seedProfile(userId);
 
   const first = await startOnboardingChat(db, generateModel("hey maya! a spark — i love that for us."), userId, [
@@ -117,7 +117,7 @@ test("startOnboardingChat seeds the conversation, planless goals, and an LLM int
 });
 
 test("the onboarding context view is persona + setup block, no memory or guidance", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "ob-chat-view" });
+  const userId = await createUser(db);
   await seedProfile(userId);
   const { conversationId } = await startOnboardingChat(db, generateModel("hi!"), userId, [
     "get-fit",
@@ -137,7 +137,7 @@ test("the onboarding context view is persona + setup block, no memory or guidanc
 });
 
 test("commit_onboarding_choice plans a goal and the derived beat advances", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "ob-chat-commit" });
+  const userId = await createUser(db);
   await seedProfile(userId);
   const { conversationId } = await startOnboardingChat(db, generateModel("hi!"), userId, [
     "get-fit",
@@ -180,7 +180,7 @@ test("commit_onboarding_choice plans a goal and the derived beat advances", asyn
 });
 
 test("an onboarding turn executes the commit tool and streams a beat-carrying meta frame", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "ob-chat-turn" });
+  const userId = await createUser(db);
   await seedProfile(userId);
   const { conversationId } = await startOnboardingChat(db, generateModel("hi!"), userId, ["get-fit"]);
 
@@ -234,7 +234,7 @@ test("an onboarding turn executes the commit tool and streams a beat-carrying me
 });
 
 test("complete() keeps a chat-committed plan instead of double-adopting", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "ob-chat-complete" });
+  const userId = await createUser(db);
   await seedProfile(userId);
   const { conversationId } = await startOnboardingChat(db, generateModel("hi!"), userId, ["get-fit"]);
   const ctx: ToolContext = { db, userId, conversationId };

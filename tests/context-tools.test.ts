@@ -3,8 +3,7 @@ import type { ModelMessage } from "ai";
 import { type Database, messages } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
 import { buildContextView } from "@sidekick/shared";
-import { registerDevice } from "@sidekick/server";
-import { createConversation } from "./helpers";
+import { createConversation, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -33,7 +32,7 @@ async function insert(
 }
 
 test("assistant tool-calls and tool results round-trip into paired ModelMessages", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "ctx-tool-1" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
 
   await insert(conversationId, "user", "what's the weather in chicago?");
@@ -77,7 +76,7 @@ test("assistant tool-calls and tool results round-trip into paired ModelMessages
 });
 
 test("an assistant tool-call with no matching result row is dropped to text-only", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "ctx-tool-2" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
 
   await insert(conversationId, "user", "log my run");
@@ -94,7 +93,7 @@ test("an assistant tool-call with no matching result row is dropped to text-only
 });
 
 test("an orphan tool result (its call summarized away) is dropped", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "ctx-tool-3" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
 
   // No preceding assistant tool-call in the tail — the result is an orphan.

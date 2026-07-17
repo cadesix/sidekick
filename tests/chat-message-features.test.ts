@@ -2,14 +2,7 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { type Database, messages } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
-import { registerDevice } from "@sidekick/server";
-import {
-  createConversation,
-  makeCaller,
-  testStorage,
-  textModel,
-  transcriptionModel,
-} from "./helpers";
+import { createConversation, makeCaller, testStorage, textModel, transcriptionModel, createUser, createUserSession } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -35,7 +28,7 @@ async function insertMessage(conversationId: string, content: string): Promise<n
 }
 
 test("chat.react applies, replaces, and toggles off the caller's reaction", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "react-toggle-device" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const messageId = await insertMessage(conversationId, "react to me");
   const caller = makeCaller(db, textModel("ok"), userId);
@@ -50,7 +43,7 @@ test("chat.react applies, replaces, and toggles off the caller's reaction", asyn
 });
 
 test("chat.react round-trips a custom emoji reaction", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "react-emoji-device" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const messageId = await insertMessage(conversationId, "fire");
   const caller = makeCaller(db, textModel("ok"), userId);
@@ -63,8 +56,8 @@ test("chat.react round-trips a custom emoji reaction", async () => {
 });
 
 test("chat.react and chat.deleteMessage hide another user's message", async () => {
-  const owner = await registerDevice(db, { deviceId: "message-owner-device" });
-  const stranger = await registerDevice(db, { deviceId: "message-stranger-device" });
+  const owner = await createUserSession(db);
+  const stranger = await createUserSession(db);
   const conversationId = await createConversation(db, owner.userId);
   const messageId = await insertMessage(conversationId, "private");
   const caller = makeCaller(db, textModel("ok"), stranger.userId);
@@ -81,7 +74,7 @@ test("chat.react and chat.deleteMessage hide another user's message", async () =
 });
 
 test("chat.send persists replyToId and history returns it", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "reply-send-device" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const repliedToId = await insertMessage(conversationId, "original");
   const caller = makeCaller(db, textModel("reply received"), userId);
@@ -95,7 +88,7 @@ test("chat.send persists replyToId and history returns it", async () => {
 });
 
 test("chat.deleteMessage deletes the message and clears replies pointing to it", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "delete-reply-device" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const originalId = await insertMessage(conversationId, "original");
   const replyRows = await db
@@ -126,7 +119,7 @@ test("chat.deleteMessage deletes the message and clears replies pointing to it",
 });
 
 test("voice waveform round-trips through upload and chat history", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "waveform-upload-device" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const storage = testStorage();
   const scheduled: Array<() => Promise<unknown>> = [];

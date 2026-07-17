@@ -1,10 +1,10 @@
+import { createUser } from "./helpers";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { type LanguageModel } from "ai";
 import { MockLanguageModelV2 } from "ai/test";
 import { type Database, checkIns, conversations, messages, users } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
-import { registerDevice } from "@sidekick/server";
 import {
   type CheckinDeps,
   closeStaleCheckins,
@@ -40,7 +40,7 @@ async function makeUser(
   deviceId: string,
   attrs: { timezone: string; reminderTime?: string; name?: string; sidekickName?: string },
 ): Promise<typeof users.$inferSelect> {
-  const { userId } = await registerDevice(db, { deviceId });
+  const userId = await createUser(db);
   const updated = await db
     .update(users)
     .set({

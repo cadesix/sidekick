@@ -10,10 +10,9 @@ import {
   decryptToken,
   encryptToken,
   mintDeveloperToken,
-  registerDevice,
   type Services,
 } from "@sidekick/server";
-import { makeCaller, textModel } from "./helpers";
+import { makeCaller, textModel, createUser, createUserSession } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -43,7 +42,10 @@ function servicesFor(): Services {
     scheduleBackground: () => {},
     storage: new LocalStorage("/tmp/sidekick-test-blob", "http://localhost/blob"),
     captionModel: textModel("ok"),
+    sessionModel: textModel("ok"),
     adNetwork: null,
+    authEmail: { sendOtp: async () => {} },
+    sms: { sendCode: async () => {}, verifyCode: async () => false },
   };
 }
 
@@ -76,7 +78,7 @@ test("the developer-token endpoint 501s unconfigured and 200s once configured", 
   delete process.env.APPLE_MUSIC_KEY_ID;
   delete process.env.APPLE_MUSIC_TEAM_ID;
 
-  const { token } = await registerDevice(db, { deviceId: "music-devtoken" });
+  const { token } = await createUserSession(db);
   const app = buildApp(servicesFor());
   const auth = { authorization: `Bearer ${token}` };
 
@@ -114,7 +116,7 @@ test("connect stores an encrypted token; disconnect deletes it (cascade)", async
   delete process.env.APPLE_MUSIC_KEY_ID;
   delete process.env.APPLE_MUSIC_TEAM_ID;
   process.env.MUSIC_TOKEN_KEY = randomBytes(32).toString("base64");
-  const { userId } = await registerDevice(db, { deviceId: "music-connect" });
+  const userId = await createUser(db);
   const caller = makeCaller(db, textModel("ok"), userId);
 
   const connected = await caller.music.connect({ userToken: "user-token-abc", storefront: "us" });

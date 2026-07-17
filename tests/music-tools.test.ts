@@ -1,3 +1,4 @@
+import { createUser } from "./helpers";
 import { afterAll, afterEach, beforeAll, expect, test } from "vitest";
 import { eq } from "drizzle-orm";
 import { type Database, memories, users } from "@sidekick/db";
@@ -11,7 +12,7 @@ import {
   dispatchTool,
   setAppleMusicClientResolver,
 } from "@sidekick/shared";
-import { ingestMusicTaste, registerDevice } from "@sidekick/server";
+import { ingestMusicTaste } from "@sidekick/server";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -43,7 +44,7 @@ function musicTool(name: string): SidekickTool {
 }
 
 async function connectedUser(deviceId: string, client: ScriptedAppleMusicClient) {
-  const { userId } = await registerDevice(db, { deviceId });
+  const userId = await createUser(db);
   await db.update(users).set({ sidekickName: "Nova" }).where(eq(users.id, userId));
   setAppleMusicClientResolver(async () => client);
   const ctx: ToolContext = { db, userId, conversationId: "c" };
@@ -106,7 +107,7 @@ test("a revoked token (403) surfaces as token_revoked", async () => {
 });
 
 test("with no connection the tools report not_connected", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "music-none" });
+  const userId = await createUser(db);
   setAppleMusicClientResolver(async () => null);
   const ctx: ToolContext = { db, userId, conversationId: "c" };
   const result = await dispatchTool(musicTool("music_search"), { query: "x" }, ctx);
@@ -115,7 +116,7 @@ test("with no connection the tools report not_connected", async () => {
 });
 
 test("taste ingestion writes interest memories with source 'import'", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "music-taste" });
+  const userId = await createUser(db);
   const client = new ScriptedAppleMusicClient({
     artists: ["Charli XCX", "Fred again.."],
     heavy: [{ id: "a1", name: "Brat", artistName: "Charli XCX" }],

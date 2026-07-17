@@ -25,6 +25,19 @@ nwConfig.resolver.resolveRequest = (context, moduleName, platform) => {
   if (platform === 'web' && (moduleName === 'zustand' || moduleName === 'zustand/middleware')) {
     return { type: 'sourceFile', filePath: require.resolve(moduleName) };
   }
+  // react-native-awesome-gallery: native resolves the raw `src/` entry (its
+  // package.json "react-native" field), which the worklets babel plugin
+  // transforms coherently. Web falls back to the precompiled lib/commonjs
+  // build, and re-running the worklets plugin over it hoists worklet functions
+  // into consts AFTER their babel interop `exports.` assignment — a TDZ crash
+  // ("Cannot access 'withDecaySpring' before initialization") that 500s every
+  // SSR render. Point web at the same raw source native uses.
+  if (platform === 'web' && moduleName === 'react-native-awesome-gallery') {
+    return {
+      type: 'sourceFile',
+      filePath: require.resolve('react-native-awesome-gallery/src/index.tsx'),
+    };
+  }
   return prevResolveRequest
     ? prevResolveRequest(context, moduleName, platform)
     : context.resolveRequest(context, moduleName, platform);

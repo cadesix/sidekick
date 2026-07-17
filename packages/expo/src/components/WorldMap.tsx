@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   BOND_MAX,
+  BOND_MIN,
   isIslandUnlocked,
   isSessionStartable,
   nextSession,
@@ -26,7 +27,7 @@ import { Pressable } from './Pressable';
 import { type EnvironmentId } from '../three/biomes';
 import { ISLANDS, type Island } from '../lib/islands';
 import { loadSettings } from '../three/settings';
-import { useBond } from '../store/bond';
+import { snapshotSessions, useSnapshot } from '../lib/state';
 import { useSidekickContext } from '../store/context';
 
 // RN port of sidekick/src/components/world-map.tsx: the full-screen "world map"
@@ -120,9 +121,11 @@ export function WorldMap({
   if (selected) lastSelRef.current = selected;
   const shown = selected ?? lastSelRef.current;
 
-  // live Bond score for the bars; session completion drives the locks
-  const bond = useBond((s) => s.bond);
-  const sessions = useSidekickContext((s) => s.sessions);
+  // live Bond score for the bars; session completion drives the locks. Both are
+  // server state (plan 20): the snapshot, patched by sessions.complete.
+  const snapshot = useSnapshot().data;
+  const bond = snapshot?.bond ?? BOND_MIN;
+  const sessions = snapshotSessions(snapshot);
   // the island unlocked since they last looked — gets a "new" bubble
   const unseenIsland = useSidekickContext((s) => s.unseenIsland);
   // real gating: the first island is open from launch; every other unlocks by

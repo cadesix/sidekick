@@ -2,8 +2,7 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { type Database } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
 import { buildContextView, renderSystem } from "@sidekick/shared";
-import { registerDevice } from "@sidekick/server";
-import { createConversation } from "./helpers";
+import { createConversation, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -17,7 +16,7 @@ afterAll(async () => {
 });
 
 test("capability guidance is appended after persona, only for enabled capabilities", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "guid-1" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
 
   const all = await buildContextView(db, conversationId, {});

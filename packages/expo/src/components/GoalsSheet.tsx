@@ -1,22 +1,26 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Dimensions, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Dimensions, Pressable, ScrollView, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useGoals } from '../store/goals';
+import { fetchGoals, type GoalsList, logGoalCheckIn } from '../lib/api';
 
-// Bottom-sheet "Goals": the user's onboarding goals, each simply done or not
-// done today. Tapping a card expands an action row — mark it done/undo, or
-// "Talk about it", which the host turns into a chat prompt. Mirrors the web
-// reference (packages/web/src/components/goals-sheet.tsx); the reanimated
-// slide-up + grabber/header shell matches SettingsSheet.
+// Bottom-sheet "Goals": the user's adopted goals (goals.list), each simply done
+// or not done today. Tapping a card expands an action row — mark it done/undo
+// (an optimistic goals.logCheckIn round-trip, plan 20 decision 8), or "Talk
+// about it", which the host turns into a chat prompt. Mirrors the web reference
+// (packages/web/src/components/goals-sheet.tsx); the reanimated slide-up +
+// grabber/header shell matches SettingsSheet.
 //
-// NOTE: the GoalOption.icon field is a slug (e.g. 'get-fit'), and the webp goal
-// icons from web aren't bundled into the Expo app. So instead of an <Image>, we
+// NOTE: the goal slug (e.g. 'get-fit') keys the icon, and the webp goal icons
+// from web aren't bundled into the Expo app. So instead of an <Image>, we
 // render an Ionicon placeholder (mapped per slug) inside a per-goal colored dot.
 
-const SHEET_H = Math.round(Dimensions.get('window').height * 0.72);
+const GOALS_QUERY_KEY = ['goals', 'list'] as const;
+
+const SHEET_H = Math.round(Dimensions.get('window').height * 0.55);
 
 const DONE = '#12C93E';
 const TALK = '#0a84ff';
@@ -45,17 +49,19 @@ export function GoalsSheet({
   onTalk: (goalValue: string) => void;
 }) {
   const insets = useSafeAreaInsets();
-  // subscribe to the primitives that change the resolved list, then compute via
-  // the store's goals() (which returns a fresh array — unsafe as a selector).
-  useGoals((s) => s.chosen);
-  useGoals((s) => s.hydrated);
-  const goals = useGoals.getState().goals().slice(0, 4);
+  const queryClient = useQueryClient();
+  const goalsQuery = useQuery({ queryKey: GOALS_QUERY_KEY, queryFn: fetchGoals });
+  const list = goalsQuery.data;
 
-  // one card expanded at a time; keyed by goal value. Collapse on reopen.
+  // one card expanded at a time; keyed by goal id. Collapse + refresh on reopen
+  // (the list's "today" rolls over at the user's local midnight, server-decided).
   const [expanded, setExpanded] = useState<string | null>(null);
   useEffect(() => {
-    if (open) setExpanded(null);
-  }, [open]);
+    if (open) {
+      setExpanded(null);
+      void queryClient.invalidateQueries({ queryKey: GOALS_QUERY_KEY });
+    }
+  }, [open, queryClient]);
 
   const progress = useSharedValue(0);
   progress.value = withTiming(open ? 1 : 0, { duration: 300 });
@@ -106,17 +112,18 @@ export function GoalsSheet({
           contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16), gap: 10 }}
           showsVerticalScrollIndicator={false}
         >
-          {goals.map((g) => (
-            <GoalCard
-              key={g.value}
-              value={g.value}
-              label={g.label}
-              iconSlug={g.icon}
-              expanded={expanded === g.value}
-              onToggleExpand={() => setExpanded(expanded === g.value ? null : g.value)}
-              onTalk={onTalk}
-            />
-          ))}
+          {list
+            ? list.goals.slice(0, 4).map((g) => (
+                <GoalCard
+                  key={g.goalId}
+                  goal={g}
+                  date={list.date}
+                  expanded={expanded === g.goalId}
+                  onToggleExpand={() => setExpanded(expanded === g.goalId ? null : g.goalId)}
+                  onTalk={onTalk}
+                />
+              ))
+            : null}
         </ScrollView>
       </View>
     </Animated.View>
@@ -124,23 +131,46 @@ export function GoalsSheet({
 }
 
 function GoalCard({
-  value,
-  label,
-  iconSlug,
+  goal,
+  date,
   expanded,
   onToggleExpand,
   onTalk,
 }: {
-  value: string;
-  label: string;
-  iconSlug: string;
+  goal: GoalsList['goals'][number];
+  date: string;
   expanded: boolean;
   onToggleExpand: () => void;
   onTalk: (goalValue: string) => void;
 }) {
-  // subscribe to the store so completion state re-renders on toggle
-  const done = useGoals((s) => s.doneToday(value));
-  const ico = ICONS[iconSlug] ?? FALLBACK;
+  const queryClient = useQueryClient();
+  const done = goal.today.outcome === 'hit' || goal.today.outcome === 'partial';
+  const ico = ICONS[goal.slug] ?? FALLBACK;
+
+  // optimistic toggle: flip today's outcome in the cached list at once, then
+  // let the server settle it — a refetch on success (it owns the derived week
+  // counts + streak), the pre-toggle list back + an alert on failure
+  const logToday = (result: 'hit' | null) => {
+    const previous = queryClient.getQueryData<GoalsList>(GOALS_QUERY_KEY);
+    if (previous) {
+      queryClient.setQueryData<GoalsList>(GOALS_QUERY_KEY, {
+        ...previous,
+        goals: previous.goals.map((g) =>
+          g.goalId === goal.goalId ? { ...g, today: { outcome: result, note: null } } : g,
+        ),
+      });
+    }
+    logGoalCheckIn({ goalId: goal.goalId, date, result })
+      .then(() => queryClient.invalidateQueries({ queryKey: GOALS_QUERY_KEY }))
+      .catch((error: unknown) => {
+        queryClient.setQueryData(GOALS_QUERY_KEY, previous);
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : 'something went wrong — try again';
+        Alert.alert("Couldn't update the goal", message);
+      });
+  };
 
   return (
     <View
@@ -149,8 +179,8 @@ function GoalCard({
     >
       <Pressable
         onPress={onToggleExpand}
-        className="flex-row items-center px-3.5 py-4"
-        style={{ gap: 12, minHeight: 68 }}
+        className="flex-row items-center px-3.5 py-2.5"
+        style={{ gap: 12 }}
       >
         <View
           className="h-10 w-10 shrink-0 rounded-xl items-center justify-center"
@@ -160,7 +190,7 @@ function GoalCard({
         </View>
         <View className="min-w-0 flex-1">
           <Text numberOfLines={1} className="text-[15px] font-bold text-neutral-900">
-            {label}
+            {goal.label}
           </Text>
           <Text
             numberOfLines={1}
@@ -185,7 +215,7 @@ function GoalCard({
       {expanded ? (
         <View className="flex-row px-4 pb-4" style={{ gap: 8 }}>
           <Pressable
-            onPress={() => useGoals.getState().toggleToday(value)}
+            onPress={() => logToday(done ? null : 'hit')}
             className="flex-1 flex-row items-center justify-center rounded-2xl py-2.5"
             style={{ gap: 6, backgroundColor: done ? '#f5f5f5' : DONE }}
           >
@@ -195,7 +225,7 @@ function GoalCard({
             </Text>
           </Pressable>
           <Pressable
-            onPress={() => onTalk(value)}
+            onPress={() => onTalk(goal.slug)}
             className="flex-1 flex-row items-center justify-center rounded-2xl py-2.5"
             style={{ gap: 6, backgroundColor: TALK }}
           >

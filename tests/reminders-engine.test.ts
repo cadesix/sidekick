@@ -4,7 +4,6 @@ import { type LanguageModel } from "ai";
 import { MockLanguageModelV2 } from "ai/test";
 import { type Database, conversations, messages, reminders, users } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
-import { registerDevice } from "@sidekick/server";
 import {
   type ReminderDeps,
   fireDueReminders,
@@ -12,7 +11,7 @@ import {
   recomputeTimezoneDrift,
   selectDueReminders,
 } from "../packages/server/src/reminders/engine";
-import { generateModel } from "./helpers";
+import { generateModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -40,7 +39,7 @@ function throwingModel(): LanguageModel {
 }
 
 async function makeUser(deviceId: string): Promise<string> {
-  const { userId } = await registerDevice(db, { deviceId });
+  const userId = await createUser(db);
   await db
     .update(users)
     .set({ timezone: "America/New_York", name: "Maya", sidekickName: "Kick" })

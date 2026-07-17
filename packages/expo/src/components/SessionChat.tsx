@@ -1,16 +1,45 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { Dimensions, Keyboard, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import {
+  Alert,
+  Dimensions,
+  Keyboard,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { sessionFor, type SessionDef } from '@sidekick/core';
+import { islandOpensWith, sessionFor } from '@sidekick/core';
 
-import { MSG_SHADOW, STREAM_GAP_MS, StreamedText, TypingDots, streamDurationMs } from './chat-stream';
 import { SliderRow } from './look-controls';
+import {
+  ackSessionAnswer,
+  completeSession,
+  extractSession,
+  saveSessionProgress,
+  type SessionExtractionRun,
+} from '../lib/api';
+import {
+  patchSessionComplete,
+  patchSessionProgress,
+  SNAPSHOT_QUERY_KEY,
+  snapshotSessions,
+  type Snapshot,
+} from '../lib/state';
 import { starFaceSnippet, useStarFaceConfig } from '../store/starFaceConfig';
-import { useSidekickContext, type Astral, type ContextNote } from '../store/context';
-import { llm } from '../lib/openai';
+import { useSidekickContext, type Astral } from '../store/context';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
@@ -20,15 +49,14 @@ const { height: SCREEN_H } = Dimensions.get('window');
 // progress persisted per answer so the user can dive out (chevron) and back in.
 // Ends with an extraction pass → recap → "did i get that right?" → rewards.
 //
-// LLM: the web app proxied /api/chat server-side. On mobile there's no server,
-// so we call OpenAI directly when EXPO_PUBLIC_OPENAI_API_KEY is set (same pattern
-// as lib/chat-api.ts); with no key every LLM step falls back to a scripted line
-// so the whole flow is fully usable offline.
+// LLM + persistence are server-side (plan 20 decision 9): every answer upserts
+// `sessions.progress`, the ack/extraction run over the server-stored transcript,
+// and `sessions.complete` pays rewards from core's catalog. When any LLM call
+// fails the flow falls back to a scripted line, exactly as it always has —
+// only completion truly needs the network (it pays out).
 
 type Msg = { role: 'bot' | 'user'; text: string };
 type Phase = 'asking' | 'answer' | 'probe' | 'extracting' | 'confirm' | 'done';
-
-const NAME = 'sidekick';
 
 // What the star chat is — shown ONCE, on the user's very first session. Every
 // later session opens with WELCOME_BACK + that session's own `def.intro`
@@ -42,140 +70,16 @@ const STAR_CHAT_INTRO = [
 const WELCOME_BACK = 'welcome back to our star chat';
 
 // the end-of-session payoff: the astral card, rewritten each session from the
-// WHOLE profile (see store/context). `archetype` is a poetic title, `traits`
-// are quick descriptors.
+// WHOLE server-stored profile. `archetype` is a poetic title, `traits` are
+// quick descriptors.
 type Analysis = Astral;
-// shown when there's no AI key or the model's analysis didn't parse
+// shown when the model's analysis didn't parse (the server returned no card)
 const FALLBACK_ANALYSIS: Analysis = {
   archetype: 'a sky still forming',
   reading:
     "i'm still learning your constellation, but i can already tell there's a lot up there worth mapping. the more we talk, the brighter it all gets. ✦",
   traits: ['curious', 'open', 'worth knowing'],
 };
-
-// A poetic 2-4 word title. Real ones run ~19-25 chars ("the restless
-// cartographer"), so this only bites a model that ignored the prompt — but it
-// cuts on a word boundary rather than mid-word, because the result is shown to
-// the user and spoken over the sidekick's head.
-const ARCHETYPE_MAX = 48;
-
-function capArchetype(s: string): string {
-  if (s.length <= ARCHETYPE_MAX) return s;
-  const cut = s.slice(0, ARCHETYPE_MAX);
-  const lastSpace = cut.lastIndexOf(' ');
-  return (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trim();
-}
-
-// null when the model gave us nothing usable — NOT a fallback card. The
-// difference is load-bearing: completeSession persists whatever it's handed and
-// only declines when the card is null, so fabricating one here would overwrite a
-// real reading earned by earlier sessions with "a sky still forming".
-function parseAnalysis(a: unknown): Analysis | null {
-  // Array.isArray: [] is typeof 'object' too, and an array is never a card.
-  if (!a || typeof a !== 'object' || Array.isArray(a)) return null;
-  const o = a as Record<string, unknown>;
-  // capped: the archetype flows into astralNews() and out to the speech bubble,
-  // which grows upward until it collides with the star above the head. The
-  // prompt asks for 2-4 words, but a model that ignores that shouldn't be able
-  // to break the layout.
-  const archetype = typeof o.archetype === 'string' ? capArchetype(o.archetype.trim()) : '';
-  // The archetype IS the card: it headlines it, and it's the line astralNews
-  // speaks over the sidekick's head. Without a real one there is nothing worth
-  // persisting — and a fallback-headed card would both overwrite an earned
-  // reading and have the sidekick announce "i've got you as a sky still
-  // forming". So no archetype, no card. (`{}`, `[]`, blank fields and
-  // traits-only all land here.)
-  if (!archetype) return null;
-  const reading = typeof o.reading === 'string' ? o.reading.trim() : '';
-  // trim + drop blanks: [''] is not a trait
-  const traits = Array.isArray(o.traits)
-    ? o.traits
-        .filter((t): t is string => typeof t === 'string' && !!t.trim())
-        .map((t) => t.trim())
-        .slice(0, 4)
-    : [];
-  // a real archetype with a thin reading/traits is still a card — fall those back
-  return {
-    archetype,
-    reading: reading || FALLBACK_ANALYSIS.reading,
-    traits: traits.length ? traits : FALLBACK_ANALYSIS.traits,
-  };
-}
-
-
-// one short in-voice reaction to an answer (optionally with ONE follow-up)
-async function fetchAck(def: SessionDef, ask: string, answer: string, probe: boolean): Promise<string | null> {
-  const system =
-    `you are ${NAME}, a warm lowercase internet-native friend running a short get-to-know-you chat. ` +
-    `the user just answered your question. reply with ONE short specific reaction to what they said (max 18 words)` +
-    (probe ? ', then ask ONE short follow-up question about it' : '. do NOT ask a question') +
-    '. ' +
-    (def.sensitive ? 'the topic is personal: be gentle, never pry, never joke at their expense. ' : '') +
-    'no capital letters, no em-dash.';
-  return llm(system, `you asked: ${ask}\nthey answered: ${answer}`);
-}
-
-// A digest of everything earlier sessions already learned. Feeds the astral
-// card so it reads as ONE person growing clearer, not six unrelated readings.
-// Notes are capped — by the last session there can be a lot of them, and the
-// card only needs the gist.
-function priorProfile(fields: Record<string, string>, notes: ContextNote[], astral: Astral | null): string {
-  const f = Object.entries(fields).map(([k, v]) => `${k}: ${v}`);
-  const n = notes.slice(-14).map((x) => `${x.tag}: ${x.text}`);
-  if (!f.length && !n.length && !astral) return '';
-  return (
-    `what you ALREADY know about them from earlier star chats (context for the astral card only —\n` +
-    `do NOT re-extract any of this into "fields" or "notes"):\n` +
-    (f.length ? `${f.join('\n')}\n` : '') +
-    (n.length ? `${n.join('\n')}\n` : '') +
-    (astral ? `\ntheir astral card right now:\narchetype: ${astral.archetype}\nreading: ${astral.reading}\ntraits: ${astral.traits.join(', ')}\n` : '') +
-    `\n--- this session's transcript (extract fields + notes from THIS ONLY) ---\n`
-  );
-}
-
-// the extraction pass: transcript + schema → fields, notes, the recap line, and
-// the refreshed astral card
-async function fetchExtraction(
-  def: SessionDef,
-  transcript: string,
-  prior: { fields: Record<string, string>; notes: ContextNote[]; astral: Astral | null },
-): Promise<{ fields: Record<string, string>; notes: { tag: string; text: string }[]; recap: string; analysis: Analysis | null } | null> {
-  const head = priorProfile(prior.fields, prior.notes, prior.astral);
-  const returning = !!head;
-  const system =
-    `you extract structured profile data from a get-to-know-you chat transcript. respond with ONLY valid JSON, no fences, in this shape:\n` +
-    `{"fields": {…}, "notes": [{"tag": "…", "text": "…"}], "recap": "…", "analysis": {"archetype": "…", "reading": "…", "traits": ["…"]}}\n` +
-    `- "fields" keys MUST be from: ${def.schema.fields.join(', ') || '(none)'} — short lowercase values, omit anything the user didn't clearly say\n` +
-    `- "notes" tags MUST be from: ${def.schema.notes.join(', ')} — text is a short quote-like capture of the user's own words\n` +
-    `- "recap" is a 1-2 sentence playful readback of what you learned, as a lowercase internet-native friend, ending with "locked in 🔒". no em-dash.\n` +
-    `- "analysis" is their ASTRAL CARD: a warm, high-level, almost-astrology read of who this person is.\n` +
-    (returning
-      ? `  this is an UPDATE. rewrite the whole card from EVERYTHING you know (the profile above PLUS this transcript),\n` +
-        `  so it's richer and more specific than the card they have now. keep what still rings true, deepen it with what's new.\n`
-      : `  build it ONLY from what they shared in this transcript.\n`) +
-    `  - "archetype": a poetic 2-4 word lowercase title capturing their vibe (e.g. "the midnight builder")\n` +
-    `  - "reading": a warm, slightly mystical 2-3 sentence read of who they are — like a personalized horoscope grounded in what they actually said. speak in essence and pattern, not a list of facts. lowercase, no em-dash, no clichés\n` +
-    `  - "traits": 3-4 short lowercase trait words${returning ? ' drawn from the full picture' : ' drawn from the chat'}`;
-  // extraction JSON is the biggest payload (fields + notes + recap + analysis) —
-  // give it real headroom so it never truncates mid-object
-  const reply = await llm(system, head + transcript, 900);
-  if (!reply) return null;
-  try {
-    const raw = reply
-      .replace(/^```(json)?/m, '')
-      .replace(/```\s*$/m, '')
-      .trim();
-    const parsed = JSON.parse(raw);
-    return {
-      fields: parsed.fields ?? {},
-      notes: Array.isArray(parsed.notes) ? parsed.notes : [],
-      recap: typeof parsed.recap === 'string' ? parsed.recap : 'ok, got all of that. locked in 🔒',
-      analysis: parseAnalysis(parsed.analysis),
-    };
-  } catch {
-    return null;
-  }
-}
 
 // ---- TEMPORARY: star-face look-dev -----------------------------------------
 // OFF: the tuned numbers are baked into the constants in three/renderer.ts, so
@@ -237,6 +141,26 @@ function StarFaceTuner() {
   );
 }
 
+function Dot({ delay }: { delay: number }) {
+  const v = useSharedValue(0.3);
+  useEffect(() => {
+    v.value = withDelay(delay, withRepeat(withTiming(1, { duration: 500 }), -1, true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const style = useAnimatedStyle(() => ({ opacity: v.value }));
+  return <Animated.View style={style} className="w-2 h-2 rounded-full bg-white/70" />;
+}
+
+
+function TypingDots() {
+  return (
+    <View className="flex-row gap-1 py-1">
+      <Dot delay={0} />
+      <Dot delay={160} />
+      <Dot delay={320} />
+    </View>
+  );
+}
 
 export function SessionChat({
   sessionId,
@@ -251,8 +175,7 @@ export function SessionChat({
 }) {
   const insets = useSafeAreaInsets();
   const def = sessionFor(sessionId);
-  const saveSessionProgress = useSidekickContext((s) => s.saveSessionProgress);
-  const completeSession = useSidekickContext((s) => s.completeSession);
+  const queryClient = useQueryClient();
 
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [typing, setTyping] = useState(false);
@@ -260,16 +183,19 @@ export function SessionChat({
   const [input, setInput] = useState('');
   const scrollRef = useRef<ScrollView>(null);
   const beatIdx = useRef(0);
-  const answers = useRef<string[]>([]);
-  const transcriptExtra = useRef(''); // recap corrections appended for re-extraction
+  // Cumulative answers, indexed by beat. Holes appear on a cold-start resume
+  // (the snapshot carries beat/done but not answers — they're server-side), so
+  // reads treat entries as possibly-undefined and writes send '' for the gaps.
+  const answers = useRef<(string | undefined)[]>([]);
+  const corrections = useRef<string[]>([]); // recap corrections, re-sent to sessions.extract
   const extraction = useRef<{ fields: Record<string, string>; notes: { tag: string; text: string }[] } | null>(null);
-  // the refreshed card this session produced, handed to completeSession. null =
+  // the refreshed card this session produced, handed to sessions.complete. null =
   // nothing new (offline/parse fail), so the stored card survives untouched.
   const nextAstral = useRef<Astral | null>(null);
-  // opens on the card they already have, so a returning user sees it update
-  // rather than appear from nothing
+  // opens on the card they already have (snapshot.astral), so a returning user
+  // sees it update rather than appear from nothing
   const [analysis, setAnalysis] = useState<Analysis>(
-    () => useSidekickContext.getState().astral ?? FALLBACK_ANALYSIS,
+    () => queryClient.getQueryData<Snapshot>(SNAPSHOT_QUERY_KEY)?.astral ?? FALLBACK_ANALYSIS,
   );
   const confirmedOnce = useRef(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -323,9 +249,7 @@ export function SessionChat({
       later(() => {
         setTyping(false);
         setMsgs((m) => [...m, { role: 'bot', text }]);
-        // one at a time: don't start the next line until this one has fully
-        // streamed in, or two would type simultaneously
-        later(next, streamDurationMs(text) + STREAM_GAP_MS);
+        later(next, 300);
       }, 600);
     };
     next();
@@ -343,9 +267,12 @@ export function SessionChat({
   // topic intro for every session after that
   useEffect(() => {
     if (!def) return;
-    const { sessions } = useSidekickContext.getState();
+    const sessions = snapshotSessions(queryClient.getQueryData<Snapshot>(SNAPSHOT_QUERY_KEY));
     const st = sessions[def.id];
-    answers.current = st ? [...st.answers] : [];
+    // this run's answers survive a dive-out in the ephemeral store; across a
+    // cold start they live server-side only, so the array starts sparse
+    const stored = useSidekickContext.getState().sessionAnswers[def.id];
+    answers.current = stored ? [...stored] : [];
     const resuming = !!st && st.beat > 0 && !st.done;
     // first star chat ever = they've never touched a session before this one
     const firstEver = Object.keys(sessions).length === 0;
@@ -359,30 +286,51 @@ export function SessionChat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [def?.id]);
 
-  const transcript = () =>
-    (def?.beats ?? [])
-      .map((b, i) => (answers.current[i] ? `q: ${b.ask.join(' ')}\na: ${answers.current[i]}` : null))
-      .filter(Boolean)
-      .join('\n\n') + transcriptExtra.current;
-
-  // the profile as it stands BEFORE this session lands — the astral card is
-  // rewritten from this plus the new transcript
-  const prior = () => {
-    const { fields, notes, astral } = useSidekickContext.getState();
-    return { fields, notes, astral };
+  // Upsert the transcript server-side (the authoritative copy). A failed write
+  // is simply retried by the next answer's cumulative upsert — but it also means
+  // the stored beat is stale, so the caller skips the ack (whose ask the server
+  // derives from that stored beat) and uses the scripted line instead.
+  const postProgress = async (): Promise<boolean> => {
+    if (!def) return false;
+    const toSend = Array.from(answers.current, (a) => a ?? '');
+    useSidekickContext.getState().setSessionAnswers(def.id, toSend);
+    try {
+      const { stateVersion } = await saveSessionProgress(def.id, beatIdx.current, toSend);
+      patchSessionProgress(queryClient, def.id, beatIdx.current, stateVersion);
+      return true;
+    } catch {
+      return false;
+    }
   };
+
+  // the extraction pass over the server-stored transcript; null = model failure
+  // (the flow proceeds with an empty extraction and its scripted recap line)
+  const runExtraction = async (): Promise<SessionExtractionRun | null> => {
+    if (!def) return null;
+    try {
+      return await extractSession(
+        def.id,
+        corrections.current.length ? corrections.current : undefined,
+      );
+    } catch {
+      return null;
+    }
+  };
+
+  const storedAstral = () =>
+    queryClient.getQueryData<Snapshot>(SNAPSHOT_QUERY_KEY)?.astral ?? null;
 
   const finish = async () => {
     if (!def) return;
     setPhase('extracting');
     setTyping(true);
-    const ex = await fetchExtraction(def, transcript(), prior());
+    const ex = await runExtraction();
     setTyping(false);
     extraction.current = ex ? { fields: ex.fields, notes: ex.notes } : { fields: {}, notes: [] };
     // Show: fresh card, else the one they already have, else a placeholder.
-    // Persist: ONLY a fresh card — `?? null` keeps completeSession from writing,
-    // so a bad reading leaves the earned card untouched.
-    setAnalysis(ex?.analysis ?? prior().astral ?? FALLBACK_ANALYSIS);
+    // Persist: ONLY a fresh card — `?? null` keeps sessions.complete from
+    // writing, so a bad reading leaves the earned card untouched.
+    setAnalysis(ex?.analysis ?? storedAstral() ?? FALLBACK_ANALYSIS);
     nextAstral.current = ex?.analysis ?? null;
     showBotThen([ex?.recap ?? 'ok, got all of that. locked in 🔒', 'did i get that right?'], () => setPhase('confirm'));
   };
@@ -394,18 +342,43 @@ export function SessionChat({
     else void finish();
   };
 
-  const celebrate = () => {
+  const celebrate = async () => {
     if (!def) return;
-    completeSession(
-      def,
-      { fields: extraction.current?.fields ?? {}, notes: extraction.current?.notes ?? [] },
-      nextAstral.current,
-    );
-    // the payoff is the card itself (rendered below) — these lines hand off to it
-    showBotThen(
-      [`and that's ${def.title.toLowerCase()} done. +${def.bond}% bond 🧡`, 'here\'s your astral card, updated ✦'],
-      () => setPhase('done'),
-    );
+    // 'extracting' disables the input while the completion is in flight
+    setPhase('extracting');
+    setTyping(true);
+    try {
+      const result = await completeSession(def.id, {
+        fields: extraction.current?.fields ?? {},
+        notes: extraction.current?.notes ?? [],
+        astral: nextAstral.current,
+      });
+      setTyping(false);
+      // the response carries the catalog-paid coins/bond + refreshed card —
+      // patch the snapshot so the map, star and balances update immediately
+      patchSessionComplete(queryClient, def.id, result);
+      // Flag the island until the map is seen — but only if this completion
+      // actually OPENED it. The first island is unlocked from launch, so
+      // finishing its session opens nothing new and must not claim otherwise.
+      if (islandOpensWith(def.id)) {
+        useSidekickContext.getState().markUnseenIsland(def.id);
+      }
+      // the payoff is the card itself (rendered below) — these lines hand off to it
+      showBotThen(
+        [`and that's ${def.title.toLowerCase()} done. +${def.bond}% bond 🧡`, 'here\'s your astral card, updated ✦'],
+        () => setPhase('done'),
+      );
+    } catch (error) {
+      // a session can't complete offline (plan 20): surface it and stay on the
+      // recap step — another "yes" retries (complete is replay-safe server-side)
+      setTyping(false);
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'something went wrong — try again';
+      Alert.alert("Couldn't finish the session", message);
+      setPhase('confirm');
+    }
   };
 
   const submit = async () => {
@@ -419,10 +392,10 @@ export function SessionChat({
       const yes = /^(y|yes|yep|yeah|yup|sure|correct|mostly|all good|👍|✓)/i.test(text) && text.length < 24;
       if (yes || confirmedOnce.current) return celebrate();
       confirmedOnce.current = true;
-      transcriptExtra.current += `\n\ncorrection from the user about your summary: ${text}`;
+      corrections.current.push(text);
       setPhase('extracting');
       setTyping(true);
-      const ex = await fetchExtraction(def, transcript(), prior());
+      const ex = await runExtraction();
       setTyping(false);
       if (ex) {
         extraction.current = { fields: ex.fields, notes: ex.notes };
@@ -440,7 +413,7 @@ export function SessionChat({
     const beat = def.beats[beatIdx.current];
     const prev = answers.current[beatIdx.current];
     answers.current[beatIdx.current] = prev ? `${prev} / ${text}` : text;
-    saveSessionProgress(def.id, beatIdx.current, answers.current);
+    const saved = await postProgress();
 
     if (phase === 'probe') {
       // the one follow-up is answered — move on with a tiny scripted beat
@@ -451,7 +424,14 @@ export function SessionChat({
     const wantProbe = !!beat.probe && !def.sensitive && text.length >= 12;
     setPhase('asking');
     setTyping(true);
-    const ack = await fetchAck(def, beat.ask.join(' '), text, wantProbe);
+    let ack: string | null = null;
+    if (saved) {
+      try {
+        ack = (await ackSessionAnswer(def.id, text, wantProbe)).text;
+      } catch {
+        ack = null;
+      }
+    }
     setTyping(false);
     if (ack) {
       setMsgs((m) => [...m, { role: 'bot', text: ack }]);
@@ -459,8 +439,7 @@ export function SessionChat({
         setPhase('probe');
         return;
       }
-      // let the ack finish streaming before the next beat's question types in
-      later(nextBeat, streamDurationMs(ack) + STREAM_GAP_MS);
+      later(nextBeat, 350);
     } else {
       // offline/errored: keep the session moving with a scripted ack
       showBotThen(['love that'], nextBeat);
@@ -488,35 +467,46 @@ export function SessionChat({
         </Pressable>
       </View>
 
-      {/* No container: the conversation sits directly over the night sky and its
-          star-constellation head. Messages bottom-anchor and push UP as you chat
-          (contentContainerStyle flex-end), so the sky stays clear above until the
-          chat fills it. Text is inked for legibility over the stars. */}
-      <Animated.View style={[{ flex: 1, overflow: 'hidden' }, kbPad]}>
+      {/* clear focal zone up top — the constellation + stars live here, nothing
+          covers them (the messages sit in the panel below) */}
+      <View style={{ height: SCREEN_H * 0.32 }} pointerEvents="none" />
+
+      {/* lower panel: a semi-transparent night-glass container holding the
+          scrolling messages + input, so the sky stays the focal point above */}
+      <Animated.View
+        style={[
+          {
+            flex: 1,
+            backgroundColor: 'rgba(12,8,28,0.55)',
+            borderTopLeftRadius: 28,
+            borderTopRightRadius: 28,
+            borderTopWidth: 1,
+            borderColor: 'rgba(255,255,255,0.08)',
+            overflow: 'hidden',
+          },
+          kbPad,
+        ]}
+      >
         {STAR_FACE_TUNING ? (
           <StarFaceTuner />
         ) : (
         <ScrollView
           ref={scrollRef}
           style={{ flex: 1 }}
-          className="px-4"
-          contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-end', paddingBottom: 12, paddingTop: 24, gap: 12 }}
+          className="px-4 pt-4"
+          contentContainerStyle={{ paddingBottom: 12, gap: 12 }}
           showsVerticalScrollIndicator={false}
         >
-          {/* no bubbles — just text. bot lines left (streamed in), user right. */}
+          {/* no bubbles — just white text. bot lines left, user lines right. the
+              sidekick's head lives once in the header (no per-line GL contexts) */}
           {msgs.map((m, i) =>
             m.role === 'bot' ? (
               <View key={i} style={{ maxWidth: '90%' }} className="self-start">
-                <StreamedText
-                  text={m.text}
-                  className="text-[16px] leading-[23px] text-white"
-                  style={MSG_SHADOW}
-                  onReveal={() => scrollRef.current?.scrollToEnd({ animated: false })}
-                />
+                <Text className="text-[15px] leading-[22px] text-white">{m.text}</Text>
               </View>
             ) : (
               <View key={i} style={{ maxWidth: '84%' }} className="self-end">
-                <Text style={MSG_SHADOW} className="text-[16px] leading-[23px] text-white text-right">{m.text}</Text>
+                <Text className="text-[15px] leading-[22px] text-white text-right">{m.text}</Text>
               </View>
             ),
           )}

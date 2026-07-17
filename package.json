@@ -8,7 +8,7 @@
 	},
 	"packageManager": "pnpm@10.34.1",
 	"scripts": {
-		"dev": "pnpm --filter @sidekick/expo web",
+		"dev": "./scripts/dev.sh -f",
 		"dev:web": "pnpm --filter @sidekick/expo web",
 		"dev:expo": "pnpm --filter @sidekick/expo start",
 		"dev:vite": "pnpm --filter @sidekick/web dev",
@@ -21,6 +21,7 @@
 		"db:migrate": "pnpm --filter @sidekick/db migrate"
 	},
 	"devDependencies": {
+		"@sidekick/core": "workspace:*",
 		"@sidekick/db": "workspace:*",
 		"@sidekick/server": "workspace:*",
 		"@sidekick/shared": "workspace:*",

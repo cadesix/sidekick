@@ -10,6 +10,7 @@ import {
   sidekickThread,
 } from "./server";
 import type { AudioAttachment, Message, Reaction, ReactionType, Thread } from "./types";
+import type { PendingAttachment } from "./lib/attachments";
 import type { AdView } from "~/lib/chat-thread";
 
 const PAGE_LIMIT = 100;
@@ -34,9 +35,13 @@ interface SendInput {
   text: string;
   replyToId?: string;
   audio?: AudioAttachment;
+  /** Picked attachments, already uploaded + ingested (`status === "ready"`). */
+  attachments?: PendingAttachment[];
 }
 
 function optimistic(conversationId: string, input: SendInput): Message {
+  const attachments = input.attachments ?? [];
+  const file = attachments.find((attachment) => attachment.kind === "file");
   return {
     id: nextLocalId(),
     threadId: conversationId,
@@ -48,6 +53,16 @@ function optimistic(conversationId: string, input: SendInput): Message {
     reactions: [],
     kind: input.audio ? "audio" : "text",
     audio: input.audio,
+    images: attachments
+      .filter((attachment) => attachment.kind === "image")
+      .map((attachment) => ({
+        uri: attachment.localUri,
+        width: attachment.width,
+        height: attachment.height,
+      })),
+    file: file
+      ? { url: file.localUri, filename: file.filename, mime: file.mime, bytes: file.bytes }
+      : undefined,
   };
 }
 
@@ -101,7 +116,15 @@ export function useSidekickChat(): SidekickChat {
         await sendVoiceTurn(conversationId, input.audio);
         return;
       }
-      await runTurn({ conversationId, text: input.text, replyToId: input.replyToId });
+      const attachmentIds = (input.attachments ?? [])
+        .map((attachment) => attachment.attachmentId)
+        .filter((id): id is string => id !== undefined);
+      await runTurn({
+        conversationId,
+        text: input.text,
+        replyToId: input.replyToId,
+        attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
+      });
     },
     onMutate: (input) => {
       if (conversationId === undefined) {

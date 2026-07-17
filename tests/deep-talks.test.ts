@@ -2,10 +2,9 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { and, eq } from "drizzle-orm";
 import {
   type Database,
+  ledger,
   memories,
   messages,
-  rewards,
-  userCosmetics,
   users,
 } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
@@ -21,15 +20,15 @@ import {
   renderSystem,
 } from "@sidekick/shared";
 import {
+  CONTEXT_BAND_REWARD_COINS,
   commitChatGptImport,
   completedDeepTalkSlugs,
   recomputeContextScore,
-  registerDevice,
   settleDeepTalks,
   stageChatGptImport,
   startDeepTalk,
 } from "@sidekick/server";
-import { generateModel, makeCaller, objectModel, textModel } from "./helpers";
+import { generateModel, makeCaller, objectModel, textModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -45,7 +44,7 @@ afterAll(async () => {
 let deviceSeq = 0;
 async function freshUser(): Promise<string> {
   deviceSeq += 1;
-  const { userId } = await registerDevice(db, { deviceId: `dt-device-${deviceSeq}` });
+  const userId = await createUser(db);
   return userId;
 }
 
@@ -119,7 +118,7 @@ test("contextBand lines key off the score band", () => {
   expect(contextBand(90).line).toContain("scary");
 });
 
-test("recompute never decreases and grants the band cosmetic on crossing 25", async () => {
+test("recompute never decreases and grants the band coins on crossing 25", async () => {
   const userId = await freshUser();
 
   // identity(4)=14 + relationship(6)=16 => 30, crosses the 25 band.
@@ -131,11 +130,16 @@ test("recompute never decreases and grants the band cosmetic on crossing 25", as
 
   const bandReward = await db
     .select()
-    .from(rewards)
-    .where(and(eq(rewards.userId, userId), eq(rewards.dedupeKey, "context-band:25")));
+    .from(ledger)
+    .where(and(eq(ledger.userId, userId), eq(ledger.dedupeKey, "context-band:25")));
   expect(bandReward).toHaveLength(1);
-  const owned = await db.select().from(userCosmetics).where(eq(userCosmetics.userId, userId));
-  expect(owned.some((c) => c.itemKey === "friendship-pin")).toBe(true);
+  expect(bandReward[0]).toMatchObject({
+    source: "event",
+    kind: "coins",
+    coins: CONTEXT_BAND_REWARD_COINS,
+  });
+  const funded = await db.select({ coins: users.coins }).from(users).where(eq(users.id, userId));
+  expect(funded[0]?.coins).toBe(CONTEXT_BAND_REWARD_COINS);
 
   // Delete every memory; the score must not fall (compaction-safe clamp).
   await db.update(memories).set({ status: "deleted" }).where(eq(memories.userId, userId));
@@ -148,8 +152,8 @@ test("start injects beats into context; completing clears the session and pays o
   const userId = await freshUser();
   const { conversationId } = await startDeepTalk(db, userId, "your-people");
 
-  const beforeUser = await db.select({ sparks: users.sparks }).from(users).where(eq(users.id, userId));
-  const sparksBefore = beforeUser[0]?.sparks ?? 0;
+  const beforeUser = await db.select({ coins: users.coins }).from(users).where(eq(users.id, userId));
+  const coinsBefore = beforeUser[0]?.coins ?? 0;
 
   // The active deep talk's beats are injected in the dynamic region of the prompt.
   const active = await activeDeepTalk(db, conversationId);
@@ -197,18 +201,18 @@ test("start injects beats into context; completing clears the session and pays o
 
   const reward = await db
     .select()
-    .from(rewards)
-    .where(and(eq(rewards.userId, userId), eq(rewards.dedupeKey, "deep-talk:your-people")));
+    .from(ledger)
+    .where(and(eq(ledger.userId, userId), eq(ledger.dedupeKey, "deep-talk:your-people")));
   expect(reward).toHaveLength(1);
-  const afterUser = await db.select({ sparks: users.sparks }).from(users).where(eq(users.id, userId));
-  expect((afterUser[0]?.sparks ?? 0)).toBeGreaterThan(sparksBefore);
+  const afterUser = await db.select({ coins: users.coins }).from(users).where(eq(users.id, userId));
+  expect((afterUser[0]?.coins ?? 0)).toBeGreaterThan(coinsBefore);
 
   // Idempotent: settling again grants nothing new.
   await settleDeepTalks(db, objectModel({ ops: [] }), conversationId, userId);
   const rewardAgain = await db
     .select()
-    .from(rewards)
-    .where(and(eq(rewards.userId, userId), eq(rewards.dedupeKey, "deep-talk:your-people")));
+    .from(ledger)
+    .where(and(eq(ledger.userId, userId), eq(ledger.dedupeKey, "deep-talk:your-people")));
   expect(rewardAgain).toHaveLength(1);
 });
 

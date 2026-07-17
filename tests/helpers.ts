@@ -3,14 +3,22 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { type LanguageModel, type TranscriptionModel, simulateReadableStream } from "ai";
 import { MockLanguageModelV2, MockTranscriptionModelV2 } from "ai/test";
-import { conversations, type Database } from "@sidekick/db";
+import {
+  conversations,
+  type Database,
+  notificationPreferences,
+  users,
+} from "@sidekick/db";
 import {
   type AdDeviceSignals,
   type AdNetworkClient,
+  type AuthEmailSender,
   LocalStorage,
+  type SmsSender,
   type Storage,
   appRouter,
   type BackgroundScheduler,
+  createSession,
 } from "@sidekick/server";
 
 /**
@@ -80,7 +88,10 @@ export type CallerOverrides = {
   storage?: Storage;
   captionModel?: LanguageModel;
   transcriptionModel?: TranscriptionModel;
+  sessionModel?: LanguageModel;
   adNetwork?: AdNetworkClient | null;
+  authEmail?: AuthEmailSender;
+  sms?: SmsSender;
   device?: AdDeviceSignals;
   installationId?: string;
 };
@@ -98,14 +109,41 @@ export function makeCaller(
     model,
     flags: {},
     userId,
+    sessionId: null,
     scheduleBackground: opts.scheduleBackground ?? (() => {}),
     storage: opts.storage ?? testStorage(),
     captionModel: opts.captionModel ?? model,
     transcriptionModel: opts.transcriptionModel,
+    sessionModel: opts.sessionModel ?? model,
     adNetwork: opts.adNetwork ?? null,
+    authEmail: opts.authEmail ?? { sendOtp: async () => {} },
+    sms: opts.sms ?? { sendCode: async () => {}, verifyCode: async () => false },
     device: opts.device,
     installationId: opts.installationId,
   });
+}
+
+/**
+ * Seed a bare signed-in user (+ notification preferences), the way a fresh
+ * sign-in does. Returns the userId — the credential tests build on.
+ */
+export async function createUser(db: Database): Promise<string> {
+  const inserted = await db.insert(users).values({}).returning({ id: users.id });
+  const user = inserted[0];
+  if (!user) {
+    throw new Error("failed to create user");
+  }
+  await db.insert(notificationPreferences).values({ userId: user.id });
+  return user.id;
+}
+
+/** A signed-in user plus a live session token for it. */
+export async function createUserSession(
+  db: Database,
+): Promise<{ userId: string; token: string }> {
+  const userId = await createUser(db);
+  const { token } = await createSession(db, userId);
+  return { userId, token };
 }
 
 export async function createConversation(db: Database, userId: string): Promise<string> {

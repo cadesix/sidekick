@@ -11,8 +11,6 @@ import {
   type PersonalityArtifact,
 } from '@sidekick/core';
 
-import { useGoals } from './goals';
-
 // Persisted state for the Star Chat conversation (docs/STAR-CHAT.md). Holds the
 // generative-with-a-floor ConvoState (phase + per-field confidence), the message
 // log (so a user can dive out and resume), and the final artifact.
@@ -35,9 +33,9 @@ type StarChatStore = {
   // so a cold-launch open can't clobber an in-progress persisted conversation.
   hydrated: boolean;
 
-  // begin (idempotent): seed ConvoState from the funnel goals if we haven't
-  // started yet, so goal arrives pre-known and never re-asked.
-  start: () => void;
+  // begin (idempotent): seed ConvoState, warm-starting from the user's chosen
+  // goal slugs (from the server goals list) so goal arrives pre-known.
+  start: (goals?: string[]) => void;
   pushMsg: (m: StarChatMsg) => void;
   applyTurn: (turn: ControllerTurn) => void;
   advance: () => void;
@@ -71,9 +69,8 @@ export const useStarChat = create<StarChatStore>()(
       done: false,
       hydrated: false,
 
-      start: () => {
+      start: (goals = []) => {
         if (get().convo) return; // resume — don't wipe an in-progress conversation
-        const goals = useGoals.getState().chosen;
         set({ convo: initConvoState({ goals }), msgs: [], artifact: null, done: false });
       },
 

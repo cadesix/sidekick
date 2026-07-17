@@ -6,9 +6,8 @@ import {
   type Services,
   buildApp,
   createUpload,
-  registerDevice,
 } from "@sidekick/server";
-import { textModel } from "./helpers";
+import { textModel, createUser, createUserSession } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -31,14 +30,17 @@ function servicesFor(storage: LocalStorage): Services {
     scheduleBackground: () => {},
     storage,
     captionModel: textModel("ok"),
+    sessionModel: textModel("ok"),
     adNetwork: null,
+    authEmail: { sendOtp: async () => {} },
+    sms: { sendCode: async () => {}, verifyCode: async () => false },
   };
 }
 
 /** A stored voice note, plus the app that serves it. */
 async function storedVoice(): Promise<{ app: ReturnType<typeof buildApp>; url: string }> {
   const storage = new LocalStorage("/tmp/sidekick-test-blob-serving", "http://localhost:8787");
-  const { userId } = await registerDevice(db, { deviceId: "blob-serving" });
+  const userId = await createUser(db);
   const upload = await createUpload(db, storage, userId, {
     kind: "audio",
     mime: "audio/x-m4a",
@@ -93,4 +95,69 @@ test("a range past the end falls back to the whole object", async () => {
 
   expect(response.status).toBe(200);
   expect(new Uint8Array(await response.arrayBuffer())).toEqual(VOICE);
+});
+
+/** An authed file reservation + the app that serves its PUT target. */
+async function reservedFile(dir: string, bytes: number) {
+  const storage = new LocalStorage(dir, "http://localhost:8787");
+  const { userId, token } = await createUserSession(db);
+  const upload = await createUpload(db, storage, userId, {
+    kind: "file",
+    mime: "text/plain",
+    bytes,
+    filename: "notes.txt",
+  });
+  return { app: buildApp(servicesFor(storage)), storage, token, upload };
+}
+
+/**
+ * The presigned PUT is the DOS surface: a client can declare a small size at
+ * `createUploadUrl` then try to stream a huge body. The route caps the write at
+ * the reserved size.
+ */
+test("the blob PUT rejects a body larger than the reserved size", async () => {
+  const { app, storage, token, upload } = await reservedFile("/tmp/sidekick-test-blob-put-big", 8);
+
+  const response = await app.request(`http://localhost:8787/blob/${upload.storageKey}`, {
+    method: "PUT",
+    headers: { authorization: `Bearer ${token}`, "content-type": "text/plain" },
+    body: new Uint8Array(64),
+  });
+
+  expect(response.status).toBe(413);
+  await expect(storage.getObject(upload.storageKey)).rejects.toThrow();
+});
+
+test("the blob PUT stores a body within the reserved size", async () => {
+  const { app, storage, token, upload } = await reservedFile("/tmp/sidekick-test-blob-put-ok", 4);
+  const body = new Uint8Array([1, 2, 3, 4]);
+
+  const response = await app.request(`http://localhost:8787/blob/${upload.storageKey}`, {
+    method: "PUT",
+    headers: { authorization: `Bearer ${token}`, "content-type": "text/plain" },
+    body,
+  });
+
+  expect(response.status).toBe(204);
+  expect(new Uint8Array(await storage.getObject(upload.storageKey))).toEqual(body);
+});
+
+test("the blob PUT refuses a key the caller didn't reserve", async () => {
+  const { app, token } = await reservedFile("/tmp/sidekick-test-blob-put-mine", 4);
+  const otherStorage = new LocalStorage("/tmp/sidekick-test-blob-put-theirs", "http://localhost:8787");
+  const otherUser = await createUser(db);
+  const foreign = await createUpload(db, otherStorage, otherUser, {
+    kind: "file",
+    mime: "text/plain",
+    bytes: 4,
+    filename: "secret.txt",
+  });
+
+  const response = await app.request(`http://localhost:8787/blob/${foreign.storageKey}`, {
+    method: "PUT",
+    headers: { authorization: `Bearer ${token}`, "content-type": "text/plain" },
+    body: new Uint8Array([9, 9, 9, 9]),
+  });
+
+  expect(response.status).toBe(404);
 });

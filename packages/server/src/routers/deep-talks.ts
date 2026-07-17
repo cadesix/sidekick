@@ -1,5 +1,5 @@
 import { and, eq, like } from "drizzle-orm";
-import { type Database, rewards, users } from "@sidekick/db";
+import { type Database, ledger, users } from "@sidekick/db";
 import {
   DEEP_TALKS,
   chatgptImportCommitInput,
@@ -10,6 +10,7 @@ import {
   isDeepTalkUnlocked,
 } from "@sidekick/shared";
 import { protectedProcedure, router } from "../trpc";
+import { assertConversationOwned } from "../chat/turn";
 import { activeDeepTalkForUser, settleDeepTalks, startDeepTalk } from "../deep-talks/session";
 import { commitChatGptImport, stageChatGptImport } from "../deep-talks/import";
 
@@ -32,9 +33,9 @@ export const deepTalksRouter = router({
   shelf: protectedProcedure.query(async ({ ctx }) => {
     const score = await contextScore(ctx.db, ctx.userId);
     const completedRows = await ctx.db
-      .select({ dedupeKey: rewards.dedupeKey })
-      .from(rewards)
-      .where(and(eq(rewards.userId, ctx.userId), like(rewards.dedupeKey, "deep-talk:%")));
+      .select({ dedupeKey: ledger.dedupeKey })
+      .from(ledger)
+      .where(and(eq(ledger.userId, ctx.userId), like(ledger.dedupeKey, "deep-talk:%")));
     const completed = new Set(completedRows.map((r) => r.dedupeKey.slice("deep-talk:".length)));
     const active = await activeDeepTalkForUser(ctx.db, ctx.userId);
 
@@ -60,9 +61,10 @@ export const deepTalksRouter = router({
 
   finish: protectedProcedure
     .input(deepTalkFinishInput)
-    .mutation(({ ctx, input }) =>
-      settleDeepTalks(ctx.db, ctx.model, input.conversationId, ctx.userId),
-    ),
+    .mutation(async ({ ctx, input }) => {
+      await assertConversationOwned(ctx.db, input.conversationId, ctx.userId);
+      return settleDeepTalks(ctx.db, ctx.model, input.conversationId, ctx.userId);
+    }),
 
   importStage: protectedProcedure
     .input(chatgptImportStageInput)

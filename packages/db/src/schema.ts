@@ -60,16 +60,24 @@ export const memoryKind = pgEnum("memory_kind", [
 ]);
 
 /**
- * A user. Onboarding-derived columns (name, ageBracket, gender, personality,
- * sidekickName, sidekickColor) are nullable because an account exists from the
- * first anonymous device registration, before the funnel fills them in
- * (01-architecture.md "anonymous device account"). The funnel's cold-start
- * transaction (user-memory.md §6) populates them.
+ * A user. Created by the first successful sign-in (19-auth.md) — email/phone
+ * come from the provider identity. Onboarding-derived columns (name, ageBracket,
+ * gender, personality, sidekickName, sidekickColor) are nullable because a fresh
+ * signup has a blank profile until the funnel's cold-start transaction
+ * (user-memory.md §6) populates them.
+ *
+ * `email`/`phone` are NOT unique: identity is keyed on `(provider,
+ * providerAccountId)` in `accounts`. A verified email is shared by linking (a new
+ * trusted provider carrying the same *verified* email attaches to the existing
+ * user — see `findOrCreateUserForProvider`), but an *unverified* email can still
+ * coexist as a separate weak identity, so the column can hold duplicates. A unique
+ * constraint would make those legitimate cases fail with a unique violation.
  */
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
-  email: text("email").unique(),
-  passwordHash: text("password_hash"),
+  email: text("email"),
+  phone: text("phone"),
+  emailVerified: timestamp("email_verified", { withTimezone: true, mode: "date" }),
   name: text("name"),
   ageBracket: text("age_bracket"),
   gender: text("gender"),
@@ -96,19 +104,22 @@ export const users = pgTable("users", {
     withTimezone: true,
     mode: "date",
   }),
-  /**
-   * Soft "sparks" currency (04 spinner pity-timer). Granted as a spinner fallback
-   * and spent to redeem a chosen cosmetic. No purchasable currency in v1.
-   */
-  sparks: integer("sparks").notNull().default(0),
+  coins: integer("coins").notNull().default(0),
+  bond: integer("bond").notNull().default(10),
+  streakCount: integer("streak_count").notNull().default(0),
+  streakLastDay: date("streak_last_day"),
+  astral: jsonb("astral"),
+  skin: jsonb("skin"),
+  stateVersion: bigint("state_version", { mode: "number" }).notNull().default(1),
   createdAt: now(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });
 
 /**
- * Anonymous auth: one row per device, mapping an opaque bearer token to a user.
- * Registration is idempotent on deviceId, so a reinstall-less relaunch reuses
- * the same identity.
+ * Post-auth device metadata (19-auth.md): one row per installation, mapping a
+ * physical device to the user currently signed in on it. Push-token registration
+ * resolves through `(userId, deviceId)`. Upserted on `deviceId`, repointing
+ * `userId` so a device that signs into a different account moves with it.
  */
 export const devices = pgTable("devices", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -117,9 +128,66 @@ export const devices = pgTable("devices", {
     .references(() => users.id),
   deviceId: text("device_id").notNull().unique(),
   publicKey: text("public_key"),
-  token: text("token").notNull().unique(),
   createdAt: now(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+});
+
+/**
+ * Session credential (19-auth.md): the SHA-256 hash of an opaque bearer token,
+ * never the token itself. 30-day sliding expiry — every authed request pushes
+ * `expiresAt` forward. Logout soft-deletes via `deletedAt`.
+ */
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    hashedToken: text("hashed_token").notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
+    createdAt: now(),
+  },
+  (t) => [index("auth_sessions_user_id_idx").on(t.userId)],
+);
+
+/**
+ * A provider identity mapped to a user (19-auth.md). `(provider,
+ * providerAccountId)` is unique — the find-or-create key that signs an existing
+ * identity in or creates a new user. No merging.
+ */
+export const accounts = pgTable(
+  "accounts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    providerAccountId: text("provider_account_id").notNull(),
+    createdAt: now(),
+  },
+  (t) => [
+    uniqueIndex("accounts_provider_provider_account_id_idx").on(t.provider, t.providerAccountId),
+    index("accounts_user_id_idx").on(t.userId),
+  ],
+);
+
+/**
+ * Email OTP codes (19-auth.md). The SHA-256 hash of a 6-digit code with a 10-min
+ * expiry; prior codes are invalidated on re-request and verify consumes atomically
+ * with an `attempts < 5` guard.
+ */
+export const emailVerificationCodes = pgTable("email_verification_codes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  email: text("email").notNull(),
+  hashedCode: text("hashed_code").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  consumedAt: timestamp("consumed_at", { withTimezone: true, mode: "date" }),
+  invalidatedAt: timestamp("invalidated_at", { withTimezone: true, mode: "date" }),
+  createdAt: now(),
 });
 
 export const conversations = pgTable("conversations", {
@@ -384,6 +452,7 @@ export const checkIns = pgTable(
       .references(() => users.id),
     date: date("date").notNull(),
     status: text("status").notNull().default("pending"),
+    source: text("source").notNull().default("chat"),
     openerMessageId: bigint("opener_message_id", { mode: "number" }),
     completedAt: timestamp("completed_at", { withTimezone: true, mode: "date" }),
     createdAt: now(),
@@ -620,11 +689,13 @@ export const purchaseIntents = pgTable(
 );
 
 /**
- * A cosmetic a user owns (04). The catalog itself is code (`@sidekick/shared`
- * COSMETIC_CATALOG), so ownership references a stable `itemKey` rather than a
+ * A cosmetic a user owns (plan 20). The catalog itself is code (the
+ * `@sidekick/core` catalog), so ownership references a stable `itemKey` — now a
+ * renderKey (`${slot}-${variantId}` / `${slot}-c<hex>`) — rather than a
  * catalog-row FK. `slot` is denormalized so "unequip everything in this slot"
- * is one indexed write. Unique per (user, item) — re-granting a dupe is a no-op
- * and the roller instead awards sparks (04 pity timer).
+ * is one indexed write. Unique per (user, item) gives purchase/grant
+ * idempotency — re-granting a dupe is a no-op. `source` records how the item
+ * was acquired; the price paid lives on the ledger row.
  */
 export const userCosmetics = pgTable(
   "user_cosmetics",
@@ -635,6 +706,7 @@ export const userCosmetics = pgTable(
       .references(() => users.id),
     itemKey: text("item_key").notNull(),
     slot: text("slot").notNull(),
+    source: text("source").notNull().default("reward"),
     equipped: boolean("equipped").notNull().default(false),
     acquiredAt: timestamp("acquired_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
     createdAt: now(),
@@ -646,16 +718,21 @@ export const userCosmetics = pgTable(
 );
 
 /**
- * Server-authoritative reward grants (04). The generic grant path every reward
- * source flows through: streak milestones, the daily spinner, and later
- * deep-talk `source:'event'` bonuses. `dedupeKey` makes every grant idempotent
- * (e.g. `spin:<checkInId>`, `streak:7`, `event:<sessionId>`), so a cron re-run
- * or a background-then-reopen never double-grants. `revealedAt` is null until
- * the client has animated the result — the spinner shows a granted-but-unseen
- * reward exactly once.
+ * The single signed ledger every coin and item movement flows through (plan 20
+ * decision 2). Grants insert positive `coins` rows, spends insert negative ones,
+ * always in the same transaction as the `users.coins` update — so the invariant
+ * is simply `users.coins = sum(ledger.coins)`. Even the opening balance is a row
+ * (`starter:coins`, +150 at registration), leaving no special cases. `dedupeKey`
+ * (unique per user) makes every movement idempotent — cron re-runs and client
+ * retries are no-ops; keys look like `starter:coins`, `daily-box:<date>`,
+ * `session:<sessionId>`, `purchase:<renderKey>`, `dev-adjust:<uuid>`. `coins` is
+ * nullable because item-kind rows carry no coins. `meta` holds the full awarded
+ * payload for structured rewards (e.g. daily-box contents + UTC claim instant) so
+ * an idempotent replay returns exactly what was granted. `revealedAt` is null
+ * until the client has animated the result.
  */
-export const rewards = pgTable(
-  "rewards",
+export const ledger = pgTable(
+  "ledger",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
@@ -665,9 +742,61 @@ export const rewards = pgTable(
     dedupeKey: text("dedupe_key").notNull(),
     kind: text("kind").notNull(),
     itemKey: text("item_key"),
-    sparks: integer("sparks"),
+    coins: integer("coins"),
+    meta: jsonb("meta"),
     revealedAt: timestamp("revealed_at", { withTimezone: true, mode: "date" }),
     createdAt: now(),
   },
-  (t) => [uniqueIndex("rewards_user_id_dedupe_key_idx").on(t.userId, t.dedupeKey)],
+  (t) => [uniqueIndex("ledger_user_id_dedupe_key_idx").on(t.userId, t.dedupeKey)],
 );
+
+/**
+ * A user's progress through a guided (star) session (plan 20 decision 9). The
+ * server holds the authoritative transcript — every answer is posted here — so
+ * `extract`/`complete` operate on server-stored `answers` plus the scripted asks
+ * from core's `SESSIONS` catalog. `beat` is the current step; `done` guards the
+ * one-way completion transition. Unique per (user, session).
+ */
+export const guidedSessions = pgTable(
+  "guided_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    sessionId: text("session_id").notNull(),
+    beat: integer("beat").notNull().default(0),
+    answers: jsonb("answers").notNull().default([]),
+    done: boolean("done").notNull().default(false),
+    completedAt: timestamp("completed_at", { withTimezone: true, mode: "date" }),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("guided_sessions_user_id_session_id_idx").on(t.userId, t.sessionId)],
+);
+
+/** Extracted profile key/values from guided sessions (plan 20). Unique per (user, key). */
+export const sessionFields = pgTable(
+  "session_fields",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    key: text("key").notNull(),
+    value: text("value").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("session_fields_user_id_key_idx").on(t.userId, t.key)],
+);
+
+/** Verbatim captures from guided sessions (plan 20). */
+export const sessionNotes = pgTable("session_notes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  tag: text("tag").notNull(),
+  text: text("text").notNull(),
+  sessionId: text("session_id"),
+  createdAt: now(),
+});

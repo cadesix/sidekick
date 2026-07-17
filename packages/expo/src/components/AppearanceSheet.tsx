@@ -1,27 +1,23 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useEffect, useMemo, useState } from 'react';
-import { Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { buildProducts, type Product } from '@sidekick/core';
+import { SLOT_LABEL, WARDROBE_SLOTS, type Product } from '@sidekick/core';
 
-import { MANIFEST } from '../three/cosmetics-manifest';
+import { setSkinColor } from '../lib/api';
+import { PRODUCTS } from '../lib/products';
+import { patchSnapshot, useSnapshot } from '../lib/state';
 import { shopRender } from '../three/shop-renders';
-import { loadSettings, type SidekickSettings } from '../three/settings';
+import { loadSettings, saveSettings, type SidekickSettings } from '../three/settings';
 import { useDeferredFlag } from '../lib/useDeferredFlag';
+import { takeOffProduct, wearProduct } from '../lib/wardrobe-sync';
 import { useCosmeticVersion } from '../store/cosmeticVersion';
-import { useEconomy } from '../store/economy';
-import { applySkin, currentSkinId, SKIN_COLORS, type SkinColor } from '../store/skin';
-import {
-  SHOP_COLORS,
-  SLOT_LABEL,
-  WARDROBE_SLOTS,
-  type CosmeticsControls,
-  type Wardrobe,
-  type WardrobeSlot,
-} from '../three/wardrobe';
+import { applySkin, currentSkinId, saveSkinMirror, SKIN_COLORS, type SkinColor } from '../store/skin';
+import { type CosmeticsControls, type Wardrobe } from '../three/wardrobe';
 
 // Appearance / Closet — opened from the avatar button. Presented like the Shop
 // (host swaps to the studio backdrop and frames the character above), but this
@@ -49,7 +45,13 @@ export function AppearanceSheet({
   onSkinChange?: (settings: SidekickSettings) => void;
 }) {
   const insets = useSafeAreaInsets();
-  const inventory = useEconomy((s) => s.inventory);
+  const queryClient = useQueryClient();
+  // server-driven progression (plan 20): the owned set comes from the snapshot
+  const snapshot = useSnapshot().data;
+  const ownedKeys = useMemo(
+    () => new Set((snapshot?.inventory ?? []).map((item) => item.itemKey)),
+    [snapshot],
+  );
 
   const [wardrobe, setWardrobe] = useState<Wardrobe | null>(null);
   const [skin, setSkin] = useState<string | null>(null);
@@ -77,20 +79,10 @@ export function AppearanceSheet({
   // renders immediately.
   const showCloset = useDeferredFlag(open, { onDelay: 340 });
 
-  // full catalog (static, manifest-derived), then keep only owned items
-  const products = useMemo(
-    () =>
-      buildProducts({
-        slots: WARDROBE_SLOTS,
-        slotLabel: SLOT_LABEL,
-        colors: SHOP_COLORS,
-        manifest: MANIFEST,
-      }),
-    [],
-  );
+  // full catalog (static, core data + bundled art), then keep only owned items
   const owned = useMemo(
-    () => products.filter((p) => inventory.includes(p.renderKey)),
-    [products, inventory],
+    () => PRODUCTS.filter((p) => ownedKeys.has(p.renderKey)),
+    [ownedKeys],
   );
 
   const sync = () => {
@@ -98,7 +90,7 @@ export function AppearanceSheet({
     useCosmeticVersion.getState().bump(); // regenerate the live head avatars
   };
   const isWorn = (p: Product) => {
-    const st = wardrobe?.[p.slot as WardrobeSlot];
+    const st = wardrobe?.[p.slot];
     if (!st?.equipped) return false;
     return p.variantId
       ? st.variantId === p.variantId && !st.color
@@ -106,16 +98,39 @@ export function AppearanceSheet({
   };
   const toggleWear = (p: Product) => {
     if (!controls) return;
-    if (isWorn(p)) controls.remove(p.slot as WardrobeSlot);
-    else if (p.variantId) controls.equipVariant(p.slot as WardrobeSlot, p.variantId);
-    else if (p.color) controls.setColor(p.slot as WardrobeSlot, p.color);
-    sync();
+    if (isWorn(p)) takeOffProduct(queryClient, controls, p, sync);
+    else wearProduct(queryClient, controls, p, sync);
   };
+  // scene + mirror first, then the setSkin mutation; a failure rolls both back
+  // to the colors the server last approved and surfaces why
   const pickSkin = (c: SkinColor) => {
+    const previous = loadSettings();
     setSkin(c.id);
-    const next = applySkin(c.id); // persist; home re-applies to the live scene
+    const next = applySkin(c.id); // local scene state; home re-applies it live
     onSkinChange?.(next);
     useCosmeticVersion.getState().bump(); // avatar body color follows the skin
+    saveSkinMirror({ body: c.body, shadow: c.shadow });
+    setSkinColor(c.body, c.shadow)
+      .then(({ stateVersion }) =>
+        patchSnapshot(queryClient, { stateVersion, skin: { body: c.body, shadow: c.shadow } }),
+      )
+      .catch((error: unknown) => {
+        setSkin(currentSkinId(previous));
+        const rolled: SidekickSettings = {
+          ...loadSettings(),
+          celBodyColor: previous.celBodyColor,
+          celShadowColor: previous.celShadowColor,
+        };
+        saveSettings(rolled);
+        onSkinChange?.(rolled);
+        useCosmeticVersion.getState().bump();
+        saveSkinMirror({ body: previous.celBodyColor, shadow: previous.celShadowColor });
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : 'something went wrong — try again';
+        Alert.alert("Couldn't save that color", message);
+      });
   };
 
   return (
@@ -177,7 +192,7 @@ export function AppearanceSheet({
           {/* closet: owned items, tap to wear / take off (deferred until the
               sheet settles) */}
           <Text style={[styles.sectionTitle, { marginTop: 32 }]}>Closet</Text>
-          {!showCloset ? null : owned.length ? (
+          {!showCloset || snapshot == null ? null : owned.length ? (
             WARDROBE_SLOTS.map((slot) => {
               const items = owned.filter((p) => p.slot === slot);
               if (!items.length) return null;

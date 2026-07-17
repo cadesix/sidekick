@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Dimensions, Keyboard, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -10,6 +11,8 @@ import {
   buildCardPrompt,
   buildControllerPrompt,
   flattenFields,
+  islandOpensWith,
+  isSessionDone,
   parseArtifact,
   parseControllerTurn,
   phaseDef,
@@ -20,10 +23,11 @@ import {
 } from '@sidekick/core';
 
 import { MSG_SHADOW, STREAM_GAP_MS, StreamedText, TypingDots, streamDurationMs } from './chat-stream';
-import { useSidekickContext } from '../store/context';
-import { useGoals } from '../store/goals';
-import { useStarChat } from '../store/star-chat';
+import { completeSession } from '../lib/api';
 import { llm } from '../lib/openai';
+import { patchSessionComplete, snapshotSessions, SNAPSHOT_QUERY_KEY, type Snapshot } from '../lib/state';
+import { useSidekickContext } from '../store/context';
+import { useStarChat } from '../store/star-chat';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
@@ -79,11 +83,14 @@ let cardChain: Promise<void> = Promise.resolve();
 
 export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
   const msgs = useStarChat((s) => s.msgs);
   const artifact = useStarChat((s) => s.artifact);
   const convo = useStarChat((s) => s.convo);
   const hydrated = useStarChat((s) => s.hydrated);
-  const goalsHydrated = useGoals((s) => s.hydrated);
+  // read the server snapshot from cache when we need the current astral / whether
+  // a chapter's session is already completed (progression is server-owned now).
+  const snapshot = () => queryClient.getQueryData<Snapshot>(SNAPSHOT_QUERY_KEY);
 
   const [stage, setStage] = useState<Stage>('chat');
   const [input, setInput] = useState('');
@@ -175,8 +182,10 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
   // in-progress persisted conversation or seed without the funnel goals):
   // fresh → opening + first question; resume → jump to where they were.
   useEffect(() => {
-    if (!hydrated || !goalsHydrated || started.current) return;
+    if (!hydrated || started.current) return;
     started.current = true;
+    // TODO(warm-start): goals moved server-side (fetchGoals); pass the user's
+    // chosen goal slugs here to pre-seed `goal` + the motivation hypothesis again.
     useStarChat.getState().start();
     const st = useStarChat.getState();
     streamFrom.current = st.msgs.length; // whatever's already here renders plain
@@ -211,7 +220,7 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
       void runController();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, goalsHydrated]);
+  }, [hydrated]);
 
   const recentTranscript = () =>
     useStarChat
@@ -232,14 +241,21 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
       const def = sessionForPhase(phase);
       const c = useStarChat.getState().convo;
       if (!def || !c) return;
-      const prior = useSidekickContext.getState().astral;
-      if (useSidekickContext.getState().isSessionDone(def.id)) return; // already completed
+      if (isSessionDone(snapshotSessions(snapshot()), def.id)) return; // already completed server-side
+      const prior = snapshot()?.astral ?? null;
       const raw = await llm(buildCardPrompt(c, prior), 'write it now.', 460);
       const art = raw ? parseArtifact(raw) : null;
       const card = art ? { archetype: art.archetype, reading: art.reading, traits: art.traits } : null;
-      // guard again post-await (idempotent): never pay bond/coins twice for a chapter
-      if (useSidekickContext.getState().isSessionDone(def.id)) return;
-      useSidekickContext.getState().completeSession(def, { fields: flattenFields(c), notes: [] }, card);
+      if (isSessionDone(snapshotSessions(snapshot()), def.id)) return; // guard post-await (idempotent)
+      try {
+        // server pays catalog rewards by sessionId + persists the extraction/card;
+        // patch the snapshot so bond, the card, and island unlock update at home.
+        const result = await completeSession(def.id, { fields: flattenFields(c), notes: [], astral: card });
+        patchSessionComplete(queryClient, def.id, result);
+        if (islandOpensWith(def.id)) useSidekickContext.getState().markUnseenIsland(def.id);
+      } catch {
+        // offline / server error: the chapter re-completes on the next resume
+      }
     });
   };
 
@@ -259,13 +275,19 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
     // never be overwritten by a still-pending earlier-chapter card write (final
     // card must win). Idempotent: the isSessionDone check + completeSession run
     // with no await between them, so a dive-out + reopen double-finalize pays once.
-    cardChain = cardChain.then(() => {
+    cardChain = cardChain.then(async () => {
       // fully idempotent: a dive-out + reopen can start a second finalize. Both
       // route through this one chain, so the first sets done and any later one
       // sees it and skips — no double reward and no re-writing the reveal artifact.
       if (useStarChat.getState().done) return;
-      if (def && c && !useSidekickContext.getState().isSessionDone(def.id)) {
-        useSidekickContext.getState().completeSession(def, { fields: flattenFields(c), notes: [] }, card);
+      if (def && c && !isSessionDone(snapshotSessions(snapshot()), def.id)) {
+        try {
+          const result = await completeSession(def.id, { fields: flattenFields(c), notes: [], astral: card });
+          patchSessionComplete(queryClient, def.id, result);
+          if (islandOpensWith(def.id)) useSidekickContext.getState().markUnseenIsland(def.id);
+        } catch {
+          // offline / server error: the reading still shows; completion retries on resume
+        }
       }
       useStarChat.getState().finish(art);
     });

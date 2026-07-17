@@ -24,6 +24,19 @@ export interface AudioAttachment {
 	waveform: number[];
 }
 
+export interface ImageAttachment {
+	uri: string;
+	width?: number;
+	height?: number;
+}
+
+export interface FileAttachment {
+	url: string;
+	filename: string;
+	mime: string;
+	bytes: number;
+}
+
 export interface Message {
 	id: string;
 	threadId: string;
@@ -35,6 +48,8 @@ export interface Message {
 	reactions: Reaction[];
 	kind: MessageKind;
 	audio?: AudioAttachment;
+	images: ImageAttachment[];
+	file?: FileAttachment;
 }
 
 export interface Thread {

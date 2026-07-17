@@ -6,10 +6,9 @@ import {
   ScriptedAdClient,
   type SponsoredAd,
   markMessagesSensitive,
-  registerDevice,
   runAdDecision,
 } from "@sidekick/server";
-import { createConversation } from "./helpers";
+import { createConversation, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -34,7 +33,7 @@ const SAMPLE_AD: SponsoredAd = {
 };
 
 async function eligibleUser(deviceId: string): Promise<string> {
-  const { userId } = await registerDevice(db, { deviceId });
+  const userId = await createUser(db);
   await db
     .update(users)
     .set({ ageBracket: "25-34", personalizedAdsConsent: true, timezone: "America/New_York" })

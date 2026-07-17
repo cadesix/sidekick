@@ -10,8 +10,7 @@ import {
 import { createTestDb } from "@sidekick/db/testing";
 import { type TailMessage, buildContextView } from "@sidekick/shared";
 import { applyCompaction, runCompaction, selectBoundary } from "@sidekick/server";
-import { registerDevice } from "@sidekick/server";
-import { createConversation, generateModel } from "./helpers";
+import { createConversation, generateModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -117,7 +116,7 @@ async function insertMessage(
 }
 
 test("the assembler omits the summary block when none exists and caches persona + memory", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "asm-1" });
+  const userId = await createUser(db);
   await db.update(users).set({ name: "Maya" }).where(eq(users.id, userId));
   const conversationId = await createConversation(db, userId);
   await insertMessage(conversationId, "user", "hi", 1);
@@ -139,7 +138,7 @@ test("the assembler omits the summary block when none exists and caches persona 
 });
 
 test("the assembler includes the summary block, excludes ads, and trims the tail to the watermark", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "asm-2" });
+  const userId = await createUser(db);
   await db.update(users).set({ name: "Maya" }).where(eq(users.id, userId));
   const conversationId = await createConversation(db, userId);
   const m1 = await insertMessage(conversationId, "user", "old one", 1);
@@ -168,7 +167,7 @@ test("the assembler includes the summary block, excludes ads, and trims the tail
 });
 
 test("applyCompaction resolves a two-writer race: one insert wins, the loser discards", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "race-1" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const m1 = await insertMessage(conversationId, "user", "a", 1);
   const base = await db
@@ -198,7 +197,7 @@ test("applyCompaction resolves a two-writer race: one insert wins, the loser dis
 });
 
 test("applyCompaction refuses a watermark past the extraction watermark", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "race-2" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   await expect(
     applyCompaction(db, {
@@ -214,7 +213,7 @@ test("applyCompaction refuses a watermark past the extraction watermark", async 
 });
 
 test("runCompaction clamps the new summary to the extraction watermark", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "run-1" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const ids: number[] = [];
   for (let i = 0; i < 6; i++) {
@@ -236,7 +235,7 @@ test("runCompaction clamps the new summary to the extraction watermark", async (
 });
 
 test("runCompaction does nothing until extraction has run", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "run-2" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   for (let i = 0; i < 6; i++) {
     await insertMessage(conversationId, "user", `u${i}`, 3000);

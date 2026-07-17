@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, resolve, sep } from "node:path";
 import type { Storage, UploadTarget } from "./index";
 
 /**
@@ -18,7 +18,11 @@ export class LocalStorage implements Storage {
   }
 
   private pathFor(storageKey: string): string {
-    return join(this.root, storageKey);
+    const path = resolve(this.root, storageKey);
+    if (path !== this.root && !path.startsWith(this.root + sep)) {
+      throw new Error("invalid storage key");
+    }
+    return path;
   }
 
   async createUploadTarget(input: { storageKey: string; mime: string }): Promise<UploadTarget> {

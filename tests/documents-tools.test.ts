@@ -3,8 +3,7 @@ import { desc, eq } from "drizzle-orm";
 import { type Database, documents, documentVersions, folders } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
 import { allTools, dispatchTool, type SidekickTool, type ToolContext } from "@sidekick/shared";
-import { registerDevice } from "@sidekick/server";
-import { createConversation } from "./helpers";
+import { createConversation, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -26,7 +25,7 @@ function tool(name: string): SidekickTool {
 }
 
 async function ctxFor(deviceId: string): Promise<{ ctx: ToolContext; userId: string }> {
-  const { userId } = await registerDevice(db, { deviceId });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   return { ctx: { db, userId, conversationId }, userId };
 }

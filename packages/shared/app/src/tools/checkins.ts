@@ -1,35 +1,14 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { actionItems, checkIns, goals, progressEvents } from "@sidekick/db";
-import type { Database } from "@sidekick/db";
+import { actionItems, checkIns } from "@sidekick/db";
 import { cadenceSchema } from "../goals/catalog";
+import { activeActionItem, logGoalProgress } from "../goals/checkin";
 import { localDate } from "../goals/dates";
 import { bumpMemoryVersion, userTimezone } from "../users";
 import { defineTool, type SidekickTool } from "./types";
 
 /** Statuses of a check-in that is still open for today. */
 const OPEN_CHECKIN_STATUSES = ["pending", "opened"] as const;
-
-async function activeActionItem(db: Database, userId: string, goalId: string) {
-  const rows = await db
-    .select({
-      id: actionItems.id,
-      cadence: actionItems.cadence,
-      label: actionItems.label,
-    })
-    .from(actionItems)
-    .innerJoin(goals, eq(actionItems.goalId, goals.id))
-    .where(
-      and(
-        eq(actionItems.goalId, goalId),
-        eq(goals.userId, userId),
-        eq(actionItems.status, "active"),
-      ),
-    )
-    .orderBy(desc(actionItems.createdAt))
-    .limit(1);
-  return rows[0];
-}
 
 export const checkinsTools: SidekickTool[] = [
   defineTool({
@@ -46,41 +25,16 @@ export const checkinsTools: SidekickTool[] = [
       note: z.string().optional().describe("One short phrase of color, e.g. 'ran 3mi, knee sore'"),
     }),
     execute: async ({ goal_id, date, result, note }, { db, userId }) => {
-      const item = await activeActionItem(db, userId, goal_id);
-      if (!item) {
-        return { ok: false, error: "no active action item for that goal" };
+      const logged = await logGoalProgress(db, userId, {
+        goalId: goal_id,
+        date,
+        outcome: result,
+        note,
+        source: "inferred",
+      });
+      if (!logged.ok) {
+        return { ok: false, error: logged.error };
       }
-
-      const checkInRows = await db
-        .select({ id: checkIns.id })
-        .from(checkIns)
-        .where(and(eq(checkIns.userId, userId), eq(checkIns.date, date)))
-        .limit(1);
-      const checkInId = checkInRows[0]?.id ?? null;
-
-      const existing = await db
-        .select({ id: progressEvents.id })
-        .from(progressEvents)
-        .where(and(eq(progressEvents.actionItemId, item.id), eq(progressEvents.date, date)))
-        .limit(1);
-
-      if (existing[0]) {
-        await db
-          .update(progressEvents)
-          .set({ outcome: result, note: note ?? null, checkInId, source: "inferred" })
-          .where(eq(progressEvents.id, existing[0].id));
-      } else {
-        await db.insert(progressEvents).values({
-          actionItemId: item.id,
-          checkInId,
-          date,
-          outcome: result,
-          note: note ?? null,
-          source: "inferred",
-        });
-      }
-
-      await bumpMemoryVersion(db, userId);
       return { ok: true };
     },
   }),

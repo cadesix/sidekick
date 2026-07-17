@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useMemo, useState } from 'react';
-import { Dimensions, Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Dimensions, Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -17,29 +18,18 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 
-import {
-  buildCatalogProducts,
-  localDay,
-  rarityOf,
-  todaysShop,
-  type Product,
-  type Rarity,
-} from '@sidekick/core';
+import { rarityOf, type Product, type Rarity } from '@sidekick/core';
 
 import { Pressable } from './Pressable';
+import { Skeleton } from './Skeleton';
+import { fetchShopToday, purchaseItem, type Snapshot } from '../lib/api';
+import { PRODUCTS } from '../lib/products';
+import { patchSnapshot, SNAPSHOT_QUERY_KEY, useSnapshot } from '../lib/state';
 import { useDeferredFlag } from '../lib/useDeferredFlag';
-import { MANIFEST } from '../three/cosmetics-manifest';
+import { takeOffProduct, wearProduct } from '../lib/wardrobe-sync';
 import { shopRender } from '../three/shop-renders';
 import { useCosmeticVersion } from '../store/cosmeticVersion';
-import { useEconomy } from '../store/economy';
-import {
-  SHOP_COLORS,
-  SLOT_LABEL,
-  WARDROBE_SLOTS,
-  type CosmeticsControls,
-  type Wardrobe,
-  type WardrobeSlot,
-} from '../three/wardrobe';
+import { type CosmeticsControls, type Wardrobe } from '../three/wardrobe';
 
 // Full-screen RN "Shop" — a focused daily drop (2 featured heroes + a daily
 // row) that restocks at local midnight. Everything is gamified to reward the
@@ -55,6 +45,16 @@ import {
 // on purpose — the shop is the daily drop, not a store directory.
 
 const { height: SCREEN_H } = Dimensions.get('window');
+
+const SHOP_TODAY_QUERY_KEY = ['shop', 'today'] as const;
+
+// the app's bundled catalog art, keyed by renderKey (identity + prices come
+// from the server payload; only the texture fallback is local)
+const ART_BY_KEY = new Map(PRODUCTS.map((p) => [p.renderKey, p.tex]));
+const withArt = (p: Product): Product => {
+  const tex = ART_BY_KEY.get(p.renderKey);
+  return tex == null ? p : { ...p, tex };
+};
 
 // CSS `linear-gradient(160deg, …)` → expo-linear-gradient start/end. 160deg
 // points mostly down, tilted slightly right (matches the web card fills).
@@ -281,11 +281,14 @@ export function ShopSheet({
 }) {
   const insets = useSafeAreaInsets();
 
-  // economy store (reactive: reading coins + inventory re-renders on change)
-  const coins = useEconomy((s) => s.coins);
-  const inventory = useEconomy((s) => s.inventory);
-  const spendCoins = useEconomy((s) => s.spendCoins);
-  const addToInventory = useEconomy((s) => s.addToInventory);
+  // server-driven progression (plan 20): coins + owned set from the snapshot
+  const queryClient = useQueryClient();
+  const snapshot = useSnapshot().data;
+  const coins = snapshot?.coins;
+  const ownedKeys = useMemo(
+    () => new Set((snapshot?.inventory ?? []).map((item) => item.itemKey)),
+    [snapshot],
+  );
 
   const [detail, setDetail] = useState<Product | null>(null);
   const [wardrobe, setWardrobe] = useState<Wardrobe | null>(null);
@@ -302,12 +305,14 @@ export function ShopSheet({
     opacity: progress.value < 0.001 ? 0 : 1,
   }));
 
-  // snapshot the worn outfit when the sheet opens; clear any open detail on
-  // close so its Modal can't linger over the home screen
+  // snapshot the worn outfit when the sheet opens (and refresh the rotation —
+  // the server restocks it at local midnight); clear any open detail on close
+  // so its Modal can't linger over the home screen
   useEffect(() => {
     setDetail(null);
     if (open && controls) setWardrobe(controls.getState());
-  }, [open, controls]);
+    if (open) void queryClient.invalidateQueries({ queryKey: SHOP_TODAY_QUERY_KEY });
+  }, [open, controls, queryClient]);
 
   // This sheet is always mounted (slides via transform), so its content — the
   // countdown's 1s interval, the shine sweeps, the featured float — would loop
@@ -317,52 +322,66 @@ export function ShopSheet({
   const active = useDeferredFlag(open, { offDelay: 320 });
   const revealed = useDeferredFlag(open, { onDelay: 120 });
 
-  // catalog is static (manifest is bundled); the daily drop derives from it.
-  // buildCatalogProducts gates the offer set to the curated shop-catalog.json
-  // (authored in the Asset Manager) — only cataloged items can rotate in.
-  const products = useMemo(
-    () =>
-      buildCatalogProducts({
-        slots: WARDROBE_SLOTS,
-        slotLabel: SLOT_LABEL,
-        colors: SHOP_COLORS,
-        manifest: MANIFEST,
-      }),
-    [],
+  // the daily drop comes from the server (plan 20 decision 5 — prices travel in
+  // the payload); the client only decorates it with its bundled fallback art
+  const shopQuery = useQuery({ queryKey: SHOP_TODAY_QUERY_KEY, queryFn: fetchShopToday });
+  const featured = useMemo(
+    () => (shopQuery.data?.featured ?? []).map(withArt),
+    [shopQuery.data],
   );
-  const seed = localDay(Date.now());
-  const { featured, daily } = useMemo(() => todaysShop(products, seed), [products, seed]);
+  const daily = useMemo(() => (shopQuery.data?.daily ?? []).map(withArt), [shopQuery.data]);
 
   const sync = () => {
     if (controls) setWardrobe(controls.getState());
     useCosmeticVersion.getState().bump(); // regenerate the live head avatars
   };
   const isWorn = (p: Product) => {
-    const st = wardrobe?.[p.slot as WardrobeSlot];
+    const st = wardrobe?.[p.slot];
     if (!st?.equipped) return false;
     return p.variantId
       ? st.variantId === p.variantId && !st.color
       : st.color?.toLowerCase() === p.color?.toLowerCase();
   };
-  const owns = (p: Product) => inventory.includes(p.renderKey);
+  const owns = (p: Product) => ownedKeys.has(p.renderKey);
   const wear = (p: Product) => {
     if (!controls) return;
-    if (p.variantId) controls.equipVariant(p.slot as WardrobeSlot, p.variantId);
-    else if (p.color) controls.setColor(p.slot as WardrobeSlot, p.color);
-    sync();
+    wearProduct(queryClient, controls, p, sync);
   };
   const takeOff = (p: Product) => {
-    controls?.remove(p.slot as WardrobeSlot);
-    sync();
+    if (!controls) return;
+    takeOffProduct(queryClient, controls, p, sync);
   };
+  // optimistic purchase: coins drop + the item lands in the owned set at once;
+  // the response patches the authoritative balance, a failure restores the
+  // pre-purchase snapshot and surfaces the server's reason
   const buy = (p: Product) => {
-    if (!spendCoins(p.cost)) return;
-    addToInventory(p.renderKey);
+    const previous = queryClient.getQueryData<Snapshot>(SNAPSHOT_QUERY_KEY);
+    if (!previous || previous.coins < p.cost) return;
+    queryClient.setQueryData<Snapshot>(SNAPSHOT_QUERY_KEY, {
+      ...previous,
+      coins: previous.coins - p.cost,
+      inventory: [
+        ...previous.inventory,
+        { itemKey: p.renderKey, slot: p.slot, equipped: false, source: 'purchase' },
+      ],
+    });
+    purchaseItem(p.renderKey)
+      .then((result) =>
+        patchSnapshot(queryClient, { stateVersion: result.stateVersion, coins: result.coins }),
+      )
+      .catch((error: unknown) => {
+        queryClient.setQueryData(SNAPSHOT_QUERY_KEY, previous);
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : 'something went wrong — try again';
+        Alert.alert("Couldn't buy that", message);
+      });
   };
 
   const detailWorn = detail ? isWorn(detail) : false;
   const detailOwned = detail ? owns(detail) : false;
-  const canAfford = detail ? coins >= detail.cost : false;
+  const canAfford = detail != null && coins != null && coins >= detail.cost;
   const detailRarity = detail ? rarityOf(detail.cost) : null;
 
   return (
@@ -373,7 +392,11 @@ export function ShopSheet({
         <View style={styles.headerRight}>
           <View style={styles.coinPill}>
             <Coin size={16} />
-            <Text style={styles.coinPillText}>{coins}</Text>
+            {coins == null ? (
+              <Skeleton className="h-[14px] w-7 rounded-full" />
+            ) : (
+              <Text style={styles.coinPillText}>{coins}</Text>
+            )}
           </View>
           <Pressable onPress={onClose} accessibilityLabel="Close shop" style={styles.closeBtn}>
             <Ionicons name="close" size={20} color="#737373" />

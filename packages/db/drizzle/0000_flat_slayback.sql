@@ -1,4 +1,12 @@
 CREATE TYPE "public"."memory_kind" AS ENUM('identity', 'work_school', 'relationship', 'schedule', 'interest', 'preference', 'event', 'emotional', 'goal_context');--> statement-breakpoint
+CREATE TABLE "accounts" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" uuid NOT NULL,
+	"provider" text NOT NULL,
+	"provider_account_id" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "action_items" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"goal_id" uuid NOT NULL,
@@ -67,11 +75,22 @@ CREATE TABLE "attachments" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "auth_sessions" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" uuid NOT NULL,
+	"hashed_token" text NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	"deleted_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "auth_sessions_hashed_token_unique" UNIQUE("hashed_token")
+);
+--> statement-breakpoint
 CREATE TABLE "check_ins" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
 	"date" date NOT NULL,
 	"status" text DEFAULT 'pending' NOT NULL,
+	"source" text DEFAULT 'chat' NOT NULL,
 	"opener_message_id" bigint,
 	"completed_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -128,11 +147,9 @@ CREATE TABLE "devices" (
 	"user_id" uuid NOT NULL,
 	"device_id" text NOT NULL,
 	"public_key" text,
-	"token" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"last_seen_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "devices_device_id_unique" UNIQUE("device_id"),
-	CONSTRAINT "devices_token_unique" UNIQUE("token")
+	CONSTRAINT "devices_device_id_unique" UNIQUE("device_id")
 );
 --> statement-breakpoint
 CREATE TABLE "document_versions" (
@@ -157,6 +174,17 @@ CREATE TABLE "documents" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "email_verification_codes" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"email" text NOT NULL,
+	"hashed_code" text NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	"attempts" integer DEFAULT 0 NOT NULL,
+	"consumed_at" timestamp with time zone,
+	"invalidated_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "folders" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
@@ -176,6 +204,17 @@ CREATE TABLE "goals" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "guided_sessions" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" uuid NOT NULL,
+	"session_id" text NOT NULL,
+	"beat" integer DEFAULT 0 NOT NULL,
+	"answers" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"done" boolean DEFAULT false NOT NULL,
+	"completed_at" timestamp with time zone,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "health_days" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
@@ -187,6 +226,19 @@ CREATE TABLE "health_days" (
 	"sleep_end" timestamp with time zone,
 	"workouts" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"synced_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "ledger" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" uuid NOT NULL,
+	"source" text NOT NULL,
+	"dedupe_key" text NOT NULL,
+	"kind" text NOT NULL,
+	"item_key" text,
+	"coins" integer,
+	"meta" jsonb,
+	"revealed_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "memories" (
@@ -323,15 +375,20 @@ CREATE TABLE "reminders" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "rewards" (
+CREATE TABLE "session_fields" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
-	"source" text NOT NULL,
-	"dedupe_key" text NOT NULL,
-	"kind" text NOT NULL,
-	"item_key" text,
-	"sparks" integer,
-	"revealed_at" timestamp with time zone,
+	"key" text NOT NULL,
+	"value" text NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "session_notes" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" uuid NOT NULL,
+	"tag" text NOT NULL,
+	"text" text NOT NULL,
+	"session_id" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -340,6 +397,7 @@ CREATE TABLE "user_cosmetics" (
 	"user_id" uuid NOT NULL,
 	"item_key" text NOT NULL,
 	"slot" text NOT NULL,
+	"source" text DEFAULT 'reward' NOT NULL,
 	"equipped" boolean DEFAULT false NOT NULL,
 	"acquired_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -348,7 +406,8 @@ CREATE TABLE "user_cosmetics" (
 CREATE TABLE "users" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"email" text,
-	"password_hash" text,
+	"phone" text,
+	"email_verified" timestamp with time zone,
 	"name" text,
 	"age_bracket" text,
 	"gender" text,
@@ -368,12 +427,18 @@ CREATE TABLE "users" (
 	"age_gate_passed_at" timestamp with time zone,
 	"personalized_ads_consent" boolean,
 	"onboarding_completed_at" timestamp with time zone,
-	"sparks" integer DEFAULT 0 NOT NULL,
+	"coins" integer DEFAULT 0 NOT NULL,
+	"bond" integer DEFAULT 10 NOT NULL,
+	"streak_count" integer DEFAULT 0 NOT NULL,
+	"streak_last_day" date,
+	"astral" jsonb,
+	"skin" jsonb,
+	"state_version" bigint DEFAULT 1 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "users_email_unique" UNIQUE("email")
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+ALTER TABLE "accounts" ADD CONSTRAINT "accounts_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "action_items" ADD CONSTRAINT "action_items_goal_id_goals_id_fk" FOREIGN KEY ("goal_id") REFERENCES "public"."goals"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ad_events" ADD CONSTRAINT "ad_events_ad_id_ads_id_fk" FOREIGN KEY ("ad_id") REFERENCES "public"."ads"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ad_events" ADD CONSTRAINT "ad_events_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -381,6 +446,7 @@ ALTER TABLE "ad_profiles" ADD CONSTRAINT "ad_profiles_user_id_users_id_fk" FOREI
 ALTER TABLE "ads" ADD CONSTRAINT "ads_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ads" ADD CONSTRAINT "ads_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "attachments" ADD CONSTRAINT "attachments_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "auth_sessions" ADD CONSTRAINT "auth_sessions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "check_ins" ADD CONSTRAINT "check_ins_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "consents" ADD CONSTRAINT "consents_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "conversation_summaries" ADD CONSTRAINT "conversation_summaries_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -393,7 +459,9 @@ ALTER TABLE "documents" ADD CONSTRAINT "documents_user_id_users_id_fk" FOREIGN K
 ALTER TABLE "documents" ADD CONSTRAINT "documents_folder_id_folders_id_fk" FOREIGN KEY ("folder_id") REFERENCES "public"."folders"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "folders" ADD CONSTRAINT "folders_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "goals" ADD CONSTRAINT "goals_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "guided_sessions" ADD CONSTRAINT "guided_sessions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "health_days" ADD CONSTRAINT "health_days_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "ledger" ADD CONSTRAINT "ledger_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "memories" ADD CONSTRAINT "memories_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "memory_suppressions" ADD CONSTRAINT "memory_suppressions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "messages" ADD CONSTRAINT "messages_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -410,15 +478,21 @@ ALTER TABLE "progress_events" ADD CONSTRAINT "progress_events_action_item_id_act
 ALTER TABLE "progress_events" ADD CONSTRAINT "progress_events_check_in_id_check_ins_id_fk" FOREIGN KEY ("check_in_id") REFERENCES "public"."check_ins"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "purchase_intents" ADD CONSTRAINT "purchase_intents_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "reminders" ADD CONSTRAINT "reminders_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "rewards" ADD CONSTRAINT "rewards_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "session_fields" ADD CONSTRAINT "session_fields_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "session_notes" ADD CONSTRAINT "session_notes_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "user_cosmetics" ADD CONSTRAINT "user_cosmetics_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "accounts_provider_provider_account_id_idx" ON "accounts" USING btree ("provider","provider_account_id");--> statement-breakpoint
+CREATE INDEX "accounts_user_id_idx" ON "accounts" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "ad_events_ad_id_type_idx" ON "ad_events" USING btree ("ad_id","type");--> statement-breakpoint
 CREATE INDEX "ads_user_id_created_at_idx" ON "ads" USING btree ("user_id","created_at");--> statement-breakpoint
+CREATE INDEX "auth_sessions_user_id_idx" ON "auth_sessions" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "check_ins_user_id_date_idx" ON "check_ins" USING btree ("user_id","date");--> statement-breakpoint
 CREATE INDEX "conversation_summaries_conversation_id_id_idx" ON "conversation_summaries" USING btree ("conversation_id","id" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "device_push_tokens_user_status_idx" ON "device_push_tokens" USING btree ("user_id","status");--> statement-breakpoint
 CREATE UNIQUE INDEX "device_push_tokens_device_project_idx" ON "device_push_tokens" USING btree ("device_id","project_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "guided_sessions_user_id_session_id_idx" ON "guided_sessions" USING btree ("user_id","session_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "health_days_user_id_date_idx" ON "health_days" USING btree ("user_id","date");--> statement-breakpoint
+CREATE UNIQUE INDEX "ledger_user_id_dedupe_key_idx" ON "ledger" USING btree ("user_id","dedupe_key");--> statement-breakpoint
 CREATE INDEX "memories_user_id_status_kind_idx" ON "memories" USING btree ("user_id","status","kind");--> statement-breakpoint
 CREATE INDEX "messages_conversation_id_idx" ON "messages" USING btree ("conversation_id","id");--> statement-breakpoint
 CREATE INDEX "messages_content_tsv_idx" ON "messages" USING gin ("content_tsv");--> statement-breakpoint
@@ -429,6 +503,6 @@ CREATE UNIQUE INDEX "proactive_turns_user_slot_kind_idx" ON "proactive_turns" US
 CREATE INDEX "proactive_turns_status_scheduled_idx" ON "proactive_turns" USING btree ("status","scheduled_for");--> statement-breakpoint
 CREATE INDEX "purchase_intents_user_id_expires_at_idx" ON "purchase_intents" USING btree ("user_id","expires_at");--> statement-breakpoint
 CREATE INDEX "reminders_status_next_fire_at_idx" ON "reminders" USING btree ("status","next_fire_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "rewards_user_id_dedupe_key_idx" ON "rewards" USING btree ("user_id","dedupe_key");--> statement-breakpoint
+CREATE UNIQUE INDEX "session_fields_user_id_key_idx" ON "session_fields" USING btree ("user_id","key");--> statement-breakpoint
 CREATE UNIQUE INDEX "user_cosmetics_user_id_item_key_idx" ON "user_cosmetics" USING btree ("user_id","item_key");--> statement-breakpoint
 CREATE INDEX "user_cosmetics_user_id_slot_idx" ON "user_cosmetics" USING btree ("user_id","slot");

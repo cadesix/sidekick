@@ -1,5 +1,30 @@
 export { appRouter, type AppRouter } from "./routers";
-export { registerDevice, resolveUserId } from "./auth";
+export {
+  createSession,
+  getSessionFromAuthHeader,
+  revokeSession,
+  createAuthToken,
+  hashSha256,
+  type ResolvedSession,
+} from "./auth/sessions";
+export { registerDevice } from "./auth/register-device";
+export {
+  findOrCreateUserForProvider,
+  type ProviderIdentity,
+  type AuthProvider,
+  type FindOrCreateResult,
+} from "./auth/provider-user";
+export {
+  requestEmailCode,
+  consumeEmailCode,
+  otpEmailHtml,
+  type AuthEmailSender,
+} from "./auth/email";
+export { verifyAppleToken, type VerifiedAppleToken } from "./auth/apple";
+export { verifyGoogleIdToken, type VerifiedGoogleToken } from "./auth/google";
+export { createTwilioSms, type SmsSender } from "./auth/sms";
+export { devLogin, type DevLoginResult } from "./auth/dev-login";
+export { RateLimiter, emailRequestLimiter, phoneRequestLimiter } from "./auth/rate-limit";
 export type { AppContext, Services, BackgroundScheduler } from "./context";
 export {
   beginTurn,
@@ -42,6 +67,7 @@ export { runIdleJob, runIdleSweep, findIdleConversations } from "./jobs/idle";
 export {
   memoryCountsByKind,
   recomputeContextScore,
+  CONTEXT_BAND_REWARD_COINS,
   type ScoreResult,
 } from "./deep-talks/score";
 export {
@@ -51,7 +77,7 @@ export {
   settleDeepTalkGrants,
   completedDeepTalkSlugs,
   activeDeepTalkForUser,
-  DEEP_TALK_REWARD_SPARKS,
+  DEEP_TALK_REWARD_COINS,
   type FinishDeepTalkResult,
 } from "./deep-talks/session";
 export {
@@ -92,14 +118,26 @@ export {
 export { startOnboardingChat } from "./onboarding/chat";
 export {
   grantReward,
-  ensureStarterCosmetics,
-  spinForCheckIn,
-  sweepCompletedCheckIns,
+  spendCoins,
+  bumpStateVersion,
+  seedStarterState,
+  catalogProduct,
   userStreak,
-  todayRewardStatus,
+  assertOwned,
+  equipCosmetic,
+  unequipCosmetic,
+  type GrantOutcome,
   type GrantResult,
-  type CheckInReward,
+  type SpendResult,
 } from "./rewards/service";
+export { touchStreak, type StreakTouch } from "./rewards/streak";
+export {
+  claimDailyBox,
+  dailyBoxStatus,
+  type BoxClaim,
+  type BoxContents,
+  type DailyBoxStatus,
+} from "./rewards/daily-box";
 export { buildApp } from "./app";
 export { syncHealthDays, healthStatus, disconnectHealth } from "./health/sync";
 export { autoLogHealthDay } from "./health/auto-log";

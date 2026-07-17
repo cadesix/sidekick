@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { locationStatus, trpc } from "~/lib/api";
+import { useSignOut } from "~/lib/auth";
 import { getLocalFocusSettings } from "~/lib/focus";
 import { HEALTH_CONNECTION_QUERY_KEY, loadHealthConnection } from "~/lib/health-connection";
 import {
@@ -75,6 +76,19 @@ function LinkRow({ label, onPress }: { label: string; onPress: () => void }) {
 				<Icon name="chevronRight" size={14} color={colors.gray3} strokeWidth={2.5} />
 			</View>
 		</Pressable>
+	);
+}
+
+/** A read-only label/value row in the Account card, with its trailing divider. */
+function AccountRow({ label, value }: { label: string; value: string }) {
+	return (
+		<>
+			<View style={styles.row}>
+				<Text style={styles.rowLabel}>{label}</Text>
+				<Text style={styles.rowValue}>{value}</Text>
+			</View>
+			<View style={styles.divider} />
+		</>
 	);
 }
 
@@ -243,6 +257,9 @@ export function SettingsScreen() {
 			queryClient.invalidateQueries({ queryKey: ["notifications", "preferences"] }),
 	});
 
+	const signOut = useSignOut();
+	const signOutMutation = useMutation({ mutationFn: signOut });
+
 	const locationEnabled = location.data?.access.enabled ?? false;
 
 	return (
@@ -382,6 +399,19 @@ export function SettingsScreen() {
 							onPress={() => router.push("../health-setup")}
 						/>
 					</Group>
+					<Group title="Account">
+						{me.data.email ? <AccountRow label="Email" value={me.data.email} /> : null}
+						{me.data.phone ? <AccountRow label="Phone" value={me.data.phone} /> : null}
+						<Pressable
+							style={styles.row}
+							disabled={signOutMutation.isPending}
+							onPress={() => signOutMutation.mutate()}
+						>
+							<Text style={styles.signOutLabel}>
+								{signOutMutation.isPending ? "Signing out…" : "Sign out"}
+							</Text>
+						</Pressable>
+					</Group>
 					{__DEV__ ? (
 						<Group title="Developer">
 							<LinkRow label="Ad preview" onPress={() => router.push("/dev/ad-preview")} />
@@ -479,6 +509,10 @@ const styles = StyleSheet.create({
 	rowChevron: {
 		flex: 1,
 		alignItems: "flex-end",
+	},
+	signOutLabel: {
+		fontSize: 17,
+		color: colors.red,
 	},
 	// Without this the iOS 26 switch stretches to the row height and draws its
 	// track top-anchored, so it sits visibly above the label's centerline.

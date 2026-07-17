@@ -1,8 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { type Database, messages } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
-import { registerDevice } from "@sidekick/server";
-import { createConversation, makeCaller, textModel } from "./helpers";
+import { createConversation, makeCaller, textModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -24,7 +23,7 @@ async function insert(conversationId: string, content: string): Promise<number> 
 }
 
 test("chat.history keyset-paginates newest-first", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "hist-1" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const ids: number[] = [];
   for (let i = 0; i < 5; i++) {
@@ -40,7 +39,7 @@ test("chat.history keyset-paginates newest-first", async () => {
 });
 
 test("chat.historyAround returns a centered chronological window", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "hist-2" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   const ids: number[] = [];
   for (let i = 0; i < 5; i++) {
@@ -52,8 +51,25 @@ test("chat.historyAround returns a centered chronological window", async () => {
   expect(around.map((m) => m.id)).toEqual([ids[1], ids[2], ids[3]]);
 });
 
+test("chat read paths reject another user's conversation", async () => {
+  const owner = await createUser(db);
+  const conversationId = await createConversation(db, owner);
+  const messageId = await insert(conversationId, "a private message");
+
+  const attacker = await createUser(db);
+  const caller = makeCaller(db, textModel("x"), attacker);
+
+  await expect(caller.chat.history({ conversationId, limit: 10 })).rejects.toThrow(/not found/i);
+  await expect(
+    caller.chat.historyAround({ conversationId, messageId, span: 2 }),
+  ).rejects.toThrow(/not found/i);
+  await expect(caller.chat.search({ conversationId, query: "private" })).rejects.toThrow(
+    /not found/i,
+  );
+});
+
 test("chat.search finds messages via Postgres FTS with a bolded snippet", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "hist-3" });
+  const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);
   await insert(conversationId, "the quick brown fox runs fast");
   await insert(conversationId, "lazy dogs sleep all day");

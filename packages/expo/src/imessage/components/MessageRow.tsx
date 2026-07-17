@@ -14,12 +14,10 @@ import Animated, {
 } from "react-native-reanimated";
 import { formatClockTime } from "../lib/time";
 import type { MessageItem } from "../lib/transcript";
-import { isEmojiOnly } from "../lib/emoji";
 import { bubble, colors, type } from "../theme";
 import type { Message } from "../types";
-import { AudioBubble } from "./AudioBubble";
 import { Icon } from "./Icon";
-import { MessageBubble } from "./MessageBubble";
+import { MessageContent, messageSummary } from "./MessageContent";
 import { TapbackBadge } from "./TapbackBadge";
 
 export const TIME_REVEAL_WIDTH = 74;
@@ -78,7 +76,7 @@ function ReplyQuote({ replyTo }: { replyTo: Message }) {
 		>
 			<View style={styles.quoteBubble}>
 				<Text numberOfLines={2} style={styles.quoteText}>
-					{replyTo.kind === "audio" ? "Audio Message" : replyTo.text}
+					{messageSummary(replyTo)}
 				</Text>
 			</View>
 		</View>
@@ -96,7 +94,6 @@ export function MessageRow({
 	const { message } = item;
 	const sent = message.role === "me";
 	const bubbleRef = useRef<View>(null);
-	const emojiOnly = message.kind === "text" && isEmojiOnly(message.text);
 
 	const replyX = useSharedValue(0);
 	const replyArmed = useSharedValue(0);
@@ -164,22 +161,10 @@ export function MessageRow({
 					delayLongPress={350}
 					style={[styles.bubbleHolder, hidden ? styles.hiddenBubble : null]}
 				>
+					<MessageContent message={message} tail={item.tail} />
 					<Animated.View pointerEvents="none" style={[styles.replyArrow, replyArrowStyle]}>
 						<Icon name="reply" size={15} color={colors.gray} filled />
 					</Animated.View>
-					{emojiOnly ? (
-						<Text style={styles.bigEmoji}>{message.text}</Text>
-					) : message.kind === "audio" && message.audio ? (
-						<MessageBubble from={message.role} tail={item.tail}>
-							<AudioBubble audio={message.audio} sent={sent} />
-						</MessageBubble>
-					) : (
-						<MessageBubble from={message.role} tail={item.tail}>
-							<Text style={[styles.text, sent ? styles.textSent : styles.textReceived]}>
-								{message.text}
-							</Text>
-						</MessageBubble>
-					)}
 					{message.reactions.map((reaction) => (
 						<TapbackBadge
 							key={reaction.from}
@@ -228,20 +213,6 @@ const styles = StyleSheet.create({
 	},
 	hiddenBubble: {
 		opacity: 0,
-	},
-	text: {
-		fontSize: type.body.fontSize,
-		lineHeight: type.body.lineHeight,
-	},
-	textSent: {
-		color: colors.sentText,
-	},
-	textReceived: {
-		color: colors.receivedText,
-	},
-	bigEmoji: {
-		fontSize: 46,
-		lineHeight: 54,
 	},
 	timeReveal: {
 		position: "absolute",

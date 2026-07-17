@@ -1,5 +1,5 @@
 import * as Haptics from "expo-haptics";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import Animated, { useAnimatedStyle, withSpring, ZoomIn, ZoomOut } from "react-native-reanimated";
 import { colors } from "../theme";
@@ -8,8 +8,14 @@ import { Icon } from "./Icon";
 import type { AudioAttachment } from "../types";
 import { VoiceRecorder } from "./VoiceRecorder";
 
+/** The composer's view of its picked attachments: none, still uploading/ingesting, or all ready. */
+export type AttachmentState = "none" | "settling" | "ready";
+
 interface ChatInputBarProps {
 	replyActive: boolean;
+	attachmentState: AttachmentState;
+	/** Staged attachments, rendered inside the bubble above the text row like iMessage. */
+	tray: ReactNode;
 	onSendText: (text: string) => void;
 	onSendAudio: (audio: AudioAttachment) => void;
 	onTogglePlusMenu: () => void;
@@ -20,6 +26,8 @@ interface ChatInputBarProps {
 
 export function ChatInputBar({
 	replyActive,
+	attachmentState,
+	tray,
 	onSendText,
 	onSendAudio,
 	onTogglePlusMenu,
@@ -37,14 +45,19 @@ export function ChatInputBar({
 		}
 	}, [replyActive]);
 
+	// A message with attachments may send with no text, but never before every
+	// attachment is ready — the turn must carry them.
+	const showSend = hasText || attachmentState !== "none";
+	const canSend =
+		attachmentState === "ready" || (hasText && attachmentState === "none");
+
 	const send = () => {
-		const trimmed = text.trim();
-		if (!trimmed) {
+		if (!canSend) {
 			return;
 		}
 		setText("");
 		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-		onSendText(trimmed);
+		onSendText(text.trim());
 	};
 
 	const startRecording = () => {
@@ -90,32 +103,45 @@ export function ChatInputBar({
 						}}
 					/>
 				) : (
-					<Glass style={styles.field}>
-						<TextInput
-							ref={inputRef}
-							value={text}
-							onChangeText={setText}
-							placeholder={replyActive ? "Reply" : "Message"}
-							placeholderTextColor={colors.tertiaryLabel}
-							multiline
-							style={styles.input}
-							keyboardAppearance="light"
-						/>
-						{hasText ? (
-							<Animated.View
-								entering={ZoomIn.springify().duration(300)}
-								exiting={ZoomOut.duration(120)}
-								style={styles.sendWrapper}
-							>
-								<Pressable onPress={send} style={styles.sendButton} hitSlop={6}>
-									<Icon name="arrowUp" size={16} color="#FFFFFF" strokeWidth={3} />
+					<Glass style={[styles.field, tray ? styles.fieldWithTray : null]}>
+						{tray ? (
+							<>
+								{tray}
+								<View style={styles.trayDivider} />
+							</>
+						) : null}
+						<View style={styles.inputRow}>
+							<TextInput
+								ref={inputRef}
+								value={text}
+								onChangeText={setText}
+								placeholder={replyActive ? "Reply" : "Message"}
+								placeholderTextColor={colors.tertiaryLabel}
+								multiline
+								style={styles.input}
+								keyboardAppearance="light"
+							/>
+							{showSend ? (
+								<Animated.View
+									entering={ZoomIn.springify().duration(300)}
+									exiting={ZoomOut.duration(120)}
+									style={styles.sendWrapper}
+								>
+									<Pressable
+										onPress={send}
+										style={[styles.sendButton, canSend ? null : styles.sendDisabled]}
+										disabled={!canSend}
+										hitSlop={6}
+									>
+										<Icon name="arrowUp" size={16} color="#FFFFFF" strokeWidth={3} />
+									</Pressable>
+								</Animated.View>
+							) : (
+								<Pressable onPress={startRecording} style={styles.micButton} hitSlop={8}>
+									<Icon name="audio" size={22} color={colors.gray} />
 								</Pressable>
-							</Animated.View>
-						) : (
-							<Pressable onPress={startRecording} style={styles.micButton} hitSlop={8}>
-								<Icon name="audio" size={22} color={colors.gray} />
-							</Pressable>
-						)}
+							)}
+						</View>
 					</Glass>
 				)}
 			</View>
@@ -146,21 +172,31 @@ const styles = StyleSheet.create({
 	},
 	field: {
 		flex: 1,
-		flexDirection: "row",
-		alignItems: "flex-end",
-		minHeight: 36,
-		maxHeight: 120,
+		minHeight: 40,
 		borderRadius: 20,
 		borderCurve: "continuous",
+	},
+	fieldWithTray: {
+		borderRadius: 26,
+	},
+	trayDivider: {
+		height: StyleSheet.hairlineWidth,
+		backgroundColor: "rgba(0,0,0,0.15)",
+		marginHorizontal: 12,
+	},
+	inputRow: {
+		flexDirection: "row",
+		alignItems: "flex-end",
+		maxHeight: 132,
 	},
 	input: {
 		flex: 1,
 		fontSize: 17,
-		lineHeight: 20,
+		lineHeight: 21,
 		paddingLeft: 14,
 		paddingRight: 4,
-		paddingTop: 7,
-		paddingBottom: 7,
+		paddingTop: 9,
+		paddingBottom: 9,
 		color: colors.label,
 	},
 	micButton: {
@@ -180,5 +216,8 @@ const styles = StyleSheet.create({
 		backgroundColor: colors.blue,
 		alignItems: "center",
 		justifyContent: "center",
+	},
+	sendDisabled: {
+		backgroundColor: colors.gray3,
 	},
 });

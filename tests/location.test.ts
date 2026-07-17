@@ -3,8 +3,7 @@ import { eq } from "drizzle-orm";
 import { type Database, reminders, users } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
 import { computeNextFireAt } from "@sidekick/shared";
-import { registerDevice } from "@sidekick/server";
-import { makeCaller, textModel } from "./helpers";
+import { makeCaller, textModel, createUser } from "./helpers";
 
 let db: Database;
 let close: () => Promise<void>;
@@ -18,7 +17,7 @@ afterAll(async () => {
 });
 
 test("a timezone change refreezes reminders and recomputes nextFireAt", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "loc-1" });
+  const userId = await createUser(db);
   await db.update(users).set({ timezone: "America/New_York" }).where(eq(users.id, userId));
 
   const schedule = { type: "recurring" as const, rrule: "FREQ=DAILY", time: "07:30" };
@@ -61,7 +60,7 @@ test("a timezone change refreezes reminders and recomputes nextFireAt", async ()
 });
 
 test("disconnect clears the stored location fields", async () => {
-  const { userId } = await registerDevice(db, { deviceId: "loc-2" });
+  const userId = await createUser(db);
   const caller = makeCaller(db, textModel("ok"), userId);
   await caller.location.update({ city: "Chicago", region: "Illinois" });
 

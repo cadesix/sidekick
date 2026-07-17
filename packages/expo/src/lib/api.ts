@@ -1,17 +1,23 @@
 import { fetch as streamingFetch } from "expo/fetch";
 import Constants from "expo-constants";
-import { createTRPCClient, httpBatchLink } from "@trpc/client";
+import { createTRPCClient, httpBatchLink, type TRPCLink } from "@trpc/client";
+import { observable } from "@trpc/server/observable";
 import type { AppRouter } from "@sidekick/server/router";
 import { STREAM_META_DELIMITER } from "@sidekick/shared";
 import type {
   AttachmentKind,
   Cadence,
   DeviceToolFrameCall,
+  LogCheckInInput,
   Schedule,
   StreamMeta,
 } from "@sidekick/shared";
 import { drainStreamFrames } from "~/features/chat/stream-frames";
 import { Platform } from "react-native";
+import { TOKEN_STORAGE_KEY, USER_STORAGE_KEY, useAuthStore } from "./auth-store";
+import { clearProgressionMirrors } from "./mirror";
+import { queryClient } from "./query-client";
+import { removeStoredItem } from "./secure-storage";
 
 /**
  * THE server stitch. Everything the app asks of the backend goes through here so
@@ -39,9 +45,10 @@ export function setAuthToken(token: string | null, deviceId?: string): void {
 }
 
 function authHeaders(): Record<string, string> {
+  const locale = Intl.DateTimeFormat().resolvedOptions();
   const headers: Record<string, string> = {
-    "accept-language": Intl.DateTimeFormat().resolvedOptions().locale,
-    "x-sidekick-timezone": Intl.DateTimeFormat().resolvedOptions().timeZone,
+    "accept-language": locale.locale,
+    "x-sidekick-timezone": locale.timeZone,
     "x-sidekick-user-agent": `Sidekick/${Constants.expoConfig?.version ?? "1"} (${Platform.OS}; ${String(Platform.Version)})`,
   };
   if (authDeviceId) {
@@ -53,14 +60,105 @@ function authHeaders(): Record<string, string> {
   return headers;
 }
 
-export const trpc = createTRPCClient<AppRouter>({
-  links: [httpBatchLink({ url: TRPC_URL, headers: authHeaders })],
-});
-
-export function registerDevice(deviceId: string): Promise<{ userId: string; token: string }> {
-  return trpc.auth.register.mutate({ deviceId });
+/**
+ * Drop the local session and return the app to the SignInScreen (19-auth.md):
+ * forget the in-memory + stored token, clear the react-query cache and the
+ * wardrobe/skin boot mirrors so no previous-user data lingers, and flip the
+ * auth store to signed-out. Plain (non-hook) so both the 401 handler here and
+ * `useSignOut` share one teardown.
+ */
+export function signOut(): void {
+  authToken = null;
+  void removeStoredItem(TOKEN_STORAGE_KEY);
+  void removeStoredItem(USER_STORAGE_KEY);
+  queryClient.clear();
+  void clearProgressionMirrors();
+  useAuthStore.setState({ status: "signedOut", userId: null });
 }
 
+const UNAUTHORIZED_SIGN_OUT_THRESHOLD = 3;
+let consecutiveUnauthorizedCount = 0;
+
+/**
+ * A revoked/expired session makes every request 401. After three consecutive
+ * UNAUTHORIZED responses, sign out — AuthGate then swaps the app for the
+ * SignInScreen. A one-off 401 (e.g. the fire-and-forget registerDevice racing a
+ * sign-out) never trips it, and any success resets the counter.
+ */
+function recordUnauthorized(): void {
+  consecutiveUnauthorizedCount += 1;
+  if (consecutiveUnauthorizedCount < UNAUTHORIZED_SIGN_OUT_THRESHOLD) {
+    return;
+  }
+  consecutiveUnauthorizedCount = 0;
+  signOut();
+}
+
+const authErrorLink: TRPCLink<AppRouter> =
+  () =>
+  ({ next, op }) =>
+    observable((observer) =>
+      next(op).subscribe({
+        next(value) {
+          consecutiveUnauthorizedCount = 0;
+          observer.next(value);
+        },
+        error(err) {
+          if (err.data?.code === "UNAUTHORIZED") {
+            recordUnauthorized();
+          }
+          observer.error(err);
+        },
+        complete() {
+          observer.complete();
+        },
+      }),
+    );
+
+export const trpc = createTRPCClient<AppRouter>({
+  links: [authErrorLink, httpBatchLink({ url: TRPC_URL, headers: authHeaders })],
+});
+
+/** The session every auth mutation returns (19-auth.md). */
+export type AuthResult = { token: string; userId: string; isNewUser: boolean };
+
+export function authenticateWithApple(identityToken: string): Promise<AuthResult> {
+  return trpc.auth.authenticateWithApple.mutate({ identityToken, platform: "ios" });
+}
+
+export function authenticateWithGoogle(idToken: string): Promise<AuthResult> {
+  return trpc.auth.authenticateWithGoogle.mutate({ idToken });
+}
+
+export function requestEmailCode(email: string): Promise<{ ok: boolean }> {
+  return trpc.auth.requestEmailCode.mutate({ email });
+}
+
+export function verifyEmailCode(email: string, code: string): Promise<AuthResult> {
+  return trpc.auth.verifyEmailCode.mutate({ email, code });
+}
+
+export function requestPhoneCode(phone: string): Promise<{ ok: boolean }> {
+  return trpc.auth.requestPhoneCode.mutate({ phone });
+}
+
+export function verifyPhoneCode(phone: string, code: string): Promise<AuthResult> {
+  return trpc.auth.verifyPhoneCode.mutate({ phone, code });
+}
+
+/** Dev-only instant session — double-gated (client `__DEV__` + server env check). */
+export function devLogin(): Promise<AuthResult> {
+  return trpc.auth.devLogin.mutate();
+}
+
+/** Post-auth device-metadata upsert — repoints this install's push tokens at the caller. */
+export function registerDevice(deviceId: string): Promise<{ ok: boolean }> {
+  return trpc.auth.registerDevice.mutate({ deviceId });
+}
+
+export function logout(): Promise<{ ok: boolean }> {
+  return trpc.auth.logout.mutate();
+}
 
 /**
  * Consume one chat SSE stream to completion: prose → `onDelta`, control frames →
@@ -156,36 +254,22 @@ export async function streamChatContinuation(
   return consumeChatStream(response.body.getReader(), onDelta, onSearch, onMeta);
 }
 
-/** A goal on the home checklist (03 / 07 §1). */
-export type Goal = {
-  id: string;
-  slug: string;
-  label: string;
-  count: number;
-  doneToday: boolean;
-};
+/** Today's goals checklist — the user's active goals with each day's state (03 / 07 §1). */
+export type GoalsList = Awaited<ReturnType<typeof trpc.goals.list.query>>;
 
-/** The home screen's daily summary (goals.list output, 03 / 07 §1). */
-export type HomeSummary = { streak: number; checkInAvailable: boolean; goals: Goal[] };
+export function fetchGoals(): Promise<GoalsList> {
+  return trpc.goals.list.query();
+}
 
 /**
- * Today's home checklist + overall streak (goals router). `count` is the goal's
- * completions this week (the per-goal number goals.list exposes today — see
- * report QUESTIONS re: per-goal streak).
+ * Manually mark or clear one day's outcome for a goal (goals.logCheckIn, plan
+ * 20 decision 8). `result: null` toggles the day off; the server rejects
+ * future dates and cross-user goals.
  */
-export async function fetchHome(): Promise<HomeSummary> {
-  const result = await trpc.goals.list.query();
-  return {
-    streak: result.streak,
-    checkInAvailable: result.checkInStatus === "pending",
-    goals: result.goals.map((goal) => ({
-      id: goal.goalId,
-      slug: goal.slug,
-      label: goal.label,
-      count: goal.week.completed,
-      doneToday: goal.today.outcome === "hit" || goal.today.outcome === "partial",
-    })),
-  };
+export function logGoalCheckIn(
+  input: LogCheckInInput,
+): Promise<{ date: string; outcome: LogCheckInInput["result"] }> {
+  return trpc.goals.logCheckIn.mutate(input);
 }
 
 /**
@@ -242,18 +326,19 @@ export async function uploadAttachment(input: {
   /** Normalized 0..1 amplitude bars for a voice message, so it survives a reload. */
   waveform?: number[];
 }): Promise<{ attachmentId: string }> {
-  const created = await trpc.chat.createUploadUrl.mutate({
-    kind: input.kind,
-    mime: input.mime,
-    bytes: input.bytes,
-    filename: input.filename,
-    width: input.width,
-    height: input.height,
-    durationMs: input.durationMs,
-  });
+  const [created, body] = await Promise.all([
+    trpc.chat.createUploadUrl.mutate({
+      kind: input.kind,
+      mime: input.mime,
+      bytes: input.bytes,
+      filename: input.filename,
+      width: input.width,
+      height: input.height,
+      durationMs: input.durationMs,
+    }),
+    fetch(input.uri).then((response) => response.blob()),
+  ]);
 
-  const fileResponse = await fetch(input.uri);
-  const body = await fileResponse.blob();
   const put = await fetch(created.upload.uploadUrl, {
     method: created.upload.method,
     headers: { ...created.upload.headers, ...authHeaders() },
@@ -519,6 +604,46 @@ export function completeGoal(goalId: string): Promise<{ ok: boolean; status: "do
   return trpc.goals.complete.mutate({ goalId });
 }
 
+/** The one cold-start progression snapshot (20 §decision 11). */
+export type Snapshot = Awaited<ReturnType<typeof trpc.state.snapshot.query>>;
+
+export function fetchSnapshot(): Promise<Snapshot> {
+  return trpc.state.snapshot.query();
+}
+
+/** Bump the app-open streak — server-idempotent per local day (20 §decision 7). */
+export type StreakTouch = Awaited<ReturnType<typeof trpc.streak.touch.mutate>>;
+
+export function touchStreak(): Promise<StreakTouch> {
+  return trpc.streak.touch.mutate();
+}
+
+/**
+ * Claim today's daily box (20 §dailyBox router). The returned `box` is the full
+ * persisted contents to animate — a same-day replay returns the identical
+ * payload with `granted: false`, so the reveal always shows what was granted.
+ */
+export type BoxClaim = Awaited<ReturnType<typeof trpc.dailyBox.claim.mutate>>;
+export type BoxContents = BoxClaim["box"];
+
+export function claimDailyBox(): Promise<BoxClaim> {
+  return trpc.dailyBox.claim.mutate();
+}
+
+/** Today's server-computed shop rotation — prices travel in the payload (20 §decision 5). */
+export type ShopToday = Awaited<ReturnType<typeof trpc.shop.today.query>>;
+
+export function fetchShopToday(): Promise<ShopToday> {
+  return trpc.shop.today.query();
+}
+
+/** Buy one catalog item by renderKey; the server prices it (20 §shop router). */
+export function purchaseItem(
+  itemKey: string,
+): Promise<{ stateVersion: number; coins: number; itemKey: string }> {
+  return trpc.shop.purchase.mutate({ itemKey });
+}
+
 /** The user's cosmetics wardrobe (04 / 07 §10). */
 export type Inventory = Awaited<ReturnType<typeof trpc.cosmetics.inventory.query>>;
 
@@ -526,30 +651,17 @@ export function fetchInventory(): Promise<Inventory> {
   return trpc.cosmetics.inventory.query();
 }
 
-export function equipCosmetic(itemKey: string): Promise<{ ok: boolean }> {
+export function equipCosmetic(itemKey: string): Promise<{ stateVersion: number }> {
   return trpc.cosmetics.equip.mutate({ itemKey });
 }
 
-export function unequipCosmetic(itemKey: string): Promise<{ ok: boolean }> {
+export function unequipCosmetic(itemKey: string): Promise<{ stateVersion: number }> {
   return trpc.cosmetics.unequip.mutate({ itemKey });
 }
 
-export function redeemCosmetic(itemKey: string): Promise<{ ok: boolean; sparks: number }> {
-  return trpc.cosmetics.redeem.mutate({ itemKey });
-}
-
-/** Whether the home screen should present today's reward spinner (04 / 07 §6). */
-export type RewardStatus = Awaited<ReturnType<typeof trpc.cosmetics.rewardStatus.query>>;
-
-export function fetchRewardStatus(): Promise<RewardStatus> {
-  return trpc.cosmetics.rewardStatus.query();
-}
-
-/** The server-authoritative spinner result (04). The client only animates it. */
-export type SpinResult = Awaited<ReturnType<typeof trpc.cosmetics.spin.mutate>>;
-
-export function spinReward(checkInId: string): Promise<SpinResult> {
-  return trpc.cosmetics.spin.mutate({ checkInId });
+/** Persist the sidekick's two cel skin colors (20 §cosmetics router). */
+export function setSkinColor(body: string, shadow: string): Promise<{ stateVersion: number }> {
+  return trpc.cosmetics.setSkin.mutate({ body, shadow });
 }
 
 /** The "how well your sidekick knows you" surface: score card + deep-talk shelf (14). */
@@ -585,4 +697,87 @@ export type ImportCommitResult = Awaited<ReturnType<typeof trpc.deepTalks.import
 
 export function commitChatgptImport(candidates: ImportCandidate[]): Promise<ImportCommitResult> {
   return trpc.deepTalks.importCommit.mutate({ candidates });
+}
+
+/**
+ * Guided (star) sessions — server-authoritative transcript + LLM calls (20
+ * §sessions router). Upsert progress after every answer; a failed write is
+ * retried by the next answer's cumulative array.
+ */
+export function saveSessionProgress(
+  sessionId: string,
+  beat: number,
+  answers: string[],
+): Promise<{ stateVersion: number }> {
+  return trpc.sessions.progress.mutate({ sessionId, beat, answers });
+}
+
+/**
+ * One in-voice LLM reaction to the just-saved answer. The server derives the ask
+ * from the STORED beat, so progress must land first. `text: null` = LLM failure;
+ * the caller falls back to its scripted lines.
+ */
+export function ackSessionAnswer(
+  sessionId: string,
+  answer: string,
+  probe: boolean,
+): Promise<{ text: string | null }> {
+  return trpc.sessions.ack.mutate({ sessionId, answer, probe });
+}
+
+/** The extraction pass over the server-stored transcript; null = model failure. */
+export type SessionExtractionRun = NonNullable<
+  Awaited<ReturnType<typeof trpc.sessions.extract.mutate>>
+>;
+
+export function extractSession(
+  sessionId: string,
+  corrections?: string[],
+): Promise<SessionExtractionRun | null> {
+  return trpc.sessions.extract.mutate({ sessionId, corrections });
+}
+
+/** What `sessions.complete` persists; rewards come from core's catalog server-side. */
+export type SessionExtractionPayload = Parameters<
+  typeof trpc.sessions.complete.mutate
+>[0]["extraction"];
+
+/** The completion response — new balances for the snapshot patch (20 decision 9). */
+export type SessionComplete = Awaited<ReturnType<typeof trpc.sessions.complete.mutate>>;
+
+export function completeSession(
+  sessionId: string,
+  extraction: SessionExtractionPayload,
+): Promise<SessionComplete> {
+  return trpc.sessions.complete.mutate({ sessionId, extraction });
+}
+
+/**
+ * Dev-only progression levers (plan 20 §dev router) — server double-gated to
+ * NODE_ENV=development, replacing the DevPanel's old direct store writes. Each
+ * preserves the ledger invariant server-side and returns the bumped stateVersion
+ * plus the fields it changed, for a compare-before-patch of the snapshot cache.
+ */
+export function devAdjustCoins(amount: number): Promise<{ stateVersion: number; coins: number }> {
+  return trpc.dev.adjustCoins.mutate({ amount });
+}
+
+export function devSetBond(bond: number): Promise<{ stateVersion: number; bond: number }> {
+  return trpc.dev.setBond.mutate({ bond });
+}
+
+export function devSetStreak(count: number): Promise<{ stateVersion: number; count: number }> {
+  return trpc.dev.setStreak.mutate({ count });
+}
+
+export function devResetSessions(): Promise<{ stateVersion: number; coins: number; bond: number }> {
+  return trpc.dev.resetSessions.mutate();
+}
+
+export function devResetProfile(): Promise<{ stateVersion: number; coins: number; bond: number }> {
+  return trpc.dev.resetProfile.mutate();
+}
+
+export function devResetDailyBox(): Promise<{ stateVersion: number; coins: number }> {
+  return trpc.dev.resetDailyBox.mutate();
 }

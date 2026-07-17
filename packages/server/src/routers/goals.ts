@@ -9,6 +9,8 @@ import {
   getActionItemTemplate,
   getGoalDefinition,
   localDate,
+  logCheckInInput,
+  logGoalProgress,
   addDays,
   mondayOf,
   userTimezone,
@@ -225,6 +227,32 @@ export const goalsRouter = router({
       await db.update(actionItems).set({ cadence: input.cadence }).where(eq(actionItems.id, item.id));
       return { ok: true, actionItemId: item.id, cadence: input.cadence };
     }),
+
+  /**
+   * The GoalsSheet's manual weekly toggle (plan 20 decision 8): mark a day hit
+   * (or any outcome), or clear it with `result: null`. Shares the chat
+   * `log_checkin` write path so both sources land as identical `progress_events`
+   * rows and the read paths agree — tagged `manual`. A future date is rejected
+   * (no backfilling tomorrow); the day is upserted on `(actionItem, date)`.
+   */
+  logCheckIn: protectedProcedure.input(logCheckInInput).mutation(async ({ ctx, input }) => {
+    const { db, userId } = ctx;
+    await assertGoalOwned(db, input.goalId, userId);
+    const today = localDate(await userTimezone(db, userId), new Date());
+    if (input.date > today) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "can't log a future day" });
+    }
+    const logged = await logGoalProgress(db, userId, {
+      goalId: input.goalId,
+      date: input.date,
+      outcome: input.result,
+      source: "manual",
+    });
+    if (!logged.ok) {
+      throw new TRPCError({ code: "NOT_FOUND", message: logged.error });
+    }
+    return { date: input.date, outcome: logged.outcome };
+  }),
 
   pause: protectedProcedure
     .input(z.object({ goalId: z.string().uuid() }))
