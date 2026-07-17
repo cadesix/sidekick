@@ -10,6 +10,7 @@ import { useBond } from '../store/bond';
 import { useSidekickContext } from '../store/context';
 import { useDailyBox } from '../store/dailyBox';
 import { useEconomy } from '../store/economy';
+import { useStarChat } from '../store/star-chat';
 import { useStreak } from '../store/streak';
 
 // DEV-only user-state panel — the RN counterpart of the web app's dev chip
@@ -60,7 +61,14 @@ export function DevPanel() {
   const setInventory = useEconomy.getState().setInventory;
   const resetBox = useDailyBox.getState().reset;
   const resetSessions = useSidekickContext.getState().resetSessions;
-  const resetGuidedChats = useSidekickContext.getState().resetGuidedChats;
+  // Wipe both stores the guided/star chat spans: the context profile (fields,
+  // notes, sessions, astral card) AND the Star Chat conversation itself (its
+  // phase, message log, artifact) — else the continuous conversation resumes
+  // from AsyncStorage and looks un-wiped.
+  const wipeGuidedChats = () => {
+    useSidekickContext.getState().resetGuidedChats();
+    useStarChat.getState().reset();
+  };
 
   // Full wipe: put every dial back to its starting value (the web's
   // "Reset profile (wipe all keys)").
@@ -70,7 +78,7 @@ export function DevPanel() {
     setCoins(START_COINS);
     setInventory([...START_INVENTORY]);
     resetBox();
-    resetGuidedChats();
+    wipeGuidedChats();
   };
 
   return (
@@ -122,7 +130,7 @@ export function DevPanel() {
 
           <Row label="Guided chats">
             <Btn label="Re-lock map (progress only)" onPress={resetSessions} wide />
-            <Btn label="Wipe guided chats (+ profile)" onPress={resetGuidedChats} wide />
+            <Btn label="Wipe guided chats (+ profile)" onPress={wipeGuidedChats} wide />
           </Row>
 
           <Pressable onPress={resetProfile} style={styles.resetBtn}>
