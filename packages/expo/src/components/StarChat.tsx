@@ -189,6 +189,7 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
     useStarChat.getState().start();
     const st = useStarChat.getState();
     streamFrom.current = st.msgs.length; // whatever's already here renders plain
+    retryUnconfirmedChapters(); // re-fire any chapter whose server completion failed earlier
     if (st.done) {
       setStage('artifact');
       return;
@@ -236,25 +237,34 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
   // flowing (not awaited), but the card writes are CHAINED so a later chapter can
   // never land its card before an earlier one and stale-overwrite it. All writes
   // are to the persisted store, so they complete safely even after unmount.
-  const completeChapter = (phase: number) => {
+  // withCard=false records a chapter's rewards/island/fields WITHOUT sending an
+  // astral (the server overwrites users.astral with any card it's handed). Used by
+  // the catch-up retry for earlier chapters, so re-completing a stale earlier
+  // chapter can't clobber a newer chapter's card — only the latest one carries one.
+  const completeChapter = (phase: number, withCard = true) => {
     cardChain = cardChain.then(async () => {
       const def = sessionForPhase(phase);
       const c = useStarChat.getState().convo;
       if (!def || !c) return;
       if (isSessionDone(snapshotSessions(snapshot()), def.id)) return; // already completed server-side
-      const prior = snapshot()?.astral ?? null;
-      const raw = await llm(buildCardPrompt(c, prior), 'write it now.', 460);
-      const art = raw ? parseArtifact(raw) : null;
-      const card = art ? { archetype: art.archetype, reading: art.reading, traits: art.traits } : null;
-      if (isSessionDone(snapshotSessions(snapshot()), def.id)) return; // guard post-await (idempotent)
+      let card: { archetype: string; reading: string; traits: string[] } | null = null;
+      if (withCard) {
+        const prior = snapshot()?.astral ?? null;
+        const raw = await llm(buildCardPrompt(c, prior), 'write it now.', 460);
+        const art = raw ? parseArtifact(raw) : null;
+        card = art ? { archetype: art.archetype, reading: art.reading, traits: art.traits } : null;
+        if (isSessionDone(snapshotSessions(snapshot()), def.id)) return; // guard post-await (idempotent)
+      }
       try {
         // server pays catalog rewards by sessionId + persists the extraction/card;
         // patch the snapshot so bond, the card, and island unlock update at home.
         const result = await completeSession(def.id, { fields: flattenFields(c), notes: [], astral: card });
         patchSessionComplete(queryClient, def.id, result);
         if (islandOpensWith(def.id)) useSidekickContext.getState().markUnseenIsland(def.id);
+        didUpdate.current = true; // only claim "card updated" once the snapshot is actually patched
       } catch {
-        // offline / server error: the chapter re-completes on the next resume
+        // transient failure (offline / server error): retried on the next open by
+        // retryUnconfirmedChapters. Idempotent + server replay-safe, so no double-pay.
       }
     });
   };
@@ -285,18 +295,41 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
           const result = await completeSession(def.id, { fields: flattenFields(c), notes: [], astral: card });
           patchSessionComplete(queryClient, def.id, result);
           if (islandOpensWith(def.id)) useSidekickContext.getState().markUnseenIsland(def.id);
+          didUpdate.current = true;
         } catch {
-          // offline / server error: the reading still shows; completion retries on resume
+          // transient failure: the reading still shows (local artifact); server
+          // completion is retried on the next open by retryUnconfirmedChapters.
         }
+      } else {
+        didUpdate.current = true; // already server-complete (a resume re-finalize)
       }
+      // set the local reveal artifact regardless; `done` also gates resume, and a
+      // still-unconfirmed final session gets retried on the next open.
       useStarChat.getState().finish(art);
     });
     await cardChain;
-    didUpdate.current = true;
     if (mounted.current) {
       setTyping(false);
       setWorking(false);
       setStage('artifact');
+    }
+  };
+
+  // A chapter's server completion is fire-and-forget; a transient failure (offline
+  // / server error) leaves the client advanced but the session not done
+  // server-side. On mount, re-fire completion for any reached chapter the snapshot
+  // still shows incomplete. Idempotent: completeChapter guards on isSessionDone and
+  // the server completion is replay-safe, so already-done chapters no-op. Skips
+  // when the snapshot hasn't loaded yet (nothing to compare against).
+  const retryUnconfirmedChapters = () => {
+    const c = useStarChat.getState().convo;
+    if (!c || !snapshot()) return;
+    const reached = useStarChat.getState().done ? PHASE_COUNT : Math.min(c.phase - 1, PHASE_COUNT);
+    for (let p = 1; p <= reached; p += 1) {
+      const def = sessionForPhase(p);
+      // only the latest reached chapter carries a card — earlier catch-ups must
+      // not overwrite a newer chapter's astral with their older one.
+      if (def && !isSessionDone(snapshotSessions(snapshot()), def.id)) completeChapter(p, p === reached);
     }
   };
 
@@ -321,12 +354,12 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
     const advancing = readyToAdvance(next);
     const ending = advancing && next.phase >= PHASE_COUNT;
     const completedPhase = next.phase; // the chapter whose floor we just filled
-    if (advancing) {
-      didUpdate.current = true;
-      if (!ending) {
-        useStarChat.getState().advance();
-        completeChapter(completedPhase);
-      }
+    if (advancing && !ending) {
+      // advance the local phase now (unmount-safe); completeChapter fires the
+      // server completion in the background and flips didUpdate once the snapshot
+      // is actually patched (so the home reaction can't speak a not-yet-written card).
+      useStarChat.getState().advance();
+      completeChapter(completedPhase);
     }
     setTyping(false);
     useStarChat.getState().pushMsg({ role: 'bot', text: turn.message });
@@ -457,7 +490,7 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
       </Animated.View>
 
       {stage === 'artifact' && revealOpen && artifact ? (
-        <AstralReveal artifact={artifact} onContinue={() => onDone(true)} />
+        <AstralReveal artifact={artifact} onContinue={() => onDone(didUpdate.current)} />
       ) : null}
     </Animated.View>
   );
