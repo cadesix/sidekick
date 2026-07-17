@@ -13,27 +13,29 @@ import {
 
 import { useGoals } from './goals';
 
-// Persisted state for the onboarding conversation (docs/ONBOARDING-CONVERSATION.md).
-// Holds the generative-with-a-floor ConvoState (phase + per-field confidence),
-// the message log (so a user can dive out and resume), and the final artifact.
+// Persisted state for the Star Chat conversation (docs/STAR-CHAT.md). Holds the
+// generative-with-a-floor ConvoState (phase + per-field confidence), the message
+// log (so a user can dive out and resume), and the final artifact.
 //
-// NOTE: the plan's end state is BOTH artifacts server-side (memory file + ad
-// profile). This client store is the first slice — it keeps the memory-side
-// fields on-device so the flow is runnable/testable now; the server memory +
-// ad-inference pass land later. The ad profile is NOT derived here.
+// This is the conversation state only. The persistent PROFILE that the rest of
+// the app reads (fields, the astral card, bond, island unlocks) lives in the
+// context store — the runner writes there at each chapter boundary via
+// completeSession. NOTE: the plan's end state is BOTH artifacts server-side
+// (memory file + ad profile); this client slice keeps the memory-side fields
+// on-device so the flow runs now. The ad profile is NOT derived here.
 
-export type OnboardingMsg = { role: 'bot' | 'user'; text: string };
+export type StarChatMsg = { role: 'bot' | 'user'; text: string };
 
-type OnboardingStore = {
+type StarChatStore = {
   convo: ConvoState | null;
-  msgs: OnboardingMsg[];
+  msgs: StarChatMsg[];
   artifact: PersonalityArtifact | null;
   done: boolean;
 
-  // begin (idempotent): seed ConvoState from the habit-tracker goals if we
-  // haven't started yet, so goal arrives pre-known and never re-asked.
+  // begin (idempotent): seed ConvoState from the funnel goals if we haven't
+  // started yet, so goal arrives pre-known and never re-asked.
   start: () => void;
-  pushMsg: (m: OnboardingMsg) => void;
+  pushMsg: (m: StarChatMsg) => void;
   // functional age gate: under-18s still get the experience but are excluded
   // from the (server-side, later) ad-profile pipeline.
   setAge: (band: string) => void;
@@ -43,7 +45,7 @@ type OnboardingStore = {
   reset: () => void;
 };
 
-export const useOnboarding = create<OnboardingStore>()(
+export const useStarChat = create<StarChatStore>()(
   persist(
     (set, get) => ({
       convo: null,
@@ -71,7 +73,7 @@ export const useOnboarding = create<OnboardingStore>()(
       reset: () => set({ convo: null, msgs: [], artifact: null, done: false }),
     }),
     {
-      name: 'sidekick_onboarding_v1',
+      name: 'sidekick_starchat_v1',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (s) => ({ convo: s.convo, msgs: s.msgs, artifact: s.artifact, done: s.done }),
     },

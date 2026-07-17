@@ -13,6 +13,7 @@ import { DevPanel } from '../src/components/DevPanel';
 import { GoalsSheet } from '../src/components/GoalsSheet';
 import { StreakModal } from '../src/components/StreakModal';
 import { SessionChat, STAR_FACE_TUNING } from '../src/components/SessionChat';
+import { StarChat } from '../src/components/StarChat';
 import { StarChatButton } from '../src/components/StarChatButton';
 import { useStarFaceConfig } from '../src/store/starFaceConfig';
 import { useSidekickContext, type Astral } from '../src/store/context';
@@ -126,6 +127,11 @@ export default function Home() {
   // world environment (map travel) + the active guided session (if any)
   const [environment, setEnvironment] = useState<EnvironmentId>('meadow');
   const [sessionId, setSessionId] = useState<string | null>(null);
+  // the continuous Star Chat (the progressive-onboarding personality reading).
+  // Shares the guided-session sky choreography below via `skyMode`; the legacy
+  // per-island SessionChat path (map taps) still uses sessionId.
+  const [starChatOpen, setStarChatOpen] = useState(false);
+  const skyMode = !!sessionId || starChatOpen;
   // TEMPORARY: live star-face look-dev, driven by the sliders in SessionChat.
   // Only pushed while tuning — otherwise the persisted config would override the
   // constants baked into renderer.ts, and a stale device config would silently
@@ -145,8 +151,8 @@ export default function Home() {
   // sidekick (~1.1s), then `cosmosPanned` → pan up + night crossfade + head
   // look-up, then `chatReady` → the interface fades in once we're in the sky.
   // Both flip false immediately when the session ends (useDeferredFlag offDelay 0).
-  const cosmosPanned = useDeferredFlag(!!sessionId, { onDelay: 1100 });
-  const chatReady = useDeferredFlag(!!sessionId, { onDelay: 2900 });
+  const cosmosPanned = useDeferredFlag(skyMode, { onDelay: 1100 });
+  const chatReady = useDeferredFlag(skyMode, { onDelay: 2900 });
   // daily-box flow: streak splash → ground chest → rewards modal → done
   const [boxStage, setBoxStage] = useState<'init' | 'streak' | 'ground' | 'rewards' | 'done'>('init');
   const [boxReward, setBoxReward] = useState<BoxReward | null>(null);
@@ -258,7 +264,7 @@ export default function Home() {
         <SidekickCanvas
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           framing={
-            sessionId
+            skyMode
               ? cosmosPanned
                 ? COSMOS_FRAMING // pan up to the sky (after the home beat)
                 : HERO_FRAMING // land on home first
@@ -286,7 +292,7 @@ export default function Home() {
       {/* what the sidekick is saying, over its head (hidden while a full
           surface covers the scene). The bond score lives on the star now. */}
       {settings ? (
-        <OverheadSpeech overhead={overhead} hidden={mapShown || shopOpen || chatOpen || settingsOpen || !!sessionId}>
+        <OverheadSpeech overhead={overhead} hidden={mapShown || shopOpen || chatOpen || settingsOpen || skyMode}>
           <SpeechBubble />
         </OverheadSpeech>
       ) : null}
@@ -296,13 +302,13 @@ export default function Home() {
       {settings && nextStarChat ? (
         <StarChatButton
           overhead={overhead}
-          hidden={mapShown || shopOpen || chatOpen || settingsOpen || !!sessionId}
-          onPress={() => setSessionId(nextStarChat.id)}
+          hidden={mapShown || shopOpen || chatOpen || settingsOpen || skyMode}
+          onPress={() => setStarChatOpen(true)}
         />
       ) : null}
 
       {/* top-right cluster: appearance + goals + streak (hidden under surfaces) */}
-      {!mapShown && !shopOpen && !chatOpen && !sessionId ? (
+      {!mapShown && !shopOpen && !chatOpen && !skyMode ? (
         <View
           style={{ position: 'absolute', top: insets.top + 8, right: 16, zIndex: 25, flexDirection: 'row', gap: 8, alignItems: 'center' }}
           pointerEvents="box-none"
@@ -331,7 +337,7 @@ export default function Home() {
       {/* iOS-style home dock — the sheets slide up OVER it; only the
           full-screen map reveal hides it */}
       <HomeDock
-        hidden={mapShown || !!sessionId}
+        hidden={mapShown || skyMode}
         mapDot={!!unseenIsland}
         onMessages={openChat}
         onShop={() => setShopOpen(true)}
@@ -383,9 +389,26 @@ export default function Home() {
         </View>
       ) : null}
 
+      {/* Star Chat — the continuous personality reading. Same sky choreography as
+          a guided session (pan up → chat fades in once chatReady). */}
+      {starChatOpen && chatReady ? (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 60 }}>
+          <StarChat
+            onDone={() => {
+              setStarChatOpen(false);
+              const line = astralNews(useSidekickContext.getState().astral);
+              setTimeout(() => speak(line, 6000), 2600);
+              if (useBond.getState().bond < BOND_MAX) {
+                setTimeout(() => speak("let's complete our bond ✦", 5000), 9200);
+              }
+            }}
+          />
+        </View>
+      ) : null}
+
 
       {/* Daily-box flow (home only): streak splash → ground chest → rewards */}
-      {settings && !mapShown && !shopOpen && !chatOpen && !settingsOpen && !sessionId ? (
+      {settings && !mapShown && !shopOpen && !chatOpen && !settingsOpen && !skyMode ? (
         <>
           {boxStage === 'streak' ? (
             <StreakSplash streak={streakCount} onDone={() => setBoxStage('ground')} />

@@ -6,8 +6,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   PHASE_COUNT,
+  SESSIONS,
   buildArtifactPrompt,
+  buildCardPrompt,
   buildControllerPrompt,
+  flattenFields,
   parseArtifact,
   parseControllerTurn,
   phaseDef,
@@ -17,16 +20,18 @@ import {
 } from '@sidekick/core';
 
 import { MSG_SHADOW, STREAM_GAP_MS, StreamedText, TypingDots, streamDurationMs } from './chat-stream';
-import { useOnboarding } from '../store/onboarding';
+import { useSidekickContext } from '../store/context';
+import { useStarChat } from '../store/star-chat';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 const KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
 
-// The onboarding conversation runner (docs/ONBOARDING-CONVERSATION.md): a
-// generative-with-a-floor personality reading. The engine (phases, must-have
-// floor, per-turn prompt, reducers) lives in @sidekick/core; this drives the
-// loop — age gate → phase-1 opener → each user answer feeds the controller,
-// which reacts + extracts + steers — and renders the earned artifact at the end.
+// The Star Chat runner (docs/STAR-CHAT.md): a generative-with-a-floor personality
+// reading. The engine (phases, must-have floor, per-turn prompt, reducers) lives
+// in @sidekick/core; this drives the loop — age gate → phase-1 opener → each user
+// answer feeds the controller, which reacts + extracts + steers. Each chapter
+// boundary deepens the astral card + pays bond + unlocks the matching island; the
+// last chapter renders the earned artifact.
 //
 // LLM: no server on mobile, so we call OpenAI directly when
 // EXPO_PUBLIC_OPENAI_API_KEY is set. With no key the flow still walks (scripted
@@ -74,11 +79,11 @@ async function llm(system: string, user: string, maxTokens: number): Promise<str
   }
 }
 
-export function OnboardingChat({ onDone }: { onDone: () => void }) {
+export function StarChat({ onDone }: { onDone: () => void }) {
   const insets = useSafeAreaInsets();
-  const msgs = useOnboarding((s) => s.msgs);
-  const artifact = useOnboarding((s) => s.artifact);
-  const convo = useOnboarding((s) => s.convo);
+  const msgs = useStarChat((s) => s.msgs);
+  const artifact = useStarChat((s) => s.artifact);
+  const convo = useStarChat((s) => s.convo);
 
   const [stage, setStage] = useState<Stage>('age');
   const [input, setInput] = useState('');
@@ -87,7 +92,7 @@ export function OnboardingChat({ onDone }: { onDone: () => void }) {
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   // messages already persisted when we mounted render as plain text; only lines
   // appended this session stream in (so a resume doesn't re-type the backlog).
-  const streamFrom = useRef(useOnboarding.getState().msgs.length);
+  const streamFrom = useRef(useStarChat.getState().msgs.length);
 
   const later = (fn: () => void, ms: number) => {
     const t = setTimeout(fn, ms);
@@ -106,7 +111,7 @@ export function OnboardingChat({ onDone }: { onDone: () => void }) {
     setTyping(true);
     later(() => {
       setTyping(false);
-      useOnboarding.getState().pushMsg({ role: 'bot', text });
+      useStarChat.getState().pushMsg({ role: 'bot', text });
       later(() => after?.(), streamDurationMs(text) + STREAM_GAP_MS);
     }, 550);
   };
@@ -148,8 +153,8 @@ export function OnboardingChat({ onDone }: { onDone: () => void }) {
 
   // kick off: fresh → opening + age gate; resume → jump to where they were
   useEffect(() => {
-    useOnboarding.getState().start();
-    const st = useOnboarding.getState();
+    useStarChat.getState().start();
+    const st = useStarChat.getState();
     if (st.done) {
       setStage('artifact');
       return;
@@ -164,41 +169,66 @@ export function OnboardingChat({ onDone }: { onDone: () => void }) {
   }, []);
 
   const recentTranscript = () =>
-    useOnboarding
+    useStarChat
       .getState()
       .msgs.slice(-12)
       .map((m) => `${m.role === 'bot' ? 'sidekick' : 'user'}: ${m.text}`)
       .join('\n');
 
-  const generateArtifact = async () => {
+  // chapter boundary: deepen the astral card from everything learned + the card
+  // they already have, then record chapter completion in the context store —
+  // which pays bond, merges fields, and unlocks the matching island (islands are
+  // folded in one-per-chapter, no longer the anchor). Fire-and-forget so the
+  // conversation keeps flowing; the refreshed card lands over the head at home.
+  const completeChapter = async (phase: number) => {
+    const def = SESSIONS[phase - 1];
+    const c = useStarChat.getState().convo;
+    if (!def || !c) return;
+    const prior = useSidekickContext.getState().astral;
+    const raw = await llm(buildCardPrompt(c, prior), 'write it now.', 460);
+    const art = raw ? parseArtifact(raw) : null;
+    const card = art ? { archetype: art.archetype, reading: art.reading, traits: art.traits } : null;
+    useSidekickContext.getState().completeSession(def, { fields: flattenFields(c), notes: [] }, card);
+  };
+
+  // last chapter: build the full artifact (with the evidence-cited insights) as
+  // the payoff, and land the final card + last island via completeSession.
+  const finishConversation = async (phase: number) => {
     setStage('generating');
     setTyping(true);
-    const c = useOnboarding.getState().convo;
+    const c = useStarChat.getState().convo;
     const raw = c ? await llm(buildArtifactPrompt(c), 'write the artifact now.', 520) : null;
     const art = (raw && parseArtifact(raw)) || FALLBACK_ARTIFACT;
     setTyping(false);
-    useOnboarding.getState().finish(art);
+    const def = SESSIONS[phase - 1];
+    if (def && c) {
+      const card = { archetype: art.archetype, reading: art.reading, traits: art.traits };
+      useSidekickContext.getState().completeSession(def, { fields: flattenFields(c), notes: [] }, card);
+    }
+    useStarChat.getState().finish(art);
     setStage('artifact');
   };
 
   // one controller turn: react + extract + steer, then advance on the floor
   const runController = async () => {
-    const c = useOnboarding.getState().convo;
+    const c = useStarChat.getState().convo;
     if (!c) return;
     setTyping(true);
     const raw = await llm(buildControllerPrompt(c), recentTranscript(), 340);
     setTyping(false);
     const turn: ControllerTurn =
       (raw && parseControllerTurn(raw)) || { message: SCRIPTED_NUDGE, fieldUpdates: [], phaseComplete: false };
-    useOnboarding.getState().applyTurn(turn); // folds fields, bumps the phase turn counter
-    const next = useOnboarding.getState().convo!;
+    useStarChat.getState().applyTurn(turn); // folds fields, bumps the phase turn counter
+    const next = useStarChat.getState().convo!;
     const advancing = readyToAdvance(next);
     const ending = advancing && next.phase >= PHASE_COUNT;
+    const completedPhase = next.phase; // the chapter whose floor we just filled
     showBot(turn.message, () => {
       if (ending) {
-        showSeq(["that's everything i wanted to ask ✦", 'let me pull your reading together…'], () => void generateArtifact());
+        showSeq(["that's everything i wanted to ask ✦", 'let me pull your reading together…'], () => void finishConversation(completedPhase));
       } else if (advancing) {
-        useOnboarding.getState().advance();
+        useStarChat.getState().advance();
+        void completeChapter(completedPhase);
       }
     });
   };
@@ -210,7 +240,7 @@ export function OnboardingChat({ onDone }: { onDone: () => void }) {
       showBot("just a number's fine — how old are you?");
       return;
     }
-    useOnboarding.getState().setAge(n < 18 ? '<18' : '18+');
+    useStarChat.getState().setAge(n < 18 ? '<18' : '18+');
     showBot(PHASE1_OPENER, () => setStage('chat'));
   };
 
@@ -219,7 +249,7 @@ export function OnboardingChat({ onDone }: { onDone: () => void }) {
     const text = input.trim();
     if (!text || busy) return;
     setInput('');
-    useOnboarding.getState().pushMsg({ role: 'user', text });
+    useStarChat.getState().pushMsg({ role: 'user', text });
     if (stage === 'age') handleAge(text);
     else if (stage === 'chat') void runController();
   };

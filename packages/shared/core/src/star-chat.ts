@@ -1,10 +1,13 @@
-// Onboarding conversation engine (docs/ONBOARDING-CONVERSATION.md).
+// Star Chat engine (docs/STAR-CHAT.md).
 //
-// A guided personality reading that doubles as getting to know the user. Unlike
-// the scripted island `sessions`, this is ONE continuous, near-fully-generative
-// conversation bounded by a hard floor: the LLM drives freely and follows the
-// user's threads, but it must obtain a set of must-have fields, steering to a
-// direct ask when the flow doesn't surface one.
+// A guided personality reading that doubles as getting to know the user — the
+// "progressive onboarding" (distinct from the app's initial goals/habits funnel).
+// Unlike the scripted island `sessions` this supersedes, it is ONE continuous,
+// resumable, near-fully-generative conversation bounded by a hard floor: the LLM
+// drives freely and follows the user's threads, but it must obtain a set of
+// must-have fields, steering to a direct ask when the flow doesn't surface one.
+// It advances through ~6 chapters; each completed chapter deepens the astral card,
+// pays bond, and (folded in for now) unlocks the matching island.
 //
 // This module is platform-agnostic and pure (per @sidekick/core rules): it owns
 // the phase/field model, the conversation state shape, the per-turn controller
@@ -362,6 +365,34 @@ export function profileDigest(state: ConvoState): string {
 	})
 		.filter(Boolean)
 		.join('\n');
+}
+
+// the learned fields as a flat id→value map, for merging into the app's context
+// store (the memory file). Only confidently-known, non-declined fields.
+export function flattenFields(state: ConvoState): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const f of FIELDS) {
+		const fs = state.fields[f.id];
+		if (fs && (fs.status === 'partial' || fs.status === 'high') && fs.value && fs.value !== 'declined') {
+			out[f.id] = fs.value;
+		}
+	}
+	return out;
+}
+
+// The astral card is the running reading, deepened at each chapter boundary from
+// everything learned so far plus the card they already have (continuity, so it
+// reads as one person growing clearer). Parse the reply with `parseArtifact` and
+// take archetype/reading/traits.
+export function buildCardPrompt(state: ConvoState, prior: { archetype: string; reading: string; traits: string[] } | null): string {
+	return (
+		`You are writing the user's "astral card" — a warm, almost-astrology personality reading — from an ongoing get-to-know-you conversation. ` +
+		(prior ? `This is an UPDATE: keep what still rings true and deepen it with what's new.\n` : `Build it from what they've shared so far.\n`) +
+		(prior ? `Their card now:\narchetype: ${prior.archetype}\nreading: ${prior.reading}\ntraits: ${prior.traits.join(', ')}\n\n` : '') +
+		`Everything learned so far:\n${profileDigest(state)}\n\n` +
+		`Return ONLY valid JSON, no fences:\n` +
+		`{"archetype": "<poetic 2-4 word lowercase title>", "reading": "<warm, slightly mystical 2-3 sentence read grounded in what they said, lowercase, no em-dash>", "traits": ["<3-4 short lowercase trait words>"]}`
+	);
 }
 
 export function buildArtifactPrompt(state: ConvoState): string {
