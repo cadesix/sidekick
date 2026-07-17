@@ -49,7 +49,10 @@ export function injectTypo(text: string, rng: () => number): string {
     return text;
   }
   const idx = candidates[Math.floor(rng() * candidates.length)];
-  const word = parts[idx];
+  const word = idx === undefined ? undefined : parts[idx];
+  if (idx === undefined || word === undefined || word.length < 3) {
+    return text;
+  }
   const pos = 1 + Math.floor(rng() * (word.length - 2)); // interior letter only
   parts[idx] = word.slice(0, pos) + word.slice(pos + 1);
   return parts.join("");

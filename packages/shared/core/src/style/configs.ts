@@ -6,12 +6,11 @@ import type { StyleConfig } from "./types";
 // intact and golden-tested, so you can always roll back by flipping the id — no
 // prompt or processor you liked ever gets clobbered.
 
-export const STYLE_CONFIGS: Record<string, StyleConfig> = {
-  v1: {
-    id: "v1",
-    description: "first controller config — moderate multi-send, light quirks",
-    maxTraitsPerTurn: 2,
-    traits: [
+const V1: StyleConfig = {
+  id: "v1",
+  description: "first controller config — moderate multi-send, light quirks",
+  maxTraitsPerTurn: 2,
+  traits: [
       // multi-send is code-applied (splitIntoBubbles), so it's reliable; cooldown 1
       // stops two burst-replies back to back.
       { id: "multisend", kind: "transform", baseRate: 0.5, cooldown: 1 },
@@ -33,13 +32,14 @@ export const STYLE_CONFIGS: Record<string, StyleConfig> = {
       // code-applied quirks — rare, with real cooldowns so they never cluster.
       { id: "bangspace", kind: "transform", baseRate: 0.15, cooldown: 3 },
       { id: "typo", kind: "transform", baseRate: 0.07, cooldown: 5 },
-    ],
-  },
+  ],
 };
 
+/** All named config versions. Add new ones here; never overwrite an old one. */
+export const STYLE_CONFIGS: Record<string, StyleConfig> = { v1: V1 };
 export const DEFAULT_STYLE_CONFIG_ID = "v1";
 
 /** Resolve a config id to its config, falling back to the default. */
 export function getStyleConfig(id: string = DEFAULT_STYLE_CONFIG_ID): StyleConfig {
-  return STYLE_CONFIGS[id] ?? STYLE_CONFIGS[DEFAULT_STYLE_CONFIG_ID];
+  return STYLE_CONFIGS[id] ?? V1;
 }
