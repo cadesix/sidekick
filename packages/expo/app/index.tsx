@@ -398,8 +398,9 @@ export default function Home() {
               setStarChatOpen(false);
               const line = astralNews(useSidekickContext.getState().astral);
               setTimeout(() => speak(line, 6000), 2600);
-              if (useBond.getState().bond < BOND_MAX) {
-                setTimeout(() => speak("let's complete our bond ✦", 5000), 9200);
+              // if there's more of the reading left, invite them back whenever
+              if (coreNextSession(useSidekickContext.getState().sessions)) {
+                setTimeout(() => speak('we can do your next astral chat whenever you\'re ready ✦', 5000), 9200);
               }
             }}
           />

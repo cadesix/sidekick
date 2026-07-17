@@ -103,6 +103,8 @@ export function StarChat({ onDone }: { onDone: () => void }) {
   const [stage, setStage] = useState<Stage>('chat');
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
+  // at the end the card isn't shown inline; a teaser box opens it as a reveal modal
+  const [revealOpen, setRevealOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   // messages already persisted when we mounted render as plain text; only lines
@@ -317,42 +319,24 @@ export function StarChat({ onDone }: { onDone: () => void }) {
               <TypingDots />
             </View>
           ) : null}
-
-          {stage === 'artifact' && artifact ? (
-            <View className="mt-2 rounded-3xl border border-[#C9BCFF]/25 bg-[#170f2e]/80 p-5">
-              <View className="flex-row items-center gap-1.5">
-                <Text className="text-[12px] text-[#C9BCFF]">✦</Text>
-                <Text className="text-[11px] font-extrabold uppercase tracking-[2px] text-[#C9BCFF]">your reading</Text>
-              </View>
-              <Text className="mt-2 text-[21px] font-extrabold leading-[26px] text-white">{artifact.archetype}</Text>
-              {artifact.traits.length ? (
-                <View className="mt-2.5 flex-row flex-wrap gap-1.5">
-                  {artifact.traits.map((t, i) => (
-                    <View key={i} className="rounded-full border border-white/10 bg-white/10 px-2.5 py-1">
-                      <Text className="text-[12px] font-semibold text-[#E7E0FF]">{t}</Text>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
-              <Text className="mt-3.5 text-[14.5px] leading-[22px] text-[#E7E0FF]/90">{artifact.reading}</Text>
-              {artifact.insights.length ? (
-                <View className="mt-4 gap-3">
-                  {artifact.insights.map((ins, i) => (
-                    <View key={i}>
-                      <Text className="text-[14px] font-bold text-white">{ins.claim}</Text>
-                      <Text className="mt-0.5 text-[13px] leading-[19px] text-[#E7E0FF]/70">{ins.because}</Text>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
-            </View>
-          ) : null}
         </ScrollView>
 
         <View className="px-3 pt-2 border-t border-white/10" style={{ paddingBottom: Math.max(insets.bottom, 12) + 8 }}>
           {stage === 'artifact' ? (
-            <Pressable onPress={onDone} className="rounded-full bg-[#7A5AF8] py-3.5 items-center">
-              <Text className="text-[16px] font-bold text-white">Continue</Text>
+            // the card isn't shown inline; this teaser opens the reveal modal
+            <Pressable
+              onPress={() => setRevealOpen(true)}
+              className="flex-row items-center rounded-3xl border border-[#C9BCFF]/40 bg-[#170f2e]/90 px-4 py-3.5"
+              style={{ gap: 12, shadowColor: '#7A5AF8', shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 0 } }}
+            >
+              <View className="h-10 w-10 rounded-full items-center justify-center bg-[#7A5AF8]">
+                <Text className="text-[18px] text-white">✦</Text>
+              </View>
+              <View className="flex-1">
+                <Text className="text-[15px] font-extrabold text-white">Reveal your astral card</Text>
+                <Text className="text-[12px] text-[#C9BCFF]/70">your reading is ready, tap to open</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#C9BCFF" />
             </Pressable>
           ) : (
             <View className="flex-row items-center gap-2">
@@ -376,6 +360,74 @@ export function StarChat({ onDone }: { onDone: () => void }) {
           )}
         </View>
       </Animated.View>
+
+      {stage === 'artifact' && revealOpen && artifact ? (
+        <AstralReveal artifact={artifact} onContinue={onDone} />
+      ) : null}
     </Animated.View>
+  );
+}
+
+// The end-of-chat payoff: the astral card revealed as a modal (a dark backdrop +
+// the card scaling/fading up), instead of appearing inline. Continue dismisses
+// the whole Star Chat, and the sidekick reacts back on the home screen (the
+// host's onDone speaks the reading).
+function AstralReveal({ artifact, onContinue }: { artifact: PersonalityArtifact; onContinue: () => void }) {
+  const insets = useSafeAreaInsets();
+  const t = useSharedValue(0);
+  useEffect(() => {
+    t.value = withTiming(1, { duration: 640, easing: Easing.out(Easing.cubic) });
+  }, [t]);
+  const backStyle = useAnimatedStyle(() => ({ opacity: t.value }));
+  const cardStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(1, t.value * 1.5),
+    transform: [{ scale: 0.88 + t.value * 0.12 }, { translateY: (1 - t.value) * 26 }],
+  }));
+
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 90, alignItems: 'center', justifyContent: 'center', padding: 22 }}>
+      <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(9,8,20,0.92)' }, backStyle]} />
+      <Animated.View style={[{ width: '100%', maxWidth: 420 }, cardStyle]}>
+        <View
+          className="rounded-[28px] border border-[#C9BCFF]/30 bg-[#160e2c] overflow-hidden"
+          style={{ maxHeight: SCREEN_H * 0.66, shadowColor: '#7A5AF8', shadowOpacity: 0.6, shadowRadius: 30, shadowOffset: { width: 0, height: 0 } }}
+        >
+          <ScrollView contentContainerStyle={{ padding: 24 }} showsVerticalScrollIndicator={false}>
+            <View className="flex-row items-center gap-1.5">
+              <Text className="text-[12px] text-[#C9BCFF]">✦</Text>
+              <Text className="text-[11px] font-extrabold uppercase tracking-[2px] text-[#C9BCFF]">your astral card</Text>
+            </View>
+            <Text className="mt-2.5 text-[26px] font-extrabold leading-[30px] text-white">{artifact.archetype}</Text>
+            {artifact.traits.length ? (
+              <View className="mt-3 flex-row flex-wrap gap-1.5">
+                {artifact.traits.map((tr, i) => (
+                  <View key={i} className="rounded-full border border-white/10 bg-white/10 px-2.5 py-1">
+                    <Text className="text-[12px] font-semibold text-[#E7E0FF]">{tr}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            <Text className="mt-4 text-[15px] leading-[23px] text-[#E7E0FF]/90">{artifact.reading}</Text>
+            {artifact.insights.length ? (
+              <View className="mt-5 gap-3.5">
+                {artifact.insights.map((ins, i) => (
+                  <View key={i}>
+                    <Text className="text-[14px] font-bold text-white">{ins.claim}</Text>
+                    <Text className="mt-0.5 text-[13px] leading-[19px] text-[#E7E0FF]/70">{ins.because}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </ScrollView>
+        </View>
+        <Pressable
+          onPress={onContinue}
+          className="mt-4 rounded-full bg-[#7A5AF8] py-3.5 items-center"
+          style={{ marginBottom: Math.max(insets.bottom, 8) }}
+        >
+          <Text className="text-[16px] font-bold text-white">Continue</Text>
+        </Pressable>
+      </Animated.View>
+    </View>
   );
 }
