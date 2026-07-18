@@ -11,7 +11,7 @@ import { colors } from "../theme";
 import { Glass } from "./Glass";
 import { Icon, type IconName } from "./Icon";
 
-export type DrawerAction = "camera" | "photos" | "audio" | "file" | "location";
+export type DrawerAction = "camera" | "photos" | "audio" | "file" | "location" | "games";
 
 interface DrawerItem {
 	key: DrawerAction;
@@ -25,6 +25,7 @@ const ITEMS: DrawerItem[] = [
 	{ key: "audio", label: "Audio", icon: "audio" },
 	{ key: "file", label: "Files", icon: "folder" },
 	{ key: "location", label: "Location", icon: "location" },
+	{ key: "games", label: "Games", icon: "gamecontroller" },
 ];
 
 interface PlusDrawerProps {

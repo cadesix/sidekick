@@ -4,11 +4,15 @@ import { bubble, colors, type } from "../theme";
 import type { Message } from "../types";
 import { AudioBubble } from "./AudioBubble";
 import { FileBubble } from "./FileBubble";
+import { GameCardBubble, gameName } from "./GameCardBubble";
 import { ImageBubble } from "./ImageBubble";
 import { MessageBubble } from "./MessageBubble";
 
 /** One-line stand-in for a message with no text (reply quotes, previews). */
 export function messageSummary(message: Message): string {
+	if (message.kind === "game" && message.game) {
+		return gameName(message.game.gameType);
+	}
 	if (message.kind === "audio") {
 		return "Audio Message";
 	}
@@ -33,12 +37,17 @@ export function MessageContent({
 	message,
 	tail,
 	backgroundBehind,
+	onOpenGame,
 }: {
 	message: Message;
 	tail: boolean;
 	backgroundBehind?: string;
+	onOpenGame?: (matchId: string) => void;
 }) {
 	const sent = message.role === "me";
+	if (message.kind === "game" && message.game) {
+		return <GameCardBubble game={message.game} onOpenGame={onOpenGame} />;
+	}
 	const hasAttachments = message.images.length > 0 || message.file !== undefined;
 	if (message.kind === "text" && !hasAttachments && isEmojiOnly(message.text)) {
 		return <Text style={styles.bigEmoji}>{message.text}</Text>;

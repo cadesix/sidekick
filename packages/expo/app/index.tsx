@@ -11,6 +11,7 @@ import { AppearanceSheet } from '../src/components/AppearanceSheet';
 import { OverheadSpeech } from '../src/components/OverheadSpeech';
 import { BoxRewardsModal, GroundBox, StreakSplash } from '../src/components/DailyBox';
 import { DevPanel } from '../src/components/DevPanel';
+import { GameOverlay } from '../src/components/GameOverlay';
 import { GoalsSheet } from '../src/components/GoalsSheet';
 import { StreakModal } from '../src/components/StreakModal';
 import { SessionChat, STAR_FACE_TUNING } from '../src/components/SessionChat';
@@ -135,6 +136,8 @@ export default function Home() {
   // Shares the guided-session sky choreography below via `skyMode`; the legacy
   // per-island SessionChat path (map taps) still uses sessionId.
   const [starChatOpen, setStarChatOpen] = useState(false);
+  // an open mini-game match (plan 21): the turn player mounts over everything
+  const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
   const skyMode = !!sessionId || starChatOpen;
   // TEMPORARY: live star-face look-dev, driven by the sliders in SessionChat.
   // Only pushed while tuning — otherwise the persisted config would override the
@@ -581,8 +584,16 @@ export default function Home() {
         ]}
         pointerEvents={chatOpen ? 'auto' : 'none'}
       >
-        <ChatScreen onClose={closeChat} />
+        <ChatScreen onClose={closeChat} onOpenGame={setActiveMatchId} />
       </Animated.View>
+
+      {/* Game overlay (plan 21) — the full-screen turn player, over the chat
+          drawer; a turn card tap or the picker sheet opens it */}
+      {activeMatchId ? (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 70 }}>
+          <GameOverlay matchId={activeMatchId} onClose={() => setActiveMatchId(null)} />
+        </View>
+      ) : null}
 
       {/* DEV state controls (top-left chip → panel); renders nothing in prod */}
       <DevPanel

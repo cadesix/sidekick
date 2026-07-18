@@ -42,6 +42,7 @@ interface MessageRowProps {
 	revealX: SharedValue<number>;
 	onLongPress: (message: Message, layout: BubbleLayout) => void;
 	onReply: (message: Message) => void;
+	onOpenGame?: (matchId: string) => void;
 	hidden?: boolean;
 	animateEntry?: boolean;
 }
@@ -88,6 +89,7 @@ export function MessageRow({
 	revealX,
 	onLongPress,
 	onReply,
+	onOpenGame,
 	hidden,
 	animateEntry,
 }: MessageRowProps) {
@@ -161,7 +163,7 @@ export function MessageRow({
 					delayLongPress={350}
 					style={[styles.bubbleHolder, hidden ? styles.hiddenBubble : null]}
 				>
-					<MessageContent message={message} tail={item.tail} />
+					<MessageContent message={message} tail={item.tail} onOpenGame={onOpenGame} />
 					<Animated.View pointerEvents="none" style={[styles.replyArrow, replyArrowStyle]}>
 						<Icon name="reply" size={15} color={colors.gray} filled />
 					</Animated.View>

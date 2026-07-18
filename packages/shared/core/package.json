@@ -11,6 +11,9 @@
 	"scripts": {
 		"typecheck": "tsc --noEmit"
 	},
+	"dependencies": {
+		"zod": "^3.25.0"
+	},
 	"devDependencies": {
 		"@sidekick/tsconfig": "workspace:*",
 		"typescript": "^5.7.2"

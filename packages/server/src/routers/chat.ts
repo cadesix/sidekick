@@ -36,25 +36,29 @@ import { type Database, conversations, messages } from "@sidekick/db";
 import { runIdleJob } from "../jobs/idle";
 import { completedDeepTalkSlugs, settleDeepTalks } from "../deep-talks/session";
 import { adsForMessages, runAdDecision } from "../ads";
+import { gamesForMessages } from "../games/service";
 
 /**
- * Attach each message's attachments and, for ad rows, the `SponsoredCard` render
- * payload (05 / 09) — both keyed by message id for thread rendering.
+ * Attach each message's attachments and, for ad / game-turn rows, the render
+ * payload — all keyed by message id for thread rendering. The game payload
+ * carries live match state and marks the match's `latest` card (plan 21).
  */
-async function withAttachments<T extends { id: number }>(
+async function withAttachments<T extends { id: number; gameMatchId: string | null }>(
   db: Database,
   storage: Storage,
   rows: T[],
 ) {
   const ids = rows.map((r) => r.id);
-  const [byMessage, adByMessage] = await Promise.all([
+  const [byMessage, adByMessage, gameByMessage] = await Promise.all([
     attachmentsForMessages(db, storage, ids),
     adsForMessages(db, ids),
+    gamesForMessages(db, rows),
   ]);
   return rows.map((row) => ({
     ...row,
     attachments: byMessage.get(row.id) ?? [],
     ad: adByMessage.get(row.id) ?? null,
+    game: gameByMessage.get(row.id) ?? null,
   }));
 }
 

@@ -419,6 +419,9 @@ importers:
       '@ai-sdk/openai':
         specifier: ^2.0.110
         version: 2.0.111(zod@3.25.76)
+      '@sidekick/core':
+        specifier: workspace:*
+        version: link:../core
       '@sidekick/db':
         specifier: workspace:*
         version: link:../../db
@@ -443,6 +446,10 @@ importers:
         version: 5.9.3
 
   packages/shared/core:
+    dependencies:
+      zod:
+        specifier: ^3.25.0
+        version: 3.25.76
     devDependencies:
       '@sidekick/tsconfig':
         specifier: workspace:*

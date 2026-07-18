@@ -17,6 +17,7 @@
 	},
 	"dependencies": {
 		"@ai-sdk/openai": "^2.0.110",
+		"@sidekick/core": "workspace:*",
 		"@sidekick/db": "workspace:*",
 		"ai": "^5.0.0",
 		"rrule": "^2.8.1",
