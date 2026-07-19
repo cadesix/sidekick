@@ -4,30 +4,36 @@ import { cupPong, type CupPongFlick } from '@sidekick/core';
 
 import { roundedRectShape, type GameSceneHost } from './game-scene';
 
-// The Cup Pong scene (plan 21 §Cup Pong): all-procedural — a proper table (top
-// slab + darker skirt over a floor plane, lengthwise white aiming line), solo
-// cups in the engine's 4-3-2-1 triangle, a sphere ball flying the exact
-// parabola core's throwFlight describes. The FAR rack is always the one being
-// shot at (the driver swaps masks between the sidekick's replay and the user's
-// turn); the near rack mirrors the other side's cups, small, GamePigeon-style.
+// The Cup Pong scene (plan 21 §Cup Pong): all-procedural — a long, narrow
+// folding table seen from the thrower's end (low camera, so your own rack
+// looms large and the far rack sits small down-table), solo cups in the
+// engine's 4-3-2-1 triangle, a sphere ball flying the exact parabola core's
+// throwFlight describes. The FAR rack is always the one being shot at (the
+// driver swaps masks between the sidekick's replay and the user's turn); the
+// near rack mirrors the other side's cups at full scale right at your edge.
 // No landing pre-viz while aiming — GamePigeon gives you nothing but feel; the
 // only cue is the ball nudging sideways with the drag (direction, never
 // distance). Engine coords (x lateral, y downtable) map to world (x, -y).
 
 export const CUP_PONG_FRAMING = {
-  pos: [0, 2.5, 1.95] as [number, number, number],
-  target: [0, -0.55, -1.15] as [number, number, number],
-  fov: 46,
+  pos: [0, 1.85, 3.75] as [number, number, number],
+  target: [0, -0.34, -0.95] as [number, number, number],
+  fov: 44,
 };
 export const CUP_PONG_BACKGROUND = '#efe3cf';
 
 const CUP_H = 0.14;
 const CUP_MOUTH_R = 0.0445;
 const BALL_R = 0.03;
-const BALL_START = new THREE.Vector3(0, 0.24, 0.52);
-const NEAR_RACK_Z = 0.52;
-const NEAR_RACK_SCALE = 0.55;
-const AIM_NUDGE = 0.06;
+const BALL_START = new THREE.Vector3(0, 0.34, 2.0);
+const NEAR_RACK_Z = 1.28;
+const TABLE_W = 0.72;
+const TABLE_NEAR_Z = 1.46;
+const TABLE_FAR_Z = -2.08;
+const TABLE_L = TABLE_NEAR_Z - TABLE_FAR_Z;
+const TABLE_MID_Z = (TABLE_NEAR_Z + TABLE_FAR_Z) / 2;
+const TABLE_H = 0.62;
+const AIM_NUDGE = 0.09;
 
 export type ThrowVisual = {
   /** far-rack slot the ball dropped into, or null on a miss */
@@ -61,11 +67,7 @@ function farPosition(x: number, y: number): THREE.Vector3 {
 }
 
 function nearPosition(x: number, y: number): THREE.Vector3 {
-  return new THREE.Vector3(
-    x * NEAR_RACK_SCALE,
-    0,
-    NEAR_RACK_Z - (cupPong.RACK_BACK_Y - y) * NEAR_RACK_SCALE,
-  );
+  return new THREE.Vector3(x, 0, NEAR_RACK_Z - (cupPong.RACK_BACK_Y - y));
 }
 
 export function createCupPongScene(host: GameSceneHost): CupPongSceneController {
@@ -73,30 +75,48 @@ export function createCupPongScene(host: GameSceneHost): CupPongSceneController 
 
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), host.celMaterial('#bcab89'));
   floor.rotation.x = -Math.PI / 2;
-  floor.position.y = -1.1;
+  floor.position.y = -TABLE_H;
   scene.add(floor);
 
+  const wall = new THREE.Mesh(new THREE.PlaneGeometry(60, 20), host.celMaterial('#e0d4ba'));
+  wall.position.set(0, 10 - TABLE_H, -7);
+  scene.add(wall);
+
   const tableTop = new THREE.Mesh(
-    new THREE.ExtrudeGeometry(roundedRectShape(1.6, 3.4, 0.12), {
-      depth: 0.06,
+    new THREE.ExtrudeGeometry(roundedRectShape(TABLE_W, TABLE_L, 0.04), {
+      depth: 0.045,
       bevelEnabled: false,
     }),
-    host.celMaterial('#d9a566'),
+    [host.celMaterial('#d9a566'), host.celMaterial('#c08a45')],
   );
   tableTop.rotation.x = -Math.PI / 2;
-  tableTop.position.set(0, -0.06, -0.95);
+  tableTop.position.set(0, -0.045, TABLE_MID_Z);
   scene.add(tableTop);
 
-  const skirt = new THREE.Mesh(
-    new THREE.ExtrudeGeometry(roundedRectShape(1.46, 3.26, 0.1), {
-      depth: 0.26,
+  const apron = new THREE.Mesh(
+    new THREE.ExtrudeGeometry(roundedRectShape(TABLE_W - 0.05, TABLE_L - 0.05, 0.03), {
+      depth: 0.075,
       bevelEnabled: false,
     }),
     host.celMaterial('#b3823f'),
   );
-  skirt.rotation.x = -Math.PI / 2;
-  skirt.position.set(0, -0.32, -0.95);
-  scene.add(skirt);
+  apron.rotation.x = -Math.PI / 2;
+  apron.position.set(0, -0.12, TABLE_MID_Z);
+  scene.add(apron);
+
+  const legMat = host.celMaterial('#a3733a');
+  const legGeo = new THREE.BoxGeometry(0.045, TABLE_H - 0.1, 0.045);
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const leg = new THREE.Mesh(legGeo, legMat);
+      leg.position.set(
+        sx * (TABLE_W / 2 - 0.09),
+        -0.1 - (TABLE_H - 0.1) / 2,
+        TABLE_MID_Z + sz * (TABLE_L / 2 - 0.14),
+      );
+      scene.add(leg);
+    }
+  }
 
   const lineMat = new THREE.MeshBasicMaterial({
     color: '#ffffff',
@@ -104,9 +124,9 @@ export function createCupPongScene(host: GameSceneHost): CupPongSceneController 
     opacity: 0.85,
     depthWrite: false,
   });
-  const centerLine = new THREE.Mesh(new THREE.PlaneGeometry(0.017, 3.24), lineMat);
+  const centerLine = new THREE.Mesh(new THREE.PlaneGeometry(0.014, TABLE_L - 0.16), lineMat);
   centerLine.rotation.x = -Math.PI / 2;
-  centerLine.position.set(0, 0.002, -0.95);
+  centerLine.position.set(0, 0.002, TABLE_MID_Z);
   scene.add(centerLine);
 
   // Red-solo-cup lathe: pedestal foot, tapered body with two thin ridge rings,
@@ -170,7 +190,6 @@ export function createCupPongScene(host: GameSceneHost): CupPongSceneController 
     for (const cup of cupPong.cupPositions(mask)) {
       const mesh = makeCup();
       mesh.position.copy(nearPosition(cup.x, cup.y));
-      mesh.scale.setScalar(NEAR_RACK_SCALE);
       nearRack.add(mesh);
     }
   }
@@ -199,7 +218,8 @@ export function createCupPongScene(host: GameSceneHost): CupPongSceneController 
   let fastForward = false;
 
   host.onFrame((dt) => {
-    ballShadow.visible = ball.visible && ball.position.y < 0.9;
+    ballShadow.visible =
+      ball.visible && ball.position.y < 0.9 && ball.position.z < TABLE_NEAR_Z - 0.03;
     ballShadow.position.set(ball.position.x, 0.003, ball.position.z);
     const squash = 1 / (1 + ball.position.y * 1.6);
     ballShadow.scale.setScalar(Math.max(squash, 0.3) * ball.scale.x);

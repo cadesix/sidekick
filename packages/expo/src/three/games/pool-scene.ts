@@ -17,9 +17,9 @@ import { roundedRectShape, type GameFraming, type GameSceneHost } from './game-s
 // camera at the bottom.
 
 export const POOL_FRAMING: GameFraming = {
-  pos: [0, 3.15, 0.26],
+  pos: [0, 3.85, 0.62],
   target: [0, 0, 0.02],
-  fov: 46,
+  fov: 44,
 };
 export const POOL_BACKGROUND = '#e9e0cd';
 
@@ -214,25 +214,72 @@ export function createPoolScene(host: GameSceneHost): PoolSceneController {
   railShape.holes.push(railHole);
   const rails = new THREE.Mesh(
     new THREE.ExtrudeGeometry(railShape, { depth: RAIL_H, bevelEnabled: false }),
-    host.celMaterial('#8a5a34'),
+    [host.celMaterial('#8a5a34'), host.celMaterial('#754a28')],
   );
   rails.rotation.x = -Math.PI / 2;
   scene.add(rails);
 
+  // Cushions: extruded trapezoids — the nose runs exactly along core's cushion
+  // segment, and the back edge extends toward each pocket so the ends read as
+  // the angled jaws of a real cushion, not sawn-off boxes.
   const cushionMat = host.celMaterial('#2e8551');
   for (const seg of CUSHIONS) {
     const dx = Math.abs(seg.x2 - seg.x1);
     const dy = Math.abs(seg.y2 - seg.y1);
-    const geo =
-      dx > dy
-        ? new THREE.BoxGeometry(dx, CUSH_H, CUSH_D)
-        : new THREE.BoxGeometry(CUSH_D, CUSH_H, dy);
-    const cushion = new THREE.Mesh(geo, cushionMat);
-    const mid = worldPoint((seg.x1 + seg.x2) / 2, (seg.y1 + seg.y2) / 2, CUSH_H / 2);
-    if (dx > dy) mid.z += seg.y1 < 1 ? CUSH_D / 2 : -CUSH_D / 2;
-    else mid.x += seg.x1 < 0.5 ? -CUSH_D / 2 : CUSH_D / 2;
-    cushion.position.copy(mid);
-    scene.add(cushion);
+    const len = Math.max(dx, dy);
+    const shape = new THREE.Shape();
+    shape.moveTo(-len / 2, 0);
+    shape.lineTo(len / 2, 0);
+    shape.lineTo(len / 2 + CUSH_D * 0.85, CUSH_D);
+    shape.lineTo(-len / 2 - CUSH_D * 0.85, CUSH_D);
+    shape.closePath();
+    const mesh = new THREE.Mesh(
+      new THREE.ExtrudeGeometry(shape, { depth: CUSH_H, bevelEnabled: false }),
+      cushionMat,
+    );
+    mesh.rotation.x = -Math.PI / 2;
+    const group = new THREE.Group();
+    group.add(mesh);
+    if (dx > dy) {
+      group.rotation.y = seg.y1 < 1 ? Math.PI : 0;
+    } else {
+      group.rotation.y = seg.x1 < 0.5 ? Math.PI / 2 : -Math.PI / 2;
+    }
+    group.position.copy(worldPoint((seg.x1 + seg.x2) / 2, (seg.y1 + seg.y2) / 2, 0));
+    scene.add(group);
+  }
+
+  // Pocket dressing: a dark rim ring flush with the rail top around each of
+  // core's capture circles, so the openings read as leather-cupped pockets
+  // instead of raw felt cutouts.
+  const rimMat = host.celMaterial('#241a12');
+  const rimGeo = new THREE.RingGeometry(POCKET_R - 0.004, POCKET_R + 0.022, 26);
+  for (const pocket of POCKETS) {
+    const rim = new THREE.Mesh(rimGeo, rimMat);
+    rim.rotation.x = -Math.PI / 2;
+    rim.position.copy(worldPoint(pocket.x, pocket.y, RAIL_H + 0.002));
+    scene.add(rim);
+  }
+
+  // Rail sights: the six diamond dots per long rail (skipping the side
+  // pocket), three per end rail, at the standard eighth positions.
+  const sightMat = new THREE.MeshBasicMaterial({ color: '#e6d9bd' });
+  const sightGeo = new THREE.CircleGeometry(0.0085, 12);
+  const railMid = CUSH_D + RAIL_W / 2;
+  const sights: { x: number; y: number }[] = [];
+  for (const f of [0.125, 0.25, 0.375, 0.625, 0.75, 0.875]) {
+    sights.push({ x: -railMid, y: TABLE_L * f });
+    sights.push({ x: TABLE_W + railMid, y: TABLE_L * f });
+  }
+  for (const f of [0.25, 0.5, 0.75]) {
+    sights.push({ x: TABLE_W * f, y: -railMid });
+    sights.push({ x: TABLE_W * f, y: TABLE_L + railMid });
+  }
+  for (const s of sights) {
+    const dot = new THREE.Mesh(sightGeo, sightMat);
+    dot.rotation.x = -Math.PI / 2;
+    dot.position.copy(worldPoint(s.x, s.y, RAIL_H + 0.002));
+    scene.add(dot);
   }
 
   const ballGeo = new THREE.SphereGeometry(BALL_R, 20, 14);

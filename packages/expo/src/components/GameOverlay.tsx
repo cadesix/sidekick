@@ -905,7 +905,7 @@ export function GameOverlay({ matchId, onClose }: { matchId: string; onClose: ()
         <View style={styles.hintWrap} pointerEvents="none">
           <Text style={styles.hint}>
             {ballInHand
-              ? 'Ball in hand — drag the cue ball, then shoot'
+              ? 'Ball in hand — drag the cue ball'
               : 'Drag to aim · pull the left track to shoot'}
           </Text>
         </View>
@@ -1030,13 +1030,13 @@ const styles = StyleSheet.create({
   },
   powerTrack: {
     position: 'absolute',
-    left: 6,
-    top: '30%',
-    width: 56,
+    left: 2,
+    top: '26%',
+    width: 44,
     height: POWER_TRACK_LEN + 24,
     alignItems: 'center',
     justifyContent: 'flex-start',
-    borderRadius: 28,
+    borderRadius: 22,
     backgroundColor: 'rgba(255,255,255,0.55)',
   },
   powerRail: {
@@ -1049,9 +1049,9 @@ const styles = StyleSheet.create({
   },
   powerGrip: {
     position: 'absolute',
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: '#caa05e',
     borderWidth: 2,
     borderColor: 'rgba(58,44,28,0.35)',
@@ -1059,7 +1059,7 @@ const styles = StyleSheet.create({
   spinButton: {
     position: 'absolute',
     right: 14,
-    bottom: 120,
+    bottom: 16,
     width: 48,
     height: 48,
     borderRadius: 24,
