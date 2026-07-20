@@ -1,21 +1,53 @@
 {
   "cli": {
+    "version": ">= 16.6.1",
+    "promptToConfigurePushNotifications": false,
     "appVersionSource": "remote"
   },
   "build": {
+    "base": {
+      "node": "22.11.0",
+      "pnpm": "10.34.1"
+    },
     "development": {
+      "extends": "base",
       "developmentClient": true,
       "distribution": "internal",
+      "channel": "development"
+    },
+    "simulator": {
+      "extends": "base",
+      "developmentClient": true,
+      "distribution": "internal",
+      "channel": "development",
+      "ios": {
+        "simulator": true
+      },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://markets-pollution-copies-cat.trycloudflare.com",
         "EXPO_PUBLIC_DISABLE_DEVICE_ACTIVITY": "1"
       }
     },
     "preview": {
+      "extends": "base",
       "distribution": "internal",
+      "channel": "preview",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://markets-pollution-copies-cat.trycloudflare.com",
-        "EXPO_PUBLIC_DISABLE_DEVICE_ACTIVITY": "1"
+        "EXPO_PUBLIC_API_URL": "https://api.sidekickchat.app"
+      }
+    },
+    "production": {
+      "extends": "base",
+      "channel": "production",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://api.sidekickchat.app"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascAppId": "REPLACE_WITH_ASC_APP_ID"
       }
     }
   }

@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/node";
 import { createDb } from "@sidekick/db/client";
 import { featureFlagsFromEnv, setAppleMusicClientResolver } from "@sidekick/shared";
 import { Resend } from "resend";
@@ -6,7 +7,8 @@ import type { AuthEmailSender } from "./auth/email";
 import { otpEmailHtml } from "./auth/email";
 import { createTwilioSms } from "./auth/sms";
 import type { Services } from "./context";
-import { type ServerEnv, readEnv } from "./env";
+import { type ServerEnv, disabledFeatures, readEnv } from "./env";
+import { logger } from "./logger";
 import { createModel, createSessionModel, createTranscriptionModel } from "./model";
 import { appleMusicClientForUser } from "./music/client-factory";
 import { createStorage } from "./storage";
@@ -20,7 +22,10 @@ setAppleMusicClientResolver(appleMusicClientForUser);
  * `waitUntil`) so the response isn't torn down before the task runs.
  */
 function fireAndForget(task: () => Promise<unknown>): void {
-  void task().catch((error) => console.error("background task failed", error));
+  void task().catch((error) => {
+    logger.error({ err: error }, "background task failed");
+    Sentry.captureException(error);
+  });
 }
 
 /**
@@ -34,10 +39,10 @@ function createAuthEmail(env: ServerEnv): AuthEmailSender {
   if (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL) {
     return {
       sendOtp: async (email, code) => {
-        if (process.env.NODE_ENV === "production") {
+        if (env.NODE_ENV === "production") {
           throw new Error("Email OTP is not configured: set RESEND_API_KEY and RESEND_FROM_EMAIL");
         }
-        console.log(`[auth] email OTP for ${email}: ${code}`);
+        logger.info(`[auth] email OTP for ${email}: ${code}`);
       },
     };
   }
@@ -55,17 +60,22 @@ function createAuthEmail(env: ServerEnv): AuthEmailSender {
   };
 }
 
-/** Build production services from env. Never called by tests. */
+/**
+ * Build production services from env. Never called by tests. `readEnv` throws
+ * here if anything required is missing or malformed, so a misconfigured deploy
+ * fails at boot with the full list rather than at the first request that needs it.
+ */
 export function createServices(): Services {
   const env = readEnv();
-  if (!env.DATABASE_URL) {
-    throw new Error("DATABASE_URL is required");
+  const off = disabledFeatures(env);
+  if (off.length > 0) {
+    logger.warn({ disabled: off }, "optional integrations are not configured");
   }
   const model = createModel(env);
   return {
     db: createDb(env.DATABASE_URL),
     model,
-    flags: featureFlagsFromEnv(env),
+    flags: featureFlagsFromEnv({ SIDEKICK_DISABLED_TOOLS: env.SIDEKICK_DISABLED_TOOLS }),
     scheduleBackground: fireAndForget,
     storage: createStorage(env),
     captionModel: model,

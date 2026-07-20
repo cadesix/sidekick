@@ -32,9 +32,13 @@ function osFromUserAgent(ua: string): string | undefined {
 /**
  * Real device signals from the incoming request's headers (05 §CPM checklist:
  * "forward client ua/ip/os/country, never our server's"). `x-forwarded-for`'s
- * first hop is the client IP behind Vercel's proxy; `x-vercel-ip-country` is the
- * edge's geo lookup. Returns undefined when the request carries none, so a
- * headerless caller (tests, crons) sends no fabricated signals.
+ * first hop is the client IP behind the proxy; the country comes from whichever
+ * edge fronts the API — `cf-ipcountry` on Cloudflare, `x-vercel-ip-country` on
+ * Vercel. Railway alone sets neither, so country goes unsent rather than being
+ * guessed from locale: an `en-US` phone in Berlin is a US locale in Germany, and
+ * a wrong geo is worse to an exchange than a missing one. Returns undefined when
+ * the request carries no signals, so a headerless caller (tests, crons) sends
+ * nothing fabricated.
  */
 export function deviceSignalsFromHeaders(
   header: (name: string) => string | null | undefined,
@@ -42,7 +46,7 @@ export function deviceSignalsFromHeaders(
   const ua = header("x-sidekick-user-agent") ?? header("user-agent") ?? undefined;
   const forwarded = header("x-forwarded-for");
   const ip = forwarded ? forwarded.split(",")[0]?.trim() : (header("x-real-ip") ?? undefined);
-  const country = header("x-vercel-ip-country") ?? undefined;
+  const country = header("cf-ipcountry") ?? header("x-vercel-ip-country") ?? undefined;
   const id = header("x-sidekick-device-id") ?? undefined;
   const timezone = header("x-sidekick-timezone") ?? undefined;
   const locale = header("accept-language")?.split(",")[0]?.trim() || undefined;

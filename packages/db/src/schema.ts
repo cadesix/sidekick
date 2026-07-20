@@ -840,3 +840,19 @@ export const gameMatches = pgTable(
   },
   (t) => [index("game_matches_user_type_status_idx").on(t.userId, t.gameType, t.status)],
 );
+
+/**
+ * Durable fixed-window rate-limit counters. The in-process limiter these replace
+ * counted per lambda, so on Vercel the effective allowance multiplied by however
+ * many instances happened to be warm — i.e. it wasn't a limit. One row per key,
+ * advanced by a single atomic upsert so concurrent instances share the count.
+ */
+export const rateLimits = pgTable(
+  "rate_limits",
+  {
+    key: text("key").primaryKey(),
+    windowStart: timestamp("window_start", { withTimezone: true, mode: "date" }).notNull(),
+    count: integer("count").notNull(),
+  },
+  (t) => [index("rate_limits_window_start_idx").on(t.windowStart)],
+);

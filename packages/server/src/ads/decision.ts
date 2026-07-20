@@ -3,6 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { type Database, adEvents, adProfiles, ads, users } from "@sidekick/db";
 import type { FeatureFlags } from "@sidekick/shared";
+import { logger } from "../logger";
 import { adForwardMessages } from "../memory/ad-window";
 import {
   type AdSkipReason,
@@ -195,15 +196,16 @@ function logged(
   input: { userId: string; conversationId: string; turnMessageId: number },
   result: AdDecisionResult,
 ): AdDecisionResult {
-  console.info(
-    JSON.stringify({
+  logger.info(
+    {
       event: "ad.decision",
       userId: input.userId,
       conversationId: input.conversationId,
       turnMessageId: input.turnMessageId,
       status: result.status,
       reason: result.status === "skipped" ? result.reason : undefined,
-    }),
+    },
+    "ad decision",
   );
   return result;
 }

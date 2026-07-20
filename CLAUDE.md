@@ -47,7 +47,8 @@ there, expo's `sync-cosmetics.mjs` reads there). What remains:
 - Extract the three.js scene from `packages/expo/src/three/` into
   `@sidekick/three` (not started).
 
-`docs/MONOREPO.md` is the current architecture doc. `docs/SYNC-PLAN.md` is
+`docs/MONOREPO.md` is the current architecture doc. `docs/RELEASE.md` covers
+building and shipping the iOS app to TestFlight. `docs/SYNC-PLAN.md` is
 historical (the old two-app parity model) — do not follow it.
 
 `packages/landing` (marketing site) is unaffected by all of this.
