@@ -298,7 +298,11 @@ export function useSidekickChat(): SidekickChat {
       visible = base.filter((message) => message.role === "me" || gameReveal.knownIds.has(message.id));
     } else if (reveal) {
       // burst reveal: hold the not-yet-shown trailing bubbles of a multi-bubble reply.
-      const hide = reveal.total - reveal.shown;
+      // Clamp to the CURRENT trailing burst so a stale/oversized reveal can never hide
+      // non-burst messages (or empty the whole list).
+      const burst = trailingBurst(base);
+      const maxHide = burst ? burst.count - 1 : 0;
+      const hide = Math.min(Math.max(0, reveal.total - reveal.shown), maxHide);
       if (hide > 0) {
         visible = base.slice(0, base.length - hide);
       }

@@ -385,7 +385,14 @@ export function OnboardingIntroChat({
       <ScrollView
         ref={scrollRef}
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 24, paddingBottom: 16, gap: 6 }}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: 24,
+          // extra bottom breathing room so the last message never sits in the
+          // bottom-left corner (there's no input field here to provide it).
+          paddingBottom: insets.bottom + 28,
+          gap: 6,
+        }}
         showsVerticalScrollIndicator={false}
         onContentSizeChange={scrollToEnd}
         keyboardDismissMode="interactive"
