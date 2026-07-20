@@ -168,3 +168,68 @@ export const onboardingTools: SidekickTool[] = [
     },
   }),
 ];
+
+/**
+ * The goal-screen "+" habit-add flow (`conversation.kind = 'habit'`). A minimal
+ * tool set: just `commit_habit`, which always CREATES a new goal (unlike
+ * onboarding's `commit_freeform_goal`, which reconciles onto the single first
+ * goal). No reminder/catalog tools — adding a habit is a short, self-contained flow.
+ */
+export const habitTools: SidekickTool[] = [
+  defineTool({
+    name: "commit_habit",
+    description:
+      "Create a NEW habit for the user once you've landed on a concrete habit AND a cadence together. Call exactly once, silently — never announce it. Adds it to their goal list.",
+    execution: "server",
+    parameters: z.object({
+      label: z
+        .string()
+        .min(1)
+        .describe('A short habit label in the user\'s words, e.g. "go for a run" or "read before bed"'),
+      cadence: cadenceSchema.describe(
+        "How often: { type: 'daily' }, { type: 'weekly', target: N }, or { type: 'daily-criteria', criteria, value }",
+      ),
+    }),
+    execute: async ({ label, cadence }, { db, userId }) => {
+      const slug = slugify(label);
+      // Dedup by slug: a fresh habit (new slug) creates a new goal; a repeated
+      // commit of the SAME habit (the model may re-call as it confirms) updates
+      // the existing one — so one "+" session yields one goal, but distinct
+      // habits each get their own.
+      const existing = await db
+        .select({ id: goals.id })
+        .from(goals)
+        .where(and(eq(goals.userId, userId), eq(goals.slug, slug), eq(goals.status, "active")))
+        .limit(1);
+      let goalId = existing[0]?.id;
+      if (!goalId) {
+        const inserted = await db
+          .insert(goals)
+          .values({ userId, slug, label, status: "active" })
+          .returning({ id: goals.id });
+        goalId = inserted[0]?.id;
+      }
+      if (!goalId) {
+        return { ok: false, error: "failed to create the goal" };
+      }
+
+      const currentItem = await db
+        .select({ id: actionItems.id })
+        .from(actionItems)
+        .where(and(eq(actionItems.goalId, goalId), eq(actionItems.status, "active")))
+        .orderBy(desc(actionItems.createdAt))
+        .limit(1);
+      if (currentItem[0]) {
+        await db
+          .update(actionItems)
+          .set({ slug: CUSTOM_ACTION_SLUG, label, cadence })
+          .where(eq(actionItems.id, currentItem[0].id));
+      } else {
+        await db
+          .insert(actionItems)
+          .values({ goalId, slug: CUSTOM_ACTION_SLUG, label, cadence, status: "active" });
+      }
+      return { ok: true, plan: `${label}, ${cadencePhrase(cadence)}` };
+    },
+  }),
+];

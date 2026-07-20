@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { cadenceSchema, ianaTimezone } from "@sidekick/shared";
 import { protectedProcedure, router } from "../trpc";
-import { startOnboardingChat } from "../onboarding/chat";
+import { startHabitChat, startOnboardingChat } from "../onboarding/chat";
 import { completeOnboarding } from "../onboarding/complete";
 
 const personalitySchema = z.object({
@@ -55,6 +55,11 @@ export const onboardingRouter = router({
     .mutation(({ ctx, input }) =>
       startOnboardingChat(ctx.db, ctx.model, ctx.userId, input.goalSlugs),
     ),
+
+  /** Open a fresh guided habit-add chat (goal-screen "+"): kind 'habit'. */
+  startHabitChat: protectedProcedure.mutation(({ ctx }) =>
+    startHabitChat(ctx.db, ctx.model, ctx.userId),
+  ),
 
   complete: protectedProcedure
     .input(completeInput)

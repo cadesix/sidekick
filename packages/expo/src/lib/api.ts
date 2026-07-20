@@ -550,6 +550,11 @@ export function startOnboardingChat(goalSlugs: string[]): Promise<{ conversation
   return trpc.onboarding.startChat.mutate({ goalSlugs });
 }
 
+/** Open a fresh guided habit-add chat (goal-screen "+"). */
+export function startHabitChat(): Promise<{ conversationId: string }> {
+  return trpc.onboarding.startHabitChat.mutate();
+}
+
 /** Count of sidekick-made documents (07 home "Made for you" row, 15). */
 export async function fetchDocumentCount(): Promise<number> {
   const home = await trpc.documents.list.query();

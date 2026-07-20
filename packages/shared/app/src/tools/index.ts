@@ -15,7 +15,7 @@ import type { Capability, SidekickTool } from "./types";
 export * from "./types";
 export * from "./registry";
 export * from "./search";
-export { onboardingTools } from "./onboarding";
+export { onboardingTools, habitTools } from "./onboarding";
 
 /**
  * Every capability: its tools plus the optional chat-side guidance that travels

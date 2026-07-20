@@ -19,6 +19,21 @@ export const ONBOARDING_CHAT_PROMPT = { version: "onboarding-chat-v1" } as const
 export const ONBOARDING_INTRO_INSTRUCTION =
   "this is your very first message to the user ever — they just met you and named you. greet them warmly. if you have their personality result, react to it once (warmly, like it delights you). then get started on your current step (see the setup chat context) — keep it to 1-2 short lowercase sentences.";
 
+// --- The goal-screen "+" habit-add flow (`conversation.kind = 'habit'`) ---
+// A short, self-contained version of the freeform discovery: no pain-point dig,
+// no reminder/notifications — just "what habit? what cadence?" then commit_habit
+// (which CREATES a new goal). Static (no beat machine); completion is signalled
+// by the commit tool firing (turn.ts emits a 'done' beat).
+
+export const HABIT_INTRO_INSTRUCTION =
+  "the user wants to add a new habit to their list. greet them in one short line and ask what habit they'd like to build.";
+
+export function renderHabitBlock(): string {
+  return `=== ADD A HABIT ===
+help them add ONE more habit, one thing at a time. ask what habit they want to build, then shape it into a realistic daily or weekly rhythm (offer a specific version and a cadence, e.g. "a 20 minute walk" "3× a week", or "read before bed" "every night"). keep it doable, never ridiculous. once you have a clear habit AND a cadence, call commit_habit with a short label and the cadence — silently, never announce it, then tell them it's on their list. keep every message to 1-2 short lowercase sentences.
+=== END ===`;
+}
+
 export type OnboardingBeat =
   // Freeform first-habit discovery: no goal chosen yet, so the chat uncovers a
   // pain point, lands one habit, shapes a cadence, and commits it.
