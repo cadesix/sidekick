@@ -1,0 +1,69 @@
+# What EAS uploads when it builds the app.
+#
+# IMPORTANT: this file REPLACES .gitignore for EAS uploads — it does not add to
+# it. Every pattern from the root .gitignore and packages/expo/.gitignore is
+# repeated below; dropping one here means that content starts getting uploaded
+# again, even though git still ignores it.
+#
+# On top of those, this excludes the parts of the monorepo an iOS build never
+# reads: the canonical art source, the Blender pipeline, and the docs. The app
+# renders from packages/expo/assets/ (the synced copy that cosmetics-manifest.ts
+# require()s), so the top-level assets/ tree is authoring input, not build input.
+
+# Authoring + tooling the build never reads
+/assets/
+/tools/
+/plans/
+/docs/
+/tests/
+/design-qa.md
+/chat-top.png
+
+# Dependencies (any package)
+node_modules
+
+# Build output / caches
+dist
+.vite
+web-build/
+*.tsbuildinfo
+.expo/
+.metro-health-check*
+__pycache__/
+
+# Generated native projects — EAS runs prebuild itself
+/packages/expo/ios
+/packages/expo/android
+.kotlin/
+
+# targets/ is re-copied from react-native-device-activity on every prebuild
+/packages/expo/targets/*
+!/packages/expo/targets/NotificationService/
+
+# Secrets + local env (build-time env comes from eas.json / EAS env vars)
+.env
+.env*.local
+.blob-store/
+*.jks
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision
+
+# Local state, logs, editor noise
+.claude/
+.logs/
+.vercel
+.playwright-mcp
+.DS_Store
+*.local
+*.orig.*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Local iteration artifacts
+packages/web/.illustrate/studio/
+tools/char-pipeline/renders/
+tools/char-pipeline/.wip/
