@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { dayString } from '@sidekick/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -616,8 +617,6 @@ function GenderStep({ onSubmit }: { onSubmit: (gender: string) => void }) {
 // then we branch on platform in render.
 function BirthdayStep({ onSubmit }: { onSubmit: (birthday: string) => void }) {
   const insets = useSafeAreaInsets();
-  const iso = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
   // native spinner default: ~20 years ago
   const [date, setDate] = useState<Date>(() => {
@@ -651,7 +650,7 @@ function BirthdayStep({ onSubmit }: { onSubmit: (birthday: string) => void }) {
               />
             </View>
             <View style={{ height: 12 }} />
-            <PrimaryButton label="continue" onPress={() => onSubmit(iso(date))} />
+            <PrimaryButton label="continue" onPress={() => onSubmit(dayString(date))} />
           </View>
         </View>
       </Animated.View>
@@ -973,17 +972,14 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 8,
   },
-  bannerAvatar: { width: 60, height: 60, borderRadius: 16 },
   bannerHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
   bannerSender: { fontFamily: FONT, flex: 1, fontSize: 16, fontWeight: '700', color: '#111' },
   bannerNow: { fontFamily: FONT, fontSize: 12, color: 'rgba(17,17,17,0.4)' },
   bannerText: { fontFamily: FONT, fontSize: 14, lineHeight: 18, color: 'rgba(17,17,17,0.8)' },
   notifCta: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 28, alignItems: 'center' },
   notifCtaBtn: { width: '100%', alignItems: 'center' },
+  // size + radius come from MessagesAppIcon (per-instance); only fill/shadow are shared
   appIcon: {
-    width: 66,
-    height: 66,
-    borderRadius: 16,
     backgroundColor: '#34C759',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1031,9 +1027,4 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 28,
     overflow: 'hidden',
   },
-  grabber: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: '#e5e5e5', marginBottom: 20 },
-  chatTitle: { fontFamily: FONT, fontSize: 24, fontWeight: '800', color: '#171717', textAlign: 'center' },
-  chatBody: { fontFamily: FONT, marginTop: 12, fontSize: 16, lineHeight: 22, color: 'rgba(23,23,23,0.6)', textAlign: 'center' },
-  retryBtn: { paddingHorizontal: 22, paddingVertical: 12, borderRadius: 999, backgroundColor: '#4F46F0' },
-  retryText: { fontFamily: FONT, fontSize: 15, fontWeight: '700', color: '#fff' },
 });

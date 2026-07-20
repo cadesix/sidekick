@@ -229,8 +229,8 @@ export async function runTurn(input: {
       text: input.text,
       attachmentIds: input.attachmentIds,
       // A burst bubble's id is "<baseId>.<n>"; reply targets the whole reply (its
-      // base row), matching how reactions resolve — and the stream schema needs an int.
-      replyToId: input.replyToId === undefined ? undefined : Number(input.replyToId.split(".")[0]),
+      // base row) via rowId, matching how reactions/deletes resolve.
+      replyToId: input.replyToId === undefined ? undefined : rowId(input.replyToId),
     },
     noop,
   );

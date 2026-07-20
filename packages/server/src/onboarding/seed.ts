@@ -38,14 +38,15 @@ export function agePhrase(bracket: string): string {
   return AGE_PHRASE[bracket] ?? bracket;
 }
 
-/** e.g. "Maya is 25–34, female." — gender omitted when 'prefer-not'. */
+/**
+ * e.g. "Maya is 25–34, female." — each of age/gender is omitted when empty or
+ * (gender) unrecognized/'prefer-not'; with neither, falls back to "Maya just joined."
+ * (the streamlined onboarding may not collect a birthday). `gender` is expected
+ * canonical (female/male/non-binary).
+ */
 export function identitySentence(name: string, ageBracket: string, gender: string): string {
-  const age = agePhrase(ageBracket);
-  const genderWord = GENDER_PHRASE[gender];
-  if (genderWord) {
-    return `${name} is ${age}, ${genderWord}.`;
-  }
-  return `${name} is ${age}.`;
+  const parts = [ageBracket ? agePhrase(ageBracket) : "", GENDER_PHRASE[gender] ?? ""].filter(Boolean);
+  return parts.length > 0 ? `${name} is ${parts.join(", ")}.` : `${name} just joined.`;
 }
 
 /** e.g. "Maya's coaching style is The Spark — spontaneous, playful, lives in the moment." */

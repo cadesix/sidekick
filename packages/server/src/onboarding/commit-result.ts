@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { and, desc, eq } from "drizzle-orm";
 import { actionItems, type Database, goals, memories, users } from "@sidekick/db";
 import { bumpMemoryVersion, type Cadence, CUSTOM_ACTION_SLUG } from "@sidekick/shared";
-import { agePhrase, goalContextSentence } from "./seed";
+import { goalContextSentence, identitySentence } from "./seed";
 
 // Default daily check-in time when the streamlined onboarding didn't ask for one.
 const DEFAULT_CHECKIN_TIME = "19:00";
@@ -56,15 +56,6 @@ function canonicalGender(gender?: string): string | null {
   const raw = (gender ?? "").trim().toLowerCase();
   if (!raw) return null;
   return GENDER_CANON[raw] ?? raw;
-}
-
-// Canonical gender ("female"/"male"/"non-binary"); the non-answer is omitted.
-function identitySentence(name: string, ageBracket: string | null, gender: string | null): string {
-  const parts = [
-    ageBracket ? agePhrase(ageBracket) : "",
-    gender && gender !== "prefer-not" ? gender : "",
-  ].filter(Boolean);
-  return parts.length > 0 ? `${name} is ${parts.join(", ")}.` : `${name} just joined.`;
 }
 
 /**
@@ -129,7 +120,7 @@ export async function commitOnboardingResult(
       {
         userId,
         kind: "identity",
-        content: identitySentence(name, ageBracket, gender),
+        content: identitySentence(name, ageBracket ?? "", gender ?? ""),
         confidence: "stated",
         source: "onboarding",
       },

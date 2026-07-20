@@ -25,15 +25,14 @@ export type OnboardingResult = {
   habit?: { slug: string; label: string; actionLabel: string; cadence: { type: 'daily' } };
   talk?: { topic: string };
 };
-// reason: talk | habits | both. improve/action drive the habit path; topic/focus
-// the talk path (seed the daily check-in copy). onComplete gets the whole object.
+// reason: talk | habits | both. improve/action drive the habit path; topic the
+// talk path (seeds the daily check-in copy). onComplete gets the whole object.
 type Vars = {
   name: string;
   reason: string;
   improve: string;
   action: string;
   topic: string;
-  focus: string;
 };
 type Msg = { id: string; role: 'me' | 'them'; text: string };
 
@@ -255,7 +254,6 @@ export function OnboardingIntroChat({
     improve: '',
     action: '',
     topic: '',
-    focus: '',
   });
   // where to resume + which var to set (if any), once the current chip is tapped
   const pendingRef = useRef<{ index: number; set?: keyof Vars } | null>(null);
@@ -331,15 +329,17 @@ export function OnboardingIntroChat({
     [pump, scrollToEnd],
   );
 
+  // Start the script once. Kept separate from the unmount teardown below so a
+  // changing `pump` identity (onComplete is a fresh closure each parent render)
+  // can't tear down `aliveRef` mid-sequence and freeze the chat.
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
-    aliveRef.current = true;
     void pump(0);
-    return () => {
-      aliveRef.current = false;
-    };
   }, [pump]);
+  useEffect(() => () => {
+    aliveRef.current = false;
+  }, []);
 
   return (
     <View style={{ flex: 1 }}>
