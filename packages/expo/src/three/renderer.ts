@@ -81,6 +81,11 @@ export type SidekickController = {
   setStudio: (v: boolean) => void;
   // guided-session night sky: crossfade the meadow → dark starfield
   setCosmos: (v: boolean) => void;
+  // onboarding notif beat: tilt the head up toward the notice (until chat opens)
+  setLookUp: (v: boolean) => void;
+  // per-frame camera ease rate toward the framing (default 0.07; lower = slower,
+  // gentler zoom — used to give the chat-open move breathing room)
+  setCamRate: (k: number) => void;
   // TEMPORARY: live look-dev for the sky's star constellation (see
   // store/starFaceConfig.ts). Goes away once the numbers are baked in.
   setStarFace: (c: StarFaceConfig) => void;
@@ -501,6 +506,7 @@ export function createSidekickRenderer(
   let talking = false;
   let studio = !!opts.studio;
   let cosmos = !!opts.cosmos;
+  let lookUp = false; // onboarding notif beat: tilt the head up toward the notice
   let disposed = false;
   // onboarding cinematics (no-ops unless entrance/jumpIn/shake are used): the
   // character launches from HIDDEN_Y with an eased arc, the camera shakes on
@@ -728,6 +734,8 @@ export function createSidekickRenderer(
   let phoneShown = false;
   let studioT = 0; // eased meadow→studio blend (0 meadow, 1 studio)
   let cosmosT = 0; // eased meadow→night-sky blend (guided session)
+  let lookUpT = 0; // eased head look-up (0 neutral, 1 fully up)
+  let camRate = 0.07; // per-frame camera ease toward framing (lower = slower/gentler)
   let raf = 0;
   let snapFrame = 0;
   const studioMat = studioSphere.material as THREE.MeshBasicMaterial;
@@ -848,6 +856,8 @@ export function createSidekickRenderer(
     // so it eases in under the camera's pan up to the sky
     cosmosT += ((cosmos ? 1 : 0) - cosmosT) * 0.06;
     if (Math.abs((cosmos ? 1 : 0) - cosmosT) < 0.002) cosmosT = cosmos ? 1 : 0;
+    lookUpT += ((lookUp ? 1 : 0) - lookUpT) * 0.08;
+    if (Math.abs((lookUp ? 1 : 0) - lookUpT) < 0.002) lookUpT = lookUp ? 1 : 0;
     const inCosmos = cosmosT > 0.001;
     // studio backdrop or the night sky — either one fully hides the meadow
     const inCover = inStudio || inCosmos;
@@ -949,7 +959,13 @@ export function createSidekickRenderer(
       // tilt the head up to gaze at the sky as the night crossfades in (peaks
       // just before the character slides out of frame under the camera pan)
       const cosmosLook = Math.min(1, cosmosT / 0.8) * 0.6;
-      setBone('head', fr.headPitch + PHONE_POSE.headPitch * pb - cosmosLook, fr.headYaw + PHONE_POSE.headYaw * pb, 0);
+      const upLook = lookUpT * 0.42; // notif beat: tilt the head up toward the notice
+      setBone(
+        'head',
+        fr.headPitch + PHONE_POSE.headPitch * pb - cosmosLook - upLook,
+        fr.headYaw + PHONE_POSE.headYaw * pb,
+        0,
+      );
       // body-drag bend splits across waist + spine (arc toward the grab
       // point); the trailing leg lifts and its knee curls when off balance
       setBone('waist', fr.bendX * 0.5, 0, fr.bendZ * 0.5);
@@ -964,7 +980,7 @@ export function createSidekickRenderer(
     // ease camera toward the current framing (smooth zoom on chat open). The
     // guided-session pan up to the sky uses a slower rate so the tilt reads as a
     // deliberate, felt move rather than a snap.
-    const camK = cosmos ? 0.032 : 0.07;
+    const camK = cosmos ? 0.032 : camRate;
     camBasePos.lerp(wantPos.fromArray(framing.pos), camK);
     camBaseTarget.lerp(wantTgt.fromArray(framing.target), camK);
     const wantFov = framing.fov ?? camera.fov;
@@ -1117,6 +1133,12 @@ export function createSidekickRenderer(
     },
     setCosmos: (v) => {
       cosmos = v;
+    },
+    setLookUp: (v) => {
+      lookUp = v;
+    },
+    setCamRate: (k) => {
+      camRate = k;
     },
     setStarFace: (c) => starFace.setConfig(c),
     setEnvironment: (id) => {

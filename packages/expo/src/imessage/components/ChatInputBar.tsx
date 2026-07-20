@@ -1,15 +1,46 @@
 import * as Haptics from "expo-haptics";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { Platform, Pressable, StyleSheet, TextInput, type TextStyle, View } from "react-native";
+import {
+	Platform,
+	Pressable,
+	StyleSheet,
+	type StyleProp,
+	TextInput,
+	type TextStyle,
+	View,
+	type ViewStyle,
+} from "react-native";
 import Animated, { useAnimatedStyle, withSpring, ZoomIn, ZoomOut } from "react-native-reanimated";
 import { colors } from "../theme";
-import { Glass } from "./Glass";
+import { Glass, liquidGlass } from "./Glass";
 import { Icon } from "./Icon";
 import type { AudioAttachment } from "../types";
 import { VoiceRecorder } from "./VoiceRecorder";
 
 /** The composer's view of its picked attachments: none, still uploading/ingesting, or all ready. */
 export type AttachmentState = "none" | "settling" | "ready";
+
+// Composer surface: real iOS-26 liquid glass where available, else a FLAT opaque
+// fill in the received-bubble gray. (The blur fallback lightens whatever fill sits
+// behind it, so we skip the blur entirely and match the message bubbles exactly.)
+function Surface({
+	isInteractive,
+	style,
+	children,
+}: {
+	isInteractive?: boolean;
+	style?: StyleProp<ViewStyle>;
+	children: ReactNode;
+}) {
+	if (liquidGlass) {
+		return (
+			<Glass isInteractive={isInteractive} style={style}>
+				{children}
+			</Glass>
+		);
+	}
+	return <View style={[style, styles.receivedFill]}>{children}</View>;
+}
 
 // Single-line resting height (matches the 40pt plus button) and the max before the
 // field scrolls internally — the field grows between them as text wraps, like iOS.
@@ -98,13 +129,13 @@ export function ChatInputBar({
 	return (
 		<View style={styles.container}>
 			<View style={styles.row}>
-				<Glass isInteractive style={[styles.plusButton, styles.receivedFill]}>
+				<Surface isInteractive style={styles.plusButton}>
 					<Pressable onPress={handleLeftButton} style={styles.plusPressable} hitSlop={6}>
 						<Animated.View style={plusIconStyle}>
 							<Icon name="plus" size={19} color={colors.label} />
 						</Animated.View>
 					</Pressable>
-				</Glass>
+				</Surface>
 				{recording ? (
 					<VoiceRecorder
 						onCancel={() => onRecordingChange(false)}
@@ -114,7 +145,7 @@ export function ChatInputBar({
 						}}
 					/>
 				) : (
-					<Glass style={[styles.field, tray ? styles.fieldWithTray : null, styles.receivedFill]}>
+					<Surface style={[styles.field, tray ? styles.fieldWithTray : null]}>
 						{tray ? (
 							<>
 								{tray}
@@ -180,7 +211,7 @@ export function ChatInputBar({
 								</Pressable>
 							)}
 						</View>
-					</Glass>
+					</Surface>
 				)}
 			</View>
 		</View>
