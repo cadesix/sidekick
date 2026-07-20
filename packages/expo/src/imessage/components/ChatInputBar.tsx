@@ -3,7 +3,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, TextInput, type TextStyle, View } from "react-native";
 import Animated, { useAnimatedStyle, withSpring, ZoomIn, ZoomOut } from "react-native-reanimated";
 import { colors } from "../theme";
-import { Glass, liquidGlass } from "./Glass";
+import { Glass } from "./Glass";
 import { Icon } from "./Icon";
 import type { AudioAttachment } from "../types";
 import { VoiceRecorder } from "./VoiceRecorder";
@@ -98,7 +98,7 @@ export function ChatInputBar({
 	return (
 		<View style={styles.container}>
 			<View style={styles.row}>
-				<Glass isInteractive style={[styles.plusButton, liquidGlass ? null : styles.glassFallbackFill]}>
+				<Glass isInteractive style={[styles.plusButton, styles.receivedFill]}>
 					<Pressable onPress={handleLeftButton} style={styles.plusPressable} hitSlop={6}>
 						<Animated.View style={plusIconStyle}>
 							<Icon name="plus" size={19} color={colors.label} />
@@ -114,7 +114,7 @@ export function ChatInputBar({
 						}}
 					/>
 				) : (
-					<Glass style={[styles.field, tray ? styles.fieldWithTray : null, liquidGlass ? null : styles.glassFallbackFill]}>
+					<Glass style={[styles.field, tray ? styles.fieldWithTray : null, styles.receivedFill]}>
 						{tray ? (
 							<>
 								{tray}
@@ -217,10 +217,10 @@ const styles = StyleSheet.create({
 	fieldWithTray: {
 		borderRadius: 26,
 	},
-	// Off the iOS-26 liquid-glass path the frosted blur reads as a heavy gray; use
-	// the standard light iMessage gray (matches the received bubble) instead.
-	glassFallbackFill: {
-		backgroundColor: "#E9E9EB",
+	// The plus button + input field are filled with the received-bubble gray on all
+	// platforms (not the frosted glass), so the composer matches the message bubbles.
+	receivedFill: {
+		backgroundColor: colors.receivedBubble,
 	},
 	trayDivider: {
 		height: StyleSheet.hairlineWidth,
