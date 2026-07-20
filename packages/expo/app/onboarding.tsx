@@ -782,11 +782,17 @@ function PrimaryButton({
   onPress: () => void;
   disabled?: boolean;
 }) {
+  // Static style array (not the `({pressed}) => …` callback form): NativeWind's
+  // css-interop drops the function form of `style` on native, which would leave
+  // the button with no fill. Track pressed via state instead.
+  const [pressed, setPressed] = useState(false);
   return (
     <Pressable
       onPress={onPress}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
       disabled={disabled}
-      style={({ pressed }) => [
+      style={[
         styles.btn,
         disabled ? styles.btnDisabled : null,
         pressed && !disabled ? styles.btnPressed : null,
