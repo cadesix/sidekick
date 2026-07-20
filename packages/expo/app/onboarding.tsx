@@ -1,35 +1,31 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Dimensions, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Animated, {
+  Easing,
   FadeInUp,
-  SlideInUp,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { setSkinColor, startOnboardingChat } from '../src/lib/api';
-import { GuidedHabitChat } from '../src/components/GuidedHabitChat';
+import { commitOnboardingResult, setSkinColor } from '../src/lib/api';
+import { OnboardingIntroChat, type OnboardingResult } from '../src/components/OnboardingIntroChat';
 import {
   loadOnboarding,
   markOnboardingComplete,
-  refreshOnboarding,
+  ONBOARDING_QUERY_KEY,
   saveOnboardingField,
   saveStep,
 } from '../src/lib/onboarding';
 import { OnboardingAuth } from '../src/components/OnboardingAuth';
-import { SidekickAvatar } from '../src/components/SidekickAvatar';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { useAuthStore } from '../src/lib/auth-store';
 import type { Framing, SidekickController } from '../src/three/renderer';
@@ -134,9 +130,13 @@ export default function Onboarding() {
   const [colorId, setColorId] = useState<string>(SKIN_COLORS[0].id);
   const [notifIn, setNotifIn] = useState(false);
   const [chatMounted, setChatMounted] = useState(false);
-  // The onboarding conversation id for the guided-habit chat (created lazily when
-  // the chat phase mounts, via startOnboardingChat).
-  const [chatConvId, setChatConvId] = useState<string | null>(null);
+  // chat sheet slide-up (0 = fully below the screen, 1 = docked). Driven when the
+  // chat phase mounts so the sheet rises from the bottom as the camera zooms out.
+  const sheetProgress = useSharedValue(0);
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: (1 - sheetProgress.value) * SHEET_TRAVEL }],
+    opacity: sheetProgress.value < 0.01 ? 0 : 1,
+  }));
 
   // one-time hydrate: settings + skin (so the reveal wears the account's skin) +
   // resume state, then land the flow at the resumed phase.
@@ -147,9 +147,16 @@ export default function Onboarding() {
       await hydrateSkinFromMirror();
       const st = await loadOnboarding();
       if (cancelled) return;
+      const signedOut = useAuthStore.getState().status === 'signedOut';
+      // Already finished AND signed in → Home accepts us; go there (never replay).
+      // If signed OUT, do NOT bounce — Home would redirect right back here (its gate
+      // requires signed-in), an infinite loop. Fall through to run the auth step.
+      if (st.complete && !signedOut) {
+        router.replace('/');
+        return;
+      }
       // signed out → auth first (regardless of any saved step); signed in →
       // resume the saved step (never 'auth' — already signed in), else welcome.
-      const signedOut = useAuthStore.getState().status === 'signedOut';
       const saved = (PHASE_ORDER as string[]).includes(st.phase) ? (st.phase as Phase) : null;
       const initial: Phase = signedOut ? 'auth' : saved && saved !== 'auth' ? saved : 'welcome';
       initialPhaseRef.current = initial;
@@ -160,6 +167,7 @@ export default function Onboarding() {
       setFraming(PHASES[initial].framing);
       setNotifIn(initial === 'notif' || initial === 'chat');
       setChatMounted(initial === 'chat');
+      if (initial === 'chat') sheetProgress.value = 1; // resume: sheet already docked
       setReady(true);
     })();
     return () => {
@@ -172,6 +180,12 @@ export default function Onboarding() {
     controllerRef.current = c;
     c?.applySettings(eveningSettings());
   }, []);
+
+  // notif beat: once the notice has dropped in, the sidekick looks up at it — and
+  // keeps looking up until "open chat" is tapped (openChat clears it).
+  useEffect(() => {
+    controllerRef.current?.setLookUp(phase === 'notif' && notifIn);
+  }, [phase, notifIn]);
 
   // every phase change lands here: persist the resume step + apply its framing.
   const goTo = (next: Phase, opts?: { keepFraming?: boolean }) => {
@@ -204,7 +218,7 @@ export default function Onboarding() {
       const st = await loadOnboarding();
       if (cancelled) return;
       if (st.complete) {
-        await refreshOnboarding(queryClient);
+        queryClient.setQueryData(ONBOARDING_QUERY_KEY, st); // sync cache so Home's gate passes
         goHome();
       } else {
         goTo('welcome');
@@ -277,33 +291,40 @@ export default function Onboarding() {
 
   // 6 → 7: tap the banner → he lifts the phone (holdingPhone) + chat opens.
   const openChat = () => {
+    controllerRef.current?.setLookUp(false);
+    // gentle, slow camera ease so the zoom-out has room to breathe as the sheet rises
+    controllerRef.current?.setCamRate(0.028);
     setChatMounted(true);
+    sheetProgress.value = withDelay(180, withTiming(1, { duration: 780, easing: Easing.out(Easing.cubic) }));
     goTo('chat');
   };
 
   // 7 → done: mark complete so the gate never re-triggers, then home (tearing
-  // down our scene first — see goHome).
-  const finish = () => {
+  // down our scene first — see goHome). `summary` is what the scripted intro chat
+  // collected (reason / improve / action) — TODO: persist it as the first goal.
+  const finish = (summary?: OnboardingResult) => {
     void (async () => {
+      // Persist the picks (habit → Goals object, talk → check-in prefs). Never block
+      // the user on it — log and continue home if it fails.
+      if (summary) {
+        try {
+          await commitOnboardingResult(summary);
+        } catch (err) {
+          console.error('[onboarding] commitOnboardingResult failed', err);
+        }
+      }
       await markOnboardingComplete();
-      await refreshOnboarding(queryClient);
+      // Push the completed state into the query cache synchronously so Home's
+      // first-run gate sees complete=true immediately. An async invalidate would
+      // let Home render the stale (incomplete) state and bounce straight back to
+      // /onboarding, which resumes at 'chat' and replays the intro (the loop).
+      const fresh = await loadOnboarding();
+      queryClient.setQueryData(ONBOARDING_QUERY_KEY, fresh);
       goHome();
     })();
   };
 
   const sender = sidekickName.trim() || 'Sidekick';
-
-  // Create the onboarding conversation once the chat phase mounts (covers both
-  // openChat and a cold resume that lands directly on 'chat'). No goal slugs — the
-  // guided-habit flow is freeform (server prompt handles pain-point → habit →
-  // cadence). Idempotent server-side per user.
-  useEffect(() => {
-    if (chatMounted && !chatConvId) {
-      startOnboardingChat([])
-        .then(({ conversationId }) => setChatConvId(conversationId))
-        .catch(() => {});
-    }
-  }, [chatMounted, chatConvId]);
 
   return (
     <View style={styles.root}>
@@ -411,7 +432,7 @@ export default function Onboarding() {
       {phase === 'nameSidekick' && !animating ? (
         <NameEntry
           key="nameSidekick"
-          title="what's his name?"
+          title="what's your sidekick's name?"
           placeholder="name your sidekick"
           cta="continue"
           onSubmit={submitSidekickName}
@@ -422,34 +443,27 @@ export default function Onboarding() {
 
       {/* 6. Notification banner (drops down from the top) */}
       {phase === 'notif' ? (
-        <NotificationBanner show={notifIn} sender={sender} topInset={insets.top} onTap={openChat} />
+        <>
+          <NotificationBanner show={notifIn} sender={sender} topInset={insets.top} onTap={openChat} />
+          {/* after the notice drops, a big "open chat" CTA rises from the bottom
+              and gently shakes to invite the tap (the Messages icon now lives in
+              the notice itself). */}
+          {notifIn ? (
+            <View style={[styles.notifCta, { paddingBottom: insets.bottom + 22 }]} pointerEvents="box-none">
+              <Animated.View entering={FadeInUp.duration(420).delay(650)} style={styles.notifCtaBtn}>
+                <ShakeButton label="open chat" onPress={openChat} />
+              </Animated.View>
+            </View>
+          ) : null}
+        </>
       ) : null}
 
-      {/* 7. Chat — STUB. For now the sheet slides up with the holding-phone pose
-          and a finish CTA.
-          TO BUILD — a guided habit chat (shared with the goal screen's "+"):
-            1. ask the user's name + age (reconcile with the earlier askName step —
-               likely confirm the entered name and just add age).
-            2. ask for ONE goal, phrased flexibly ("your goal / one thing you want
-               to improve / one habit you want to build") — free-form answer.
-            3. generative follow-up that turns the raw answer into something
-               actionable on a daily or weekly basis (cadence).
-            4. seed that as their FIRST goal → written to the goal screen.
-          The goal screen then shows an empty "+" container below the goals that
-          opens this SAME guided-habit flow (free-form + generative daily/weekly
-          cadence options). Build the flow once; invoke it from both places.
-          See the goals-freeform-onboarding-direction memory. */}
+      {/* 7. Chat — the scripted onboarding intro (client-side, WIP copy). Fades in
+          in place as the camera dollies out (no slide-from-top), no grabber. */}
       {chatMounted ? (
-        <Animated.View entering={SlideInUp.duration(420)} style={styles.chatSheet}>
-          <View style={[styles.chatSheetInner, { paddingHorizontal: 0 }]}>
-            <View style={styles.grabber} />
-            {chatConvId ? (
-              <GuidedHabitChat conversationId={chatConvId} onComplete={finish} />
-            ) : (
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={styles.chatBody}>starting your chat…</Text>
-              </View>
-            )}
+        <Animated.View style={[styles.chatSheet, sheetStyle]}>
+          <View style={styles.chatSheetInner}>
+            <OnboardingIntroChat sidekickName={sidekickName} onComplete={finish} />
           </View>
         </Animated.View>
       ) : null}
@@ -543,13 +557,18 @@ function NameEntry({
   }
 
   return (
-    <Animated.View entering={FadeInUp.duration(450)} style={styles.centerFill}>
-      <View style={styles.nameCol}>
-        <Text style={styles.h1}>{title}</Text>
-        {field}
-        <View style={{ height: 12 }} />
-        <PrimaryButton label={cta} onPress={submit} disabled={!can} />
-      </View>
+    <Animated.View entering={FadeInUp.duration(450)} style={StyleSheet.absoluteFill}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.centerFill}
+      >
+        <View style={styles.nameCol}>
+          <Text style={styles.h1}>{title}</Text>
+          {field}
+          <View style={{ height: 12 }} />
+          <PrimaryButton label={cta} onPress={submit} disabled={!can} />
+        </View>
+      </KeyboardAvoidingView>
     </Animated.View>
   );
 }
@@ -571,13 +590,54 @@ function GenderStep({ onSubmit }: { onSubmit: (gender: string) => void }) {
   );
 }
 
-// Birthday step — three numeric fields (works on web + iOS, unlike the native
-// date picker). Emits "YYYY-MM-DD".
+// Birthday step. On iOS/Android → the native date-picker spinner (feels native,
+// no keyboard, no layout to break). On web (no native picker) → three numeric
+// fields. Emits "YYYY-MM-DD". All hooks run unconditionally (Platform is constant),
+// then we branch on platform in render.
 function BirthdayStep({ onSubmit }: { onSubmit: (birthday: string) => void }) {
   const insets = useSafeAreaInsets();
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  // native spinner default: ~20 years ago
+  const [date, setDate] = useState<Date>(() => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 20);
+    return d;
+  });
+  // web fallback fields
   const [month, setMonth] = useState('');
   const [day, setDay] = useState('');
   const [year, setYear] = useState('');
+
+  if (Platform.OS !== 'web') {
+    return (
+      <Animated.View entering={FadeInUp.duration(450)} style={StyleSheet.absoluteFill} pointerEvents="box-none">
+        <View style={[styles.topCopy, { top: insets.top + 24 }]}>
+          <Text style={styles.h1small}>when's your birthday?</Text>
+        </View>
+        <View style={[styles.nameBottomWrap, { paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.nameCol}>
+            <View style={styles.dobPickerCard}>
+              <DateTimePicker
+                value={date}
+                mode="date"
+                display="spinner"
+                maximumDate={new Date()}
+                onChange={(_: unknown, d?: Date) => {
+                  if (d) setDate(d);
+                }}
+                textColor="#111"
+              />
+            </View>
+            <View style={{ height: 12 }} />
+            <PrimaryButton label="continue" onPress={() => onSubmit(iso(date))} />
+          </View>
+        </View>
+      </Animated.View>
+    );
+  }
+
   const can =
     +month >= 1 &&
     +month <= 12 &&
@@ -586,23 +646,18 @@ function BirthdayStep({ onSubmit }: { onSubmit: (birthday: string) => void }) {
     /^\d{4}$/.test(year) &&
     +year >= 1900 &&
     +year <= new Date().getFullYear();
-  const submit = () => {
-    if (!can) return;
-    onSubmit(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+  const submitWeb = () => {
+    if (can) onSubmit(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
   };
   return (
     <Animated.View entering={FadeInUp.duration(450)} style={StyleSheet.absoluteFill} pointerEvents="box-none">
       <View style={[styles.topCopy, { top: insets.top + 24 }]}>
         <Text style={styles.h1small}>when's your birthday?</Text>
       </View>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.nameBottomWrap}
-      >
-        <View style={[styles.nameCol, { paddingBottom: insets.bottom + 20 }]}>
+      <View style={[styles.nameBottomWrap, { paddingBottom: insets.bottom + 20 }]}>
+        <View style={styles.nameCol}>
           <View style={styles.dobRow}>
             <TextInput
-              autoFocus
               value={month}
               onChangeText={(t) => setMonth(t.replace(/\D/g, ''))}
               placeholder="MM"
@@ -627,13 +682,13 @@ function BirthdayStep({ onSubmit }: { onSubmit: (birthday: string) => void }) {
               placeholderTextColor="rgba(17,17,17,0.35)"
               keyboardType="number-pad"
               maxLength={4}
-              style={[styles.dobField, { flex: 1.5 }]}
+              style={[styles.dobField, styles.dobYear]}
             />
           </View>
           <View style={{ height: 12 }} />
-          <PrimaryButton label="continue" onPress={submit} disabled={!can} />
+          <PrimaryButton label="continue" onPress={submitWeb} disabled={!can} />
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </Animated.View>
   );
 }
@@ -662,7 +717,7 @@ function NotificationBanner({
     <View style={[styles.bannerWrap, { paddingTop: topInset + 8 }]} pointerEvents="box-none">
       <Animated.View style={style}>
         <Pressable onPress={onTap} style={styles.banner}>
-          <SidekickAvatar size={60} style={styles.bannerAvatar} />
+          <MessagesAppIcon size={46} badge={false} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <View style={styles.bannerHeader}>
               <Text style={styles.bannerSender} numberOfLines={1}>
@@ -676,6 +731,21 @@ function NotificationBanner({
           </View>
         </Pressable>
       </Animated.View>
+    </View>
+  );
+}
+
+// A stand-in for the iOS Messages app icon (green tile + white speech bubble)
+// with a red unread badge — the "you've got a message" cue in the notif beat.
+function MessagesAppIcon({ size = 66, badge = true }: { size?: number; badge?: boolean }) {
+  return (
+    <View style={[styles.appIcon, { width: size, height: size, borderRadius: Math.round(size * 0.24) }]}>
+      <Ionicons name="chatbubble" size={Math.round(size * 0.56)} color="#fff" />
+      {badge ? (
+        <View style={styles.appBadge}>
+          <Text style={styles.appBadgeText}>1</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -704,7 +774,41 @@ function PrimaryButton({
   );
 }
 
+// PrimaryButton with a subtle, repeating attention shake (small side-to-side +
+// rotation), pulsing every ~1.4s — used on the notif beat's "open chat" CTA.
+function ShakeButton({ label, onPress }: { label: string; onPress: () => void }) {
+  const s = useSharedValue(0);
+  useEffect(() => {
+    s.value = withRepeat(
+      withSequence(
+        withDelay(900, withTiming(1, { duration: 80 })),
+        withTiming(-1, { duration: 80 }),
+        withTiming(1, { duration: 80 }),
+        withTiming(-1, { duration: 80 }),
+        withTiming(0, { duration: 80 }),
+      ),
+      -1,
+    );
+  }, [s]);
+  const style = useAnimatedStyle(() => ({
+    transform: [{ translateX: s.value * 4 }, { rotateZ: `${s.value * 1.6}deg` }],
+  }));
+  return (
+    <Animated.View style={[styles.notifCtaBtn, style]}>
+      <PrimaryButton label={label} onPress={onPress} />
+    </Animated.View>
+  );
+}
+
+// Native-only date picker: the module isn't web-safe, so we guard the require so
+// it's never executed in the web bundle (birthday falls back to text fields there).
+// eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any
+const DateTimePicker: any =
+  Platform.OS === 'web' ? () => null : require('@react-native-community/datetimepicker').default;
+
 const ACCENT = '#4F46F0';
+// how far below the screen the chat sheet starts before sliding up
+const SHEET_TRAVEL = Dimensions.get('window').height;
 // The app's system font (loaded in app/_layout.tsx). Onboarding text was falling
 // back to the platform bold; use the rounded family everywhere for consistency.
 const FONT = 'Diatype-Rounded';
@@ -777,7 +881,8 @@ const styles = StyleSheet.create({
   dobRow: { flexDirection: 'row', gap: 10, marginTop: 24 },
   dobField: {
     flex: 1,
-    paddingHorizontal: 12,
+    minWidth: 0, // let flex items shrink (react-native-web won't otherwise → overflow)
+    paddingHorizontal: 8,
     paddingTop: 12,
     paddingBottom: 20,
     borderRadius: 18,
@@ -787,6 +892,14 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#111',
     textAlign: 'center',
+  },
+  dobYear: { flex: 1.5 },
+  dobPickerCard: {
+    marginTop: 24,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    overflow: 'hidden',
+    paddingVertical: 4,
   },
   field: {
     marginTop: 24,
@@ -824,10 +937,9 @@ const styles = StyleSheet.create({
   btnPressed: { transform: [{ translateY: 3 }], shadowOffset: { width: 0, height: 2 } },
   btnDisabled: { opacity: 0.6 },
   btnText: { fontFamily: FONT, color: '#fff', fontSize: 17, fontWeight: '700' },
-  bannerWrap: { position: 'absolute', left: 0, right: 0, top: 0, paddingHorizontal: 12, alignItems: 'center' },
+  bannerWrap: { position: 'absolute', left: 0, right: 0, top: 0, paddingHorizontal: 10, alignItems: 'stretch' },
   banner: {
     width: '100%',
-    maxWidth: 420,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -846,21 +958,62 @@ const styles = StyleSheet.create({
   bannerSender: { fontFamily: FONT, flex: 1, fontSize: 16, fontWeight: '700', color: '#111' },
   bannerNow: { fontFamily: FONT, fontSize: 12, color: 'rgba(17,17,17,0.4)' },
   bannerText: { fontFamily: FONT, fontSize: 14, lineHeight: 18, color: 'rgba(17,17,17,0.8)' },
-  chatSheet: { position: 'absolute', left: 0, right: 0, bottom: 0, top: '20%' },
-  chatSheetInner: {
-    flex: 1,
-    backgroundColor: '#fff',
+  notifCta: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 28, alignItems: 'center' },
+  notifCtaBtn: { width: '100%', alignItems: 'center' },
+  appIcon: {
+    width: 66,
+    height: 66,
+    borderRadius: 16,
+    backgroundColor: '#34C759',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  appBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    backgroundColor: '#FF3B30',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  appBadgeText: { fontFamily: FONT, color: '#fff', fontSize: 13, fontWeight: '800' },
+  chatSheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    top: '20%',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    paddingHorizontal: 24,
-    paddingTop: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.22,
     shadowRadius: 40,
     elevation: 12,
   },
+  // one rounded container: overflow-hidden so the messages clip to the rounded
+  // top corners (no white strip / detached corner), shadow lives on the parent.
+  chatSheetInner: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    overflow: 'hidden',
+  },
   grabber: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: '#e5e5e5', marginBottom: 20 },
   chatTitle: { fontFamily: FONT, fontSize: 24, fontWeight: '800', color: '#171717', textAlign: 'center' },
   chatBody: { fontFamily: FONT, marginTop: 12, fontSize: 16, lineHeight: 22, color: 'rgba(23,23,23,0.6)', textAlign: 'center' },
+  retryBtn: { paddingHorizontal: 22, paddingVertical: 12, borderRadius: 999, backgroundColor: '#4F46F0' },
+  retryText: { fontFamily: FONT, fontSize: 15, fontWeight: '700', color: '#fff' },
 });

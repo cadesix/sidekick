@@ -36,6 +36,12 @@ const ICONS: Record<string, { icon: keyof typeof Ionicons.glyphMap; color: strin
   'manage-stress': { icon: 'leaf', color: '#3dbd6a' },
   'read-more': { icon: 'book', color: '#ff9f43' },
   'be-productive': { icon: 'checkmark-done', color: '#0a84ff' },
+  // streamlined onboarding "one thing to improve" slugs
+  'eat-healthier': { icon: 'restaurant', color: '#ff6b6b' },
+  'exercise-more': { icon: 'barbell', color: '#ff6b6b' },
+  'wake-earlier': { icon: 'sunny', color: '#ffa53d' },
+  'be-organized': { icon: 'checkmark-done', color: '#0a84ff' },
+  'mental-health': { icon: 'leaf', color: '#3dbd6a' },
 };
 const FALLBACK = { icon: 'flag' as const, color: '#8a8a8a' };
 

@@ -555,6 +555,13 @@ export function startHabitChat(): Promise<{ conversationId: string }> {
   return trpc.onboarding.startHabitChat.mutate();
 }
 
+/** Persist the streamlined onboarding intro chat's picks (habit → goal, talk → prefs). */
+export function commitOnboardingResult(
+  input: Parameters<typeof trpc.onboarding.commitResult.mutate>[0],
+): Promise<{ ok: true }> {
+  return trpc.onboarding.commitResult.mutate(input);
+}
+
 /** Count of sidekick-made documents (07 home "Made for you" row, 15). */
 export async function fetchDocumentCount(): Promise<number> {
   const home = await trpc.documents.list.query();

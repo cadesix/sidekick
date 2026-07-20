@@ -2,6 +2,7 @@ import { z } from "zod";
 import { cadenceSchema, ianaTimezone } from "@sidekick/shared";
 import { protectedProcedure, router } from "../trpc";
 import { startHabitChat, startOnboardingChat } from "../onboarding/chat";
+import { commitOnboardingResult } from "../onboarding/commit-result";
 import { completeOnboarding } from "../onboarding/complete";
 
 const personalitySchema = z.object({
@@ -64,4 +65,30 @@ export const onboardingRouter = router({
   complete: protectedProcedure
     .input(completeInput)
     .mutation(({ ctx, input }) => completeOnboarding(ctx.db, ctx.userId, input)),
+
+  /**
+   * Persist what the streamlined intro chat collected: habit picks become Goals
+   * objects; the talk path seeds a check-in preference memory. Separate from
+   * `complete` (which also seeds personality/identity from the full funnel).
+   */
+  commitResult: protectedProcedure
+    .input(
+      z.object({
+        reason: z.enum(["talk", "habits", "both"]),
+        habit: z
+          .object({
+            slug: z.string().min(1),
+            label: z.string().min(1),
+            actionLabel: z.string().min(1),
+            cadence: cadenceSchema,
+          })
+          .optional(),
+        talk: z.object({ topic: z.string().min(1) }).optional(),
+        reminderTime: z
+          .string()
+          .regex(/^\d{2}:\d{2}$/)
+          .optional(),
+      }),
+    )
+    .mutation(({ ctx, input }) => commitOnboardingResult(ctx.db, ctx.userId, input)),
 });
