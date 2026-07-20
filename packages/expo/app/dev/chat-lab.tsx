@@ -19,7 +19,9 @@ import { TypingDots } from '~/components/chat-stream';
 import { MessageBubble } from '~/imessage/components/MessageBubble';
 import { colors } from '~/imessage/theme';
 import { streamChatLab } from '~/lib/api';
-import type { ChatMsg } from '~/lib/openai';
+// Chat Lab runs the real prod model via the server (`streamChatLab`); this is just
+// the local message shape (the old client-side OpenAI helper was removed).
+type ChatMsg = { role: 'user' | 'assistant'; content: string };
 
 // Chat Lab (dev): a scratchpad for iterating on the sidekick voice / texting
 // traits with a LIVE-EDITABLE system prompt — the capability the old web Chat

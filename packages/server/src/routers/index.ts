@@ -18,6 +18,7 @@ import { notificationsRouter } from "./notifications";
 import { remindersRouter } from "./reminders";
 import { sessionsRouter } from "./sessions";
 import { shopRouter } from "./shop";
+import { starChatRouter } from "./star-chat";
 import { stateRouter } from "./state";
 import { streakRouter } from "./streak";
 import { usersRouter } from "./users";
@@ -42,6 +43,7 @@ export const appRouter = router({
   reminders: remindersRouter,
   sessions: sessionsRouter,
   shop: shopRouter,
+  starChat: starChatRouter,
   state: stateRouter,
   streak: streakRouter,
   users: usersRouter,

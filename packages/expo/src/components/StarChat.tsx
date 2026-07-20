@@ -7,9 +7,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   PHASE_COUNT,
-  buildArtifactPrompt,
-  buildCardPrompt,
-  buildControllerPrompt,
   flattenFields,
   islandOpensWith,
   isSessionDone,
@@ -24,8 +21,7 @@ import {
 } from '@sidekick/core';
 
 import { MSG_SHADOW, STREAM_GAP_MS, StreamedText, TypingDots, streamDurationMs } from './chat-stream';
-import { completeSession } from '../lib/api';
-import { llm } from '../lib/openai';
+import { completeSession, starChatArtifact, starChatCard, starChatController } from '../lib/api';
 import { patchSessionComplete, snapshotSessions, SNAPSHOT_QUERY_KEY, type Snapshot } from '../lib/state';
 import { useSidekickContext } from '../store/context';
 import { useStarChat } from '../store/star-chat';
@@ -40,10 +36,10 @@ const { height: SCREEN_H } = Dimensions.get('window');
 // boundary deepens the astral card + pays bond + unlocks the matching island; the
 // last chapter renders the earned artifact.
 //
-// LLM: no server on mobile, so we call OpenAI directly when
-// EXPO_PUBLIC_OPENAI_API_KEY is set. With no key the flow still walks (scripted
-// nudges advance by the phase cap) and ends on a fallback artifact, so it's
-// usable offline.
+// LLM: every model turn runs on the server (the `starChat` router builds the
+// prompt from core's builders with the state we post, so no key ships in the
+// app). A null reply — offline, or the model down — still walks the flow
+// (scripted nudges advance by the phase cap) and ends on a fallback artifact.
 
 const OPENING = [
   "hey, i'm gonna get to know you through a little conversation,",
@@ -224,12 +220,9 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated]);
 
-  const recentTranscript = () =>
-    useStarChat
-      .getState()
-      .msgs.slice(-12)
-      .map((m) => `${m.role === 'bot' ? 'sidekick' : 'user'}: ${m.text}`)
-      .join('\n');
+  // the recent exchanges the controller reasons over; the server renders them
+  // into the transcript it sends the model.
+  const recentMessages = () => useStarChat.getState().msgs.slice(-12);
 
   // Commit one chapter to the server: pay catalog rewards + persist the extraction
   // (and optional card), patch the snapshot, flag the island, and mark that home
@@ -268,8 +261,8 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
       if (isSessionDone(snapshotSessions(snapshot()), def.id)) return; // already completed server-side
       let card: { archetype: string; reading: string; traits: string[] } | null = null;
       if (withCard) {
-        const prior = snapshot()?.astral ?? null;
-        const raw = await llm(buildCardPrompt(c, prior), 'write it now.', 460);
+        // the prior card comes from the server's stored astral, not the snapshot
+        const raw = await starChatCard(c);
         const art = raw ? parseArtifact(raw) : null;
         card = art ? { archetype: art.archetype, reading: art.reading, traits: art.traits } : null;
         if (isSessionDone(snapshotSessions(snapshot()), def.id)) return; // guard post-await (idempotent)
@@ -286,7 +279,7 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
       setTyping(true);
     }
     const c = useStarChat.getState().convo;
-    const raw = c ? await llm(buildArtifactPrompt(c), 'write the artifact now.', 520) : null;
+    const raw = c ? await starChatArtifact(c) : null;
     const art = (raw && parseArtifact(raw)) || FALLBACK_ARTIFACT;
     const def = sessionForPhase(phase);
     const card = { archetype: art.archetype, reading: art.reading, traits: art.traits };
@@ -341,7 +334,7 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
     if (!c) return;
     setWorking(true);
     setTyping(true);
-    const raw = await llm(buildControllerPrompt(c), recentTranscript(), 340);
+    const raw = await starChatController(c, recentMessages());
     if (!mounted.current) return; // dove out before applyTurn — nothing applied, resume re-runs it
     const turn: ControllerTurn =
       (raw && parseControllerTurn(raw)) || { message: SCRIPTED_NUDGE, fieldUpdates: [], phaseComplete: false };

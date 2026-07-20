@@ -333,6 +333,46 @@ export const sessionCompleteInput = z.object({
 export type SessionCompleteInput = z.infer<typeof sessionCompleteInput>;
 
 /**
+ * Star Chat inputs (docs/STAR-CHAT.md). The conversation state lives on the
+ * client (the runner persists it locally and resumes from it), but every prompt
+ * is BUILT server-side from `@sidekick/core`'s builders — the client sends state,
+ * never prompt text, so these procedures are not a general LLM proxy. Mirrors
+ * core's `ConvoState`; unknown field ids are inert (the builders only render ids
+ * from core's `FIELDS`).
+ */
+const starChatFieldState = z.object({
+  status: z.enum(["unknown", "partial", "high", "declined"]),
+  value: z.string().optional(),
+  evidence: z.array(z.string()).optional(),
+  source: z.enum(["onboarding", "conversation", "inferred"]).optional(),
+});
+
+export const starChatStateSchema = z.object({
+  phase: z.number().int().positive(),
+  turnsInPhase: z.number().int().min(0),
+  fields: z.record(starChatFieldState),
+  motivationHypothesis: z.string().optional(),
+});
+export type StarChatState = z.infer<typeof starChatStateSchema>;
+
+/** The astral card deepened at a chapter boundary, and the final artifact pass. */
+export const starChatStateInput = z.object({ state: starChatStateSchema });
+export type StarChatStateInput = z.infer<typeof starChatStateInput>;
+
+/**
+ * One controller turn. The recent conversation arrives as structured messages
+ * and the server renders the transcript itself, so the model's user turn can't
+ * be dressed up as anything else.
+ */
+export const starChatControllerInput = z.object({
+  state: starChatStateSchema,
+  messages: z
+    .array(z.object({ role: z.enum(["bot", "user"]), text: z.string() }))
+    .max(12),
+});
+export type StarChatControllerInput = z.infer<typeof starChatControllerInput>;
+
+/**
  * Chat mini-game inputs (plan 21). Shot and state shapes are reused from
  * `@sidekick/core` — one procedure serves both games, so the boundary accepts a
  * union and the games router re-validates against the exact schema for the
