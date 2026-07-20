@@ -42,8 +42,11 @@ export function GuidedHabitChat({
   const [input, setInput] = useState('');
   const [chips, setChips] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
+  // Once the flow reaches a terminal beat (habit set, reminder set), surface a
+  // finish button rather than auto-completing — the wrap-up (notifications, final
+  // line) is still a couple of turns, so the user taps in when they're ready.
+  const [canFinish, setCanFinish] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
-  const done = useRef(false);
 
   const scrollToEnd = useCallback(() => {
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
@@ -73,12 +76,6 @@ export function GuidedHabitChat({
     };
   }, [conversationId, scrollToEnd]);
 
-  const finishSoon = useCallback(() => {
-    if (done.current) return;
-    done.current = true;
-    setTimeout(onComplete, 700);
-  }, [onComplete]);
-
   const send = useCallback(
     async (raw: string) => {
       const text = raw.trim();
@@ -106,7 +103,7 @@ export function GuidedHabitChat({
           () => {},
           (meta) => {
             setChips(meta.replies ?? []);
-            if (meta.beat && TERMINAL_BEATS.has(meta.beat)) finishSoon();
+            if (meta.beat && TERMINAL_BEATS.has(meta.beat)) setCanFinish(true);
           },
         );
         if (!acc.trim()) {
@@ -121,7 +118,7 @@ export function GuidedHabitChat({
         scrollToEnd();
       }
     },
-    [conversationId, sending, scrollToEnd, finishSoon],
+    [conversationId, sending, scrollToEnd],
   );
 
   return (
@@ -179,6 +176,23 @@ export function GuidedHabitChat({
             </Pressable>
           ))}
         </ScrollView>
+      ) : null}
+
+      {/* once wrapped up, let the user tap into the app when ready */}
+      {canFinish ? (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+          <Pressable
+            onPress={onComplete}
+            style={{
+              backgroundColor: '#4F46F0',
+              borderRadius: 999,
+              paddingVertical: 14,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>let's go →</Text>
+          </Pressable>
+        </View>
       ) : null}
 
       {/* composer */}
