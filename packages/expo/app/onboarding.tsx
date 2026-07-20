@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Dimensions, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Dimensions, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Animated, {
   Easing,
@@ -322,7 +322,16 @@ export default function Onboarding() {
           talk: summary?.talk,
         });
       } catch (err) {
+        // Do NOT mark complete locally on failure — that would permanently skip
+        // onboarding on-device while the server has no profile/goals/memories. Let
+        // the user retry (the flow stays put behind the alert).
         console.error('[onboarding] commitOnboardingResult failed', err);
+        Alert.alert(
+          'almost there',
+          "couldn't finish setting up — check your connection and try again.",
+          [{ text: 'try again', onPress: () => finish(summary) }],
+        );
+        return;
       }
       await markOnboardingComplete();
       // Push the completed state into the query cache synchronously so Home's

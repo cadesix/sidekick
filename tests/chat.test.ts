@@ -25,9 +25,12 @@ test("chat.send persists the user message and the scripted assistant reply", asy
   const outcome = await caller.chat.send({ conversationId, text: "hi sidekick" });
 
   expect(outcome.message.role).toBe("assistant");
-  // The style controller's multi-send splits a two-sentence reply into separate
-  // bubbles, persisted as "\n"-delimited content (the client re-splits on "\n").
-  expect(outcome.message.content).toBe("hey!\nglad you texted 💛");
+  // The reply is persisted, but the style controller mutates it non-deterministically
+  // per (conversation, turn) seed — multi-send splits into "\n"-joined bubbles and may
+  // inject typos. Exact styled output is golden-tested in style.test.ts; here we only
+  // assert the assistant reply was persisted (a random conversation id → random seed,
+  // so asserting exact bytes would flake).
+  expect(outcome.message.content.length).toBeGreaterThan(0);
   expect(outcome.message.promptVersion).toBe(PERSONA_PROMPT.version);
   expect(outcome.message.model).toBe("mock-model-id");
   expect(outcome.message.tokensIn).toBe(10);

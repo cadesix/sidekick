@@ -68,7 +68,8 @@ test("commitResult completes onboarding: profile, completion flag, habit goal, m
   expect(goalRows.map((g) => g.slug)).toContain("exercise-more");
 
   const mem = await db.select().from(memories).where(eq(memories.userId, userId));
-  expect(mem.find((m) => m.kind === "identity")?.content).toBe("Maya is 25–34, woman.");
+  // gender canonicalized woman → female for pronounsFor / ad-projection parity
+  expect(mem.find((m) => m.kind === "identity")?.content).toBe("Maya is 25–34, female.");
   expect(mem.some((m) => m.kind === "goal_context")).toBe(true);
 });
 

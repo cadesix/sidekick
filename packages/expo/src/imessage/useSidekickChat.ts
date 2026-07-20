@@ -289,23 +289,26 @@ export function useSidekickChat(): SidekickChat {
    */
   const messages = useMemo(() => {
     const base = fetched ?? [];
-    // game reveal: hold not-yet-known game rows behind the typing indicator.
-    let visible = gameReveal.holding
-      ? base.filter((message) => message.role === "me" || gameReveal.knownIds.has(message.id))
-      : base;
-    // burst reveal: hold the not-yet-shown trailing bubbles of a multi-bubble reply.
-    if (reveal) {
+    // Two independent reveal systems, but they never target the same reply — a game
+    // hold follows a game turn; a burst hold follows a text turn — so treat them as
+    // mutually exclusive (don't slice a game-filtered list, which would drop the
+    // wrong trailing rows). Game hold takes precedence.
+    let visible = base;
+    if (gameReveal.holding) {
+      visible = base.filter((message) => message.role === "me" || gameReveal.knownIds.has(message.id));
+    } else if (reveal) {
+      // burst reveal: hold the not-yet-shown trailing bubbles of a multi-bubble reply.
       const hide = reveal.total - reveal.shown;
       if (hide > 0) {
-        visible = visible.slice(0, visible.length - hide);
+        visible = base.slice(0, base.length - hide);
       }
     } else if (pendingReveal.current) {
       // burst just landed but the effect hasn't scheduled yet — pre-hide its later
       // bubbles this render so they never flash in before sequencing starts.
-      const burst = trailingBurst(visible);
+      const burst = trailingBurst(base);
       const prev = revealedBase.current;
       if (burst && burst.count > 1 && (prev === null || Number(burst.base) > Number(prev))) {
-        visible = visible.slice(0, visible.length - (burst.count - 1));
+        visible = base.slice(0, base.length - (burst.count - 1));
       }
     }
     return [...visible, ...outgoing];

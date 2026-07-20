@@ -228,7 +228,9 @@ export async function runTurn(input: {
       conversationId: input.conversationId,
       text: input.text,
       attachmentIds: input.attachmentIds,
-      replyToId: input.replyToId === undefined ? undefined : Number(input.replyToId),
+      // A burst bubble's id is "<baseId>.<n>"; reply targets the whole reply (its
+      // base row), matching how reactions resolve — and the stream schema needs an int.
+      replyToId: input.replyToId === undefined ? undefined : Number(input.replyToId.split(".")[0]),
     },
     noop,
   );

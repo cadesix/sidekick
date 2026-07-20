@@ -24,10 +24,11 @@ export type CommitOnboardingResultInput = {
   reminderTime?: string;
 };
 
-// "YYYY-MM-DD" → an age bracket matching seed.ts's AGE_PHRASE keys.
+// "YYYY-MM-DD" → an age bracket matching seed.ts's AGE_PHRASE keys. Rejects
+// out-of-range / impossible dates so a bad birthday never yields a bogus bracket.
 function ageBracketFromBirthday(birthday: string, today: Date): string | null {
   const [y, m, d] = birthday.split("-").map(Number);
-  if (!y || !m || !d) return null;
+  if (!y || !m || !d || m < 1 || m > 12 || d < 1 || d > 31) return null;
   let age = today.getFullYear() - y;
   const monthNow = today.getMonth() + 1;
   if (monthNow < m || (monthNow === m && today.getDate() < d)) age -= 1;
@@ -40,13 +41,25 @@ function ageBracketFromBirthday(birthday: string, today: Date): string | null {
   return "55-plus";
 }
 
-// The scripted step's gender values ("woman"/"man"/"non-binary"/"prefer not to
-// say") read naturally as-is; omit the non-answer.
-function identitySentence(name: string, ageBracket: string | null, gender?: string): string {
-  const genderWord = (gender ?? "").toLowerCase();
+// The scripted step's labels → the canonical gender values the rest of the app
+// expects (pronounsFor, ad projection): female/male/non-binary/prefer-not.
+const GENDER_CANON: Record<string, string> = {
+  woman: "female",
+  man: "male",
+  "non-binary": "non-binary",
+  "prefer not to say": "prefer-not",
+};
+function canonicalGender(gender?: string): string | null {
+  const raw = (gender ?? "").trim().toLowerCase();
+  if (!raw) return null;
+  return GENDER_CANON[raw] ?? raw;
+}
+
+// Canonical gender ("female"/"male"/"non-binary"); the non-answer is omitted.
+function identitySentence(name: string, ageBracket: string | null, gender: string | null): string {
   const parts = [
     ageBracket ? agePhrase(ageBracket) : "",
-    genderWord && genderWord !== "prefer not to say" ? genderWord : "",
+    gender && gender !== "prefer-not" ? gender : "",
   ].filter(Boolean);
   return parts.length > 0 ? `${name} is ${parts.join(", ")}.` : `${name} just joined.`;
 }
@@ -64,109 +77,119 @@ export async function commitOnboardingResult(
   userId: string,
   input: CommitOnboardingResultInput,
 ): Promise<{ ok: true; alreadyComplete: boolean }> {
-  const rows = await db
-    .select({ onboardingCompletedAt: users.onboardingCompletedAt, reminderTime: users.reminderTime })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  const existing = rows[0];
-  if (!existing) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "user not found" });
-  }
-  if (existing.onboardingCompletedAt !== null) {
-    return { ok: true, alreadyComplete: true };
-  }
-
-  const now = new Date();
-  const name = input.profile.name.trim() || "there";
-  const ageBracket = input.profile.birthday ? ageBracketFromBirthday(input.profile.birthday, now) : null;
-
-  const patch: Partial<typeof users.$inferInsert> = {
-    name: input.profile.name || null,
-    gender: input.profile.gender || null,
-    ageBracket: ageBracket ?? null,
-    sidekickName: input.profile.sidekickName || null,
-    reminderTime: existing.reminderTime ?? input.reminderTime ?? DEFAULT_CHECKIN_TIME,
-    ageGatePassed: true,
-    ageGatePassedAt: now,
-    onboardingCompletedAt: now,
-    updatedAt: now,
-  };
-  if (input.profile.sidekickColor) {
-    patch.sidekickColor = input.profile.sidekickColor;
-  }
-  if (ageBracket === "under-18") {
-    patch.personalizedAdsConsent = false;
-  }
-  await db.update(users).set(patch).where(eq(users.id, userId));
-
-  const memoryRows: (typeof memories.$inferInsert)[] = [
-    {
-      userId,
-      kind: "identity",
-      content: identitySentence(name, ageBracket, input.profile.gender),
-      confidence: "stated",
-      source: "onboarding",
-    },
-  ];
-
-  if (input.habit) {
-    const { slug, label, actionLabel, cadence } = input.habit;
-    // dedup by active slug: a re-commit of the same habit updates it in place
-    const existingGoal = await db
-      .select({ id: goals.id })
-      .from(goals)
-      .where(and(eq(goals.userId, userId), eq(goals.slug, slug), eq(goals.status, "active")))
-      .limit(1);
-    let goalId = existingGoal[0]?.id;
-    if (!goalId) {
-      const inserted = await db
-        .insert(goals)
-        .values({ userId, slug, label, status: "active" })
-        .returning({ id: goals.id });
-      goalId = inserted[0]?.id;
-    } else {
-      await db.update(goals).set({ label, updatedAt: now }).where(eq(goals.id, goalId));
+  // One atomic transaction: either the whole completion lands (profile flag +
+  // goal + memories) or none of it, so a mid-way failure can't leave a "complete"
+  // user with no seed data that a retry would then skip. FOR UPDATE serializes
+  // concurrent finish calls (the second blocks, then sees the flag set).
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .select({ onboardingCompletedAt: users.onboardingCompletedAt, reminderTime: users.reminderTime })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+      .for("update");
+    const existing = rows[0];
+    if (!existing) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "user not found" });
     }
-    if (goalId) {
-      const currentItem = await db
-        .select({ id: actionItems.id })
-        .from(actionItems)
-        .where(and(eq(actionItems.goalId, goalId), eq(actionItems.status, "active")))
-        .orderBy(desc(actionItems.createdAt))
+    if (existing.onboardingCompletedAt !== null) {
+      return { ok: true as const, alreadyComplete: true };
+    }
+
+    const now = new Date();
+    const name = input.profile.name.trim() || "there";
+    const gender = canonicalGender(input.profile.gender);
+    const ageBracket = input.profile.birthday
+      ? ageBracketFromBirthday(input.profile.birthday, now)
+      : null;
+
+    const patch: Partial<typeof users.$inferInsert> = {
+      name: input.profile.name || null,
+      gender,
+      ageBracket: ageBracket ?? null,
+      sidekickName: input.profile.sidekickName || null,
+      reminderTime: existing.reminderTime ?? input.reminderTime ?? DEFAULT_CHECKIN_TIME,
+      ageGatePassed: true,
+      ageGatePassedAt: now,
+      onboardingCompletedAt: now,
+      updatedAt: now,
+    };
+    if (input.profile.sidekickColor) {
+      patch.sidekickColor = input.profile.sidekickColor;
+    }
+    if (ageBracket === "under-18") {
+      patch.personalizedAdsConsent = false;
+    }
+    await tx.update(users).set(patch).where(eq(users.id, userId));
+
+    const memoryRows: (typeof memories.$inferInsert)[] = [
+      {
+        userId,
+        kind: "identity",
+        content: identitySentence(name, ageBracket, gender),
+        confidence: "stated",
+        source: "onboarding",
+      },
+    ];
+
+    if (input.habit) {
+      const { slug, label, actionLabel, cadence } = input.habit;
+      // dedup by active slug: a re-commit of the same habit updates it in place
+      const existingGoal = await tx
+        .select({ id: goals.id })
+        .from(goals)
+        .where(and(eq(goals.userId, userId), eq(goals.slug, slug), eq(goals.status, "active")))
         .limit(1);
-      if (currentItem[0]) {
-        await db
-          .update(actionItems)
-          .set({ slug: CUSTOM_ACTION_SLUG, label: actionLabel, cadence })
-          .where(eq(actionItems.id, currentItem[0].id));
+      let goalId = existingGoal[0]?.id;
+      if (!goalId) {
+        const inserted = await tx
+          .insert(goals)
+          .values({ userId, slug, label, status: "active" })
+          .returning({ id: goals.id });
+        goalId = inserted[0]?.id;
       } else {
-        await db
-          .insert(actionItems)
-          .values({ goalId, slug: CUSTOM_ACTION_SLUG, label: actionLabel, cadence, status: "active" });
+        await tx.update(goals).set({ label, updatedAt: now }).where(eq(goals.id, goalId));
       }
+      if (goalId) {
+        const currentItem = await tx
+          .select({ id: actionItems.id })
+          .from(actionItems)
+          .where(and(eq(actionItems.goalId, goalId), eq(actionItems.status, "active")))
+          .orderBy(desc(actionItems.createdAt))
+          .limit(1);
+        if (currentItem[0]) {
+          await tx
+            .update(actionItems)
+            .set({ slug: CUSTOM_ACTION_SLUG, label: actionLabel, cadence })
+            .where(eq(actionItems.id, currentItem[0].id));
+        } else {
+          await tx
+            .insert(actionItems)
+            .values({ goalId, slug: CUSTOM_ACTION_SLUG, label: actionLabel, cadence, status: "active" });
+        }
+      }
+      memoryRows.push({
+        userId,
+        kind: "goal_context",
+        content: goalContextSentence(name, label, actionLabel, cadence),
+        confidence: "stated",
+        source: "onboarding",
+      });
     }
-    memoryRows.push({
-      userId,
-      kind: "goal_context",
-      content: goalContextSentence(name, label, actionLabel, cadence),
-      confidence: "stated",
-      source: "onboarding",
-    });
-  }
 
-  if (input.talk) {
-    memoryRows.push({
-      userId,
-      kind: "preference",
-      content: `Wants to talk about ${input.talk.topic}.`,
-      confidence: "stated",
-      source: "onboarding",
-    });
-  }
+    if (input.talk) {
+      memoryRows.push({
+        userId,
+        kind: "preference",
+        content: `Wants to talk about ${input.talk.topic}.`,
+        confidence: "stated",
+        source: "onboarding",
+      });
+    }
 
-  await db.insert(memories).values(memoryRows);
-  await bumpMemoryVersion(db, userId);
+    await tx.insert(memories).values(memoryRows);
+    await bumpMemoryVersion(tx, userId);
 
-  return { ok: true, alreadyComplete: false };
+    return { ok: true as const, alreadyComplete: false };
+  });
 }
