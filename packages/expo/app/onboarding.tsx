@@ -19,7 +19,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { setSkinColor } from '../src/lib/api';
+import { setSkinColor, startOnboardingChat } from '../src/lib/api';
+import { GuidedHabitChat } from '../src/components/GuidedHabitChat';
 import {
   loadOnboarding,
   markOnboardingComplete,
@@ -110,6 +111,9 @@ export default function Onboarding() {
   const [colorId, setColorId] = useState<string>(SKIN_COLORS[0].id);
   const [notifIn, setNotifIn] = useState(false);
   const [chatMounted, setChatMounted] = useState(false);
+  // The onboarding conversation id for the guided-habit chat (created lazily when
+  // the chat phase mounts, via startOnboardingChat).
+  const [chatConvId, setChatConvId] = useState<string | null>(null);
 
   // one-time hydrate: settings + skin (so the reveal wears the account's skin) +
   // resume state, then land the flow at the resumed phase.
@@ -254,6 +258,18 @@ export default function Onboarding() {
 
   const sender = sidekickName.trim() || 'Sidekick';
 
+  // Create the onboarding conversation once the chat phase mounts (covers both
+  // openChat and a cold resume that lands directly on 'chat'). No goal slugs — the
+  // guided-habit flow is freeform (server prompt handles pain-point → habit →
+  // cadence). Idempotent server-side per user.
+  useEffect(() => {
+    if (chatMounted && !chatConvId) {
+      startOnboardingChat([])
+        .then(({ conversationId }) => setChatConvId(conversationId))
+        .catch(() => {});
+    }
+  }, [chatMounted, chatConvId]);
+
   return (
     <View style={styles.root}>
       {/* Locked evening stage — persists across every phase. Character parked
@@ -383,16 +399,15 @@ export default function Onboarding() {
           See the goals-freeform-onboarding-direction memory. */}
       {chatMounted ? (
         <Animated.View entering={SlideInUp.duration(420)} style={styles.chatSheet}>
-          <View style={styles.chatSheetInner}>
+          <View style={[styles.chatSheetInner, { paddingHorizontal: 0 }]}>
             <View style={styles.grabber} />
-            <Text style={styles.chatTitle}>Say hi to {sender} 👋</Text>
-            <Text style={styles.chatBody}>
-              This is where {sender} kicks off your first conversation. (Chat coming soon.)
-            </Text>
-            <View style={{ flex: 1 }} />
-            <View style={{ paddingBottom: insets.bottom + 16 }}>
-              <PrimaryButton label="let's go →" onPress={finish} />
-            </View>
+            {chatConvId ? (
+              <GuidedHabitChat conversationId={chatConvId} onComplete={finish} />
+            ) : (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={styles.chatBody}>starting your chat…</Text>
+              </View>
+            )}
           </View>
         </Animated.View>
       ) : null}
