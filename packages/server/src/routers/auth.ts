@@ -16,7 +16,7 @@ import {
   findOrCreateUserForProvider,
   type ProviderIdentity,
 } from "../auth/provider-user";
-import { emailRequestLimiter, phoneRequestLimiter } from "../auth/rate-limit";
+import { EMAIL_CODE_LIMIT, PHONE_CODE_LIMIT, consumeRateLimit } from "../auth/rate-limit";
 import { registerDevice } from "../auth/register-device";
 import { createSession, revokeSession } from "../auth/sessions";
 import type { AppContext } from "../context";
@@ -59,7 +59,7 @@ export const authRouter = router({
 
   requestEmailCode: publicProcedure.input(emailAuthInput).mutation(async ({ ctx, input }) => {
     const email = input.email.toLowerCase();
-    if (!emailRequestLimiter.consume(email)) {
+    if (!(await consumeRateLimit(ctx.db, `email-code:${email}`, EMAIL_CODE_LIMIT))) {
       throw new TRPCError({
         code: "TOO_MANY_REQUESTS",
         message: "Too many code requests. Please wait a few minutes.",
@@ -84,7 +84,7 @@ export const authRouter = router({
   }),
 
   requestPhoneCode: publicProcedure.input(phoneAuthInput).mutation(async ({ ctx, input }) => {
-    if (!phoneRequestLimiter.consume(input.phone)) {
+    if (!(await consumeRateLimit(ctx.db, `phone-code:${input.phone}`, PHONE_CODE_LIMIT))) {
       throw new TRPCError({
         code: "TOO_MANY_REQUESTS",
         message: "Too many code requests. Please wait a while.",

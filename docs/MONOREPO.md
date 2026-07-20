@@ -64,7 +64,7 @@ sidekick/
     │   ├── targets/                       iOS NotificationService extension
     │   ├── assets/                        bundled GLBs/textures (DERIVED — see Assets)
     │   └── scripts/                       strip-glb.mjs, sync-cosmetics.mjs
-    ├── server/             @sidekick/server — Hono + tRPC backend (Vercel deploy via api/)
+    ├── server/             @sidekick/server — Hono + tRPC backend (Railway deploy, see docs/RELEASE.md)
     │   ├── src/chat/                      chat turn engine (streaming, compaction)
     │   ├── src/routers/                   tRPC routers (chat, goals, documents, reminders, …)
     │   └── src/…                          ads, checkins, memory, notifications, rewards

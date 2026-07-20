@@ -6,7 +6,7 @@ import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
 import { type Database, checkIns, messages, users } from "@sidekick/db";
 import { createTestDb } from "@sidekick/db/testing";
 import { buildContextView } from "@sidekick/shared";
-import { sendChatTurn } from "@sidekick/server";
+import { logger, sendChatTurn } from "@sidekick/server";
 import { generateOpener } from "../packages/server/src/checkins/engine";
 import { createConversation, testStorage, createUser } from "./helpers";
 
@@ -132,9 +132,9 @@ test("web_search result round-trips encrypted_content byte-identical and logs us
     ],
   ]);
 
-  const logs: string[] = [];
-  const info = vi.spyOn(console, "info").mockImplementation((...args) => {
-    logs.push(String(args[0]));
+  const logs: unknown[] = [];
+  const info = vi.spyOn(logger, "info").mockImplementation((first) => {
+    logs.push(first);
   });
   const outcome = await sendChatTurn(
     { db, model, flags: {}, userId: user.id, storage: testStorage() },
@@ -170,9 +170,10 @@ test("web_search result round-trips encrypted_content byte-identical and logs us
     }
   }
 
-  const logged = logs.find((l) => l.includes("chat.turn.search"));
-  expect(logged).toBeDefined();
-  expect(JSON.parse(logged!).webSearchRequests).toBe(1);
+  const logged = logs.find(
+    (entry) => typeof entry === "object" && entry !== null && "webSearchRequests" in entry,
+  );
+  expect(logged).toMatchObject({ event: "chat.turn.search", webSearchRequests: 1 });
 });
 
 test("pause_turn resends the assistant turn unchanged until a real stop", async () => {

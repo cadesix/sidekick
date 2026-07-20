@@ -194,6 +194,23 @@ CREATE TABLE "folders" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "game_matches" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" uuid NOT NULL,
+	"conversation_id" uuid NOT NULL,
+	"game_type" text NOT NULL,
+	"initiator" text NOT NULL,
+	"status" text DEFAULT 'active' NOT NULL,
+	"state" jsonb NOT NULL,
+	"turn_no" integer DEFAULT 0 NOT NULL,
+	"seed" integer NOT NULL,
+	"winner" text,
+	"highlights" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"completed_at" timestamp with time zone
+);
+--> statement-breakpoint
 CREATE TABLE "goals" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
@@ -272,6 +289,7 @@ CREATE TABLE "messages" (
 	"reactions" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"tool_calls" jsonb,
 	"ad_unit_id" text,
+	"game_match_id" uuid,
 	"token_estimate" integer NOT NULL,
 	"prompt_version" text,
 	"model" text,
@@ -458,6 +476,8 @@ ALTER TABLE "document_versions" ADD CONSTRAINT "document_versions_document_id_do
 ALTER TABLE "documents" ADD CONSTRAINT "documents_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "documents" ADD CONSTRAINT "documents_folder_id_folders_id_fk" FOREIGN KEY ("folder_id") REFERENCES "public"."folders"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "folders" ADD CONSTRAINT "folders_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "game_matches" ADD CONSTRAINT "game_matches_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "game_matches" ADD CONSTRAINT "game_matches_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "goals" ADD CONSTRAINT "goals_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "guided_sessions" ADD CONSTRAINT "guided_sessions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "health_days" ADD CONSTRAINT "health_days_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -466,6 +486,7 @@ ALTER TABLE "memories" ADD CONSTRAINT "memories_user_id_users_id_fk" FOREIGN KEY
 ALTER TABLE "memory_suppressions" ADD CONSTRAINT "memory_suppressions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "messages" ADD CONSTRAINT "messages_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "messages" ADD CONSTRAINT "messages_reply_to_id_messages_id_fk" FOREIGN KEY ("reply_to_id") REFERENCES "public"."messages"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "messages" ADD CONSTRAINT "messages_game_match_id_game_matches_id_fk" FOREIGN KEY ("game_match_id") REFERENCES "public"."game_matches"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "messages" ADD CONSTRAINT "messages_proactive_turn_id_proactive_turns_id_fk" FOREIGN KEY ("proactive_turn_id") REFERENCES "public"."proactive_turns"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "music_auth" ADD CONSTRAINT "music_auth_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "notification_outbox" ADD CONSTRAINT "notification_outbox_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -490,6 +511,7 @@ CREATE UNIQUE INDEX "check_ins_user_id_date_idx" ON "check_ins" USING btree ("us
 CREATE INDEX "conversation_summaries_conversation_id_id_idx" ON "conversation_summaries" USING btree ("conversation_id","id" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "device_push_tokens_user_status_idx" ON "device_push_tokens" USING btree ("user_id","status");--> statement-breakpoint
 CREATE UNIQUE INDEX "device_push_tokens_device_project_idx" ON "device_push_tokens" USING btree ("device_id","project_id");--> statement-breakpoint
+CREATE INDEX "game_matches_user_type_status_idx" ON "game_matches" USING btree ("user_id","game_type","status");--> statement-breakpoint
 CREATE UNIQUE INDEX "guided_sessions_user_id_session_id_idx" ON "guided_sessions" USING btree ("user_id","session_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "health_days_user_id_date_idx" ON "health_days" USING btree ("user_id","date");--> statement-breakpoint
 CREATE UNIQUE INDEX "ledger_user_id_dedupe_key_idx" ON "ledger" USING btree ("user_id","dedupe_key");--> statement-breakpoint

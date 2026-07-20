@@ -24,7 +24,16 @@ export { verifyAppleToken, type VerifiedAppleToken } from "./auth/apple";
 export { verifyGoogleIdToken, type VerifiedGoogleToken } from "./auth/google";
 export { createTwilioSms, type SmsSender } from "./auth/sms";
 export { devLogin, type DevLoginResult } from "./auth/dev-login";
-export { RateLimiter, emailRequestLimiter, phoneRequestLimiter } from "./auth/rate-limit";
+export {
+  consumeRateLimit,
+  pruneRateLimits,
+  EMAIL_CODE_LIMIT,
+  PHONE_CODE_LIMIT,
+  CHAT_TURN_LIMIT,
+  type RateLimit,
+} from "./auth/rate-limit";
+export { parseServerEnv, readEnv, disabledFeatures, type ServerEnv } from "./env";
+export { logger } from "./logger";
 export type { AppContext, Services, BackgroundScheduler } from "./context";
 export {
   beginTurn,

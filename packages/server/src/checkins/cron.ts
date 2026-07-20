@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Services } from "../context";
+import { readEnv } from "../env";
 import {
   type CheckinDeps,
   closeStaleCheckins,
@@ -10,8 +11,8 @@ import {
 } from "./engine";
 
 /**
- * Vercel-cron-shaped endpoints for the daily check-in engine (01: Vercel Cron,
- * timezone-sharded). Each tick handles "users whose local reminder time is now".
+ * Cron endpoints for the daily check-in engine (01: scheduled, timezone-sharded).
+ * Each tick handles "users whose local reminder time is now".
  * Auth is the `/cron/*` `CRON_SECRET` gate applied in `buildApp`.
  */
 export function buildCheckinCron(services: Services): Hono {
@@ -19,7 +20,7 @@ export function buildCheckinCron(services: Services): Hono {
   const deps: CheckinDeps = {
     db: services.db,
     model: services.model,
-    weatherApiKey: process.env.WEATHER_API_KEY,
+    weatherApiKey: readEnv().WEATHER_API_KEY,
   };
   app.get("/checkins/open", async (c) => {
     const now = new Date();
