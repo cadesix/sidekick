@@ -375,6 +375,7 @@ export default function Onboarding() {
           cta="continue"
           onSubmit={submitSidekickName}
           layout="top"
+          suggestions={['Milo', 'Bao', 'Pip', 'Nova', 'Biscuit']}
         />
       ) : null}
 
@@ -435,12 +436,15 @@ function NameEntry({
   cta,
   onSubmit,
   layout = 'center',
+  suggestions,
 }: {
   title: string;
   placeholder: string;
   cta: string;
   onSubmit: (value: string) => void;
   layout?: 'center' | 'top';
+  // Tappable name suggestions — lowers the cognitive load of inventing a name.
+  suggestions?: string[];
 }) {
   const insets = useSafeAreaInsets();
   const [value, setValue] = useState('');
@@ -448,6 +452,16 @@ function NameEntry({
   const submit = () => {
     if (can) onSubmit(value.trim());
   };
+  const chipRow =
+    suggestions && suggestions.length > 0 ? (
+      <View style={styles.chipRow}>
+        {suggestions.map((s) => (
+          <Pressable key={s} onPress={() => setValue(s)} style={styles.nameChip}>
+            <Text style={styles.nameChipText}>{s}</Text>
+          </Pressable>
+        ))}
+      </View>
+    ) : null;
   const field = (
     <TextInput
       autoFocus
@@ -477,6 +491,7 @@ function NameEntry({
           style={styles.nameBottomWrap}
         >
           <View style={[styles.nameCol, { paddingBottom: insets.bottom + 20 }]}>
+            {chipRow}
             {field}
             <View style={{ height: 12 }} />
             <PrimaryButton label={cta} onPress={submit} disabled={!can} />
@@ -522,7 +537,7 @@ function NotificationBanner({
     <View style={[styles.bannerWrap, { paddingTop: topInset + 8 }]} pointerEvents="box-none">
       <Animated.View style={style}>
         <Pressable onPress={onTap} style={styles.banner}>
-          <SidekickAvatar size={40} style={styles.bannerAvatar} />
+          <SidekickAvatar size={60} style={styles.bannerAvatar} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <View style={styles.bannerHeader}>
               <Text style={styles.bannerSender} numberOfLines={1}>
@@ -530,8 +545,8 @@ function NotificationBanner({
               </Text>
               <Text style={styles.bannerNow}>now</Text>
             </View>
-            <Text style={styles.bannerText} numberOfLines={2}>
-              Your sidekick is trying to send you a message! turn on notifications so you can get it
+            <Text style={styles.bannerText} numberOfLines={1}>
+              hey let's chat
             </Text>
           </View>
         </Pressable>
@@ -611,6 +626,20 @@ const styles = StyleSheet.create({
   centerFill: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   nameBottomWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 32, alignItems: 'center' },
   nameCol: { width: '100%', maxWidth: 420, alignItems: 'stretch' },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  nameChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+  },
+  nameChipText: { fontFamily: FONT, fontSize: 15, fontWeight: '600', color: '#111' },
   field: {
     marginTop: 24,
     width: '100%',
@@ -664,9 +693,9 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 8,
   },
-  bannerAvatar: { width: 40, height: 40, borderRadius: 10 },
+  bannerAvatar: { width: 60, height: 60, borderRadius: 16 },
   bannerHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
-  bannerSender: { fontFamily: FONT, flex: 1, fontSize: 14, fontWeight: '600', color: '#111' },
+  bannerSender: { fontFamily: FONT, flex: 1, fontSize: 16, fontWeight: '700', color: '#111' },
   bannerNow: { fontFamily: FONT, fontSize: 12, color: 'rgba(17,17,17,0.4)' },
   bannerText: { fontFamily: FONT, fontSize: 14, lineHeight: 18, color: 'rgba(17,17,17,0.8)' },
   chatSheet: { position: 'absolute', left: 0, right: 0, bottom: 0, top: '20%' },

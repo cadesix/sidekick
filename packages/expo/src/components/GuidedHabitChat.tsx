@@ -5,12 +5,12 @@ import {
   Pressable,
   ScrollView,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TypingDots } from './chat-stream';
+import { ChatInputBar } from '../imessage/components/ChatInputBar';
 import { MessageBubble } from '../imessage/components/MessageBubble';
 import { colors } from '../imessage/theme';
 import { streamChatTurn, trpc } from '../lib/api';
@@ -39,7 +39,6 @@ export function GuidedHabitChat({
 }) {
   const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<Msg[]>([]);
-  const [input, setInput] = useState('');
   const [chips, setChips] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   // Once the flow reaches a terminal beat (habit set, reminder set), surface a
@@ -86,7 +85,6 @@ export function GuidedHabitChat({
         { id: `me-${Date.now()}`, role: 'me', text },
         { id: botId, role: 'them', text: '' },
       ]);
-      setInput('');
       setChips([]);
       setSending(true);
       scrollToEnd();
@@ -195,37 +193,19 @@ export function GuidedHabitChat({
         </View>
       ) : null}
 
-      {/* composer */}
-      <View
-        className="flex-row items-end px-3 pt-2 border-t border-black/5"
-        style={{ paddingBottom: Math.max(insets.bottom, 10) }}
-      >
-        <TextInput
-          value={input}
-          onChangeText={setInput}
-          placeholder="message"
-          placeholderTextColor="#00000040"
-          multiline
-          className="flex-1 text-[16px] text-ink bg-black/[0.05] rounded-2xl px-3.5 py-2.5 mr-2"
-          style={{ maxHeight: 120 }}
-          onKeyPress={(e) => {
-            const ne = e.nativeEvent as { key?: string; shiftKey?: boolean };
-            if (Platform.OS === 'web' && ne.key === 'Enter' && !ne.shiftKey) {
-              e.preventDefault?.();
-              void send(input);
-            }
-          }}
+      {/* the same iMessage input bar as the home chat (single-height, grows, enter-to-send) */}
+      <View style={{ paddingBottom: insets.bottom }}>
+        <ChatInputBar
+          replyActive={false}
+          attachmentState="none"
+          tray={null}
+          onSendText={(text) => void send(text)}
+          onSendAudio={() => {}}
+          onTogglePlusMenu={() => {}}
+          plusMenuOpen={false}
+          recording={false}
+          onRecordingChange={() => {}}
         />
-        <Pressable
-          onPress={() => send(input)}
-          disabled={!input.trim() || sending}
-          className="w-10 h-10 rounded-full items-center justify-center"
-          style={{ backgroundColor: !input.trim() || sending ? '#00000015' : '#007AFF' }}
-        >
-          <Text style={{ color: !input.trim() || sending ? '#00000055' : '#fff', fontSize: 18 }}>
-            ↑
-          </Text>
-        </Pressable>
       </View>
     </KeyboardAvoidingView>
   );
