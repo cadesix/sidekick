@@ -536,20 +536,6 @@ export function updateProfile(input: ProfileUpdate): Promise<{ ok: boolean }> {
   return trpc.users.updateProfile.mutate(input);
 }
 
-/** Funnel completion — the cold-start seed transaction (02 / user-memory §6). */
-export type OnboardingCompleteInput = Parameters<typeof trpc.onboarding.complete.mutate>[0];
-
-export function completeOnboarding(
-  input: OnboardingCompleteInput,
-): Promise<{ ok: boolean; alreadyComplete: boolean }> {
-  return trpc.onboarding.complete.mutate(input);
-}
-
-/** Open (or resume) the LLM-driven onboarding chat (02 §onboarding chat). */
-export function startOnboardingChat(goalSlugs: string[]): Promise<{ conversationId: string }> {
-  return trpc.onboarding.startChat.mutate({ goalSlugs });
-}
-
 /** Open a fresh guided habit-add chat (goal-screen "+"). */
 export function startHabitChat(): Promise<{ conversationId: string }> {
   return trpc.onboarding.startHabitChat.mutate();
