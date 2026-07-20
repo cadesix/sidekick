@@ -16,6 +16,16 @@ import {
   proactiveTurns,
   users,
 } from "@sidekick/db";
+import {
+  advanceStyleState,
+  applyTransforms,
+  decideStyle,
+  getStyleConfig,
+  initStyleState,
+  renderStyleDirective,
+  type StyleDecision,
+  type StyleState,
+} from "@sidekick/core";
 import { logger } from "../logger";
 import { modelName } from "../model";
 import type { Storage } from "../storage";
@@ -39,6 +49,7 @@ import {
   estimateTokens,
   isToolEnabled,
   localDate,
+  habitTools,
   onboardingChatState,
   onboardingTools,
   parseSuggestedReplies,
@@ -49,6 +60,20 @@ import {
   tailTokens,
   toModelTools,
 } from "@sidekick/shared";
+
+/**
+ * Master switch for the deterministic texting-style controller (traits + rates
+ * live in `@sidekick/core/style`). Off = plain persona voice, no traits.
+ */
+const STYLE_CONTROLLER_ON = true;
+
+/**
+ * In-process per-conversation style state (turn counter + cooldowns). Deliberately
+ * NOT persisted — it only paces trait frequency, so a restart harmlessly resets
+ * cooldowns. Single-process dev; if we scale out or want durability, move this to
+ * a `conversations.styleState` column.
+ */
+const styleStates = new Map<string, StyleState>();
 
 /**
  * Health-capability tool names (12). A reply produced with any of these is
@@ -439,7 +464,7 @@ export async function beginTurn(
 
   return driveTurn(services, {
     conversationId: input.conversationId,
-    onboarding,
+    kind: conversation.kind,
     userText: input.text,
   });
 }
@@ -461,7 +486,7 @@ export async function continueTurn(
   const conversation = await assertConversationOwned(db, input.conversationId, userId);
   return driveTurn(services, {
     conversationId: input.conversationId,
-    onboarding: conversation.kind === "onboarding",
+    kind: conversation.kind,
     userText: "",
   });
 }
@@ -500,10 +525,14 @@ async function inlineAttachmentBytes(
  */
 async function driveTurn(
   services: TurnServices,
-  args: { conversationId: string; onboarding: boolean; userText: string },
+  args: { conversationId: string; kind: string; userText: string },
 ): Promise<{ textStream: AsyncGenerator<string>; done: Promise<TurnOutcome> }> {
   const { db, model, flags, userId, storage } = services;
-  const { onboarding } = args;
+  // Onboarding + the goal-screen "+" habit-add flow are both "restricted" chats:
+  // a narrow tool set, no texting-style controller, and a beat surfaced in meta.
+  const onboarding = args.kind === "onboarding";
+  const habit = args.kind === "habit";
+  const restricted = onboarding || habit;
   const input = { conversationId: args.conversationId, text: args.userText };
 
   const now = new Date();
@@ -536,6 +565,8 @@ async function driveTurn(
   let clientNames = new Set<string>();
   if (onboarding) {
     tools = toModelTools(onboardingTools, toolContext);
+  } else if (habit) {
+    tools = toModelTools(habitTools, toolContext);
   } else {
     const spentToday = user
       ? await searchesToday(db, input.conversationId, timezone, now)
@@ -550,6 +581,20 @@ async function driveTurn(
     tools = { ...toModelTools(selected, toolContext), ...providerTools };
   }
 
+  // Texting-style controller (skipped for onboarding). Decide which traits fire
+  // this turn: directive traits (below) are appended to the system prompt; the
+  // transform traits are applied to the reply in `persistTurn`. Deterministic and
+  // seeded per (conversation, turn), so it's reproducible + golden-tested in core.
+  const styleState =
+    STYLE_CONTROLLER_ON && !restricted
+      ? (styleStates.get(input.conversationId) ?? initStyleState())
+      : null;
+  const styleSeed = styleState ? `${input.conversationId}:${styleState.turnIndex}` : "";
+  const styleDecision: StyleDecision | null = styleState
+    ? decideStyle(getStyleConfig(), styleState, styleSeed)
+    : null;
+  const styleDirective = styleDecision ? renderStyleDirective(styleDecision) : "";
+
   const done = createDeferred<TurnOutcome>();
 
   async function persistTurn(acc: {
@@ -563,13 +608,27 @@ async function driveTurn(
     finishReason: string;
     suggestedReplies: string[];
   }): Promise<TurnOutcome> {
+    // Apply the enabled transform traits: multi-send splits the reply into bubbles
+    // (joined by newline; the client splits them back apart), plus any code quirks.
+    // Only the PERSISTED content is styled — acc.fullText stays raw for token
+    // accounting and suggested replies.
+    const styledContent = styleDecision
+      ? applyTransforms(acc.fullText, styleDecision, styleSeed).join("\n")
+      : acc.fullText;
+    // The turn produced a reply, so tick the style state (cooldowns advance).
+    if (styleState && styleDecision) {
+      if (styleStates.size > 20000) {
+        styleStates.clear();
+      }
+      styleStates.set(input.conversationId, advanceStyleState(styleState, styleDecision));
+    }
     const inserted = await db
       .insert(messages)
       .values({
         conversationId: input.conversationId,
         role: "assistant",
-        content: acc.fullText,
-        tokenEstimate: estimateTokens(acc.fullText),
+        content: styledContent,
+        tokenEstimate: estimateTokens(styledContent),
         model: modelName(model),
         promptVersion: view.promptVersion,
         tokensIn: acc.tokensIn > 0 ? acc.tokensIn : null,
@@ -656,7 +715,9 @@ async function driveTurn(
         let streamError: unknown;
         const result = streamText({
           model,
-          system: renderSystem(view.system),
+          system: styleDirective
+            ? `${renderSystem(view.system)}\n\n${styleDirective}`
+            : renderSystem(view.system),
           messages: convo,
           tools,
           stopWhen: stepCountIs(8),
@@ -790,6 +851,12 @@ async function driveTurn(
         const state = await onboardingChatState(db, userId);
         onboardingBeat = state.beat.type;
         optionHints = beatChipHints(state);
+      } else if (habit) {
+        // Habit-add flow has no beat machine — signal completion when the
+        // commit_habit tool fired this turn, so the client can offer "done".
+        onboardingBeat = accumulated.calls.some((c) => c.toolName === "commit_habit")
+          ? "done"
+          : "add_habit";
       }
       let suggestedReplies: string[] = [];
       if (isToolEnabled(SUGGESTED_REPLIES_FLAG, flags) && repliesEligible(accumulated)) {

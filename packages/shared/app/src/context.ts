@@ -27,6 +27,7 @@ import { renderMemoryBlock } from "./memory/render";
 import {
   ONBOARDING_CHAT_PROMPT,
   onboardingChatState,
+  renderHabitBlock,
   renderOnboardingBlock,
 } from "./onboarding-chat";
 import { PERSONA_PROMPT } from "./prompts/persona";
@@ -510,6 +511,20 @@ export async function buildContextView(
         { id: "onboarding", text: renderOnboardingBlock(state) },
       ],
       messages: assembleTail(onboardingTail, storageUrl),
+      promptVersion: ONBOARDING_CHAT_PROMPT.version,
+    };
+  }
+
+  // The goal-screen "+" habit-add chat — same small view, a static add-habit block
+  // (no beat machine; completion is signalled by the commit_habit tool call).
+  if (conversationRows[0]?.kind === "habit" && userId !== null) {
+    const habitTail = await tailMessages(db, conversationId, 0);
+    return {
+      system: [
+        { id: "persona", text: PERSONA_PROMPT.text, cache: true },
+        { id: "onboarding", text: renderHabitBlock() },
+      ],
+      messages: assembleTail(habitTail, storageUrl),
       promptVersion: ONBOARDING_CHAT_PROMPT.version,
     };
   }

@@ -415,6 +415,7 @@ export function SettingsScreen() {
 					{__DEV__ ? (
 						<Group title="Developer">
 							<LinkRow label="Ad preview" onPress={() => router.push("/dev/ad-preview")} />
+							<LinkRow label="Face sheet" onPress={() => router.push("/dev/face-sheet")} />
 						</Group>
 					) : null}
 				</ScrollView>

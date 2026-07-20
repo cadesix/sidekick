@@ -122,6 +122,52 @@ function toMessage(row: HistoryRow, latestGame: boolean): Message {
   };
 }
 
+// A split bubble carries the id `${rowId}.${k}`; server ops key off the real row.
+function rowId(messageId: string): number {
+  return Number(messageId.split(".")[0]);
+}
+
+// Keep split bubbles within one iMessage "burst" (buildTranscript groups
+// consecutive same-sender messages whose createdAt gap is small).
+const MULTISEND_STAGGER_MS = 1;
+
+/**
+ * A sidekick reply may be several texts separated by newlines (the persona's
+ * multi-send trait). Render each as its own bubble so it reads like a person
+ * firing off a couple messages; buildTranscript's grouping gives the burst look
+ * (2px stacking, one tail) for free. Non-text, attachment-bearing, or
+ * single-line messages pass through unchanged so ids/reactions stay stable.
+ */
+function splitBurst(message: Message): Message[] {
+  if (
+    message.role !== "them" ||
+    message.kind !== "text" ||
+    message.images.length > 0 ||
+    message.file !== undefined ||
+    message.audio !== undefined
+  ) {
+    return [message];
+  }
+  const parts = message.text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (parts.length <= 1) {
+    return [message];
+  }
+  const last = parts.length - 1;
+  return parts.map((text, k) => ({
+    ...message,
+    id: `${message.id}.${k}`,
+    text,
+    createdAt: message.createdAt + k * MULTISEND_STAGGER_MS,
+    // the reply is one logical unit: keep the reply-target on the first bubble
+    // and any reactions on the last, matching where a re-fetch will place them.
+    replyToId: k === 0 ? message.replyToId : undefined,
+    reactions: k === last ? message.reactions : [],
+  }));
+}
+
 export function mainConversation(): Promise<{ id: string }> {
   return trpc.chat.mainConversation.query();
 }
@@ -159,7 +205,8 @@ export async function fetchTranscript(
       .map((row) =>
         toMessage(row, row.game !== null && latestGameRow.get(row.game.matchId) === row.id),
       )
-      .reverse(),
+      .reverse()
+      .flatMap(splitBurst),
     composerAd: activeComposerAd(rows),
   };
 }
@@ -181,7 +228,9 @@ export async function runTurn(input: {
       conversationId: input.conversationId,
       text: input.text,
       attachmentIds: input.attachmentIds,
-      replyToId: input.replyToId === undefined ? undefined : Number(input.replyToId),
+      // A burst bubble's id is "<baseId>.<n>"; reply targets the whole reply (its
+      // base row) via rowId, matching how reactions/deletes resolve.
+      replyToId: input.replyToId === undefined ? undefined : rowId(input.replyToId),
     },
     noop,
   );
@@ -213,10 +262,10 @@ export async function sendVoiceTurn(
 
 /** Toggle the user's tapback. Passing the type they already picked clears it. */
 export function react(messageId: string, type: ReactionType | null): Promise<unknown> {
-  return trpc.chat.react.mutate({ messageId: Number(messageId), type });
+  return trpc.chat.react.mutate({ messageId: rowId(messageId), type });
 }
 
 /** "Undo Send" — the message leaves the transcript for good. */
 export function deleteMessage(messageId: string): Promise<unknown> {
-  return trpc.chat.deleteMessage.mutate({ messageId: Number(messageId) });
+  return trpc.chat.deleteMessage.mutate({ messageId: rowId(messageId) });
 }

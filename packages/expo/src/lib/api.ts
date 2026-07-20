@@ -232,6 +232,35 @@ export async function streamChatTurn(
 }
 
 /**
+ * DEV Chat Lab turn (see server `/dev/chat-lab`): runs the real prod model on an
+ * ephemeral transcript with a caller-supplied system prompt, streaming plain
+ * text deltas. No tools/frames, no persistence — so the wire is raw text and we
+ * can skip `drainStreamFrames` entirely. Throws if the server is unreachable or
+ * rejects (dev-gated / unauthorized).
+ */
+export async function streamChatLab(
+  body: { system?: string; messages: { role: "user" | "assistant"; content: string }[] },
+  onDelta: (delta: string) => void,
+): Promise<void> {
+  const response = await streamingFetch(`${API_BASE}/dev/chat-lab`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok || !response.body) {
+    throw new Error(`chat lab failed (${response.status})`);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    const text = decoder.decode(value, { stream: true });
+    if (text.length > 0) onDelta(text);
+  }
+}
+
+/**
  * Resume a turn after its device-tools posted results (12). POSTs to
  * `/chat/continue` with no user text; the server re-reads the tool-call/result
  * rows and streams the follow-up into the same assistant bubble. Returns any
@@ -259,6 +288,15 @@ export type GoalsList = Awaited<ReturnType<typeof trpc.goals.list.query>>;
 
 export function fetchGoals(): Promise<GoalsList> {
   return trpc.goals.list.query();
+}
+
+/**
+ * A snarky sign-off line for the 3D home speech bubble, generated from the tail
+ * of the conversation. Fired when the user closes the chat. `quip` is null when
+ * there's nothing to riff on.
+ */
+export function fetchCapoff(conversationId: string): Promise<{ quip: string | null }> {
+  return trpc.chat.capoff.query({ conversationId });
 }
 
 /**
@@ -498,18 +536,16 @@ export function updateProfile(input: ProfileUpdate): Promise<{ ok: boolean }> {
   return trpc.users.updateProfile.mutate(input);
 }
 
-/** Funnel completion — the cold-start seed transaction (02 / user-memory §6). */
-export type OnboardingCompleteInput = Parameters<typeof trpc.onboarding.complete.mutate>[0];
-
-export function completeOnboarding(
-  input: OnboardingCompleteInput,
-): Promise<{ ok: boolean; alreadyComplete: boolean }> {
-  return trpc.onboarding.complete.mutate(input);
+/** Open a fresh guided habit-add chat (goal-screen "+"). */
+export function startHabitChat(): Promise<{ conversationId: string }> {
+  return trpc.onboarding.startHabitChat.mutate();
 }
 
-/** Open (or resume) the LLM-driven onboarding chat (02 §onboarding chat). */
-export function startOnboardingChat(goalSlugs: string[]): Promise<{ conversationId: string }> {
-  return trpc.onboarding.startChat.mutate({ goalSlugs });
+/** Persist the streamlined onboarding intro chat's picks (habit → goal, talk → prefs). */
+export function commitOnboardingResult(
+  input: Parameters<typeof trpc.onboarding.commitResult.mutate>[0],
+): Promise<{ ok: true }> {
+  return trpc.onboarding.commitResult.mutate(input);
 }
 
 /** Count of sidekick-made documents (07 home "Made for you" row, 15). */
@@ -826,4 +862,9 @@ export function devResetProfile(): Promise<{ stateVersion: number; coins: number
 
 export function devResetDailyBox(): Promise<{ stateVersion: number; coins: number }> {
   return trpc.dev.resetDailyBox.mutate();
+}
+
+/** DEV: wipe the onboarding chat + goals so the funnel re-runs fresh. */
+export function devResetOnboarding(): Promise<{ ok: true }> {
+  return trpc.dev.resetOnboarding.mutate();
 }

@@ -4,10 +4,13 @@ import { trpcServer } from "@hono/trpc-server";
 import { createMiddleware } from "hono/factory";
 import { attachments } from "@sidekick/db";
 import { chatContinueInput, chatSendInput } from "@sidekick/shared";
+import { PERSONA_PROMPT } from "@sidekick/shared/prompts";
+import { streamText, type ModelMessage } from "ai";
 import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { stream } from "hono/streaming";
+import { z } from "zod";
 import { CHAT_TURN_LIMIT, consumeRateLimit, pruneRateLimits } from "./auth/rate-limit";
 import { beginTurn, continueTurn } from "./chat/turn";
 import { buildCheckinCron } from "./checkins/cron";
@@ -180,6 +183,14 @@ async function serveTurnAd(
  * The HTTP surface: tRPC under `/trpc/*` and a plain fetch-stream endpoint at
  * `/chat/stream` for token streaming (01: "SSE endpoint alongside tRPC").
  */
+/** Ephemeral, non-persisted turn for the dev Chat Lab (see `/dev/chat-lab`). */
+const chatLabInput = z.object({
+  system: z.string().optional(),
+  messages: z
+    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() }))
+    .min(1),
+});
+
 export function buildApp(services: Services) {
   const app = new Hono<{ Variables: { requestId: string } }>();
 
@@ -466,6 +477,36 @@ export function buildApp(services: Services) {
   app.route("/cron", buildRemindersCron(services));
   app.route("/cron", buildNotificationsCron(services));
   app.route("/cron", buildProactivityCron(services));
+
+  /**
+   * DEV-ONLY Chat Lab turn. Runs the REAL prod model (`ctx.model`, gpt-5.6-sol)
+   * so the voice matches production, but against an EPHEMERAL transcript with a
+   * caller-supplied system prompt — so the Chat Lab dev tool can iterate on the
+   * persona / texting traits. Tools are disabled (pure text) and nothing is
+   * persisted (no DB writes, no `buildContextView`, no ads). Double-gated:
+   * NODE_ENV=development + an authenticated user.
+   */
+  app.post("/dev/chat-lab", async (c) => {
+    if (process.env.NODE_ENV !== "development") {
+      return c.json({ error: "not found" }, 404);
+    }
+    const ctx = await createRequestContext(services, c.req.header("authorization") ?? null);
+    if (!ctx.userId) {
+      return c.json({ error: "unauthorized" }, 401);
+    }
+    const input = chatLabInput.parse(await c.req.json());
+    const result = streamText({
+      model: ctx.model,
+      system: input.system?.trim() ? input.system : PERSONA_PROMPT.text,
+      messages: input.messages as ModelMessage[],
+      tools: {},
+    });
+    return stream(c, async (s) => {
+      for await (const delta of result.textStream) {
+        await s.write(delta);
+      }
+    });
+  });
 
   return app;
 }

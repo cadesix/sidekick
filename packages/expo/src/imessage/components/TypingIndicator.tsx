@@ -10,7 +10,7 @@ import Animated, {
 	withSpring,
 	withTiming,
 } from "react-native-reanimated";
-import { colors } from "../theme";
+import { colors, type } from "../theme";
 import { MessageBubble } from "./MessageBubble";
 
 const CYCLE = 1150;
@@ -72,8 +72,11 @@ const styles = StyleSheet.create({
 	dots: {
 		flexDirection: "row",
 		alignItems: "center",
+		justifyContent: "center",
 		gap: 5,
-		paddingVertical: 4,
+		// Match a one-line text bubble's height: the container is as tall as the
+		// body line-height, so the shared bubble padding yields an identical bubble.
+		height: type.body.lineHeight,
 		paddingHorizontal: 1,
 	},
 	dot: {

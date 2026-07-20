@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BOND_MAX, BOND_MIN } from '@sidekick/core';
@@ -8,6 +9,7 @@ import { BOND_MAX, BOND_MIN } from '@sidekick/core';
 import {
   devAdjustCoins,
   devResetDailyBox,
+  devResetOnboarding,
   devResetProfile,
   devResetSessions,
   devSetBond,
@@ -15,6 +17,7 @@ import {
   type Snapshot,
 } from '../lib/api';
 import { patchSnapshot, SNAPSHOT_QUERY_KEY, type SnapshotPatch, useSnapshot } from '../lib/state';
+import { refreshOnboarding, resetOnboarding } from '../lib/onboarding';
 import { useStarChat } from '../store/star-chat';
 
 // DEV-only user-state panel — the RN counterpart of the web app's dev chip
@@ -94,6 +97,14 @@ export function DevPanel({ onJumpToReveal }: { onJumpToReveal?: () => void }) {
       .then((r) => settle({ stateVersion: r.stateVersion, coins: r.coins, bond: r.bond }))
       .catch(onError);
   };
+  // wipe the onboarding gate so the 3D flow runs again from welcome
+  const replayOnboarding = () => {
+    // Wipe BOTH the local gate and the server onboarding chat + goals, so the
+    // funnel truly re-runs the guided-habit flow instead of resuming a finished one.
+    Promise.all([resetOnboarding(), devResetOnboarding().catch(() => {})])
+      .then(() => refreshOnboarding(queryClient))
+      .finally(() => router.replace('/onboarding'));
+  };
 
   return (
     <>
@@ -110,6 +121,14 @@ export function DevPanel({ onJumpToReveal }: { onJumpToReveal?: () => void }) {
           style={[styles.panel, { top: Math.max(insets.top, 16) + 34 }]}
           contentContainerStyle={styles.panelContent}
         >
+          <Row label="Labs">
+            <Btn label="Open dev tools →" onPress={() => router.push('/dev')} wide />
+          </Row>
+
+          <Row label="Onboarding">
+            <Btn label="Replay onboarding" onPress={replayOnboarding} wide />
+          </Row>
+
           <Row label="Bond" value={`${bond}%`}>
             {BOND_PRESETS.map((v) => (
               <Btn key={v} label={String(v)} onPress={() => setBondTo(v)} />

@@ -1,7 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
-import { and, eq, sql } from "drizzle-orm";
-import { type Database, guidedSessions, ledger, sessionFields, sessionNotes, userCosmetics, users } from "@sidekick/db";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import {
+  type Database,
+  actionItems,
+  conversations,
+  goals,
+  guidedSessions,
+  ledger,
+  progressEvents,
+  sessionFields,
+  sessionNotes,
+  userCosmetics,
+  users,
+} from "@sidekick/db";
 import { BOND_MIN, sessionFor } from "@sidekick/core";
 import { localDate, userTimezone } from "@sidekick/shared";
 import { grantReward, spendCoins } from "../rewards/service";
@@ -147,6 +159,47 @@ export function resetSessions(db: Database, userId: string): Promise<SessionRese
 /** `resetSessions` plus the extracted profile: fields, notes, and the astral card. */
 export function resetProfile(db: Database, userId: string): Promise<SessionReset> {
   return resetSessionState(db, userId, true);
+}
+
+/**
+ * DEV: wipe the onboarding chat so the funnel runs fresh. Deletes the
+ * `kind='onboarding'` conversation (messages cascade), the user's goals + their
+ * action items and progress events (no FK cascade there), and clears the funnel
+ * flags (`reminderTime`, `onboardingCompletedAt`). Lets "Replay onboarding"
+ * actually re-run the guided-habit chat instead of resuming a finished one.
+ */
+export async function resetOnboarding(db: Database, userId: string): Promise<{ ok: true }> {
+  await db.transaction(async (tx) => {
+    // Retire the onboarding conversation rather than delete it (it has many
+    // non-cascading children — summaries, ads, attachments…); startOnboardingChat
+    // only matches kind='onboarding', so retiring it makes the funnel create a
+    // fresh conversation next time.
+    await tx
+      .update(conversations)
+      .set({ kind: "onboarding_archived" })
+      .where(and(eq(conversations.userId, userId), eq(conversations.kind, "onboarding")));
+
+    const goalRows = await tx.select({ id: goals.id }).from(goals).where(eq(goals.userId, userId));
+    const goalIds = goalRows.map((g) => g.id);
+    if (goalIds.length > 0) {
+      const itemRows = await tx
+        .select({ id: actionItems.id })
+        .from(actionItems)
+        .where(inArray(actionItems.goalId, goalIds));
+      const itemIds = itemRows.map((i) => i.id);
+      if (itemIds.length > 0) {
+        await tx.delete(progressEvents).where(inArray(progressEvents.actionItemId, itemIds));
+      }
+      await tx.delete(actionItems).where(inArray(actionItems.goalId, goalIds));
+      await tx.delete(goals).where(inArray(goals.id, goalIds));
+    }
+
+    await tx
+      .update(users)
+      .set({ reminderTime: null, onboardingCompletedAt: null })
+      .where(eq(users.id, userId));
+  });
+  return { ok: true };
 }
 
 /**

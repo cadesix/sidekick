@@ -46,6 +46,7 @@ export function SidekickCanvas({
   ground,
   cosmos,
   starFace,
+  entrance,
 }: {
   style?: ViewStyle;
   framing: Framing;
@@ -53,6 +54,9 @@ export function SidekickCanvas({
   talking?: boolean;
   // Shop "studio": hide the meadow and show the character on a clean backdrop
   studio?: boolean;
+  // Onboarding: park the character below the frame until controller.jumpIn().
+  // Mount-time only (read once when the scene is created).
+  entrance?: boolean;
   // Guided session: crossfade the meadow → night sky + a progress constellation
   cosmos?: boolean;
   // TEMPORARY: live look-dev for the sky constellation (store/starFaceConfig)
@@ -94,6 +98,7 @@ export function SidekickCanvas({
       holdingPhone,
       studio,
       cosmos,
+      entrance,
       environment,
       dailyBox,
       onControls: (c) => onControlsRef.current?.(c),

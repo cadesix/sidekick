@@ -160,16 +160,30 @@ def build_body(color, out, name="OnesieBody"):
 
 # ---------------- head-conforming hood ----------------
 
-def build_hood(color, out, name="Hood", feature=None, front_x=0.030, neck_z=0.095):
+def build_hood(color, out, name="Hood", feature=None, front_x=0.030, neck_z=0.095,
+               window=None):
     body, rig = _open()
     ob = C.dup_region(body, name, keep=["Head"])
     C.strip_skin(ob)
     C.offset_loosen(ob, HOOD_OFFSET, loops=2)
     C.cut(ob, (0, 0, neck_z), (0, 0, 1), clear_inner=True)
-    C.cut(ob, (front_x, 0, 0), (1, 0, 0), clear_outer=True)
-    C.decimate(ob, 700)
+    C.decimate(ob, 900)  # lighten the head shell before opening the face
     me = ob.data
     bm = bmesh.new(); bm.from_mesh(me)
+    if window:  # narrow face WINDOW (mummy/ninja) — keeps the wrap over the sides
+        yw, zlo, zhi = window
+        dead = [f for f in bm.faces
+                if f.calc_center_median().x > front_x
+                and abs(f.calc_center_median().y) < yw
+                and zlo < f.calc_center_median().z < zhi]
+        bmesh.ops.delete(bm, geom=dead, context="FACES")
+        bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    else:       # full-front opening (animals — face reads naturally)
+        mw, mwi = ob.matrix_world, ob.matrix_world.inverted()
+        bmesh.ops.bisect_plane(bm, geom=bm.faces[:] + bm.edges[:] + bm.verts[:],
+                               plane_co=mwi @ Vector((front_x, 0, 0)),
+                               plane_no=mwi.to_3x3() @ Vector((1, 0, 0)), clear_outer=True)
+        bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
     if feature:
         feature(bm, body)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
@@ -202,31 +216,28 @@ def dino_crest(bm, body):
         C.seat_spike(bm, base, up, ln, 0.006, nseg=4)
 
 
-def cat_ears(bm, body):
+# Animal ears EXTEND the base bear ears into a point (same hood color), so the
+# tall side-lobe becomes the base of the costume ear rather than a lump beside it.
+# Measured base-ear centres (frozen master rig): (0, ±0.056, ~0.155), z 0.107..0.19.
+_EARC = lambda sgn: Vector((0.0, sgn * 0.056, 0.0))  # x,y of the ear (z set per style)
+
+
+def cat_ears(bm, body):        # cat / fox — tall pointy ears rising from the lobe
     for sgn in (1, -1):
-        base, nrm = _seat(body, (0.02, sgn * 0.42, 0.90))
-        if base is None:
-            continue
-        up = (nrm * 0.35 + Vector((0, sgn * 0.25, 1)) * 0.65).normalized()
-        _cone(bm, base, up, 0.011, 0.007, 0.028, nseg=6)
+        base = Vector((0.0, sgn * 0.056, 0.132))
+        _cone(bm, base, Vector((0.0, sgn * 0.10, 1)).normalized(), 0.024, 0.032, 0.088, nseg=8)
 
 
-def dog_ears(bm, body):
+def dog_ears(bm, body):        # floppy ears drooping down-out over the lobe
     for sgn in (1, -1):
-        base, nrm = _seat(body, (0.0, sgn * 0.9, 0.28))
-        if base is None:
-            continue
-        down = (Vector((0, sgn * 0.35, -1)) + nrm * 0.2).normalized()  # floppy, drooping
-        _cone(bm, base, down, 0.014, 0.009, 0.040, nseg=6)
+        base = Vector((0.0, sgn * 0.058, 0.175))
+        _cone(bm, base, Vector((0.0, sgn * 0.7, -1)).normalized(), 0.026, 0.032, 0.060, nseg=8)
 
 
-def bunny_ears(bm, body):
+def bunny_ears(bm, body):      # long ears rising from the lobe
     for sgn in (1, -1):
-        base, nrm = _seat(body, (0.05, sgn * 0.22, 0.97))
-        if base is None:
-            continue
-        up = (Vector((0, sgn * 0.10, 1)) + nrm * 0.15).normalized()
-        _cone(bm, base, up, 0.008, 0.005, 0.058, nseg=6)
+        base = Vector((0.0, sgn * 0.056, 0.132))
+        _cone(bm, base, Vector((0.02, sgn * 0.08, 1)).normalized(), 0.020, 0.026, 0.108, nseg=8)
 
 
 def bear_snout(bm, body):
@@ -285,9 +296,9 @@ def build_nose(color, out, name="Nose"):
 def build_frog_eyes(out, name="FrogEyes"):
     body, rig = _open()
     ob = C.bm_new_obj(name); bm = bmesh.new()
-    # bulges on top-front of the ENCLOSING ovoid (frog uses plain-ovoid hood)
+    # bulges on the head crown (frog uses a conforming plain hood)
     for sgn in (1, -1):
-        _blob(bm, Vector((0.022, sgn * 0.034, 0.206)), 0.017, 0.017, 0.017)
+        _blob(bm, Vector((0.010, sgn * 0.034, 0.196)), 0.017, 0.017, 0.017)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     for f in bm.faces:
         f.smooth = True
@@ -529,7 +540,7 @@ def build_enclosing_hood(color, out, name, shape="ovoid", ears=None, front_x=0.0
         _ovoid_ears(bm, ears, C0, rx, ry, rz)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     for f in bm.faces:
-        f.smooth = True
+        f.smooth = (shape != "box")  # crisp flat faces for the robot box
     bm.to_mesh(ob.data); bm.free()
     C.solidify(ob, 0.0026, offset=1.0)
     C.set_material(ob, name + "Mat", color, 0.6)

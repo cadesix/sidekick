@@ -5,7 +5,8 @@ import { Alert, Dimensions, Pressable, ScrollView, Text, View } from 'react-nati
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { fetchGoals, type GoalsList, logGoalCheckIn } from '../lib/api';
+import { fetchGoals, type GoalsList, logGoalCheckIn, startHabitChat } from '../lib/api';
+import { GuidedHabitChat } from './GuidedHabitChat';
 
 // Bottom-sheet "Goals": the user's adopted goals (goals.list), each simply done
 // or not done today. Tapping a card expands an action row — mark it done/undo
@@ -35,6 +36,12 @@ const ICONS: Record<string, { icon: keyof typeof Ionicons.glyphMap; color: strin
   'manage-stress': { icon: 'leaf', color: '#3dbd6a' },
   'read-more': { icon: 'book', color: '#ff9f43' },
   'be-productive': { icon: 'checkmark-done', color: '#0a84ff' },
+  // streamlined onboarding "one thing to improve" slugs
+  'eat-healthier': { icon: 'restaurant', color: '#ff6b6b' },
+  'exercise-more': { icon: 'barbell', color: '#ff6b6b' },
+  'wake-earlier': { icon: 'sunny', color: '#ffa53d' },
+  'be-organized': { icon: 'checkmark-done', color: '#0a84ff' },
+  'mental-health': { icon: 'leaf', color: '#3dbd6a' },
 };
 const FALLBACK = { icon: 'flag' as const, color: '#8a8a8a' };
 
@@ -56,12 +63,30 @@ export function GoalsSheet({
   // one card expanded at a time; keyed by goal id. Collapse + refresh on reopen
   // (the list's "today" rolls over at the user's local midnight, server-decided).
   const [expanded, setExpanded] = useState<string | null>(null);
+  // The guided habit-add chat ("+"): its conversation id when open, else null.
+  const [habitConvId, setHabitConvId] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
   useEffect(() => {
     if (open) {
       setExpanded(null);
       void queryClient.invalidateQueries({ queryKey: GOALS_QUERY_KEY });
+    } else {
+      setHabitConvId(null); // don't resume an add-habit chat when the sheet reopens
     }
   }, [open, queryClient]);
+
+  const openAddHabit = () => {
+    if (starting) return;
+    setStarting(true);
+    startHabitChat()
+      .then(({ conversationId }) => setHabitConvId(conversationId))
+      .catch(() => {})
+      .finally(() => setStarting(false));
+  };
+  const closeAddHabit = () => {
+    setHabitConvId(null);
+    void queryClient.invalidateQueries({ queryKey: GOALS_QUERY_KEY }); // pick up the new goal
+  };
 
   const progress = useSharedValue(0);
   progress.value = withTiming(open ? 1 : 0, { duration: 300 });
@@ -124,7 +149,54 @@ export function GoalsSheet({
                 />
               ))
             : null}
+
+          {/* add a habit — opens the same guided-habit chat as onboarding */}
+          {list ? (
+            <Pressable
+              onPress={openAddHabit}
+              disabled={starting}
+              className="flex-row items-center rounded-[18px] border-2 border-dashed border-neutral-200 px-3.5 py-3"
+            >
+              <View className="h-10 w-10 items-center justify-center rounded-xl bg-neutral-100">
+                <Ionicons name="add" size={22} color="#737373" />
+              </View>
+              <Text className="ml-3 text-[15px] font-semibold text-neutral-500">
+                {starting ? 'starting…' : 'add a habit'}
+              </Text>
+            </Pressable>
+          ) : null}
         </ScrollView>
+
+        {/* guided habit-add chat, over the goals list */}
+        {habitConvId ? (
+          <View
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: '#fff',
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+            }}
+          >
+            <View className="px-5 pt-3">
+              <View className="self-center h-1.5 w-10 rounded-full bg-neutral-200" />
+              <View className="mt-1.5 flex-row items-center justify-between">
+                <Text className="text-[22px] font-extrabold text-neutral-900">Add a habit</Text>
+                <Pressable
+                  onPress={closeAddHabit}
+                  accessibilityLabel="Close add habit"
+                  className="h-9 w-9 items-center justify-center rounded-full bg-neutral-100"
+                >
+                  <Ionicons name="close" size={20} color="#737373" />
+                </Pressable>
+              </View>
+            </View>
+            <GuidedHabitChat conversationId={habitConvId} onComplete={closeAddHabit} />
+          </View>
+        ) : null}
       </View>
     </Animated.View>
   );

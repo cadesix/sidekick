@@ -104,11 +104,7 @@ export {
   type InterestClassifier,
 } from "./memory/projection";
 export { listMemories, forgetMemory, editMemory, type MemoryListItem } from "./memory/store";
-export {
-  completeOnboarding,
-  type CompleteOnboardingInput,
-  type CompleteOnboardingResult,
-} from "./onboarding/complete";
+export { commitOnboardingResult, type CommitOnboardingResultInput } from "./onboarding/commit-result";
 export {
   identitySentence,
   preferenceSentence,
@@ -124,7 +120,7 @@ export {
   type AdoptGoalInput,
   type GoalPlanSummary,
 } from "./onboarding/adopt";
-export { startOnboardingChat } from "./onboarding/chat";
+export { startHabitChat } from "./onboarding/chat";
 export {
   grantReward,
   spendCoins,

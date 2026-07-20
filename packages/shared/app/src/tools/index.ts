@@ -18,7 +18,7 @@ export * from "./types";
 export * from "./registry";
 export * from "./search";
 export { GAMES_CHAT_GUIDANCE } from "./games";
-export { onboardingTools } from "./onboarding";
+export { onboardingTools, habitTools } from "./onboarding";
 
 /**
  * Every capability: its tools plus the optional chat-side guidance that travels

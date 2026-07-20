@@ -13,7 +13,9 @@ import {
 } from "@sidekick/shared";
 import type { Reaction } from "@sidekick/shared";
 import { TRPCError } from "@trpc/server";
+import { generateText } from "ai";
 import { and, eq } from "drizzle-orm";
+import { z } from "zod";
 import { protectedProcedure, router } from "../trpc";
 import {
   chatHistory,
@@ -62,10 +64,50 @@ async function withAttachments<T extends { id: number; gameMatchId: string | nul
   }));
 }
 
+const chatCapoffInput = z.object({ conversationId: z.string() });
+
+// The parting one-liner the sidekick says over its head when the user closes the
+// chat and walks back to the 3D home. Snarky, affectionate, references the convo.
+const CAPOFF_SYSTEM = `You are the user's sidekick — a little character on their home screen. They just closed the chat and walked back to you. Say ONE short parting line that caps off the conversation you two just had, riffing on the last few messages or the whole vibe.
+
+Rules:
+- one line, at most ~12 words. lowercase, texty.
+- funny and a little cheeky, like a friend getting the last word. never mean, never corporate.
+- reference something specific from the conversation when you can, so it feels like you were there.
+- no em dashes (use a comma or a period), no emojis, no hashtags, no surrounding quotes, no "haha". just the line itself.`;
+
 export const chatRouter = router({
   mainConversation: protectedProcedure.query(({ ctx }) =>
     ensureMainConversation(ctx.db, ctx.userId),
   ),
+
+  /**
+   * A snarky sign-off for the 3D home speech bubble (client fires this on chat
+   * close). Reads the tail of the transcript and has the cheap model riff on it.
+   * Returns `{ quip: null }` when there's nothing to riff on — the client just
+   * skips the bubble.
+   */
+  capoff: protectedProcedure.input(chatCapoffInput).query(async ({ ctx, input }) => {
+    const rows = await chatHistory(ctx.db, ctx.userId, {
+      conversationId: input.conversationId,
+      limit: 10,
+    });
+    const transcript = rows
+      .filter((row) => row.role === "user" || row.role === "assistant")
+      .reverse()
+      .map((row) => `${row.role === "user" ? "them" : "you"}: ${row.content}`)
+      .join("\n");
+    if (transcript.trim().length === 0) {
+      return { quip: null as string | null };
+    }
+    const { text } = await generateText({
+      model: ctx.captionModel,
+      system: CAPOFF_SYSTEM,
+      prompt: `the conversation:\n${transcript}\n\nwrite the one-liner now.`,
+    });
+    const quip = text.trim();
+    return { quip: (quip.length > 0 ? quip : null) as string | null };
+  }),
 
   send: protectedProcedure.input(chatSendInput).mutation(async ({ ctx, input }) => {
     const outcome = await sendChatTurn(

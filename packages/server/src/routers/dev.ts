@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   adjustCoins,
   resetDailyBox,
+  resetOnboarding,
   resetProfile,
   resetSessions,
   setBond,
@@ -51,4 +52,7 @@ export const devRouter = router({
 
   /** Make today's daily box claimable again, reversing its coins/item. */
   resetDailyBox: devProcedure.mutation(({ ctx }) => resetDailyBox(ctx.db, ctx.userId)),
+
+  /** Wipe the onboarding chat + goals so the funnel re-runs the guided-habit flow. */
+  resetOnboarding: devProcedure.mutation(({ ctx }) => resetOnboarding(ctx.db, ctx.userId)),
 });

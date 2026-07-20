@@ -81,6 +81,11 @@ export type SidekickController = {
   setStudio: (v: boolean) => void;
   // guided-session night sky: crossfade the meadow → dark starfield
   setCosmos: (v: boolean) => void;
+  // onboarding notif beat: tilt the head up toward the notice (until chat opens)
+  setLookUp: (v: boolean) => void;
+  // per-frame camera ease rate toward the framing (default 0.07; lower = slower,
+  // gentler zoom — used to give the chat-open move breathing room)
+  setCamRate: (k: number) => void;
   // TEMPORARY: live look-dev for the sky's star constellation (see
   // store/starFaceConfig.ts). Goes away once the numbers are baked in.
   setStarFace: (c: StarFaceConfig) => void;
@@ -89,6 +94,10 @@ export type SidekickController = {
   // daily loot chest: spawn/hide (tier or null) + trigger the open animation
   setDailyBox: (tier: BoxTier | null) => void;
   popDailyBox: () => void;
+  // onboarding: play the character's jump-into-frame entrance (from HIDDEN_Y),
+  // and shake the camera ("build" ramps, "impact" spikes then decays)
+  jumpIn: (opts?: { duration?: number }) => void;
+  shake: (opts?: { amp?: number; duration?: number; mode?: 'impact' | 'build' }) => void;
   // live look-dev: re-apply a full settings object to the running scene
   applySettings: (next: SidekickSettings) => void;
   // touch input in NDC (-1..1, +y up) — fed by the canvas component
@@ -160,6 +169,9 @@ export function createSidekickRenderer(
     holdingPhone?: boolean;
     studio?: boolean;
     cosmos?: boolean;
+    // onboarding: park the character below the frame until jumpIn() plays its
+    // entrance (the establishing shots show an empty lawn). No-op otherwise.
+    entrance?: boolean;
     environment?: EnvironmentId;
     // daily loot chest tier (or null to hide); read live like the flags above
     dailyBox?: BoxTier | null;
@@ -494,7 +506,16 @@ export function createSidekickRenderer(
   let talking = false;
   let studio = !!opts.studio;
   let cosmos = !!opts.cosmos;
+  let lookUp = false; // onboarding notif beat: tilt the head up toward the notice
   let disposed = false;
+  // onboarding cinematics (no-ops unless entrance/jumpIn/shake are used): the
+  // character launches from HIDDEN_Y with an eased arc, the camera shakes on
+  // build-up + touchdown. Ported from the web sidekick-canvas.
+  const HIDDEN_Y = -3;
+  let entranceY = opts.entrance ? HIDDEN_Y : 0;
+  let jump: { start: number; dur: number } | null = null;
+  let landed = false;
+  let shake: { start: number; dur: number; amp: number; mode: 'impact' | 'build' } | null = null;
   let cos: CosmeticsHandle | null = null;
   // rebuilds the character materials from the CURRENT `s`; set once the GLB is
   // in. retintShading updates the SAME materials' uniforms in place — the live
@@ -713,6 +734,8 @@ export function createSidekickRenderer(
   let phoneShown = false;
   let studioT = 0; // eased meadow→studio blend (0 meadow, 1 studio)
   let cosmosT = 0; // eased meadow→night-sky blend (guided session)
+  let lookUpT = 0; // eased head look-up (0 neutral, 1 fully up)
+  let camRate = 0.07; // per-frame camera ease toward framing (lower = slower/gentler)
   let raf = 0;
   let snapFrame = 0;
   const studioMat = studioSphere.material as THREE.MeshBasicMaterial;
@@ -833,6 +856,8 @@ export function createSidekickRenderer(
     // so it eases in under the camera's pan up to the sky
     cosmosT += ((cosmos ? 1 : 0) - cosmosT) * 0.06;
     if (Math.abs((cosmos ? 1 : 0) - cosmosT) < 0.002) cosmosT = cosmos ? 1 : 0;
+    lookUpT += ((lookUp ? 1 : 0) - lookUpT) * 0.08;
+    if (Math.abs((lookUp ? 1 : 0) - lookUpT) < 0.002) lookUpT = lookUp ? 1 : 0;
     const inCosmos = cosmosT > 0.001;
     // studio backdrop or the night sky — either one fully hides the meadow
     const inCover = inStudio || inCosmos;
@@ -854,14 +879,44 @@ export function createSidekickRenderer(
     } else activeGround.visible = !inCover;
     scene.fog = inCover ? null : envFog;
 
-    // body-drag lean/offset/squash (springs home to rest on release)
-    pull.position.set(fr.bodyX, 0, fr.bodyZ);
+    // jump-into-frame entrance: launch from HIDDEN_Y with an eased rise + a
+    // short arc overshoot; fire the impact shake at touchdown (onboarding only)
+    if (jump) {
+      const p = THREE.MathUtils.clamp((now - jump.start) / jump.dur, 0, 1);
+      const rise = 1 - Math.pow(1 - p, 3);
+      const hop = Math.sin(p * Math.PI) * 0.3;
+      entranceY = THREE.MathUtils.lerp(HIDDEN_Y, 0, rise) + hop;
+      if (p >= 0.9 && !landed) {
+        landed = true;
+        shake = { start: now, dur: 0.55, amp: 0.2, mode: 'impact' };
+      }
+      if (p >= 1) {
+        entranceY = 0;
+        jump = null;
+      }
+    }
+    // body-drag lean/offset/squash (springs home to rest on release); the
+    // entrance offset rides on the same group so he lands into the scene
+    pull.position.set(fr.bodyX, entranceY, fr.bodyZ);
     pull.rotation.set(fr.tiltX, 0, fr.tiltZ);
     pull.scale.set(1 / Math.sqrt(fr.squash), fr.squash, 1 / Math.sqrt(fr.squash));
 
     if (ready) {
       const breath = 1 + Math.sin(now * 2.2) * 0.012;
-      rig.scale.set(1 / Math.sqrt(breath), breath, 1 / Math.sqrt(breath));
+      // jump envelopes: touchdown squash, arms reach up, knees tuck. All at
+      // rest (land=1, armUp=tuck=0) when not mid-jump, so the idle/phone pose
+      // is byte-identical to before.
+      let land = 1;
+      let armUp = 0;
+      let tuck = 0;
+      if (jump) {
+        const p = THREE.MathUtils.clamp((now - jump.start) / jump.dur, 0, 1);
+        if (p > 0.75) land = 1 - Math.sin(((p - 0.75) / 0.25) * Math.PI) * 0.14;
+        armUp = 1 - THREE.MathUtils.smoothstep(p, 0.2, 0.85);
+        tuck = 1 - THREE.MathUtils.smoothstep(p, 0.1, 0.7);
+      }
+      const ys = breath * land;
+      rig.scale.set(1 / Math.sqrt(ys), ys, 1 / Math.sqrt(ys));
       const sway = Math.sin(now * 2.2) * 0.04;
       phoneBlend += ((holdingPhone ? 1 : 0) - phoneBlend) * 0.09;
       // toggle the phone prop with the pose blend (visible while any of the
@@ -876,47 +931,56 @@ export function createSidekickRenderer(
       // each arm's world-space delta through the parent's current world
       // quaternion, so the body yaw must already be in place
       pull.rotation.y = PHONE_POSE.bodyYaw * pb;
-      // both arms blend from idle (+ drag pulls) toward the phone-hold pose
-      setArm(
-        'armL',
-        'forearmL',
-        1,
-        lerp(s.poseArmForward + fr.armL.fwd, PHONE_L.swingX, pb),
-        lerp(-s.poseArmDown + sway + fr.armL.swing, PHONE_L.swingZ, pb),
-        lerp(s.poseArmTwist, PHONE_L.twist, pb),
-        lerp(s.poseForeBend, PHONE_L.foreX, pb),
-        lerp(0, PHONE_L.foreZ, pb),
-      );
-      setArm(
-        'armR',
-        'forearmR',
-        -1,
-        lerp(s.poseArmForward + fr.armR.fwd, PHONE_R.swingX, pb),
-        lerp(s.poseArmDown - sway + fr.armR.swing, PHONE_R.swingZ, pb),
-        lerp(-s.poseArmTwist, PHONE_R.twist, pb),
-        lerp(s.poseForeBend, PHONE_R.foreX, pb),
-        lerp(0, PHONE_R.foreZ, pb),
-      );
+      // arm targets: idle (+ drag pulls) → two-handed phone-hold (pb) → jump-up
+      // reach (armUp). Computed as intermediates so the entrance can blend the
+      // arms overhead before they settle.
+      const swXL = lerp(s.poseArmForward + fr.armL.fwd, PHONE_L.swingX, pb);
+      let swZL = lerp(-s.poseArmDown + sway + fr.armL.swing, PHONE_L.swingZ, pb);
+      let twL = lerp(s.poseArmTwist, PHONE_L.twist, pb);
+      let foXL = lerp(s.poseForeBend, PHONE_L.foreX, pb);
+      const foZL = lerp(0, PHONE_L.foreZ, pb);
+      const swXR = lerp(s.poseArmForward + fr.armR.fwd, PHONE_R.swingX, pb);
+      let swZR = lerp(s.poseArmDown - sway + fr.armR.swing, PHONE_R.swingZ, pb);
+      let twR = lerp(-s.poseArmTwist, PHONE_R.twist, pb);
+      let foXR = lerp(s.poseForeBend, PHONE_R.foreX, pb);
+      const foZR = lerp(0, PHONE_R.foreZ, pb);
+      if (armUp > 0) {
+        swZL = lerp(swZL, 0.95, armUp);
+        twL = lerp(twL, 0, armUp);
+        foXL = lerp(foXL, 0, armUp);
+        swZR = lerp(swZR, -0.95, armUp);
+        twR = lerp(twR, 0, armUp);
+        foXR = lerp(foXR, 0, armUp);
+      }
+      setArm('armL', 'forearmL', 1, swXL, swZL, twL, foXL, foZL);
+      setArm('armR', 'forearmR', -1, swXR, swZR, twR, foXR, foZR);
       bones.armL.scale.setScalar(1 + fr.armL.stretch);
       bones.armR.scale.setScalar(1 + fr.armR.stretch);
       // tilt the head up to gaze at the sky as the night crossfades in (peaks
       // just before the character slides out of frame under the camera pan)
       const cosmosLook = Math.min(1, cosmosT / 0.8) * 0.6;
-      setBone('head', fr.headPitch + PHONE_POSE.headPitch * pb - cosmosLook, fr.headYaw + PHONE_POSE.headYaw * pb, 0);
+      const upLook = lookUpT * 0.42; // notif beat: tilt the head up toward the notice
+      setBone(
+        'head',
+        fr.headPitch + PHONE_POSE.headPitch * pb - cosmosLook - upLook,
+        fr.headYaw + PHONE_POSE.headYaw * pb,
+        0,
+      );
       // body-drag bend splits across waist + spine (arc toward the grab
       // point); the trailing leg lifts and its knee curls when off balance
       setBone('waist', fr.bendX * 0.5, 0, fr.bendZ * 0.5);
       setBone('spine', fr.bendX * 0.5, 0, fr.bendZ * 0.5);
-      setBone('thighL', 0, 0, fr.legL.lift);
-      setBone('calfL', fr.legL.curl, 0, 0);
-      setBone('thighR', 0, 0, fr.legR.lift);
-      setBone('calfR', fr.legR.curl, 0, 0);
+      // knees tuck up while airborne, releasing to a stand on landing
+      setBone('thighL', 0, 0, fr.legL.lift + tuck * 0.55);
+      setBone('calfL', fr.legL.curl - tuck * 0.9, 0, 0);
+      setBone('thighR', 0, 0, fr.legR.lift - tuck * 0.55);
+      setBone('calfR', fr.legR.curl - tuck * 0.9, 0, 0);
     }
 
     // ease camera toward the current framing (smooth zoom on chat open). The
     // guided-session pan up to the sky uses a slower rate so the tilt reads as a
     // deliberate, felt move rather than a snap.
-    const camK = cosmos ? 0.032 : 0.07;
+    const camK = cosmos ? 0.032 : camRate;
     camBasePos.lerp(wantPos.fromArray(framing.pos), camK);
     camBaseTarget.lerp(wantTgt.fromArray(framing.target), camK);
     const wantFov = framing.fov ?? camera.fov;
@@ -943,6 +1007,22 @@ export function createSidekickRenderer(
     camSph.phi = THREE.MathUtils.clamp(camSph.phi + fr.camPitch, 0.3, maxPhi);
     camera.position.setFromSpherical(camSph).add(camBaseTarget);
     camera.lookAt(camBaseTarget);
+    // onboarding camera shake: "build" ramps up (suspense before the jump),
+    // "impact" spikes then decays (touchdown). No-op unless shake() was called.
+    if (shake) {
+      const sp = (now - shake.start) / shake.dur;
+      if (sp >= 1) {
+        shake = null;
+      } else {
+        const env = shake.mode === 'build' ? sp * sp : (1 - sp) * (1 - sp);
+        const a = shake.amp * env;
+        camera.position.x += Math.sin(now * 92) * a;
+        camera.position.y += Math.cos(now * 71) * a;
+        camera.position.z += Math.sin(now * 64) * a * 0.8;
+        camera.rotation.z += Math.sin(now * 83) * a * 0.7;
+        camera.rotation.x += Math.cos(now * 101) * a * 0.35;
+      }
+    }
 
     grass.update(now, pull.position);
 
@@ -1054,6 +1134,12 @@ export function createSidekickRenderer(
     setCosmos: (v) => {
       cosmos = v;
     },
+    setLookUp: (v) => {
+      lookUp = v;
+    },
+    setCamRate: (k) => {
+      camRate = k;
+    },
     setStarFace: (c) => starFace.setConfig(c),
     setEnvironment: (id) => {
       environment = id;
@@ -1063,6 +1149,19 @@ export function createSidekickRenderer(
     },
     popDailyBox: () => {
       if (boxPop < 0) boxPop = clock.getElapsedTime();
+    },
+    jumpIn: (o) => {
+      jump = { start: clock.getElapsedTime(), dur: (o?.duration ?? 800) / 1000 };
+      landed = false;
+      faceCtl?.pulse('excited', 1);
+    },
+    shake: (o) => {
+      shake = {
+        start: clock.getElapsedTime(),
+        dur: (o?.duration ?? 500) / 1000,
+        amp: o?.amp ?? 0.1,
+        mode: o?.mode ?? 'impact',
+      };
     },
     applySettings: (next) => {
       const prevHeight = s.grassHeight;
@@ -1111,6 +1210,14 @@ export function createSidekickRenderer(
       cancelAnimationFrame(raf);
       opts.onControls?.(null);
       cos?.dispose();
+      // Release the browser's WebGL context slot immediately, not just three's
+      // resources. On web the context count is capped (~16); a departing scene
+      // that only calls renderer.dispose() keeps its slot until GC, so the
+      // onboarding→home handoff briefly runs two scenes + avatars over the cap
+      // and the incoming character (loaded after the synchronous grass/sky) fails
+      // to initialize. forceContextLoss frees the slot now. No-op on native
+      // (the WEBGL_lose_context extension is absent there).
+      renderer.forceContextLoss();
       renderer.dispose();
     },
   };
