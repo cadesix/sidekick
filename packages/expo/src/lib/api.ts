@@ -291,6 +291,15 @@ export function fetchGoals(): Promise<GoalsList> {
 }
 
 /**
+ * A snarky sign-off line for the 3D home speech bubble, generated from the tail
+ * of the conversation. Fired when the user closes the chat. `quip` is null when
+ * there's nothing to riff on.
+ */
+export function fetchCapoff(conversationId: string): Promise<{ quip: string | null }> {
+  return trpc.chat.capoff.query({ conversationId });
+}
+
+/**
  * Manually mark or clear one day's outcome for a goal (goals.logCheckIn, plan
  * 20 decision 8). `result: null` toggles the day off; the server rejects
  * future dates and cross-user goals.

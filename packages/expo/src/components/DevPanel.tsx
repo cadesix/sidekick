@@ -16,6 +16,7 @@ import {
   type Snapshot,
 } from '../lib/api';
 import { patchSnapshot, SNAPSHOT_QUERY_KEY, type SnapshotPatch, useSnapshot } from '../lib/state';
+import { refreshOnboarding, resetOnboarding } from '../lib/onboarding';
 import { useStarChat } from '../store/star-chat';
 
 // DEV-only user-state panel — the RN counterpart of the web app's dev chip
@@ -95,6 +96,12 @@ export function DevPanel({ onJumpToReveal }: { onJumpToReveal?: () => void }) {
       .then((r) => settle({ stateVersion: r.stateVersion, coins: r.coins, bond: r.bond }))
       .catch(onError);
   };
+  // wipe the onboarding gate so the 3D flow runs again from welcome
+  const replayOnboarding = () => {
+    resetOnboarding()
+      .then(() => refreshOnboarding(queryClient))
+      .finally(() => router.replace('/onboarding'));
+  };
 
   return (
     <>
@@ -113,6 +120,10 @@ export function DevPanel({ onJumpToReveal }: { onJumpToReveal?: () => void }) {
         >
           <Row label="Labs">
             <Btn label="Open dev tools →" onPress={() => router.push('/dev')} wide />
+          </Row>
+
+          <Row label="Onboarding">
+            <Btn label="Replay onboarding" onPress={replayOnboarding} wide />
           </Row>
 
           <Row label="Bond" value={`${bond}%`}>

@@ -23,6 +23,9 @@ function ConnectedApp() {
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#fff' } }}>
         <Stack.Screen name="index" />
+        {/* Onboarding: a full-screen 3D flow (not a modal), fade-swapped so the
+            evening stage cross-dissolves with Home rather than sliding. */}
+        <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />
         <Stack.Screen name="sidekick-3d" options={{ presentation: 'modal' }} />
         {/* Settings opens from inside the natively-presented chat
             sheet — only modal presentations appear above it */}

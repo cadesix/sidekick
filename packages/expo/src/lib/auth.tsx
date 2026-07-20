@@ -3,7 +3,6 @@ import { ActivityIndicator, Text, View } from "react-native";
 import * as Crypto from "expo-crypto";
 import { useQuery } from "@tanstack/react-query";
 import { PrimaryButton } from "~/components/PrimaryButton";
-import { SignInScreen } from "~/components/SignInScreen";
 import { registerDevice, setAuthToken } from "./api";
 import { DEVICE_STORAGE_KEY, TOKEN_STORAGE_KEY, USER_STORAGE_KEY, useAuthStore } from "./auth-store";
 import { getStoredItem, setStoredItem } from "./secure-storage";
@@ -44,9 +43,12 @@ async function bootstrapAuth(): Promise<null> {
 }
 
 /**
- * Gates the app on a live session: signed in → the app, signed out → the
- * full-screen SignInScreen. The bootstrap query only reads local storage, so
- * failure is a broken install rather than a network blip.
+ * Waits for the storage bootstrap, then always mounts the app. Auth is no longer
+ * a wall here: the 3D onboarding is the front door (its phase-0 signs the user
+ * in), so the signed-out → sign-in decision moved into the router gate
+ * (app/index.tsx redirects to /onboarding when signed out or not yet onboarded).
+ * The bootstrap query only reads local storage, so a failure is a broken install
+ * rather than a network blip.
  */
 export function AuthGate({ children }: { children: ReactNode }) {
   const status = useAuthStore((state) => state.status);
@@ -78,9 +80,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     );
   }
 
-  if (status === "signedOut") {
-    return <SignInScreen />;
-  }
-
+  // signedIn AND signedOut both mount the app; the router gate (app/index.tsx)
+  // routes a signed-out user into onboarding, where auth actually happens.
   return <>{children}</>;
 }

@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Alert, AppState, Dimensions, Pressable, View, type AppStateStatus } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -34,11 +34,13 @@ import type { Framing, SidekickController } from '../src/three/renderer';
 import { hydrateSettings, loadSettings, refreshTimeOfDay, saveSettings, type SidekickSettings } from '../src/three/settings';
 import type { CosmeticsControls } from '../src/three/wardrobe';
 import { useDeferredFlag } from '../src/lib/useDeferredFlag';
-import { claimDailyBox, type BoxContents } from '../src/lib/api';
+import { claimDailyBox, fetchCapoff, type BoxContents } from '../src/lib/api';
 import { patchBoxClaim, snapshotSessions, useSnapshot } from '../src/lib/state';
 import { reconcileWardrobe } from '../src/lib/wardrobe-sync';
 import { useCosmeticVersion } from '../src/store/cosmeticVersion';
 import { hydrateSkinFromMirror, saveSkinMirror } from '../src/store/skin';
+import { useOnboardingState } from '../src/lib/onboarding';
+import { useAuthStore } from '../src/lib/auth-store';
 
 // RN port of sidekick/src/home4.tsx: full-viewport 3D mascot with an iOS-style
 // dock. Messages presents the chat as a native sheet over the lower ~75%
@@ -58,8 +60,8 @@ const HERO_FRAMING: Framing = {
 // distance shrinks it, and the low target aims down so the head rides near the
 // top of frame (= the visible band) rather than centre. Tune-by-eye values.
 const CHAT_FRAMING: Framing = {
-  pos: [0, 1.4, 7.6],
-  target: [0, -1.2, 0],
+  pos: [0, 1.8, 7.6],
+  target: [0, -2.25, 0],
   fov: 46,
 };
 
@@ -119,6 +121,12 @@ const { height: SCREEN_H } = Dimensions.get('window');
 const DRAWER_TOP = SCREEN_H * (1 - CHAT_SHEET_DETENT);
 
 export default function Home() {
+  // First-run gate: a signed-in account that hasn't finished onboarding is sent
+  // to the 3D onboarding flow. The query reads AsyncStorage, so we hold (render
+  // nothing) until it resolves rather than flash Home before redirecting. The
+  // redirect itself lives just before the return so every hook still runs.
+  const onboarding = useOnboardingState();
+  const authStatus = useAuthStore((s) => s.status);
   // chatOpen drives the camera/holdingPhone; chatProgress slides the drawer
   const [chatOpen, setChatOpen] = useState(false);
   const chatProgress = useSharedValue(0);
@@ -276,6 +284,19 @@ export default function Home() {
   const closeChat = () => {
     setChatOpen(false);
     chatProgress.value = withTiming(0, { duration: 340 });
+    // As the user walks back to the 3D sidekick, have it get the last word: a
+    // snarky one-liner capping off the conversation, over its head. The 500ms
+    // beat lets the drawer clear and the camera ease back to HERO first.
+    const conversationId = queryClient.getQueryData<{ id: string }>(['chat', 'main'])?.id;
+    if (conversationId) {
+      fetchCapoff(conversationId)
+        .then(({ quip }) => {
+          if (quip) {
+            setTimeout(() => speak(quip, 4500), 500);
+          }
+        })
+        .catch(() => {}); // silent — no bubble on failure
+    }
   };
 
   const openMap = () => {
@@ -295,6 +316,15 @@ export default function Home() {
   const drawerStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: (1 - chatProgress.value) * (SCREEN_H - DRAWER_TOP) }],
   }));
+
+  // Front-door gate (see the query at the top). Placed after every hook so the
+  // hook order is stable across renders; a one-frame blank while it resolves.
+  // Signed out OR not-yet-onboarded → the 3D onboarding (auth happens there in
+  // phase 0). Home renders only for a signed-in, onboarded user.
+  if (onboarding.isPending) return <View className="flex-1 bg-white" />;
+  if (authStatus === 'signedOut' || !onboarding.data?.complete) {
+    return <Redirect href="/onboarding" />;
+  }
 
   return (
     <View className="flex-1 bg-white">
