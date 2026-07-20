@@ -65,9 +65,30 @@ const NAMESIDEKICK_FRAMING: Framing = { pos: [0, 1.0, 7.5], target: [0, -0.9, 0]
 // whole standing character composes into the top sliver.
 const SLIVER_FRAMING: Framing = { pos: [0, 1.6, 13], target: [0, -2.0, 0], fov: 30 };
 
-type Phase = 'auth' | 'welcome' | 'askName' | 'reveal' | 'customize' | 'nameSidekick' | 'notif' | 'chat';
+type Phase =
+  | 'auth'
+  | 'welcome'
+  | 'askName'
+  | 'gender'
+  | 'birthday'
+  | 'reveal'
+  | 'customize'
+  | 'nameSidekick'
+  | 'notif'
+  | 'chat';
 
-const PHASE_ORDER: Phase[] = ['auth', 'welcome', 'askName', 'reveal', 'customize', 'nameSidekick', 'notif', 'chat'];
+const PHASE_ORDER: Phase[] = [
+  'auth',
+  'welcome',
+  'askName',
+  'gender',
+  'birthday',
+  'reveal',
+  'customize',
+  'nameSidekick',
+  'notif',
+  'chat',
+];
 
 // Declarative entry state per phase: what the scene must look like when you land
 // on a phase COLD (deep link / reload-resume), independent of whatever cinematic
@@ -76,6 +97,8 @@ const PHASES: Record<Phase, { framing: Framing; characterVisible: boolean }> = {
   auth: { framing: WIDE_FRAMING, characterVisible: false },
   welcome: { framing: WIDE_FRAMING, characterVisible: false },
   askName: { framing: NAME_FRAMING, characterVisible: false },
+  gender: { framing: NAME_FRAMING, characterVisible: false },
+  birthday: { framing: NAME_FRAMING, characterVisible: false },
   reveal: { framing: HERO_FRAMING, characterVisible: true },
   customize: { framing: HERO_FRAMING, characterVisible: true },
   nameSidekick: { framing: NAMESIDEKICK_FRAMING, characterVisible: true },
@@ -205,13 +228,25 @@ export default function Onboarding() {
     }, 700);
   };
 
-  // 2 → 3: ease to the hero framing, build suspense, then he jumps into frame.
+  // 2 → gender: just capture the name (the reveal cinematic now fires after birthday).
   const submitUserName = (name: string) => {
-    if (animating) return;
     setUserName(name);
     void saveOnboardingField('userName', name);
+    goTo('gender');
+  };
+
+  // gender → birthday
+  const submitGender = (gender: string) => {
+    void saveOnboardingField('gender', gender);
+    goTo('birthday');
+  };
+
+  // birthday → reveal: ease to the hero framing, build suspense, then he jumps in.
+  const submitBirthday = (birthday: string) => {
+    if (animating) return;
+    void saveOnboardingField('birthday', birthday);
     setAnimating(true);
-    goTo('reveal'); // clears the input now; reveal copy waits for !animating
+    goTo('reveal');
     controllerRef.current?.shake({ amp: 0.06, duration: 1.4, mode: 'build' });
     setTimeout(() => controllerRef.current?.jumpIn({ duration: 800 }), 1100);
     setTimeout(() => setAnimating(false), 2100);
@@ -315,6 +350,12 @@ export default function Onboarding() {
           onSubmit={submitUserName}
         />
       ) : null}
+
+      {/* 2b. Gender */}
+      {phase === 'gender' && !animating ? <GenderStep onSubmit={submitGender} /> : null}
+
+      {/* 2c. Birthday */}
+      {phase === 'birthday' && !animating ? <BirthdayStep onSubmit={submitBirthday} /> : null}
 
       {/* 3. Sidekick jumped in — "Hey {name}, meet your sidekick!" */}
       {phase === 'reveal' && !animating ? (
@@ -513,6 +554,90 @@ function NameEntry({
   );
 }
 
+// Gender step — tappable options, auto-advances on tap (low friction, no keyboard).
+function GenderStep({ onSubmit }: { onSubmit: (gender: string) => void }) {
+  return (
+    <Animated.View entering={FadeInUp.duration(450)} style={styles.centerFill}>
+      <View style={styles.nameCol}>
+        <Text style={styles.h1small}>what's your gender?</Text>
+        <View style={{ height: 20 }} />
+        {['woman', 'man', 'non-binary', 'prefer not to say'].map((g) => (
+          <Pressable key={g} onPress={() => onSubmit(g)} style={styles.optionCard}>
+            <Text style={styles.optionText}>{g}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </Animated.View>
+  );
+}
+
+// Birthday step — three numeric fields (works on web + iOS, unlike the native
+// date picker). Emits "YYYY-MM-DD".
+function BirthdayStep({ onSubmit }: { onSubmit: (birthday: string) => void }) {
+  const insets = useSafeAreaInsets();
+  const [month, setMonth] = useState('');
+  const [day, setDay] = useState('');
+  const [year, setYear] = useState('');
+  const can =
+    +month >= 1 &&
+    +month <= 12 &&
+    +day >= 1 &&
+    +day <= 31 &&
+    /^\d{4}$/.test(year) &&
+    +year >= 1900 &&
+    +year <= new Date().getFullYear();
+  const submit = () => {
+    if (!can) return;
+    onSubmit(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+  };
+  return (
+    <Animated.View entering={FadeInUp.duration(450)} style={StyleSheet.absoluteFill} pointerEvents="box-none">
+      <View style={[styles.topCopy, { top: insets.top + 24 }]}>
+        <Text style={styles.h1small}>when's your birthday?</Text>
+      </View>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.nameBottomWrap}
+      >
+        <View style={[styles.nameCol, { paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.dobRow}>
+            <TextInput
+              autoFocus
+              value={month}
+              onChangeText={(t) => setMonth(t.replace(/\D/g, ''))}
+              placeholder="MM"
+              placeholderTextColor="rgba(17,17,17,0.35)"
+              keyboardType="number-pad"
+              maxLength={2}
+              style={styles.dobField}
+            />
+            <TextInput
+              value={day}
+              onChangeText={(t) => setDay(t.replace(/\D/g, ''))}
+              placeholder="DD"
+              placeholderTextColor="rgba(17,17,17,0.35)"
+              keyboardType="number-pad"
+              maxLength={2}
+              style={styles.dobField}
+            />
+            <TextInput
+              value={year}
+              onChangeText={(t) => setYear(t.replace(/\D/g, ''))}
+              placeholder="YYYY"
+              placeholderTextColor="rgba(17,17,17,0.35)"
+              keyboardType="number-pad"
+              maxLength={4}
+              style={[styles.dobField, { flex: 1.5 }]}
+            />
+          </View>
+          <View style={{ height: 12 }} />
+          <PrimaryButton label="continue" onPress={submit} disabled={!can} />
+        </View>
+      </KeyboardAvoidingView>
+    </Animated.View>
+  );
+}
+
 // iOS/iMessage-style notification that drops down from the top and persists.
 function NotificationBanner({
   show,
@@ -640,6 +765,29 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.85)',
   },
   nameChipText: { fontFamily: FONT, fontSize: 15, fontWeight: '600', color: '#111' },
+  optionCard: {
+    width: '100%',
+    paddingVertical: 16,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  optionText: { fontFamily: FONT, fontSize: 17, fontWeight: '600', color: '#111' },
+  dobRow: { flexDirection: 'row', gap: 10, marginTop: 24 },
+  dobField: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 20,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    fontFamily: FONT,
+    fontSize: 20,
+    fontWeight: '500',
+    color: '#111',
+    textAlign: 'center',
+  },
   field: {
     marginTop: 24,
     width: '100%',

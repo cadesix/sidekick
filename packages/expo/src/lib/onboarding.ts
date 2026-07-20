@@ -22,6 +22,9 @@ export type OnboardingState = {
   ts: number;
   userName: string;
   sidekickName: string;
+  gender: string;
+  // ISO-ish birthday string ("YYYY-MM-DD") collected in onboarding
+  birthday: string;
 };
 
 const EMPTY: OnboardingState = {
@@ -30,6 +33,8 @@ const EMPTY: OnboardingState = {
   ts: 0,
   userName: '',
   sidekickName: '',
+  gender: '',
+  birthday: '',
 };
 
 export const ONBOARDING_QUERY_KEY = ['onboarding', 'state'] as const;
@@ -69,7 +74,7 @@ export async function saveStep(phase: string): Promise<void> {
 
 /** Persist a collected profile field (userName / sidekickName) as it's entered. */
 export async function saveOnboardingField(
-  field: 'userName' | 'sidekickName',
+  field: 'userName' | 'sidekickName' | 'gender' | 'birthday',
   value: string,
 ): Promise<void> {
   const state = await readRaw();
