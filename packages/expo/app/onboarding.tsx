@@ -599,11 +599,15 @@ function GenderStep({ onSubmit }: { onSubmit: (gender: string) => void }) {
   return (
     <Animated.View entering={FadeInUp.duration(450)} style={styles.centerFill}>
       <View style={styles.nameCol}>
-        <Text style={styles.h1small}>what's your gender?</Text>
+        <Text style={styles.h1small}>how would you describe yourself?</Text>
         <View style={{ height: 20 }} />
-        {['woman', 'man', 'non-binary', 'prefer not to say'].map((g) => (
-          <Pressable key={g} onPress={() => onSubmit(g)} style={styles.optionCard}>
-            <Text style={styles.optionText}>{g}</Text>
+        {[
+          { label: 'Female', value: 'female' },
+          { label: 'Male', value: 'male' },
+          { label: 'Other', value: 'other' },
+        ].map((o) => (
+          <Pressable key={o.value} onPress={() => onSubmit(o.value)} style={styles.optionCard}>
+            <Text style={styles.optionText}>{o.label}</Text>
           </Pressable>
         ))}
       </View>
