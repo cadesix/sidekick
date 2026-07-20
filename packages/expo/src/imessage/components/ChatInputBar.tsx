@@ -1,15 +1,24 @@
 import * as Haptics from "expo-haptics";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Platform, Pressable, StyleSheet, TextInput, type TextStyle, View } from "react-native";
 import Animated, { useAnimatedStyle, withSpring, ZoomIn, ZoomOut } from "react-native-reanimated";
 import { colors } from "../theme";
-import { Glass } from "./Glass";
+import { Glass, liquidGlass } from "./Glass";
 import { Icon } from "./Icon";
 import type { AudioAttachment } from "../types";
 import { VoiceRecorder } from "./VoiceRecorder";
 
 /** The composer's view of its picked attachments: none, still uploading/ingesting, or all ready. */
 export type AttachmentState = "none" | "settling" | "ready";
+
+// Single-line resting height (matches the 40pt plus button) and the max before the
+// field scrolls internally — the field grows between them as text wraps, like iOS.
+const MIN_INPUT_HEIGHT = 40;
+const MAX_INPUT_HEIGHT = 132;
+
+// react-native-web honors the CSS `outline*` props even though RN's TextStyle omits
+// them — used to kill the default blue focus ring on web.
+const webInputReset = { outlineStyle: "none" } as unknown as TextStyle;
 
 interface ChatInputBarProps {
 	replyActive: boolean;
@@ -36,6 +45,7 @@ export function ChatInputBar({
 	onRecordingChange,
 }: ChatInputBarProps) {
 	const [text, setText] = useState("");
+	const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
 	const hasText = text.trim().length > 0;
 	const inputRef = useRef<TextInput>(null);
 
@@ -56,6 +66,7 @@ export function ChatInputBar({
 			return;
 		}
 		setText("");
+		setInputHeight(MIN_INPUT_HEIGHT); // collapse back to one line after sending
 		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 		onSendText(text.trim());
 	};
@@ -87,7 +98,7 @@ export function ChatInputBar({
 	return (
 		<View style={styles.container}>
 			<View style={styles.row}>
-				<Glass isInteractive style={styles.plusButton}>
+				<Glass isInteractive style={[styles.plusButton, liquidGlass ? null : styles.glassFallbackFill]}>
 					<Pressable onPress={handleLeftButton} style={styles.plusPressable} hitSlop={6}>
 						<Animated.View style={plusIconStyle}>
 							<Icon name="plus" size={19} color={colors.label} />
@@ -103,7 +114,7 @@ export function ChatInputBar({
 						}}
 					/>
 				) : (
-					<Glass style={[styles.field, tray ? styles.fieldWithTray : null]}>
+					<Glass style={[styles.field, tray ? styles.fieldWithTray : null, liquidGlass ? null : styles.glassFallbackFill]}>
 						{tray ? (
 							<>
 								{tray}
@@ -118,7 +129,34 @@ export function ChatInputBar({
 								placeholder={replyActive ? "Reply" : "Message"}
 								placeholderTextColor={colors.tertiaryLabel}
 								multiline
-								style={styles.input}
+								// Grow with the text like iOS Messages: track content height and
+								// clamp between one line (= the plus-button height) and a max, past
+								// which the field scrolls internally. Works on iOS and web.
+								onContentSizeChange={(e) =>
+									setInputHeight(
+										Math.min(
+											MAX_INPUT_HEIGHT,
+											Math.max(MIN_INPUT_HEIGHT, e.nativeEvent.contentSize.height),
+										),
+									)
+								}
+								// Web (dev): Enter sends, Shift+Enter inserts a newline. iOS keeps
+								// return-as-newline (send is the arrow button).
+								onKeyPress={(e) => {
+									if (Platform.OS !== "web") {
+										return;
+									}
+									const ne = e.nativeEvent as { key?: string; shiftKey?: boolean };
+									if (ne.key === "Enter" && !ne.shiftKey) {
+										e.preventDefault?.();
+										send();
+									}
+								}}
+								style={[
+									styles.input,
+									{ height: inputHeight },
+									Platform.OS === "web" ? webInputReset : null,
+								]}
 								keyboardAppearance="light"
 							/>
 							{showSend ? (
@@ -178,6 +216,11 @@ const styles = StyleSheet.create({
 	},
 	fieldWithTray: {
 		borderRadius: 26,
+	},
+	// Off the iOS-26 liquid-glass path the frosted blur reads as a heavy gray; use
+	// the standard light iMessage gray (matches the received bubble) instead.
+	glassFallbackFill: {
+		backgroundColor: "#E9E9EB",
 	},
 	trayDivider: {
 		height: StyleSheet.hairlineWidth,

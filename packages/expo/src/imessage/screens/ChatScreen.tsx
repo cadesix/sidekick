@@ -141,10 +141,20 @@ export function ChatScreen({ onClose }: { onClose: () => void }) {
 			[insets.bottom, 8],
 		),
 	}));
+	// Short feather above the composer so messages dissolve into it instead of
+	// cutting hard at its edge — without a fixed slab overhanging readable text.
+	const FADE_FEATHER = 24;
 	// In an inverted list the header renders at the visual bottom; it reserves
-	// room for the input bar plus however far the keyboard lifted it.
+	// room for the input bar (plus the fade feather) and however far the keyboard
+	// lifted it — so the newest message rests ABOVE the fade, not under it.
 	const bottomSpacerStyle = useAnimatedStyle(() => ({
-		height: inputBarHeight.value - keyboard.height.value,
+		height: inputBarHeight.value - keyboard.height.value + FADE_FEATHER,
+	}));
+	// The bottom fade tracks the live composer height (which now grows with
+	// multi-line text) plus that feather, so it hugs the composer instead of the
+	// old fixed 130px slab that overhung and covered the newest message.
+	const inputFadeStyle = useAnimatedStyle(() => ({
+		height: inputBarHeight.value + FADE_FEATHER,
 	}));
 
 	const timeRevealPan = Gesture.Pan()
@@ -349,12 +359,13 @@ export function ChatScreen({ onClose }: { onClose: () => void }) {
 			) : null}
 
 			<Animated.View style={[styles.footer, footerStyle]} pointerEvents="box-none">
-				<LinearGradient
-					colors={["rgba(255,255,255,0)", colors.background]}
-					locations={[0, 1]}
-					style={styles.inputFade}
-					pointerEvents="none"
-				/>
+				<Animated.View style={[styles.inputFade, inputFadeStyle]} pointerEvents="none">
+					<LinearGradient
+						colors={["rgba(255,255,255,0)", colors.background]}
+						locations={[0, 1]}
+						style={StyleSheet.absoluteFill}
+					/>
+				</Animated.View>
 				<Animated.View
 					style={inputBarPaddingStyle}
 					onLayout={(event) => {
@@ -441,7 +452,6 @@ const styles = StyleSheet.create({
 		left: 0,
 		right: 0,
 		bottom: 0,
-		height: 130,
 	},
 	replyScrim: {
 		backgroundColor: "rgba(255,255,255,0.5)",

@@ -3,8 +3,10 @@ import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from "ex
 import { createElement, type ReactNode } from "react";
 import { StyleSheet, type StyleProp, type ViewStyle } from "react-native";
 
-// True on iOS 26+; false on older iOS, Android, and web.
-const liquidGlass = isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
+// True on iOS 26+; false on older iOS, Android, and web. Exported so callers can
+// supply an explicit fill on the fallback path (where the frosted blur reads as a
+// heavy gray) without disturbing the native liquid-glass look.
+export const liquidGlass = isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
 
 interface GlassProps {
   style?: StyleProp<ViewStyle>;

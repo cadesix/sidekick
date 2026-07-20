@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   deleteMessage,
@@ -19,6 +19,42 @@ let localId = 0;
 function nextLocalId(): string {
   localId += 1;
   return `local_${localId}`;
+}
+
+/** Split-bubble ids are `${rowId}.${k}`; the base is the persisted row. */
+function baseId(id: string): string {
+  const dot = id.indexOf(".");
+  return dot === -1 ? id : id.slice(0, dot);
+}
+
+// Sequential-reveal pacing for a multi-bubble ("burst") reply.
+const REVEAL_READ_GAP = 220; // beat after a bubble before the typing dots return
+function revealGap(text: string): number {
+  return Math.min(1600, 400 + text.length * 16); // dots linger ~ how long that text takes to "type"
+}
+
+/** The trailing run of `them` bubbles that belong to the same reply (row). */
+function trailingBurst(
+  messages: Message[],
+): { base: string; count: number; segments: string[] } | null {
+  if (messages.length === 0) {
+    return null;
+  }
+  const last = messages[messages.length - 1];
+  if (last.role !== "them") {
+    return null;
+  }
+  const base = baseId(last.id);
+  let start = messages.length - 1;
+  while (
+    start - 1 >= 0 &&
+    messages[start - 1].role === "them" &&
+    baseId(messages[start - 1].id) === base
+  ) {
+    start -= 1;
+  }
+  const segments = messages.slice(start).map((message) => message.text);
+  return { base, count: segments.length, segments };
 }
 
 /** Mirrors the server's toggle so a tapback lands under the thumb, not a round-trip later. */
@@ -85,6 +121,21 @@ export function useSidekickChat(): SidekickChat {
   const queryClient = useQueryClient();
   const [outgoing, setOutgoing] = useState<Message[]>([]);
 
+  // Sequential reveal of a multi-bubble reply: hold the burst's later bubbles and
+  // step them in with typing dots between, like a person firing off texts.
+  const [reveal, setReveal] = useState<{ total: number; shown: number } | null>(null);
+  const [revealTyping, setRevealTyping] = useState(false);
+  const revealedBase = useRef<string | null>(null);
+  const pendingReveal = useRef(false);
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const clearTimers = () => {
+    for (const timer of timers.current) {
+      clearTimeout(timer);
+    }
+    timers.current = [];
+  };
+  useEffect(() => clearTimers, []);
+
   const conversation = useQuery({
     queryKey: ["chat", "main"],
     queryFn: mainConversation,
@@ -130,6 +181,7 @@ export function useSidekickChat(): SidekickChat {
       if (conversationId === undefined) {
         return;
       }
+      pendingReveal.current = true; // the reply this produces should reveal bubble-by-bubble
       setOutgoing((current) => [...current, optimistic(conversationId, input)]);
     },
     onSettled: async () => {
@@ -143,13 +195,22 @@ export function useSidekickChat(): SidekickChat {
       react(input.messageId, input.type),
     onMutate: async (input) => {
       await queryClient.cancelQueries({ queryKey: transcriptKey });
-      patchTranscript((messages) =>
-        messages.map((message) =>
-          message.id === input.messageId
+      patchTranscript((messages) => {
+        // reactions live on the reply's LAST bubble (matching the re-fetch), so a
+        // tapback on any bubble of a burst lands consistently.
+        const base = baseId(input.messageId);
+        let target = -1;
+        messages.forEach((message, index) => {
+          if (baseId(message.id) === base) {
+            target = index;
+          }
+        });
+        return messages.map((message, index) =>
+          index === target
             ? { ...message, reactions: toggleReaction(message.reactions, input.type) }
             : message,
-        ),
-      );
+        );
+      });
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: transcriptKey }),
   });
@@ -158,24 +219,94 @@ export function useSidekickChat(): SidekickChat {
     mutationFn: (messageId: string) => deleteMessage(messageId),
     onMutate: async (messageId) => {
       await queryClient.cancelQueries({ queryKey: transcriptKey });
-      patchTranscript((messages) => messages.filter((message) => message.id !== messageId));
+      patchTranscript((messages) =>
+        messages.filter((message) => baseId(message.id) !== baseId(messageId)),
+      );
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: transcriptKey }),
   });
 
   const fetched = transcript.data?.messages;
+
+  // When a fresh reply lands as a multi-bubble burst, step its bubbles in one at a
+  // time with typing dots between. History (initial load) and proactive/non-live
+  // replies show at once — only a reply produced by a live send animates.
+  useEffect(() => {
+    if (!fetched) {
+      return;
+    }
+    const burst = trailingBurst(fetched);
+    if (!burst) {
+      return;
+    }
+    const prev = revealedBase.current;
+    if (prev !== null && Number(burst.base) <= Number(prev)) {
+      return; // already handled this reply
+    }
+    if (prev === null && !pendingReveal.current) {
+      revealedBase.current = burst.base; // initial history load — don't animate
+      return;
+    }
+    revealedBase.current = burst.base;
+    const live = pendingReveal.current;
+    pendingReveal.current = false;
+    clearTimers();
+    if (!live || burst.count <= 1) {
+      setReveal(null);
+      setRevealTyping(false);
+      return;
+    }
+    setReveal({ total: burst.count, shown: 1 });
+    setRevealTyping(false);
+    let at = 0;
+    for (let k = 2; k <= burst.count; k += 1) {
+      at += REVEAL_READ_GAP;
+      timers.current.push(setTimeout(() => setRevealTyping(true), at));
+      at += revealGap(burst.segments[k - 1]);
+      const step = k;
+      timers.current.push(
+        setTimeout(() => {
+          setReveal((current) => (current ? { ...current, shown: step } : current));
+          setRevealTyping(false);
+        }, at),
+      );
+    }
+    timers.current.push(setTimeout(() => setReveal(null), at + 50));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetched]);
+
   /**
    * Stable identity: ChatScreen memoizes the transcript, the reply chain and the
    * FlatList data on this array, so rebuilding it every render would re-run all
    * three (and re-render every visible row) on any unrelated state change.
+   *
+   * While a burst is revealing, hold back its not-yet-shown trailing bubbles.
    */
-  const messages = useMemo(() => [...(fetched ?? []), ...outgoing], [fetched, outgoing]);
+  const messages = useMemo(() => {
+    const base = fetched ?? [];
+    let visible = base;
+    if (reveal) {
+      const hide = reveal.total - reveal.shown;
+      if (hide > 0) {
+        visible = base.slice(0, base.length - hide);
+      }
+    } else if (pendingReveal.current) {
+      // burst just landed but the effect hasn't scheduled yet — pre-hide its later
+      // bubbles this render so they never flash in before sequencing starts.
+      const burst = trailingBurst(base);
+      const prev = revealedBase.current;
+      if (burst && burst.count > 1 && (prev === null || Number(burst.base) > Number(prev))) {
+        visible = base.slice(0, base.length - (burst.count - 1));
+      }
+    }
+    return [...visible, ...outgoing];
+  }, [fetched, outgoing, reveal]);
 
   return {
     thread: conversationId === undefined ? undefined : sidekickThread(conversationId),
     messages,
     composerAd: turn.isPending ? undefined : transcript.data?.composerAd,
-    typing: turn.isPending,
+    typing: turn.isPending || revealTyping,
     send: turn.mutate,
     addReaction: (messageId, type) => reaction.mutate({ messageId, type }),
     removeMessage: removal.mutate,
