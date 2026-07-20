@@ -29,6 +29,9 @@ export type CommitOnboardingResultInput = {
 function ageBracketFromBirthday(birthday: string, today: Date): string | null {
   const [y, m, d] = birthday.split("-").map(Number);
   if (!y || !m || !d || m < 1 || m > 12 || d < 1 || d > 31) return null;
+  // reject impossible calendar dates (e.g. Feb 31, which would roll over)
+  const dt = new Date(y, m - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
   let age = today.getFullYear() - y;
   const monthNow = today.getMonth() + 1;
   if (monthNow < m || (monthNow === m && today.getDate() < d)) age -= 1;
