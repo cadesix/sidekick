@@ -16,6 +16,7 @@ import {
   proactiveTurns,
   users,
 } from "@sidekick/db";
+import { logger } from "../logger";
 import { modelName } from "../model";
 import type { Storage } from "../storage";
 import { markMessagesSensitive } from "../memory/ad-window";
@@ -607,15 +608,16 @@ async function driveTurn(
     }
 
     if (acc.webSearchRequests > 0 || acc.providerResults.length > 0) {
-      console.info(
-        JSON.stringify({
+      logger.info(
+        {
           event: "chat.turn.search",
           conversationId: input.conversationId,
           messageId: message.id,
           tokensIn: acc.tokensIn,
           tokensOut: acc.tokensOut,
           webSearchRequests: acc.webSearchRequests,
-        }),
+        },
+        "chat turn used web search",
       );
     }
 

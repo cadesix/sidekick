@@ -1,0 +1,149 @@
+# Shipping Sidekick to TestFlight
+
+The iOS app is built and submitted with EAS from `packages/expo`. There is no CI
+for it — releases are run by hand from a local machine, the same way
+`~/Code/invoice` does it.
+
+## Accounts
+
+| Thing | Value |
+| --- | --- |
+| Expo project | `@sans-software/sidekick` (`806b020d-e27e-4adf-9b81-4e6cf7bad44b`) |
+| Apple team | Sans Software — `DNCJ9P24DP` |
+| Bundle identifier | `com.sanssoftware.sidekick` |
+| App group | `group.com.sanssoftware.sidekick` |
+| App Store Connect app id | _set `submit.production.ios.ascAppId` in `eas.json` once created_ |
+| Sentry | `sans-software/sidekick-expo` (app), `sans-software/sidekick-server` (API) |
+| API | `https://api.sidekickchat.app` (Railway) |
+
+Signing credentials are managed remotely by EAS — there is no `credentials.json`
+in this repo and there should never be one.
+
+## App extensions and the Family Controls entitlement
+
+Screen Time ships as three app extensions (`ShieldConfiguration`,
+`ShieldAction`, `ActivityMonitorExtension`), plus `NotificationService` for rich
+push. All four are declared in `app.config.ts` under
+`extra.eas.build.experimental.ios.appExtensions`.
+
+The three Screen Time targets **and the main app** need
+`com.apple.developer.family-controls`. Apple grants that automatically for
+development, but **App Store distribution requires a separate approval** —
+request it at <https://developer.apple.com/contact/request/family-controls-distribution>
+before the first production build. Without it, code signing for a production
+build fails.
+
+To build without Screen Time at all (simulator, or before approval lands), set
+`EXPO_PUBLIC_DISABLE_DEVICE_ACTIVITY=1` — `app.config.ts` then drops the plugin,
+the entitlement, and the three extensions. The `simulator` build profile does
+this already.
+
+## Build profiles (`packages/expo/eas.json`)
+
+| Profile | What it produces |
+| --- | --- |
+| `development` | Dev client, internal distribution, `development` channel |
+| `simulator` | Dev client for the iOS simulator, Screen Time stripped |
+| `preview` | Internal distribution release build, `preview` channel |
+| `production` | Store build, `production` channel, auto-incrementing build number |
+
+`cli.appVersionSource` is `remote`, so EAS owns `CFBundleVersion`. Never set
+`buildNumber` in `app.config.ts`.
+
+## Cutting a release
+
+1. Bump `version` in `packages/expo/app.config.ts`. Because
+   `runtimeVersion.policy` is `appVersion`, this starts a new OTA runtime — any
+   JS-only change that should reach existing installs must go out *before* the
+   bump, as an update on the old version.
+
+2. Build and submit:
+
+   ```sh
+   cd packages/expo
+   pnpm build:ios     # eas build --platform ios --profile production
+   pnpm submit:ios    # eas submit --platform ios --profile production
+   ```
+
+   The first run of each is interactive — it asks for the Apple ID and 2FA code,
+   registers the bundle identifier and its four extension identifiers in the
+   developer portal, and offers to create the App Store Connect app record. Take
+   the ASC app id it prints and put it in `submit.production.ios.ascAppId` so
+   later submissions run unattended.
+
+3. TestFlight processing takes ~10 minutes. Export compliance is already
+   answered by `ITSAppUsesNonExemptEncryption: false`, so builds go straight to
+   internal testers.
+
+## Shipping JS-only changes
+
+Between native builds, JS and asset changes go out over the air:
+
+```sh
+cd packages/expo
+pnpm update        # eas update --branch production
+```
+
+`useOtaUpdates()` in the root layout checks 10s after launch and again on resume
+after 15 minutes in the background, then prompts before reloading.
+
+## Environment variables
+
+Build-time config lives in EAS (`eas env:list production`), not in this repo.
+`EXPO_PUBLIC_*` values are inlined by Metro at bundle time, so an unset one bakes
+in as `undefined` with no runtime error — check the list before a release rather
+than after.
+
+| Variable | Where it's set | Notes |
+| --- | --- | --- |
+| `EXPO_PUBLIC_API_URL` | `eas.json` (`preview`, `production`) | `https://api.sidekickchat.app` |
+| `EXPO_PUBLIC_SENTRY_DSN` | EAS, preview + production | Crash reporting no-ops when unset |
+| `SENTRY_AUTH_TOKEN` | EAS, all environments | Auto-provisioned; uploads source maps |
+| `EXPO_PUBLIC_POSTHOG_API_KEY` | EAS — **not yet set** | Analytics silently disabled until it is |
+| `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` | EAS — **not yet set** | Google sign-in button disables itself |
+| `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | EAS — **not yet set** | |
+| `EXPO_PUBLIC_FACEBOOK_APP_ID` | EAS — unset | Meta SDK + ATT prompt are omitted unless both this and the client token are set |
+| `EXPO_PUBLIC_FACEBOOK_CLIENT_TOKEN` | EAS — unset | |
+
+Add one with:
+
+```sh
+eas env:create --scope project --name NAME --value VALUE \
+  --type string --visibility plaintext --environment production
+```
+
+## The API (Railway)
+
+`@sidekick/server` runs as a long-lived Node process on Railway at
+`api.sidekickchat.app`. `start.sh` applies migrations before the server binds, so
+a deploy never serves a new build against an old schema. The eight scheduled jobs
+run in-process (`src/cron/scheduler.ts`) rather than as platform crons.
+
+Required service variables — the process refuses to boot without the first two,
+and without `CRON_SECRET` in production:
+
+| Variable | Notes |
+| --- | --- |
+| `DATABASE_URL` | |
+| `OPENAI_API_KEY` | |
+| `NODE_ENV` | `production` |
+| `CRON_SECRET` | Authenticates the in-process scheduler. Unset ⇒ all scheduled work silently disabled |
+| `PUBLIC_API_URL` | `https://api.sidekickchat.app` — attachment URLs are built from it |
+| `SENTRY_DSN` | `sans-software/sidekick-server` |
+| `CORS_ALLOWED_ORIGINS` | Optional; unset means any origin |
+| `LOG_LEVEL` | Optional, defaults to `info` |
+
+Plus the feature integrations, each all-set or all-unset: `RESEND_*`,
+`TWILIO_*`, `APPLE_MUSIC_*` + `MUSIC_TOKEN_KEY`, `GOOGLE_*_CLIENT_ID`,
+`APP_BUNDLE_IDENTIFIER`, `APPLE_SERVICES_ID`, `EXPO_ACCESS_TOKEN`,
+`WEATHER_API_KEY`, `GRAVITY_*`, `BLOB_READ_WRITE_TOKEN`. `PORT` and `RAILWAY_*`
+are injected by the platform.
+
+Two things to know about running there:
+
+- **Crons tick in every replica.** Scale past one instance and `/cron/reminders/fire`
+  fires once per replica per minute, duplicating sends. Keep the service at one
+  replica, or add an advisory lock first.
+- **Ad geo-targeting needs an edge.** Country comes from `cf-ipcountry` or
+  `x-vercel-ip-country`; Railway alone sets neither, so ad requests go out without
+  a country until Cloudflare fronts the domain.

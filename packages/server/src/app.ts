@@ -1,12 +1,14 @@
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
+import * as Sentry from "@sentry/node";
 import { trpcServer } from "@hono/trpc-server";
 import { createMiddleware } from "hono/factory";
 import { attachments } from "@sidekick/db";
 import { chatContinueInput, chatSendInput } from "@sidekick/shared";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { stream } from "hono/streaming";
+import { CHAT_TURN_LIMIT, consumeRateLimit, pruneRateLimits } from "./auth/rate-limit";
 import { beginTurn, continueTurn } from "./chat/turn";
 import { buildCheckinCron } from "./checkins/cron";
 import { buildRemindersCron } from "./reminders/cron";
@@ -17,12 +19,13 @@ import { deviceSignalsFromHeaders } from "./ads/gravity";
 import { type Services, createRequestContext } from "./context";
 import { readEnv } from "./env";
 import { runIdleSweep } from "./jobs/idle";
+import { logger } from "./logger";
 import { runAdProfileSweep } from "./memory/projection";
 import { appleMusicEnvFromProcess, mintDeveloperToken } from "./music/dev-token";
 import { appRouter } from "./routers";
 
 /**
- * Vercel-cron auth: every `/cron/*` route requires a matching
+ * Cron auth: every `/cron/*` route requires a matching
  * `Authorization: Bearer $CRON_SECRET`. Fails closed — an unset secret locks the
  * routes rather than exposing jobs that mutate data and send pushes.
  */
@@ -34,6 +37,38 @@ const cronAuth = createMiddleware(async (c, next) => {
   }
   return next();
 });
+
+/**
+ * One structured line per request — method, path, status, duration, and the
+ * request id echoed back in `x-request-id` so a client-reported failure can be
+ * found in the logs (and in the Sentry event, which carries the same tag).
+ */
+const requestLogging = createMiddleware<{ Variables: { requestId: string } }>(async (c, next) => {
+  const requestId = c.req.header("x-request-id") ?? randomUUID();
+  const startedAt = Date.now();
+  c.set("requestId", requestId);
+  c.header("x-request-id", requestId);
+  await next();
+  logger.info(
+    {
+      requestId,
+      method: c.req.method,
+      path: c.req.path,
+      status: c.res.status,
+      durationMs: Date.now() - startedAt,
+    },
+    "request",
+  );
+});
+
+/**
+ * Model inference is the expensive surface, so cap turns per user. Sits in front
+ * of both streaming routes; every other authenticated route is cheap enough that
+ * a per-request DB round-trip to count it would cost more than it saves.
+ */
+async function chatTurnAllowed(db: Services["db"], userId: string): Promise<boolean> {
+  return consumeRateLimit(db, `chat-turn:${userId}`, CHAT_TURN_LIMIT);
+}
 
 /** Length-checked constant-time string compare — avoids leaking a shared secret byte-by-byte via timing. */
 function constantTimeEqual(a: string, b: string): boolean {
@@ -136,7 +171,8 @@ async function serveTurnAd(
       },
     );
   } catch (error) {
-    console.error("Gravity ad decision failed", error);
+    logger.error({ err: error, userId: input.userId }, "gravity ad decision failed");
+    Sentry.captureException(error);
   }
 }
 
@@ -145,11 +181,60 @@ async function serveTurnAd(
  * `/chat/stream` for token streaming (01: "SSE endpoint alongside tRPC").
  */
 export function buildApp(services: Services) {
-  const app = new Hono();
+  const app = new Hono<{ Variables: { requestId: string } }>();
 
-  // Bearer-token auth (no cookies), so a permissive CORS policy is safe; it
-  // lets the Expo Web preview call the API from its own dev origin.
-  app.use("*", cors());
+  app.use("*", requestLogging);
+
+  /**
+   * Auth is a bearer token with no cookies, so a wide-open policy leaks nothing a
+   * cross-origin page could exploit — and the Expo Web preview's dev origin moves
+   * around. `CORS_ALLOWED_ORIGINS` narrows it to an exact allowlist once the
+   * shipping origins are known, without breaking local development in the meantime.
+   */
+  const allowedOrigins = readEnv()
+    .CORS_ALLOWED_ORIGINS?.split(",")
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+  app.use("*", cors({ origin: allowedOrigins ?? "*" }));
+
+  /**
+   * Liveness + readiness — Railway's `healthcheckPath`. The DB round-trip is what
+   * makes it a readiness probe: a container that boots but can't reach Postgres
+   * serves nothing useful and should not be routed traffic. The race keeps a hung
+   * connection from holding the probe open until Railway's own timeout.
+   */
+  app.get("/health", async (c) => {
+    const env = readEnv();
+    const body = {
+      status: "ok",
+      commit: env.RAILWAY_GIT_COMMIT_SHA ?? "unknown",
+      deployment: env.RAILWAY_DEPLOYMENT_ID ?? "local",
+      environment: env.RAILWAY_ENVIRONMENT_NAME ?? env.NODE_ENV,
+    };
+    try {
+      await Promise.race([
+        services.db.execute(sql`select 1`),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("database ping timed out")), 2_000),
+        ),
+      ]);
+      return c.json(body);
+    } catch (error) {
+      logger.error({ err: error }, "health check failed");
+      return c.json({ ...body, status: "unavailable" }, 503);
+    }
+  });
+
+  /**
+   * Anything reaching here is an unexpected throw — a deliberate `TRPCError` never
+   * does. Report it, then answer with an opaque body so a stack or constraint name
+   * never leaves the server.
+   */
+  app.onError((error, c) => {
+    logger.error({ err: error, requestId: c.get("requestId"), path: c.req.path }, "request failed");
+    Sentry.captureException(error, { tags: { request_id: c.get("requestId") } });
+    return c.json({ error: "internal server error" }, 500);
+  });
 
   app.use(
     "/trpc/*",
@@ -171,6 +256,9 @@ export function buildApp(services: Services) {
     const userId = ctx.userId;
     if (!userId) {
       return c.json({ error: "unauthorized" }, 401);
+    }
+    if (!(await chatTurnAllowed(ctx.db, userId))) {
+      return c.json({ error: "too many requests" }, 429);
     }
     const input = chatSendInput.parse(await c.req.json());
     const { textStream, done } = await beginTurn(
@@ -213,6 +301,9 @@ export function buildApp(services: Services) {
     const userId = ctx.userId;
     if (!userId) {
       return c.json({ error: "unauthorized" }, 401);
+    }
+    if (!(await chatTurnAllowed(ctx.db, userId))) {
+      return c.json({ error: "too many requests" }, 429);
     }
     const input = chatContinueInput.parse(await c.req.json());
     const { textStream, done } = await continueTurn(
@@ -349,12 +440,14 @@ export function buildApp(services: Services) {
 
   /**
    * Session-idle sweep (01 §scheduled work): find idle conversations and run
-   * extraction → compaction for each. Vercel Cron hits this on a schedule.
+   * extraction → compaction for each. The cron scheduler hits this on a schedule.
    */
   app.use("/cron/*", cronAuth);
 
   app.get("/cron/idle", async (c) => {
-    const result = await runIdleSweep(services.db, services.model, new Date());
+    const now = new Date();
+    const result = await runIdleSweep(services.db, services.model, now);
+    await pruneRateLimits(services.db, now);
     return c.json(result);
   });
 
@@ -364,7 +457,7 @@ export function buildApp(services: Services) {
    * interest sentences; otherwise the deterministic goal-slug map is the fallback.
    */
   app.get("/cron/ad-profiles", async (c) => {
-    const classify = process.env.SIDEKICK_AD_IAB_CLASSIFY === "1";
+    const classify = readEnv().SIDEKICK_AD_IAB_CLASSIFY === "1";
     const result = await runAdProfileSweep(services.db, classify ? { model: services.model } : {});
     return c.json(result);
   });

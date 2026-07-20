@@ -1,4 +1,4 @@
 {
 	"extends": "@sidekick/tsconfig/node.json",
-	"include": ["src", "api"]
+	"include": ["src", "tsup.config.ts"]
 }
