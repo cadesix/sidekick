@@ -109,13 +109,12 @@ assets/                     canonical source art (authored; expo/assets is deriv
 
 ## Phase 3 — the chat/API question (bigger than it looks)
 
-**The deprecated app is the only one doing this correctly.** `web/api/chat.js`
-is a serverless proxy that exists to keep the key server-side. Expo calls
-`api.openai.com` **directly** with `EXPO_PUBLIC_OPENAI_API_KEY` — and
-`EXPO_PUBLIC_*` is inlined into the client bundle at build time. So the
-surviving app ships the OpenAI key to every user, and deleting web deletes the
-only proxy. Fine for dev; not fine for the App Store, and guided sessions add
-an LLM extraction pass on top.
+**DONE.** At the time of writing, `web/api/chat.js` (a serverless proxy that
+kept the key server-side) was the only app doing this correctly, while expo
+called `api.openai.com` directly with a public env var inlined into the client
+bundle at build time — shipping the OpenAI key to every user. That is resolved:
+`@sidekick/server` owns every model call (chat, guided sessions, and the star
+chat via the `starChat` router), and the app holds no model key at all.
 
 - Port `api/chat.js` into an endpoint expo can call, before or alongside web's
   deletion. Don't let the proxy die with the package.

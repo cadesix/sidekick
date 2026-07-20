@@ -14,7 +14,9 @@ import { bumpStateVersion, grantReward } from "../rewards/service";
 
 // The guided-session engine's persistence + LLM calls (plan 20 decision 9),
 // moved server-side from packages/expo's SessionChat.tsx — which used to call
-// api.openai.com directly with a key bundled into the app. The prompts, message
+// api.openai.com directly with a key bundled into the app. No client-side model
+// key remains; the star chat's calls moved the same way (../star-chat/service).
+// The prompts, message
 // assembly, token budgets and sanitizers below are a VERBATIM port of that
 // carefully-tuned client code; the client keeps the scripted beats and UI phases
 // and posts every answer to `sessions.progress`, so extraction and completion

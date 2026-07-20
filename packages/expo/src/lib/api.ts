@@ -753,6 +753,52 @@ export function completeSession(
 }
 
 /**
+ * Star Chat LLM turns (docs/STAR-CHAT.md), server-side: we post the conversation
+ * state and the server builds the prompt from `@sidekick/core`'s builders with
+ * its own model key, so no OpenAI key ships in the app. Each returns null on
+ * model failure — the runner falls back to its scripted nudge / fallback card.
+ */
+export type StarChatStateInput = Parameters<typeof trpc.starChat.card.mutate>[0]["state"];
+export type StarChatMessageInput =
+  Parameters<typeof trpc.starChat.controller.mutate>[0]["messages"][number];
+
+/** Bounded like the old direct call was, so a hung request can't freeze the UI. */
+const STAR_CHAT_TIMEOUT_MS = 20000;
+
+/**
+ * Fold every failure (offline, server error, timeout) into null. The runner has
+ * no error path — a null reply is its fallback contract, so it must never see a
+ * rejection here.
+ */
+async function starChatTurn(
+  run: (signal: AbortSignal) => Promise<{ text: string | null }>,
+): Promise<string | null> {
+  try {
+    const { text } = await run(AbortSignal.timeout(STAR_CHAT_TIMEOUT_MS));
+    return text;
+  } catch {
+    return null;
+  }
+}
+
+export function starChatCard(state: StarChatStateInput): Promise<string | null> {
+  return starChatTurn((signal) => trpc.starChat.card.mutate({ state }, { signal }));
+}
+
+export function starChatArtifact(state: StarChatStateInput): Promise<string | null> {
+  return starChatTurn((signal) => trpc.starChat.artifact.mutate({ state }, { signal }));
+}
+
+export function starChatController(
+  state: StarChatStateInput,
+  messages: StarChatMessageInput[],
+): Promise<string | null> {
+  return starChatTurn((signal) =>
+    trpc.starChat.controller.mutate({ state, messages }, { signal }),
+  );
+}
+
+/**
  * Dev-only progression levers (plan 20 §dev router) — server double-gated to
  * NODE_ENV=development, replacing the DevPanel's old direct store writes. Each
  * preserves the ledger invariant server-side and returns the bumped stateVersion
