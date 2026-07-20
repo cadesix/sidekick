@@ -304,14 +304,25 @@ export default function Onboarding() {
   // collected (reason / improve / action) — TODO: persist it as the first goal.
   const finish = (summary?: OnboardingResult) => {
     void (async () => {
-      // Persist the picks (habit → Goals object, talk → check-in prefs). Never block
-      // the user on it — log and continue home if it fails.
-      if (summary) {
-        try {
-          await commitOnboardingResult(summary);
-        } catch (err) {
-          console.error('[onboarding] commitOnboardingResult failed', err);
-        }
+      // One server completion write: profile + onboardingCompletedAt + identity
+      // memory, plus the habit goal / talk pref. Never block the user on it — log
+      // and continue home if it fails.
+      const st = await loadOnboarding();
+      try {
+        await commitOnboardingResult({
+          reason: summary?.reason ?? 'habits',
+          profile: {
+            name: (st.userName || userName).trim() || 'friend',
+            gender: st.gender || undefined,
+            birthday: st.birthday || undefined,
+            sidekickName: (st.sidekickName || sidekickName).trim() || undefined,
+            sidekickColor: (loadSettings().celBodyColor ?? '') || undefined,
+          },
+          habit: summary?.habit,
+          talk: summary?.talk,
+        });
+      } catch (err) {
+        console.error('[onboarding] commitOnboardingResult failed', err);
       }
       await markOnboardingComplete();
       // Push the completed state into the query cache synchronously so Home's

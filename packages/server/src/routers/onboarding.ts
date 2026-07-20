@@ -75,6 +75,13 @@ export const onboardingRouter = router({
     .input(
       z.object({
         reason: z.enum(["talk", "habits", "both"]),
+        profile: z.object({
+          name: z.string().min(1),
+          gender: z.string().optional(),
+          birthday: z.string().optional(),
+          sidekickName: z.string().optional(),
+          sidekickColor: z.string().optional(),
+        }),
         habit: z
           .object({
             slug: z.string().min(1),
