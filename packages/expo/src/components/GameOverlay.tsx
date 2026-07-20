@@ -15,8 +15,10 @@ import {
   type EightBallState,
 } from '@sidekick/core';
 
+import type { fetchTranscript } from '../imessage/server';
 import { trpc } from '../lib/api';
 import { patchSnapshot } from '../lib/state';
+import { holdGameReveal } from '../store/game-reveal';
 import { NO_BROWSER_PAN } from '../lib/web-style';
 import { SCENE_3D_ENABLED } from '../three/enabled';
 import {
@@ -169,7 +171,7 @@ function GroupDots({ hud, group }: { hud: PoolHud; group: 'solids' | 'stripes' |
             key={id}
             style={[
               styles.groupDot,
-              id < 8 ? { backgroundColor: color } : { backgroundColor: '#ffffff', borderWidth: 2.5, borderColor: color },
+              id < 8 ? { backgroundColor: color } : { backgroundColor: '#ffffff', borderWidth: 2, borderColor: color },
             ]}
           />
         );
@@ -184,7 +186,6 @@ export function GameOverlay({ matchId, onClose }: { matchId: string; onClose: ()
 
   const [phase, setPhaseState] = useState<Phase>('loading');
   const [cups, setCups] = useState<{ user: number; sidekick: number } | null>(null);
-  const [ballsLeft, setBallsLeft] = useState(2);
   const [poolHud, setPoolHud] = useState<PoolHud | null>(null);
   const [ballInHand, setBallInHand] = useState(false);
   const [pullUi, setPullUi] = useState(0);
@@ -217,6 +218,7 @@ export function GameOverlay({ matchId, onClose }: { matchId: string; onClose: ()
   const flickResolverRef = useRef<((flick: CupPongFlick) => void) | null>(null);
   const shotResolverRef = useRef<((shot: EightBallShot) => void) | null>(null);
   const retryResolverRef = useRef<(() => void) | null>(null);
+  const submittedRef = useRef(false);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -227,7 +229,19 @@ export function GameOverlay({ matchId, onClose }: { matchId: string; onClose: ()
 
   // Any close invalidates the match query too — a reopened card must resume
   // from the server's settled state, never this session's cached snapshot.
+  // After a submitted turn the refetch carries the sidekick's reply card, which
+  // shouldn't materialize the instant the overlay dismisses — hold it behind
+  // the chat's typing indicator for a beat (store/game-reveal.ts).
   const finishAndClose = (): void => {
+    if (submittedRef.current) {
+      const cached = queryClient.getQueriesData<Awaited<ReturnType<typeof fetchTranscript>>>({
+        queryKey: ['chat', 'transcript'],
+      });
+      const knownIds = cached.flatMap(([, data]) => (data?.messages ?? []).map((m) => m.id));
+      if (knownIds.length > 0) {
+        holdGameReveal(knownIds);
+      }
+    }
     queryClient.invalidateQueries({ queryKey: ['chat', 'transcript'] });
     queryClient.invalidateQueries({ queryKey: ['games'] });
     onCloseRef.current();
@@ -247,7 +261,9 @@ export function GameOverlay({ matchId, onClose }: { matchId: string; onClose: ()
     for (;;) {
       setPhase('submitting');
       try {
-        return await trpc.games.turn.mutate({ matchId, ...input });
+        const result = await trpc.games.turn.mutate({ matchId, ...input });
+        submittedRef.current = true;
+        return result;
       } catch {
         setPhase('retry');
         await new Promise<void>((resolve) => {
@@ -272,12 +288,13 @@ export function GameOverlay({ matchId, onClose }: { matchId: string; onClose: ()
     showCups(state);
 
     // Replay the sidekick's stored turn from its `lastTurn.pre` snapshot: its
-    // throws target the USER's cups, so the far (shot-at) rack shows them.
+    // throws target the USER's cups, watched from the receiving end —
+    // GamePigeon's incoming view, your own rack big at your end of the table.
     const last = state.lastTurn;
     if (last !== null && last.actor === 'sidekick' && last.shots.length > 0) {
       setPhase('replay');
       let replayed = cupPong.stateFromPre(last.pre, 'sidekick');
-      ctl.showRacks(replayed.cups.user, replayed.cups.sidekick);
+      ctl.stage('receive', replayed.cups.user);
       showCups(replayed);
       await ctl.wait(600);
       for (const shot of last.shots) {
@@ -286,7 +303,7 @@ export function GameOverlay({ matchId, onClose }: { matchId: string; onClose: ()
         await ctl.animateThrow(shot, {
           cupSlot: res.cupSlot,
           rimNearMiss: res.rimNearMiss,
-          farMaskAfter: res.finalState.cups.user,
+          targetMaskAfter: res.finalState.cups.user,
         });
         replayed = res.finalState;
         showCups(replayed);
@@ -297,21 +314,26 @@ export function GameOverlay({ matchId, onClose }: { matchId: string; onClose: ()
     if (disposedRef.current) return;
 
     if (state.winner !== null || view.status !== 'active') {
-      ctl.showRacks(state.cups.sidekick, state.cups.user);
+      const winnerActor = state.winner ?? view.winner;
+      if (winnerActor === 'sidekick') {
+        ctl.stage('receive', state.cups.user);
+      } else {
+        ctl.stage('throw', state.cups.sidekick);
+      }
       showCups(state);
-      setWinner(state.winner ?? view.winner);
+      setWinner(winnerActor);
       setPhase('ended');
       return;
     }
 
-    // The user's turn: they shoot at the sidekick's rack.
-    ctl.showRacks(state.cups.sidekick, state.cups.user);
+    // The user's turn: the thrower's view of the sidekick's rack.
+    ctl.stage('throw', state.cups.sidekick);
     showCups(state);
     let cur: CupPongState = state;
     const shots: CupPongFlick[] = [];
     const events: string[] = [];
     while (cur.toMove === 'user' && cur.winner === null) {
-      setBallsLeft(cur.turnBalls);
+      ctl.setBallsLeft(cur.turnBalls);
       setPhase('aim');
       const flick = await awaitFlick();
       if (disposedRef.current) return;
@@ -323,7 +345,7 @@ export function GameOverlay({ matchId, onClose }: { matchId: string; onClose: ()
       await ctl.animateThrow(flick, {
         cupSlot: res.cupSlot,
         rimNearMiss: res.rimNearMiss,
-        farMaskAfter: res.finalState.cups.sidekick,
+        targetMaskAfter: res.finalState.cups.sidekick,
       });
       if (res.cupSlot !== null) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -758,11 +780,11 @@ export function GameOverlay({ matchId, onClose }: { matchId: string; onClose: ()
       <View style={[styles.topBar, { top: insets.top + 8 }]} pointerEvents="box-none">
         {isPool ? (
           <>
-            <View style={styles.scorePill}>
+            <View style={[styles.scorePill, styles.poolPill]}>
               <Text style={styles.scoreText}>You</Text>
               {poolHud ? <GroupDots hud={poolHud} group={poolHud.userGroup} /> : null}
             </View>
-            <View style={styles.scorePill}>
+            <View style={[styles.scorePill, styles.poolPill]}>
               <Text style={styles.scoreText}>Sidekick</Text>
               {poolHud ? (
                 <GroupDots
@@ -893,11 +915,6 @@ export function GameOverlay({ matchId, onClose }: { matchId: string; onClose: ()
       ) : null}
       {phase === 'aim' && !isPool ? (
         <View style={styles.hintWrap} pointerEvents="none">
-          <View style={styles.ballDots}>
-            {Array.from({ length: ballsLeft }, (_, i) => (
-              <View key={i} style={styles.ballDot} />
-            ))}
-          </View>
           <Text style={styles.hint}>Your move — flick up to throw</Text>
         </View>
       ) : null}
@@ -979,6 +996,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
+  // Pool pills stack label over ball dots — side by side the pair overflows a
+  // 320pt screen and pushes the ⋯/✕ buttons off the right edge.
+  poolPill: {
+    flexDirection: 'column',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 3,
+  },
   scoreText: {
     fontSize: 14,
     fontWeight: '600',
@@ -986,12 +1011,12 @@ const styles = StyleSheet.create({
   },
   groupDots: {
     flexDirection: 'row',
-    gap: 3,
+    gap: 2,
   },
   groupDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 4.5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   roundButton: {
     width: 38,
@@ -1115,7 +1140,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 56,
+    bottom: 28,
+    // Clears the 48pt spin button pinned bottom-right — on narrow screens a
+    // long hint otherwise runs underneath it.
+    paddingHorizontal: 66,
     alignItems: 'center',
     gap: 10,
   },
@@ -1123,18 +1151,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: 'rgba(58,44,28,0.75)',
-  },
-  ballDots: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  ballDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#ffffff',
-    borderWidth: 1.5,
-    borderColor: 'rgba(58,44,28,0.4)',
+    textAlign: 'center',
   },
   retryButton: {
     paddingHorizontal: 22,

@@ -30,6 +30,7 @@ const CUSH_D = 0.03;
 const CUSH_H = 0.04;
 const RAIL_W = 0.1;
 const RAIL_H = 0.05;
+const POCKET_BACK = 0.017;
 const CUE_LEN = 0.9;
 const CUE_GAP = BALL_R + 0.035;
 const MAX_PULL = 0.24;
@@ -83,30 +84,45 @@ function worldPoint(x: number, y: number, height: number): THREE.Vector3 {
   return new THREE.Vector3(x - TABLE_W / 2, height, TABLE_L / 2 - y);
 }
 
-// The playfield outline with the six pocket circles traced into it, in centered
-// table coords ((0,0) = table middle, y downtable = shape +y). Walked CCW; at
-// each pocket the boundary detours along core's exact capture circle — inward
-// (`outward: false`) it hugs the arc inside the field (the felt edge), outward
-// it bulges around the circle (the rail's inner cutout). Both share the same
-// entry/exit points, so felt + rails leave precisely the capture circles open.
+// The playfield outline with the six pocket openings traced into it, in
+// centered table coords ((0,0) = table middle, y downtable = shape +y). Walked
+// CCW; at each pocket the boundary detours along core's exact capture circle —
+// inward (`outward: false`) it hugs the arc inside the field (the felt edge),
+// outward (the rail's inner cutout) it follows the circle only until a chord
+// POCKET_BACK behind the pocket center, perpendicular to `throat` (the angle
+// from the pocket center into the rail). So the rail wraps around each pocket
+// and the opening reads as a jaw-framed mouth, not a full free-floating circle.
 function outlineWithPockets(inflate: number, outward: boolean): THREE.Vector2[] {
   const w = TABLE_W / 2 + inflate;
   const l = TABLE_L / 2 + inflate;
   const pts: THREE.Vector2[] = [];
   const push = (x: number, y: number) => pts.push(new THREE.Vector2(x, y));
-  const arc = (cx: number, cy: number, entry: [number, number], exit: [number, number]) => {
-    const a1 = Math.atan2(entry[1] - cy, entry[0] - cx);
-    let a2 = Math.atan2(exit[1] - cy, exit[0] - cx);
-    if (outward) {
-      while (a2 <= a1) a2 += Math.PI * 2;
-    } else {
-      while (a2 >= a1) a2 -= Math.PI * 2;
-    }
-    const steps = Math.max(8, Math.ceil((Math.abs(a2 - a1) / Math.PI) * 18));
+  const arcSpan = (cx: number, cy: number, a1: number, a2: number) => {
+    const steps = Math.max(6, Math.ceil((Math.abs(a2 - a1) / Math.PI) * 18));
     for (let i = 0; i <= steps; i++) {
       const a = a1 + ((a2 - a1) * i) / steps;
       push(cx + POCKET_R * Math.cos(a), cy + POCKET_R * Math.sin(a));
     }
+  };
+  const arc = (
+    cx: number,
+    cy: number,
+    entry: [number, number],
+    exit: [number, number],
+    throat: number,
+  ) => {
+    const a1 = Math.atan2(entry[1] - cy, entry[0] - cx);
+    let a2 = Math.atan2(exit[1] - cy, exit[0] - cx);
+    if (!outward) {
+      while (a2 >= a1) a2 -= Math.PI * 2;
+      arcSpan(cx, cy, a1, a2);
+      return;
+    }
+    while (a2 <= a1) a2 += Math.PI * 2;
+    while (throat <= a1) throat += Math.PI * 2;
+    const half = Math.acos(POCKET_BACK / POCKET_R);
+    arcSpan(cx, cy, a1, throat - half);
+    arcSpan(cx, cy, throat + half, a2);
   };
   const corner = POCKETS[0]!;
   const side = POCKETS[2]!;
@@ -118,17 +134,17 @@ function outlineWithPockets(inflate: number, outward: boolean): THREE.Vector2[] 
 
   push(-cx + cd, -l);
   push(cx - cd, -l);
-  arc(cx, -cy, [cx - cd, -l], [w, -cy + cd]);
+  arc(cx, -cy, [cx - cd, -l], [w, -cy + cd], -Math.PI / 4);
   push(w, -sd);
-  arc(sx, 0, [w, -sd], [w, sd]);
+  arc(sx, 0, [w, -sd], [w, sd], 0);
   push(w, cy - cd);
-  arc(cx, cy, [w, cy - cd], [cx - cd, l]);
+  arc(cx, cy, [w, cy - cd], [cx - cd, l], Math.PI / 4);
   push(-cx + cd, l);
-  arc(-cx, cy, [-cx + cd, l], [-w, cy - cd]);
+  arc(-cx, cy, [-cx + cd, l], [-w, cy - cd], (Math.PI * 3) / 4);
   push(-w, sd);
-  arc(-sx, 0, [-w, sd], [-w, -sd]);
+  arc(-sx, 0, [-w, sd], [-w, -sd], Math.PI);
   push(-w, -cy + cd);
-  arc(-cx, -cy, [-w, -cy + cd], [-cx + cd, -l]);
+  arc(-cx, -cy, [-w, -cy + cd], [-cx + cd, -l], (-Math.PI * 3) / 4);
   return pts;
 }
 
@@ -221,44 +237,56 @@ export function createPoolScene(host: GameSceneHost): PoolSceneController {
 
   // Cushions: extruded trapezoids — the nose runs exactly along core's cushion
   // segment, and the back edge extends toward each pocket so the ends read as
-  // the angled jaws of a real cushion, not sawn-off boxes.
+  // the angled jaws of a real cushion. Each end's flare is clipped so the jaw
+  // corner never crosses into a pocket's capture circle (at the tight side
+  // pockets this squares the jaw off rather than poking into the hole).
   const cushionMat = host.celMaterial('#2e8551');
+  const jawFlare = (
+    end: { x: number; y: number },
+    u: { x: number; y: number },
+    n: { x: number; y: number },
+  ): number => {
+    let flare = CUSH_D * 0.85;
+    const r = POCKET_R + 0.004;
+    for (const pocket of POCKETS) {
+      const ax = end.x + n.x * CUSH_D - pocket.x;
+      const ay = end.y + n.y * CUSH_D - pocket.y;
+      const along = ax * u.x + ay * u.y;
+      const perp = ax * n.x + ay * n.y;
+      if (perp * perp >= r * r) continue;
+      flare = Math.min(flare, Math.max(0, -along - Math.sqrt(r * r - perp * perp)));
+    }
+    return flare;
+  };
   for (const seg of CUSHIONS) {
-    const dx = Math.abs(seg.x2 - seg.x1);
-    const dy = Math.abs(seg.y2 - seg.y1);
-    const len = Math.max(dx, dy);
+    const len = Math.hypot(seg.x2 - seg.x1, seg.y2 - seg.y1);
+    const u = { x: (seg.x2 - seg.x1) / len, y: (seg.y2 - seg.y1) / len };
+    let n: { x: number; y: number };
+    if (Math.abs(u.y) > Math.abs(u.x)) {
+      n = { x: seg.x1 < 0.5 ? -1 : 1, y: 0 };
+    } else {
+      n = { x: 0, y: seg.y1 < 1 ? -1 : 1 };
+    }
+    const fA = jawFlare({ x: seg.x1, y: seg.y1 }, { x: -u.x, y: -u.y }, n);
+    const fB = jawFlare({ x: seg.x2, y: seg.y2 }, u, n);
     const shape = new THREE.Shape();
-    shape.moveTo(-len / 2, 0);
-    shape.lineTo(len / 2, 0);
-    shape.lineTo(len / 2 + CUSH_D * 0.85, CUSH_D);
-    shape.lineTo(-len / 2 - CUSH_D * 0.85, CUSH_D);
+    shape.moveTo(seg.x1 - TABLE_W / 2, seg.y1 - TABLE_L / 2);
+    shape.lineTo(seg.x2 - TABLE_W / 2, seg.y2 - TABLE_L / 2);
+    shape.lineTo(
+      seg.x2 + u.x * fB + n.x * CUSH_D - TABLE_W / 2,
+      seg.y2 + u.y * fB + n.y * CUSH_D - TABLE_L / 2,
+    );
+    shape.lineTo(
+      seg.x1 - u.x * fA + n.x * CUSH_D - TABLE_W / 2,
+      seg.y1 - u.y * fA + n.y * CUSH_D - TABLE_L / 2,
+    );
     shape.closePath();
     const mesh = new THREE.Mesh(
       new THREE.ExtrudeGeometry(shape, { depth: CUSH_H, bevelEnabled: false }),
       cushionMat,
     );
     mesh.rotation.x = -Math.PI / 2;
-    const group = new THREE.Group();
-    group.add(mesh);
-    if (dx > dy) {
-      group.rotation.y = seg.y1 < 1 ? Math.PI : 0;
-    } else {
-      group.rotation.y = seg.x1 < 0.5 ? Math.PI / 2 : -Math.PI / 2;
-    }
-    group.position.copy(worldPoint((seg.x1 + seg.x2) / 2, (seg.y1 + seg.y2) / 2, 0));
-    scene.add(group);
-  }
-
-  // Pocket dressing: a dark rim ring flush with the rail top around each of
-  // core's capture circles, so the openings read as leather-cupped pockets
-  // instead of raw felt cutouts.
-  const rimMat = host.celMaterial('#241a12');
-  const rimGeo = new THREE.RingGeometry(POCKET_R - 0.004, POCKET_R + 0.022, 26);
-  for (const pocket of POCKETS) {
-    const rim = new THREE.Mesh(rimGeo, rimMat);
-    rim.rotation.x = -Math.PI / 2;
-    rim.position.copy(worldPoint(pocket.x, pocket.y, RAIL_H + 0.002));
-    scene.add(rim);
+    scene.add(mesh);
   }
 
   // Rail sights: the six diamond dots per long rail (skipping the side

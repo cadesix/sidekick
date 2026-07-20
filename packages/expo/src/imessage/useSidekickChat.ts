@@ -12,6 +12,7 @@ import {
 import type { AudioAttachment, Message, Reaction, ReactionType, Thread } from "./types";
 import type { PendingAttachment } from "./lib/attachments";
 import type { AdView } from "~/lib/chat-thread";
+import { useGameReveal } from "~/store/game-reveal";
 
 const PAGE_LIMIT = 100;
 
@@ -163,19 +164,28 @@ export function useSidekickChat(): SidekickChat {
     onSettled: () => queryClient.invalidateQueries({ queryKey: transcriptKey }),
   });
 
+  // While a just-played game turn is settling, the sidekick's reply rows stay
+  // behind the typing indicator for a beat (see store/game-reveal.ts).
+  const reveal = useGameReveal();
   const fetched = transcript.data?.messages;
   /**
    * Stable identity: ChatScreen memoizes the transcript, the reply chain and the
    * FlatList data on this array, so rebuilding it every render would re-run all
    * three (and re-render every visible row) on any unrelated state change.
    */
-  const messages = useMemo(() => [...(fetched ?? []), ...outgoing], [fetched, outgoing]);
+  const messages = useMemo(() => {
+    const settled = fetched ?? [];
+    const visible = reveal.holding
+      ? settled.filter((message) => message.role === "me" || reveal.knownIds.has(message.id))
+      : settled;
+    return [...visible, ...outgoing];
+  }, [fetched, outgoing, reveal]);
 
   return {
     thread: conversationId === undefined ? undefined : sidekickThread(conversationId),
     messages,
     composerAd: turn.isPending ? undefined : transcript.data?.composerAd,
-    typing: turn.isPending,
+    typing: turn.isPending || reveal.holding,
     send: turn.mutate,
     addReaction: (messageId, type) => reaction.mutate({ messageId, type }),
     removeMessage: removal.mutate,
