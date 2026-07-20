@@ -4,13 +4,12 @@ import { cupPong, type CupPongFlick } from '@sidekick/core';
 
 import { roundedRectShape, type GameFraming, type GameSceneHost } from './game-scene';
 
-// The Cup Pong scene, staged like GamePigeon's: a green table with white lines
-// on a wood floor, ONE rack in frame — whichever rack is being thrown at — and
-// a camera standing at the table's end at chest height, so the view has real
-// perspective: your ball is big at your feet and visibly shrinks as it flies
-// down-table toward the small far rack (throw view), and the mirror of that
-// watches the sidekick's ball arc in toward your own near red cups (receive
-// view). Cups sit exactly on core's cupPositions and every ball flies a true
+// The Cup Pong scene, staged like GamePigeon's: a long wooden table standing
+// in a dark room, red cups racked at the far end, and the ball held in the
+// foreground right in front of the camera — big at the bottom of the screen,
+// shrinking to a fraction of a cup mouth as it lobs down-table. The receive
+// view mirrors it from behind your own rack, the sidekick's ball growing as it
+// arcs in. Cups sit exactly on core's cupPositions and every ball flies a true
 // ballistic parabola into core's throwFlight landing point, so server-replayed
 // turns land where the engine says. All motion after launch — table bounces,
 // rim deflections, the sink "plunk" — is one continuous path under a single
@@ -20,53 +19,45 @@ import { roundedRectShape, type GameFraming, type GameSceneHost } from './game-s
 
 type StageView = 'throw' | 'receive';
 
-type ViewSpec = {
-  framing: GameFraming;
-  tableFarZ: number;
-  tableNearZ: number;
+const VIEWS: Record<StageView, GameFraming> = {
+  throw: { pos: [0, 1.05, 0.55], target: [0, 0, -1.75], fov: 55 },
+  receive: { pos: [0, 0.8, -2.85], target: [0, 0.18, -0.95], fov: 55 },
 };
 
-const VIEWS: Record<StageView, ViewSpec> = {
-  throw: {
-    framing: { pos: [0, 0.85, 1.35], target: [0, 0, -1.5], fov: 50 },
-    tableFarZ: -2.0,
-    tableNearZ: 0.6,
-  },
-  receive: {
-    framing: { pos: [0, 0.92, -3.15], target: [0, 0.06, -0.85], fov: 50 },
-    tableFarZ: -2.32,
-    tableNearZ: 0.28,
-  },
-};
-
-export const CUP_PONG_FRAMING: GameFraming = VIEWS.throw.framing;
-export const CUP_PONG_BACKGROUND = '#d9b285';
+export const CUP_PONG_FRAMING: GameFraming = VIEWS.throw;
+export const CUP_PONG_BACKGROUND = '#4a3c36';
 
 // Racked cups must never interpenetrate: core's tightest neighbour pair is
 // CUP_SPACING (0.1) apart, so the rendered rim's outer radius stays under
 // half that with a visible gap, and the visual mouth stays inside
 // CUP_R + RIM_TOL so rim misses read as rim hits, never as sunk balls.
-const CUP_H = 0.14;
+const CUP_H = 0.12;
 const CUP_MOUTH_R = 0.0445;
 const CUP_SCALE = 0.97;
 const RIM_Y = CUP_H * CUP_SCALE;
 // Real beer-pong proportions: 20mm ball vs 48mm cup mouth.
 const BALL_R = 0.02;
-const BALL_REST = new THREE.Vector3(0, BALL_R, 0);
-const TABLE_W = 1.15;
-const TABLE_LEN = 2.6;
-const TABLE_H = 0.7;
-const AIM_NUDGE = 0.09;
+// The ball waits "in hand" close to the throw camera — GamePigeon's big
+// foreground ball — and every throw launches from here.
+const HOLD = new THREE.Vector3(0, 0.7, 0.2);
+const TABLE_W = 1.0;
+const TABLE_NEAR_Z = 0.5;
+const TABLE_FAR_Z = -2.3;
+const TABLE_LEN = TABLE_NEAR_Z - TABLE_FAR_Z;
+const TABLE_CENTER_Z = (TABLE_NEAR_Z + TABLE_FAR_Z) / 2;
+const TABLE_HGT = 0.72;
+const AIM_NUDGE = 0.12;
 const CUP_BLOCK_R = 0.065;
 
-// One gravity constant drives every arc, bounce and drop. Tuned so a full-
-// power throw flies ~1.1s with an apex that stays inside the framing; bounce
-// heights and durations then follow from physics, never from authored timing.
-const G = 5.0;
-const TABLE_E = 0.62;
+// One gravity constant drives every arc, bounce and drop. Launch solves for an
+// apex just under the throw camera's eyeline, so every throw — short lob or
+// full-power heave — pops up before dropping onto the rack; bounce heights and
+// durations then follow from physics, never from authored timing.
+const G = 6.0;
+const APEX_CAP = 0.94;
+const TABLE_E = 0.58;
 const H_DAMP = 0.75;
 const ROLL_K = 4.5;
-const FLIGHT_SCALE = 0.85;
 
 export type ThrowVisual = {
   /** rack slot the ball dropped into, or null on a miss */
@@ -79,7 +70,7 @@ export type ThrowVisual = {
 export type CupPongSceneController = {
   /** Rebuild the scene for a turn: whose-eye view + the rack being shot at. */
   stage: (view: StageView, targetMask: number) => void;
-  /** Spare-ball indicator on the table, GamePigeon style. */
+  /** Spare-ball indicator floating beside the held ball, GamePigeon style. */
   setBallsLeft: (n: number) => void;
   /** Direction-only aim cue: the ball leans with the drag. Null resets it. */
   setAimCue: (x: number | null) => void;
@@ -137,76 +128,70 @@ function fallTime(y0: number, vy: number, yTo: number): number {
 export function createCupPongScene(host: GameSceneHost): CupPongSceneController {
   const { scene, camera } = host;
 
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), host.celMaterial('#d9b285'));
+  // The room: flat, unlit planes so the warm table and red cups pop against a
+  // quiet dark backdrop, GamePigeon-style.
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(40, 40),
+    new THREE.MeshBasicMaterial({ color: '#38302b' }),
+  );
   floor.rotation.x = -Math.PI / 2;
-  floor.position.y = -TABLE_H;
+  floor.position.y = -TABLE_HGT;
   scene.add(floor);
+  const wallMat = new THREE.MeshBasicMaterial({ color: '#4a3c36' });
+  const farWall = new THREE.Mesh(new THREE.PlaneGeometry(30, 8), wallMat);
+  farWall.position.set(0, 3.2, -3.3);
+  const nearWall = new THREE.Mesh(new THREE.PlaneGeometry(30, 8), wallMat);
+  nearWall.position.set(0, 3.2, 3.3);
+  nearWall.rotation.y = Math.PI;
+  scene.add(farWall, nearWall);
 
-  const backdrop = new THREE.Group();
-  const wall = new THREE.Mesh(new THREE.PlaneGeometry(30, 6), host.celMaterial('#c09468'));
-  wall.position.set(0, 3.2, -2.74);
-  const wainscot = new THREE.Mesh(new THREE.PlaneGeometry(30, 0.9), host.celMaterial('#63412a'));
-  wainscot.position.set(0, -0.25, -2.72);
-  backdrop.add(wall, wainscot);
-  scene.add(backdrop);
+  const tableShadow = new THREE.Mesh(
+    new THREE.CircleGeometry(1, 26),
+    new THREE.MeshBasicMaterial({
+      color: '#000000',
+      transparent: true,
+      opacity: 0.18,
+      depthWrite: false,
+    }),
+  );
+  tableShadow.rotation.x = -Math.PI / 2;
+  tableShadow.position.set(0, -TABLE_HGT + 0.005, TABLE_CENTER_Z);
+  tableShadow.scale.set(TABLE_W * 0.62, TABLE_LEN * 0.55, 1);
+  scene.add(tableShadow);
 
   const table = new THREE.Group();
+  table.position.z = TABLE_CENTER_Z;
   scene.add(table);
 
   const top = new THREE.Mesh(
-    new THREE.ExtrudeGeometry(roundedRectShape(TABLE_W, TABLE_LEN, 0.02), {
-      depth: 0.05,
+    new THREE.ExtrudeGeometry(roundedRectShape(TABLE_W, TABLE_LEN, 0.03), {
+      depth: 0.06,
       bevelEnabled: false,
     }),
-    [host.celMaterial('#2f9e57'), host.celMaterial('#20713d')],
+    [host.celMaterial('#d29a5f'), host.celMaterial('#9c6b3d')],
   );
   top.rotation.x = -Math.PI / 2;
-  top.position.y = -0.05;
+  top.position.y = -0.06;
   table.add(top);
 
-  const lineMat = new THREE.MeshBasicMaterial({
-    color: '#ffffff',
-    transparent: true,
-    opacity: 0.92,
-    depthWrite: false,
-  });
-  const centerLine = new THREE.Mesh(new THREE.PlaneGeometry(0.016, TABLE_LEN - 0.08), lineMat);
-  centerLine.rotation.x = -Math.PI / 2;
-  centerLine.position.y = 0.0015;
-  table.add(centerLine);
-  for (const sx of [-1, 1]) {
-    const side = new THREE.Mesh(new THREE.PlaneGeometry(0.022, TABLE_LEN - 0.06), lineMat);
-    side.rotation.x = -Math.PI / 2;
-    side.position.set(sx * (TABLE_W / 2 - 0.04), 0.0015, 0);
-    table.add(side);
-  }
-  for (const sz of [-1, 1]) {
-    const end = new THREE.Mesh(new THREE.PlaneGeometry(TABLE_W - 0.06, 0.022), lineMat);
-    end.rotation.x = -Math.PI / 2;
-    end.position.set(0, 0.0015, sz * (TABLE_LEN / 2 - 0.04));
-    table.add(end);
-  }
-
-  const legMat = host.celMaterial('#241f1a');
-  const legGeo = new THREE.BoxGeometry(0.05, TABLE_H - 0.05, 0.05);
+  const legMat = host.celMaterial('#6f4a2c');
+  const legGeo = new THREE.BoxGeometry(0.07, TABLE_HGT - 0.06, 0.07);
   for (const sz of [-1, 1]) {
     for (const sx of [-1, 1]) {
       const leg = new THREE.Mesh(legGeo, legMat);
       leg.position.set(
-        sx * (TABLE_W / 2 - 0.16),
-        -0.05 - (TABLE_H - 0.05) / 2,
-        sz * (TABLE_LEN / 2 - 0.18),
+        sx * (TABLE_W / 2 - 0.12),
+        -0.06 - (TABLE_HGT - 0.06) / 2,
+        sz * (TABLE_LEN / 2 - 0.14),
       );
       table.add(leg);
     }
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(TABLE_W - 0.32, 0.04, 0.04), legMat);
-    bar.position.set(0, -0.5, sz * (TABLE_LEN / 2 - 0.18));
-    table.add(bar);
   }
 
   // Red-solo-cup lathe: pedestal foot, tapered body with two thin ridge rings,
   // rolled rim lip. GamePigeon's white lip + pale interior; the flat interior
   // disc doubles as the "liquid" surface a sunk ball visibly dunks below.
+  // Profile drawn for a 0.14-tall cup, squashed vertically to CUP_H.
   const cupProfile = [
     new THREE.Vector2(0, 0.004),
     new THREE.Vector2(0.027, 0.004),
@@ -222,8 +207,8 @@ export function createCupPongScene(host: GameSceneHost): CupPongSceneController 
     new THREE.Vector2(0.0402, 0.104),
     new THREE.Vector2(0.043, 0.124),
     new THREE.Vector2(CUP_MOUTH_R, 0.134),
-    new THREE.Vector2(CUP_MOUTH_R, CUP_H),
-  ];
+    new THREE.Vector2(CUP_MOUTH_R, 0.14),
+  ].map((p) => new THREE.Vector2(p.x, p.y * (CUP_H / 0.14)));
   const cupGeo = new THREE.LatheGeometry(cupProfile, 28);
   const rimGeo = new THREE.TorusGeometry(CUP_MOUTH_R, 0.0042, 10, 28);
   // The open mouth: the far inner wall (a back-face frustum) over a sunken
@@ -233,42 +218,32 @@ export function createCupPongScene(host: GameSceneHost): CupPongSceneController 
     28,
   );
   const innerBottomGeo = new THREE.CircleGeometry(0.0325, 24);
-  const rimMat = host.celMaterial('#f2ece1');
-  type CupMats = { body: THREE.Material; inner: THREE.Material; bottom: THREE.Material };
-  function cupMats(body: string, inner: string, bottom: string): CupMats {
-    const innerMat = host.celMaterial(inner);
-    innerMat.side = THREE.BackSide;
-    return {
-      body: host.celMaterial(body),
-      inner: innerMat,
-      bottom: new THREE.MeshBasicMaterial({ color: bottom }),
-    };
-  }
-  const bodyMats: Record<StageView, CupMats> = {
-    throw: cupMats('#3157c8', '#1e3c8e', '#12235a'),
-    receive: cupMats('#d83a2e', '#8a2019', '#4d0f09'),
-  };
-  const cupShadowGeo = new THREE.CircleGeometry(CUP_MOUTH_R * 1.15, 20);
+  const rimMat = host.celMaterial('#f4efe4');
+  const cupBodyMat = host.celMaterial('#d8382b');
+  const cupInnerMat = host.celMaterial('#93231b');
+  cupInnerMat.side = THREE.BackSide;
+  const cupBottomMat = new THREE.MeshBasicMaterial({ color: '#511009' });
+  const cupShadowGeo = new THREE.CircleGeometry(CUP_MOUTH_R * 0.92, 20);
   const cupShadowMat = new THREE.MeshBasicMaterial({
     color: '#000000',
     transparent: true,
-    opacity: 0.1,
+    opacity: 0.13,
     depthWrite: false,
   });
 
-  function makeCup(mats: CupMats): THREE.Group {
+  function makeCup(): THREE.Group {
     const group = new THREE.Group();
-    const cup = new THREE.Mesh(cupGeo, mats.body);
+    const cup = new THREE.Mesh(cupGeo, cupBodyMat);
     const rim = new THREE.Mesh(rimGeo, rimMat);
     rim.rotation.x = Math.PI / 2;
     rim.position.y = CUP_H - 0.003;
-    const inner = new THREE.Mesh(innerGeo, mats.inner);
-    const bottom = new THREE.Mesh(innerBottomGeo, mats.bottom);
+    const inner = new THREE.Mesh(innerGeo, cupInnerMat);
+    const bottom = new THREE.Mesh(innerBottomGeo, cupBottomMat);
     bottom.rotation.x = -Math.PI / 2;
     bottom.position.y = CUP_H * 0.42;
     const shadow = new THREE.Mesh(cupShadowGeo, cupShadowMat);
     shadow.rotation.x = -Math.PI / 2;
-    shadow.position.set(-0.035, 0.003, 0.028);
+    shadow.position.set(0.004, 0.002, 0.003);
     group.add(cup, rim, inner, bottom, shadow);
     return group;
   }
@@ -283,7 +258,7 @@ export function createCupPongScene(host: GameSceneHost): CupPongSceneController 
     rack.clear();
     rackCups.clear();
     for (const cup of cupPong.cupPositions(mask)) {
-      const mesh = makeCup(bodyMats[currentView]);
+      const mesh = makeCup();
       mesh.position.set(cup.x, 0, -cup.y);
       mesh.scale.setScalar(CUP_SCALE);
       rack.add(mesh);
@@ -292,25 +267,20 @@ export function createCupPongScene(host: GameSceneHost): CupPongSceneController 
   }
 
   const ball = new THREE.Mesh(new THREE.SphereGeometry(BALL_R, 20, 14), host.celMaterial('#ffffff'));
-  ball.position.copy(BALL_REST);
+  ball.position.copy(HOLD);
   scene.add(ball);
 
-  const spare = new THREE.Mesh(new THREE.SphereGeometry(BALL_R, 20, 14), host.celMaterial('#c8c1b4'));
-  spare.position.set(-0.17, BALL_R, 0.16);
-  const spareShadow = new THREE.Mesh(cupShadowGeo, cupShadowMat);
-  spareShadow.rotation.x = -Math.PI / 2;
-  spareShadow.scale.setScalar(0.7);
-  spareShadow.position.set(-0.01, -BALL_R + 0.004, 0.01);
-  spare.add(spareShadow);
+  const spare = new THREE.Mesh(new THREE.SphereGeometry(BALL_R, 20, 14), host.celMaterial('#ded7ca'));
+  spare.position.set(-0.12, 0.6, 0.02);
   scene.add(spare);
 
   const ballShadowMat = new THREE.MeshBasicMaterial({
     color: '#000000',
     transparent: true,
-    opacity: 0.16,
+    opacity: 0.22,
     depthWrite: false,
   });
-  const ballShadow = new THREE.Mesh(new THREE.CircleGeometry(BALL_R * 1.1, 20), ballShadowMat);
+  const ballShadow = new THREE.Mesh(new THREE.CircleGeometry(BALL_R * 1.6, 20), ballShadowMat);
   ballShadow.rotation.x = -Math.PI / 2;
   scene.add(ballShadow);
 
@@ -330,16 +300,15 @@ export function createCupPongScene(host: GameSceneHost): CupPongSceneController 
   let fastForward = false;
 
   host.onFrame((dt) => {
-    const spec = VIEWS[currentView];
     ballShadow.visible =
       ball.visible &&
       ball.position.y > 0 &&
       Math.abs(ball.position.x) < TABLE_W / 2 - 0.02 &&
-      ball.position.z > spec.tableFarZ + 0.02 &&
-      ball.position.z < spec.tableNearZ - 0.02;
-    ballShadow.position.set(ball.position.x, 0.006, ball.position.z);
-    const squash = 1 / (1 + ball.position.y * 1.6);
-    ballShadow.scale.setScalar(Math.max(squash, 0.35));
+      ball.position.z > TABLE_FAR_Z + 0.02 &&
+      ball.position.z < TABLE_NEAR_Z - 0.02;
+    ballShadow.position.set(ball.position.x, 0.004, ball.position.z);
+    const squash = 1 / (1 + ball.position.y * 1.1);
+    ballShadow.scale.setScalar(Math.max(squash, 0.3));
     ballShadowMat.opacity = 0.16 * squash;
     if (tweens.length === 0) return;
     const finished: Tween[] = [];
@@ -364,9 +333,8 @@ export function createCupPongScene(host: GameSceneHost): CupPongSceneController 
   }
 
   function onTable(x: number, z: number): boolean {
-    const spec = VIEWS[currentView];
     return (
-      Math.abs(x) < TABLE_W / 2 - 0.02 && z > spec.tableFarZ + 0.03 && z < spec.tableNearZ - 0.03
+      Math.abs(x) < TABLE_W / 2 - 0.02 && z > TABLE_FAR_Z + 0.03 && z < TABLE_NEAR_Z - 0.03
     );
   }
 
@@ -401,7 +369,7 @@ export function createCupPongScene(host: GameSceneHost): CupPongSceneController 
       let amt = 0;
       for (const c of path.contacts) {
         const w = 1 - Math.abs(s - c.time) / 0.07;
-        if (w > 0) amt = Math.max(amt, w * Math.min(c.speed / 3.2, 1));
+        if (w > 0) amt = Math.max(amt, w * Math.min(c.speed / 4, 1));
       }
       ball.scale.set(1 + 0.3 * amt, 1 - 0.45 * amt, 1 + 0.3 * amt);
     });
@@ -438,7 +406,7 @@ export function createCupPongScene(host: GameSceneHost): CupPongSceneController 
       const vCut = speed * Math.exp(-ROLL_K * dur);
       const edgeP = new THREE.Vector3(p0.x + ux * cut, BALL_R, p0.z + uz * cut);
       const fallV = new THREE.Vector3(ux * vCut, 0, uz * vCut);
-      path.segs.push(parabolaSeg(edgeP, fallV, fallTime(edgeP.y, 0, -TABLE_H + 0.08)));
+      path.segs.push(parabolaSeg(edgeP, fallV, fallTime(edgeP.y, 0, -TABLE_HGT + 0.08)));
       path.endsOffTable = true;
     }
   }
@@ -456,7 +424,7 @@ export function createCupPongScene(host: GameSceneHost): CupPongSceneController 
       const dur = fallTime(p.y, v.y, BALL_R);
       const land = new THREE.Vector3(p.x + v.x * dur, BALL_R, p.z + v.z * dur);
       if (!onTable(land.x, land.z)) {
-        path.segs.push(parabolaSeg(p, v, fallTime(p.y, v.y, -TABLE_H + 0.08)));
+        path.segs.push(parabolaSeg(p, v, fallTime(p.y, v.y, -TABLE_HGT + 0.08)));
         path.endsOffTable = true;
         return path;
       }
@@ -600,18 +568,16 @@ export function createCupPongScene(host: GameSceneHost): CupPongSceneController 
 
   function stage(view: StageView, targetMask: number): void {
     currentView = view;
-    const spec = VIEWS[view];
-    camera.position.fromArray(spec.framing.pos);
-    camera.fov = spec.framing.fov;
+    const framing = VIEWS[view];
+    camera.position.fromArray(framing.pos);
+    camera.fov = framing.fov;
     camera.updateProjectionMatrix();
-    camera.lookAt(new THREE.Vector3().fromArray(spec.framing.target));
-    table.position.z = (spec.tableFarZ + spec.tableNearZ) / 2;
-    backdrop.visible = view === 'throw';
+    camera.lookAt(new THREE.Vector3().fromArray(framing.target));
     buildRack(targetMask);
     ring.visible = false;
     ball.visible = true;
     ball.scale.setScalar(1);
-    ball.position.copy(BALL_REST);
+    ball.position.copy(HOLD);
     spare.visible = view === 'throw' && ballsLeft >= 2;
   }
 
@@ -629,18 +595,18 @@ export function createCupPongScene(host: GameSceneHost): CupPongSceneController 
 
     animateThrow: async (flick, visual) => {
       const flight = cupPong.throwFlight(flick);
-      const start = new THREE.Vector3(ball.position.x, BALL_R, 0);
+      const start = new THREE.Vector3(ball.position.x, HOLD.y, HOLD.z);
       const end = new THREE.Vector3(flight.landing.x, BALL_R, -flight.landing.y);
       if (visual.cupSlot !== null || visual.rimNearMiss) end.y = RIM_Y + BALL_R;
-      // Launch velocity solved from G, the flight time and the endpoints, so
-      // the arc is a genuine parabola into core's authoritative landing point.
-      const T = flight.duration * FLIGHT_SCALE;
-      const v0 = new THREE.Vector3(
-        (end.x - start.x) / T,
-        (end.y - start.y) / T + (G * T) / 2,
-        (end.z - start.z) / T,
-      );
-      const vEnd = new THREE.Vector3(v0.x, v0.y - G * T, v0.z);
+      // The launch is solved apex-first: pick a peak height from throw power
+      // (capped under the camera's eyeline), then rise and fall times follow
+      // from G — a genuine parabola into core's authoritative landing point.
+      const apex = Math.min(HOLD.y + 0.12 + 0.14 * flick.power, APEX_CAP);
+      const vy0 = Math.sqrt(2 * G * (apex - start.y));
+      const tDown = Math.sqrt((2 * (apex - end.y)) / G);
+      const T = vy0 / G + tDown;
+      const v0 = new THREE.Vector3((end.x - start.x) / T, vy0, (end.z - start.z) / T);
+      const vEnd = new THREE.Vector3(v0.x, -G * tDown, v0.z);
       ball.visible = true;
       ball.scale.setScalar(1);
       ball.position.copy(start);
@@ -657,7 +623,7 @@ export function createCupPongScene(host: GameSceneHost): CupPongSceneController 
         await settleAfter(buildBouncePath(start, v0));
       }
       ball.scale.setScalar(1);
-      ball.position.copy(BALL_REST);
+      ball.position.copy(HOLD);
       ball.visible = true;
     },
 

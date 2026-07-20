@@ -136,10 +136,11 @@ export const cupPongStateSchema = z
 		cups: z.object({ user: cupMask, sidekick: cupMask }).strict(),
 		toMove: gameActorSchema,
 		// throws left in the current 2-ball set / hits so far in it (balls-back).
-		// 0 is valid in a terminal (won) state: the winning cup can fall on the
-		// second ball of a set, ending the game before the set resets.
+		// turnBalls 0 and turnHits 2 are valid in a terminal (won) state: the
+		// winning cup can fall on the second ball of a set, ending the game
+		// before the set resets.
 		turnBalls: z.number().int().min(0).max(2),
-		turnHits: z.number().int().min(0).max(1),
+		turnHits: z.number().int().min(0).max(2),
 		winner: gameActorSchema.nullable(),
 		lastTurn: cupPongLastTurnSchema.nullable(),
 	})
