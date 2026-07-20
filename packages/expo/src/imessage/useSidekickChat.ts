@@ -12,6 +12,7 @@ import {
 import type { AudioAttachment, Message, Reaction, ReactionType, Thread } from "./types";
 import type { PendingAttachment } from "./lib/attachments";
 import type { AdView } from "~/lib/chat-thread";
+import { useGameReveal } from "~/store/game-reveal";
 
 const PAGE_LIMIT = 100;
 
@@ -226,6 +227,10 @@ export function useSidekickChat(): SidekickChat {
     onSettled: () => queryClient.invalidateQueries({ queryKey: transcriptKey }),
   });
 
+  // While a just-played game turn is settling, the sidekick's reply rows stay
+  // behind the typing indicator for a beat (see store/game-reveal.ts). Distinct
+  // from the burst `reveal` above (multi-bubble texting) — both filter `messages`.
+  const gameReveal = useGameReveal();
   const fetched = transcript.data?.messages;
 
   // When a fresh reply lands as a multi-bubble burst, step its bubbles in one at a
@@ -284,29 +289,33 @@ export function useSidekickChat(): SidekickChat {
    */
   const messages = useMemo(() => {
     const base = fetched ?? [];
-    let visible = base;
+    // game reveal: hold not-yet-known game rows behind the typing indicator.
+    let visible = gameReveal.holding
+      ? base.filter((message) => message.role === "me" || gameReveal.knownIds.has(message.id))
+      : base;
+    // burst reveal: hold the not-yet-shown trailing bubbles of a multi-bubble reply.
     if (reveal) {
       const hide = reveal.total - reveal.shown;
       if (hide > 0) {
-        visible = base.slice(0, base.length - hide);
+        visible = visible.slice(0, visible.length - hide);
       }
     } else if (pendingReveal.current) {
       // burst just landed but the effect hasn't scheduled yet — pre-hide its later
       // bubbles this render so they never flash in before sequencing starts.
-      const burst = trailingBurst(base);
+      const burst = trailingBurst(visible);
       const prev = revealedBase.current;
       if (burst && burst.count > 1 && (prev === null || Number(burst.base) > Number(prev))) {
-        visible = base.slice(0, base.length - (burst.count - 1));
+        visible = visible.slice(0, visible.length - (burst.count - 1));
       }
     }
     return [...visible, ...outgoing];
-  }, [fetched, outgoing, reveal]);
+  }, [fetched, outgoing, reveal, gameReveal]);
 
   return {
     thread: conversationId === undefined ? undefined : sidekickThread(conversationId),
     messages,
     composerAd: turn.isPending ? undefined : transcript.data?.composerAd,
-    typing: turn.isPending || revealTyping,
+    typing: turn.isPending || revealTyping || gameReveal.holding,
     send: turn.mutate,
     addReaction: (messageId, type) => reaction.mutate({ messageId, type }),
     removeMessage: removal.mutate,

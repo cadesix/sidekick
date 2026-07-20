@@ -42,6 +42,25 @@ test("chat.react applies, replaces, and toggles off the caller's reaction", asyn
   await expect(caller.chat.react({ messageId, type: "thumbsUp" })).resolves.toEqual([]);
 });
 
+test("chat.react coexists with the sidekick's reaction, toggling only the caller's", async () => {
+  const userId = await createUser(db);
+  const conversationId = await createConversation(db, userId);
+  const messageId = await insertMessage(conversationId, "react to me");
+  await db
+    .update(messages)
+    .set({ reactions: [{ type: "thumbsUp", from: "them" }] })
+    .where(eq(messages.id, messageId));
+  const caller = makeCaller(db, textModel("ok"), userId);
+
+  await expect(caller.chat.react({ messageId, type: "heart" })).resolves.toEqual([
+    { type: "thumbsUp", from: "them" },
+    { type: "heart", from: "me" },
+  ]);
+  await expect(caller.chat.react({ messageId, type: "heart" })).resolves.toEqual([
+    { type: "thumbsUp", from: "them" },
+  ]);
+});
+
 test("chat.react round-trips a custom emoji reaction", async () => {
   const userId = await createUser(db);
   const conversationId = await createConversation(db, userId);

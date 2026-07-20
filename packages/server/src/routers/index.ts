@@ -7,6 +7,7 @@ import { dailyBoxRouter } from "./daily-box";
 import { deepTalksRouter } from "./deep-talks";
 import { devRouter } from "./dev";
 import { documentsRouter } from "./documents";
+import { gamesRouter } from "./games";
 import { goalsRouter } from "./goals";
 import { healthRouter } from "./health";
 import { locationRouter } from "./location";
@@ -30,6 +31,7 @@ export const appRouter = router({
   deepTalks: deepTalksRouter,
   dev: devRouter,
   documents: documentsRouter,
+  games: gamesRouter,
   goals: goalsRouter,
   health: healthRouter,
   location: locationRouter,

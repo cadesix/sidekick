@@ -705,10 +705,10 @@ async function driveTurn(
         /**
          * Capture stream errors here rather than letting them surface as
          * unhandled rejections: `streamText` reports a mid-stream failure (an
-         * API 400, a dropped connection) through `onError`, and without this the
-         * rejecting internal promises take down the whole process. We record it
-         * and rethrow below so the turn fails for this one request — the outer
-         * `try/catch` rejects `done`, and the tRPC handler returns the error.
+         * API 400, a dropped connection) through `onError`. We record it and
+         * rethrow below so the turn fails for this one request — the generator
+         * throws to whoever is draining it, and the outer `try/catch` rejects
+         * `done` for whoever awaits the outcome.
          */
         let streamError: unknown;
         const result = streamText({
@@ -877,6 +877,14 @@ async function driveTurn(
       });
       done.resolve(outcome);
     } catch (error) {
+      /**
+       * The failure is delivered on both channels: `done` rejects and the
+       * generator rethrows. Consumers drain the stream before awaiting `done`,
+       * so on error they stop at the throw and never attach a handler to
+       * `done.promise` — observe its rejection here or the duplicate signal
+       * becomes an unhandled rejection that kills the whole process.
+       */
+      done.promise.catch(() => {});
       done.reject(error);
       throw error;
     }

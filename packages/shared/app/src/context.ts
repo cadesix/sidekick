@@ -13,6 +13,16 @@ import {
   tailMessages,
 } from "./conversation";
 import { type DeepTalk, activeDeepTalk } from "./deep-talks";
+import {
+  type GamesActiveView,
+  type GamesContextView,
+  type GamesLastMatchView,
+  type GamesRecordEntry,
+  describeHighlight,
+  gameDisplayName,
+  gamesContext,
+} from "./games";
+import { localDate } from "./goals/dates";
 import { renderMemoryBlock } from "./memory/render";
 import {
   ONBOARDING_CHAT_PROMPT,
@@ -21,6 +31,7 @@ import {
   renderOnboardingBlock,
 } from "./onboarding-chat";
 import { PERSONA_PROMPT } from "./prompts/persona";
+import type { Reaction, ReactionType } from "./schemas";
 import { capabilities, selectGuidance } from "./tools";
 import type { FeatureFlags } from "./tools/registry";
 
@@ -31,7 +42,7 @@ import type { FeatureFlags } from "./tools/registry";
  * pair carries `cache: true`.
  */
 export type SystemBlock = {
-  id: "persona" | "guidance" | "memory" | "summary" | "deep_talk" | "onboarding";
+  id: "persona" | "guidance" | "memory" | "summary" | "deep_talk" | "games" | "onboarding";
   text: string;
   /** Set a cache breakpoint after this block. */
   cache?: boolean;
@@ -91,6 +102,73 @@ ${beats}
 === END ===`;
 }
 
+/**
+ * The GAMES system block (plan 21 §Agent integration) — a tasteful, minimal
+ * window on play: the active match, the last completed one (24h), and the
+ * lifetime record. Pure like `renderDeepTalkBlock`; `gamesContext` feeds it. Emits
+ * only the lines that have something to say, and `""` (block omitted) when a user
+ * has never played. Reads as context, not a script — the guidance bans reciting it.
+ */
+function activeStanding(view: GamesActiveView): string {
+  const unit = view.gameType === "cup_pong" ? "cups" : "balls";
+  const { user, sidekick } = view.scores;
+  if (user === sidekick) {
+    return user === 0 ? "just getting started" : `even, ${user} ${unit} each`;
+  }
+  const leader = user > sidekick ? "user" : "sidekick";
+  return `${leader} leads ${Math.max(user, sidekick)} ${unit} to ${Math.min(user, sidekick)}`;
+}
+
+function gamesActiveLine(view: GamesActiveView): string {
+  const move = view.toMove === "user" ? "user's move" : "sidekick's move";
+  return `${gameDisplayName(view.gameType)}, ${move}, ${activeStanding(view)}`;
+}
+
+function gamesOutcomeText(outcome: GamesLastMatchView["outcome"]): string {
+  if (outcome === "user_won") return "user won";
+  if (outcome === "sidekick_won") return "sidekick won";
+  return "user resigned";
+}
+
+function gamesHighlightSuffix(highlights: string[]): string {
+  const top = highlights.slice(0, 2).map(describeHighlight);
+  if (top.length === 0) return "";
+  if (top.length === 1) return ` (highlight: ${top[0]})`;
+  return ` (highlights: ${top.join(", ")})`;
+}
+
+function gamesLastMatchLine(view: GamesLastMatchView, timezone: string, now: Date): string {
+  const when =
+    localDate(timezone, view.completedAt) === localDate(timezone, now) ? "today" : "yesterday";
+  return `${gameDisplayName(view.gameType)}, ${gamesOutcomeText(view.outcome)}, ${when}${gamesHighlightSuffix(view.highlights)}`;
+}
+
+function gamesRecordLine(record: GamesRecordEntry[]): string {
+  return record
+    .map((entry) => {
+      const leader = entry.user > entry.sidekick ? "user" : entry.sidekick > entry.user ? "sidekick" : "even";
+      return `${gameDisplayName(entry.gameType)} ${entry.user}–${entry.sidekick} ${leader}`;
+    })
+    .join(" · ");
+}
+
+export function renderGamesBlock(view: GamesContextView, now: Date): string {
+  const lines: string[] = [];
+  if (view.active !== null) {
+    lines.push(`active: ${gamesActiveLine(view.active)}`);
+  }
+  if (view.lastMatch !== null) {
+    lines.push(`last match: ${gamesLastMatchLine(view.lastMatch, view.timezone, now)}`);
+  }
+  if (view.record.length > 0) {
+    lines.push(`record: ${gamesRecordLine(view.record)}`);
+  }
+  if (lines.length === 0) {
+    return "";
+  }
+  return `=== GAMES ===\n${lines.join("\n")}`;
+}
+
 type ParsedToolCall = { toolCallId: string; toolName: string; input: unknown };
 
 /**
@@ -140,6 +218,64 @@ function captionText(attachment: TailAttachment): string {
   return attachment.caption ?? "attachment";
 }
 
+const REACTION_GLYPHS: Record<string, string> = {
+  heart: "❤️",
+  thumbsUp: "👍",
+  thumbsDown: "👎",
+  haha: "😂",
+  exclamation: "‼️",
+  question: "❓",
+};
+
+function reactionGlyph(type: ReactionType): string {
+  if (type.startsWith("emoji:")) {
+    return type.slice("emoji:".length);
+  }
+  return REACTION_GLYPHS[type] ?? type;
+}
+
+/**
+ * Render a message's tapback reactions as a bracketed transcript annotation —
+ * the model's only window into reactions (the agent-tapbacks plan): `from: "me"`
+ * (the human) → `[user reacted ❤️]`, `from: "them"` (the sidekick) →
+ * `[you reacted 👍]`, multiple reactions space-separated on one line. The note
+ * rides as the carrying message's last content line, which also gives the agent
+ * memory of its *own* past reactions (the react tool-call resolves in-turn, so
+ * `assembleTail` drops it from later views).
+ *
+ * Cache invariant: returns `""` for an unreacted message, and every caller
+ * appends nothing in that case — a message with no reactions must render
+ * byte-identical to the pre-reactions output, or every historical tail row
+ * would shift the message-prefix cache.
+ */
+function reactionNote(reactions: Reaction[]): string {
+  return reactions
+    .map((reaction) => {
+      if (reaction.from === "me") {
+        return `[user reacted ${reactionGlyph(reaction.type)}]`;
+      }
+      return `[you reacted ${reactionGlyph(reaction.type)}]`;
+    })
+    .join(" ");
+}
+
+/**
+ * A text body with its reaction annotation appended as a final line — used for
+ * assistant rows, whose content is a single string. An empty body with a
+ * reaction yields the bare note (a tapback on a tool-call-only row must still
+ * surface); no reactions returns the body untouched (see `reactionNote`).
+ */
+function withReactionNote(text: string, reactions: Reaction[]): string {
+  const note = reactionNote(reactions);
+  if (note.length === 0) {
+    return text;
+  }
+  if (text.trim().length === 0) {
+    return note;
+  }
+  return `${text}\n${note}`;
+}
+
 /**
  * Build one user message's content parts under the 09 view rules:
  * - images: real image parts for the 3 most-recent thread-wide, older → `[photo: caption]`;
@@ -147,6 +283,8 @@ function captionText(attachment: TailAttachment): string {
  * - files: full extracted text (fenced) while inside the recency window, else
  *   `[file: name — caption]`; PDFs within the size cap ride up as native document
  *   parts for better table/layout comprehension.
+ * A reacted message additionally carries its `reactionNote` annotation as a
+ * trailing text part, after all attachments.
  */
 function userContent(
   message: TailMessage,
@@ -199,6 +337,11 @@ function userContent(
       continue;
     }
     parts.push({ type: "text", text: `[file: ${name} — ${captionText(attachment)}]` });
+  }
+
+  const note = reactionNote(message.reactions);
+  if (note.length > 0) {
+    parts.push({ type: "text", text: note });
   }
 
   if (parts.length === 0) {
@@ -255,6 +398,7 @@ export function assembleTail(tail: TailMessage[], storageUrl: StorageUrl): Model
     }
 
     if (message.role === "assistant") {
+      const text = withReactionNote(message.content, message.reactions);
       const toolCallParts: Exclude<AssistantContent, string> = [];
       for (const call of parseToolCalls(message.toolCalls)) {
         if (resolvedCallIds.has(call.toolCallId)) {
@@ -268,12 +412,12 @@ export function assembleTail(tail: TailMessage[], storageUrl: StorageUrl): Model
         }
       }
       if (toolCallParts.length === 0) {
-        messages.push({ role: "assistant", content: message.content });
+        messages.push({ role: "assistant", content: text });
         return;
       }
       const content: Exclude<AssistantContent, string> = [];
-      if (message.content.trim().length > 0) {
-        content.push({ type: "text", text: message.content });
+      if (text.trim().length > 0) {
+        content.push({ type: "text", text });
       }
       content.push(...toolCallParts);
       messages.push({ role: "assistant", content });
@@ -385,10 +529,11 @@ export async function buildContextView(
     };
   }
 
-  const [summary, memoryText, deepTalk] = await Promise.all([
+  const [summary, memoryText, deepTalk, games] = await Promise.all([
     latestSummary(db, conversationId),
     userId ? renderMemoryBlock(db, userId, now) : Promise.resolve(""),
     activeDeepTalk(db, conversationId, now),
+    userId ? gamesContext(db, userId, now) : Promise.resolve(null),
   ]);
   const tail = await tailMessages(db, conversationId, summary?.coversToMessageId ?? 0);
 
@@ -406,6 +551,12 @@ export async function buildContextView(
   const regionB: SystemBlock[] = [];
   if (memoryText.length > 0) {
     regionB.push({ id: "memory", text: memoryText });
+  }
+  if (games !== null) {
+    const gamesText = renderGamesBlock(games, now);
+    if (gamesText.length > 0) {
+      regionB.push({ id: "games", text: gamesText });
+    }
   }
   if (deepTalk !== null) {
     regionB.push({ id: "deep_talk", text: renderDeepTalkBlock(deepTalk) });

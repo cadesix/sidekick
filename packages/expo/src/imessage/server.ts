@@ -10,6 +10,7 @@ import { filenameFromUrl } from "./lib/attachments";
 import type {
   AudioAttachment,
   FileAttachment,
+  GameCard,
   ImageAttachment,
   Message,
   ReactionType,
@@ -79,9 +80,31 @@ function toFile(row: HistoryRow): FileAttachment | undefined {
   };
 }
 
+function toGame(row: HistoryRow, latest: boolean): GameCard | undefined {
+  if (!row.game) {
+    return undefined;
+  }
+  return {
+    matchId: row.game.matchId,
+    gameType: row.game.gameType,
+    status: row.game.status,
+    yourMove: row.game.yourMove,
+    winner: row.game.winner,
+    latest: row.game.latest || latest,
+    summary: row.game.summary,
+  };
+}
+
 /** A persisted row → the bubble the transcript renders. */
-function toMessage(row: HistoryRow): Message {
+function toMessage(row: HistoryRow, latestGame: boolean): Message {
   const audio = toAudio(row);
+  const game = toGame(row, latestGame);
+  let kind: Message["kind"] = "text";
+  if (game) {
+    kind = "game";
+  } else if (audio) {
+    kind = "audio";
+  }
   return {
     id: String(row.id),
     threadId: row.conversationId,
@@ -91,10 +114,11 @@ function toMessage(row: HistoryRow): Message {
     status: row.role === "user" ? "read" : undefined,
     replyToId: row.replyToId === null ? undefined : String(row.replyToId),
     reactions: row.reactions,
-    kind: audio ? "audio" : "text",
+    kind,
     audio,
     images: toImages(row),
     file: toFile(row),
+    game,
   };
 }
 
@@ -150,7 +174,11 @@ export function mainConversation(): Promise<{ id: string }> {
 
 /**
  * The transcript, oldest-first (the inverted list reverses it). Only the two
- * roles the UI can draw survive — tool and marker rows are chrome.
+ * roles the UI can draw survive — tool and marker rows are chrome. Rows with no
+ * text and no attachments are dropped too: that's a tapback-only or
+ * device-tool-only assistant turn, which would otherwise render as an empty
+ * bubble. Voice-note user rows (empty text + audio attachment) and game
+ * turn-card rows (empty text + a joined `game` payload) survive.
  */
 export async function fetchTranscript(
   conversationId: string,
@@ -158,10 +186,27 @@ export async function fetchTranscript(
 ): Promise<{ messages: Message[]; composerAd: AdView | undefined }> {
   const rows = await trpc.chat.history.query({ conversationId, limit });
   const visibleRows = rows.filter(
-    (row) => (row.role === "user" || row.role === "assistant") && row.adUnitId === null,
+    (row) =>
+      (row.role === "user" || row.role === "assistant") &&
+      row.adUnitId === null &&
+      (row.content.trim().length > 0 || row.attachments.length > 0 || row.game !== null),
   );
+  // Only a match's newest turn card renders full-size. The page is newest-first
+  // and history pages never skip rows, so the first row seen per match here IS
+  // that match's latest row — derived locally alongside the server's flag.
+  const latestGameRow = new Map<string, number>();
+  for (const row of visibleRows) {
+    if (row.game && !latestGameRow.has(row.game.matchId)) {
+      latestGameRow.set(row.game.matchId, row.id);
+    }
+  }
   return {
-    messages: visibleRows.map(toMessage).reverse().flatMap(splitBurst),
+    messages: visibleRows
+      .map((row) =>
+        toMessage(row, row.game !== null && latestGameRow.get(row.game.matchId) === row.id),
+      )
+      .reverse()
+      .flatMap(splitBurst),
     composerAd: activeComposerAd(rows),
   };
 }

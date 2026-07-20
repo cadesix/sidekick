@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { type Database, attachments, checkIns, conversationSummaries, messages } from "@sidekick/db";
 import type { AttachmentKind, AttachmentStatus } from "./attachments";
+import type { Reaction } from "./schemas";
 
 export type SummaryRow = {
   id: number;
@@ -62,6 +63,8 @@ export type TailMessage = {
   toolCalls: unknown;
   /** Attachments carried by this message, oldest-first (09). */
   attachments: TailAttachment[];
+  /** Tapback reactions on this message, from the user and/or the sidekick. */
+  reactions: Reaction[];
 };
 
 async function attachmentsForMessages(
@@ -138,6 +141,7 @@ export async function tailMessages(
       content: messages.content,
       tokenEstimate: messages.tokenEstimate,
       toolCalls: messages.toolCalls,
+      reactions: messages.reactions,
       openerCheckInId: checkIns.id,
     })
     .from(messages)
@@ -163,6 +167,7 @@ export async function tailMessages(
     tokenEstimate: row.tokenEstimate,
     isCheckinOpener: row.openerCheckInId !== null,
     toolCalls: row.toolCalls,
+    reactions: row.reactions,
     attachments: byMessage.get(row.id) ?? [],
   }));
 }

@@ -16,7 +16,27 @@ export interface Reaction {
 
 export type MessageStatus = "sending" | "delivered" | "read";
 
-export type MessageKind = "text" | "audio";
+export type MessageKind = "text" | "audio" | "game";
+
+export type GameType = "eight_ball" | "cup_pong";
+
+export interface GameCardSummary {
+	ballsLeft?: { user: number; sidekick: number };
+	group?: "solids" | "stripes";
+	cupsLeft?: { user: number; sidekick: number };
+}
+
+/** The live match payload joined onto a game turn-card row (plan 21). */
+export interface GameCard {
+	matchId: string;
+	gameType: GameType;
+	status: string;
+	yourMove: boolean;
+	winner: "user" | "sidekick" | null;
+	/** Only the match's newest row renders the full card; older rows collapse. */
+	latest: boolean;
+	summary: GameCardSummary;
+}
 
 export interface AudioAttachment {
 	uri: string;
@@ -50,6 +70,7 @@ export interface Message {
 	audio?: AudioAttachment;
 	images: ImageAttachment[];
 	file?: FileAttachment;
+	game?: GameCard;
 }
 
 export interface Thread {

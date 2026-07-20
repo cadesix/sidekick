@@ -296,6 +296,13 @@ export const messages = pgTable(
     reactions: jsonb("reactions").$type<MessageReaction[]>().notNull().default([]),
     toolCalls: jsonb("tool_calls"),
     adUnitId: text("ad_unit_id"),
+    /**
+     * The mini-game match this row is a turn card for (plan 21). One row per
+     * turn (user turn → role 'user', sidekick turn → role 'assistant', empty
+     * content); the history join adds the live match payload and marks the
+     * match's latest row. Mirrors the `adUnitId` precedent above.
+     */
+    gameMatchId: uuid("game_match_id").references(() => gameMatches.id),
     tokenEstimate: integer("token_estimate").notNull(),
     promptVersion: text("prompt_version"),
     model: text("model"),
@@ -800,3 +807,36 @@ export const sessionNotes = pgTable("session_notes", {
   sessionId: text("session_id"),
   createdAt: now(),
 });
+
+/**
+ * A chat mini-game match (plan 21): the generic "match" primitive both 8 Ball
+ * and Cup Pong ride on. `state` is the engine snapshot (schema owned by
+ * `@sidekick/core`, validated at the router); `seed` drives the deterministic
+ * sidekick AI + replay; `turnNo` is the count of completed turns (the client's
+ * `turnNo` guard). The lifetime record is `count(*) group by winner` over this
+ * table per `gameType` — no separate stats table.
+ */
+export const gameMatches = pgTable(
+  "game_matches",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id),
+    gameType: text("game_type").notNull(),
+    initiator: text("initiator").notNull(),
+    status: text("status").notNull().default("active"),
+    state: jsonb("state").notNull(),
+    turnNo: integer("turn_no").notNull().default(0),
+    seed: integer("seed").notNull(),
+    winner: text("winner"),
+    highlights: jsonb("highlights").notNull().default([]),
+    createdAt: now(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true, mode: "date" }),
+  },
+  (t) => [index("game_matches_user_type_status_idx").on(t.userId, t.gameType, t.status)],
+);

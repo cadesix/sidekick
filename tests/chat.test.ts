@@ -25,7 +25,9 @@ test("chat.send persists the user message and the scripted assistant reply", asy
   const outcome = await caller.chat.send({ conversationId, text: "hi sidekick" });
 
   expect(outcome.message.role).toBe("assistant");
-  expect(outcome.message.content).toBe("hey! glad you texted 💛");
+  // The style controller's multi-send splits a two-sentence reply into separate
+  // bubbles, persisted as "\n"-delimited content (the client re-splits on "\n").
+  expect(outcome.message.content).toBe("hey!\nglad you texted 💛");
   expect(outcome.message.promptVersion).toBe(PERSONA_PROMPT.version);
   expect(outcome.message.model).toBe("mock-model-id");
   expect(outcome.message.tokensIn).toBe(10);

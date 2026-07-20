@@ -33,6 +33,7 @@ import {
 	TIME_REVEAL_WIDTH,
 	type BubbleLayout,
 } from "../components/MessageRow";
+import { GamePickerSheet } from "../components/GamePickerSheet";
 import { type DrawerAction, PlusDrawer } from "../components/PlusDrawer";
 import { ReplyChain } from "../components/ReplyChain";
 import { TapbackOverlay } from "../components/TapbackOverlay";
@@ -62,13 +63,20 @@ interface OverlayState {
  * stack is pinned to the drawer bottom and rides the keyboard via the
  * keyboard-controller translate.
  */
-export function ChatScreen({ onClose }: { onClose: () => void }) {
+export function ChatScreen({
+	onClose,
+	onOpenGame,
+}: {
+	onClose: () => void;
+	onOpenGame: (matchId: string) => void;
+}) {
 	const insets = useSafeAreaInsets();
 	const { thread, messages, composerAd, typing, send, addReaction, removeMessage } =
 		useSidekickChat();
 
 	const [replyTo, setReplyTo] = useState<Message | undefined>(undefined);
 	const [plusOpen, setPlusOpen] = useState(false);
+	const [gamePickerOpen, setGamePickerOpen] = useState(false);
 	const [recording, setRecording] = useState(false);
 	const attachments = usePendingAttachments();
 	const [overlay, setOverlay] = useState<OverlayState | null>(null);
@@ -207,6 +215,10 @@ export function ChatScreen({ onClose }: { onClose: () => void }) {
 
 	const handleDrawerAction = (action: DrawerAction) => {
 		setPlusOpen(false);
+		if (action === "games") {
+			setGamePickerOpen(true);
+			return;
+		}
 		if (action === "audio") {
 			setRecording(true);
 			return;
@@ -276,6 +288,7 @@ export function ChatScreen({ onClose }: { onClose: () => void }) {
 				revealX={revealX}
 				onLongPress={handleLongPress}
 				onReply={setReplyTo}
+				onOpenGame={onOpenGame}
 				hidden={overlay?.message.id === item.message.id}
 				animateEntry={
 					item.message.createdAt > mountedAt.current &&
@@ -404,6 +417,15 @@ export function ChatScreen({ onClose }: { onClose: () => void }) {
 					</View>
 				</Animated.View>
 			</Animated.View>
+
+			<GamePickerSheet
+				visible={gamePickerOpen}
+				onClose={() => setGamePickerOpen(false)}
+				onOpenMatch={(matchId) => {
+					setGamePickerOpen(false);
+					onOpenGame(matchId);
+				}}
+			/>
 
 			{overlay ? (
 				<TapbackOverlay

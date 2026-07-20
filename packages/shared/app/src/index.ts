@@ -4,6 +4,7 @@ export * from "./users";
 export * from "./context";
 export * from "./conversation";
 export * from "./deep-talks";
+export * from "./games";
 export * from "./memory/dates";
 export * from "./memory/ops";
 export * from "./memory/render";

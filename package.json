@@ -12,6 +12,7 @@
 		"dev:web": "pnpm --filter @sidekick/expo web",
 		"dev:expo": "pnpm --filter @sidekick/expo start",
 		"dev:server": "pnpm --filter @sidekick/server dev",
+		"dev:init": "docker compose up -d && pnpm db:migrate",
 		"build": "pnpm --filter @sidekick/expo web:export",
 		"typecheck": "pnpm -r run typecheck && tsc -p tests",
 		"test": "vitest run",

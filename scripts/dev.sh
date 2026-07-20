@@ -28,11 +28,14 @@ if [ "$FORCE" = false ]; then
   fi
 fi
 
-echo "Starting postgres (sidekick-pg)..."
-docker start sidekick-pg >/dev/null
+echo "Starting postgres..."
+docker compose --project-directory "$REPO_ROOT" up -d >/dev/null
+
+until docker compose --project-directory "$REPO_ROOT" exec -T postgres pg_isready -U sidekick -d sidekick >/dev/null 2>&1; do
+  sleep 1
+done
 
 echo "Running migrations..."
-export "$(grep '^DATABASE_URL=' "$REPO_ROOT/packages/server/.env")"
 pnpm --dir "$REPO_ROOT" --filter @sidekick/db migrate || echo "  ⚠ Migrations failed, continuing anyway..."
 
 echo "Starting servers..."

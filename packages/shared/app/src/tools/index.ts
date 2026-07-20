@@ -3,9 +3,11 @@ import { checkinsTools } from "./checkins";
 import { DEEP_TALK_CHAT_GUIDANCE, deepTalksTools } from "./deep-talks";
 import { documentsTools } from "./documents";
 import { FOCUS_CHAT_GUIDANCE, focusTools } from "./focus";
+import { GAMES_CHAT_GUIDANCE, gamesTools } from "./games";
 import { HEALTH_CHAT_GUIDANCE, healthTools } from "./health";
 import { memoryTools } from "./memory";
 import { musicTools } from "./music";
+import { REACTION_CHAT_GUIDANCE, reactionsTools } from "./reactions";
 import { remindersTools } from "./reminders";
 import { SEARCH_CHAT_GUIDANCE, buildSearchProviderTools, searchTools } from "./search";
 import { CHECKIN_CHAT_GUIDANCE } from "../prompts/checkin-guidance";
@@ -15,6 +17,7 @@ import type { Capability, SidekickTool } from "./types";
 export * from "./types";
 export * from "./registry";
 export * from "./search";
+export { GAMES_CHAT_GUIDANCE } from "./games";
 export { onboardingTools, habitTools } from "./onboarding";
 
 /**
@@ -26,6 +29,7 @@ export { onboardingTools, habitTools } from "./onboarding";
 export const capabilities: Capability[] = [
   { name: "checkins", tools: checkinsTools, promptGuidance: CHECKIN_CHAT_GUIDANCE },
   { name: "memory", tools: memoryTools },
+  { name: "reactions", tools: reactionsTools, promptGuidance: REACTION_CHAT_GUIDANCE },
   { name: "reminders", tools: remindersTools, promptGuidance: REMINDER_CHAT_GUIDANCE },
   { name: "attachments", tools: attachmentsTools, promptGuidance: ATTACHMENT_CHAT_GUIDANCE },
   { name: "documents", tools: documentsTools },
@@ -39,6 +43,7 @@ export const capabilities: Capability[] = [
   { name: "music", tools: musicTools },
   { name: "focus", tools: focusTools, promptGuidance: FOCUS_CHAT_GUIDANCE },
   { name: "deep-talks", tools: deepTalksTools, promptGuidance: DEEP_TALK_CHAT_GUIDANCE },
+  { name: "games", tools: gamesTools, promptGuidance: GAMES_CHAT_GUIDANCE },
 ];
 
 /**
