@@ -11,6 +11,7 @@ import 'react-native-reanimated';
 
 import { AuthGate } from '~/lib/auth';
 import { NotificationObserver } from '~/lib/notifications/observer';
+import { PostHogIdentify, PostHogProvider } from '~/lib/posthog';
 import { queryClient } from '~/lib/query-client';
 import { useForegroundSync } from '~/lib/useForegroundSync';
 
@@ -19,6 +20,7 @@ function ConnectedApp() {
 
   return (
     <>
+      <PostHogIdentify />
       <NotificationObserver />
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#fff' } }}>
@@ -49,9 +51,11 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <KeyboardProvider>
           <QueryClientProvider client={queryClient}>
-            <AuthGate>
-              <ConnectedApp />
-            </AuthGate>
+            <PostHogProvider>
+              <AuthGate>
+                <ConnectedApp />
+              </AuthGate>
+            </PostHogProvider>
           </QueryClientProvider>
         </KeyboardProvider>
       </SafeAreaProvider>

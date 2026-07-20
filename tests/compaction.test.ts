@@ -32,6 +32,7 @@ function tail(rows: Partial<TailMessage>[]): TailMessage[] {
     isCheckinOpener: row.isCheckinOpener ?? false,
     toolCalls: row.toolCalls ?? null,
     attachments: row.attachments ?? [],
+    reactions: row.reactions ?? [],
   }));
 }
 

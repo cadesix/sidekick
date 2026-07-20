@@ -14,3 +14,8 @@ export * from './daily-box';
 export * from './shop';
 export * from './sessions';
 export * from './star-chat';
+export * from './games/types';
+export * from './games/ai';
+// the two engines share the runSidekickTurn contract, so they export namespaced
+export * as eightBall from './games/eight-ball';
+export * as cupPong from './games/cup-pong';

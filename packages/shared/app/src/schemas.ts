@@ -1,4 +1,12 @@
 import { z } from "zod";
+import {
+  cupPongFlickSchema,
+  cupPongStateSchema,
+  eightBallShotSchema,
+  eightBallStateSchema,
+  gameEventsSchema,
+  gameTypeSchema,
+} from "@sidekick/core";
 import { attachmentKindSchema } from "./attachments";
 import { memoryKindSchema } from "./memory/ops";
 
@@ -323,3 +331,28 @@ export const sessionCompleteInput = z.object({
   extraction: sessionExtractionSchema,
 });
 export type SessionCompleteInput = z.infer<typeof sessionCompleteInput>;
+
+/**
+ * Chat mini-game inputs (plan 21). Shot and state shapes are reused from
+ * `@sidekick/core` — one procedure serves both games, so the boundary accepts a
+ * union and the games router re-validates against the exact schema for the
+ * match's `gameType`.
+ */
+export const gameCreateInput = z.object({ gameType: gameTypeSchema });
+export type GameCreateInput = z.infer<typeof gameCreateInput>;
+
+export const gameMatchRefInput = z.object({ matchId: z.string().uuid() });
+export type GameMatchRefInput = z.infer<typeof gameMatchRefInput>;
+
+const gameShotSchema = z.union([eightBallShotSchema, cupPongFlickSchema]);
+const gameStateSchema = z.union([eightBallStateSchema, cupPongStateSchema]);
+
+/** One completed user turn: the shot list, the resulting settled state, its events. */
+export const gameTurnInput = z.object({
+  matchId: z.string().uuid(),
+  turnNo: z.number().int().positive(),
+  shots: z.array(gameShotSchema).max(40),
+  state: gameStateSchema,
+  events: gameEventsSchema,
+});
+export type GameTurnInput = z.infer<typeof gameTurnInput>;
