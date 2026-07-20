@@ -10,6 +10,11 @@
 # renders from packages/expo/assets/ (the synced copy that cosmetics-manifest.ts
 # require()s), so the top-level assets/ tree is authoring input, not build input.
 
+# The repo's own history. Without .easignore, EAS archives via git and .git is
+# implicitly excluded; with .easignore it tars the directory instead, so this
+# has to be named explicitly or the whole object database (~229MB) ships.
+.git/
+
 # Authoring + tooling the build never reads
 /assets/
 /tools/
@@ -25,6 +30,7 @@ node_modules
 # Build output / caches
 dist
 .vite
+.next
 web-build/
 *.tsbuildinfo
 .expo/
@@ -36,9 +42,13 @@ __pycache__/
 /packages/expo/android
 .kotlin/
 
-# targets/ is re-copied from react-native-device-activity on every prebuild
-/packages/expo/targets/*
-!/packages/expo/targets/NotificationService/
+# NOTE: packages/expo/targets/ is deliberately NOT excluded. NotificationService
+# is hand-written source that only lives there, and re-including one child of an
+# excluded directory ("targets/*" + "!targets/NotificationService/**") is fragile
+# — getting it wrong drops the target and the build fails late, in
+# CONFIGURE_XCODE_PROJECT, with "Could not find target in project.pbxproj". The
+# other three targets are re-copied by react-native-device-activity on prebuild
+# and total ~256K, so uploading them costs nothing.
 
 # Secrets + local env (build-time env comes from eas.json / EAS env vars)
 .env
