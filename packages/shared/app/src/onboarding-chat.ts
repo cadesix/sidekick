@@ -17,9 +17,12 @@ export const ONBOARDING_CHAT_PROMPT = { version: "onboarding-chat-v1" } as const
 
 /** The instruction `startOnboardingChat` renders the intro message from. */
 export const ONBOARDING_INTRO_INSTRUCTION =
-  "the user just finished their personality quiz, met you, and named you — this is your very first message ever. greet them, react to their personality result once (warmly, like it delights you), and start planning their first goal per your current step.";
+  "this is your very first message to the user ever — they just met you and named you. greet them warmly. if you have their personality result, react to it once (warmly, like it delights you). then get started on your current step (see the setup chat context) — keep it to 1-2 short lowercase sentences.";
 
 export type OnboardingBeat =
+  // Freeform first-habit discovery: no goal chosen yet, so the chat uncovers a
+  // pain point, lands one habit, shapes a cadence, and commits it.
+  | { type: "discover_habit" }
   | { type: "plan_goal"; slug: string }
   | { type: "reminder" }
   | { type: "wrap_up" };
@@ -59,6 +62,11 @@ export function cadencePhrase(cadence: Cadence | undefined): string | null {
 }
 
 function deriveBeat(goalStates: OnboardingGoalState[], reminderTime: string | null): OnboardingBeat {
+  // No goal at all → freeform discovery (they didn't pick from a catalog). The
+  // commit_freeform_goal tool creates the first goal, which advances the beat.
+  if (goalStates.length === 0) {
+    return { type: "discover_habit" };
+  }
   const unplanned = goalStates.find((g) => !g.planned);
   if (unplanned) {
     return { type: "plan_goal", slug: unplanned.slug };
@@ -160,6 +168,9 @@ options for "${label}":
 ${options}`;
 }
 
+const DISCOVER_HABIT_INSTRUCTION =
+  'they haven\'t picked a goal yet — you\'re finding their first habit together, ONE thing at a time. first, warmly uncover what\'s going on for them and what they\'d want to change (a life transition, loneliness, getting fit, stress, focus, whatever it is) — ask, listen, react. then land on ONE concrete habit they\'d actually do. then shape it into a realistic rhythm: offer a specific version and a cadence (e.g. "a 20 minute walk" "3× a week", or "read before bed" "every night"). keep it doable, never ridiculous like "run 50 miles a day". once you BOTH have a clear habit AND a cadence, call commit_freeform_goal with a short label and the cadence — silently, never announce it — then move straight on to setting a daily check-in time.';
+
 const REMINDER_INSTRUCTION =
   'every goal has a plan now — hype that up in one line, then ask when they want their daily check-in text (a time of day). when they pick one, call set_reminder_time with the 24-hour "HH:MM" — silently — then move on.';
 
@@ -167,6 +178,9 @@ const WRAP_UP_INSTRUCTION =
   "everything's set. ask if you can send them notifications so your check-ins actually reach them — soft and friendly, one line (the app shows the real permission dialog; you never need a tool for this). once they've answered, wrap up warmly in one or two lines and tell them you're ready when they are.";
 
 function beatInstruction(beat: OnboardingBeat): string {
+  if (beat.type === "discover_habit") {
+    return DISCOVER_HABIT_INSTRUCTION;
+  }
   if (beat.type === "plan_goal") {
     return planGoalInstruction(beat.slug);
   }
@@ -183,6 +197,9 @@ function beatInstruction(beat: OnboardingBeat): string {
  */
 function remainingSteps(state: OnboardingChatState): string[] {
   const steps: string[] = [];
+  if (state.beat.type === "discover_habit") {
+    steps.push("pick a daily check-in time");
+  }
   if (state.beat.type === "plan_goal") {
     const currentSlug = state.beat.slug;
     let past = false;
@@ -221,11 +238,14 @@ export function renderOnboardingBlock(state: OnboardingChatState): string {
     remaining.length > 0
       ? `\nafter the current step is committed, flow straight into the next one in the same message. steps still ahead: ${remaining.join(" → ")}.`
       : "";
+  const goalsSection =
+    state.goals.length > 0
+      ? `their chosen goals:\n${goalLines}`
+      : "they haven't chosen a goal yet — you'll find their first habit together.";
   return `=== ONBOARDING SETUP CHAT ===
-this is ${name}'s very first conversation with you, right after their quiz. your job: turn each chosen goal into a concrete plan, set a daily check-in time, and get them to allow notifications. keep every message to 1–2 short lowercase sentences and ask about ONE thing at a time.
+this is ${name}'s very first conversation with you. your job: help them land their first habit and turn it into a concrete plan, set a daily check-in time, and get them to allow notifications. keep every message to 1–2 short lowercase sentences and ask about ONE thing at a time.
 ${personality}.
-their chosen goals:
-${goalLines}
+${goalsSection}
 current step: ${beatInstruction(state.beat)}${remainingLine}
 === END ===`;
 }
@@ -236,6 +256,9 @@ current step: ${beatInstruction(state.beat)}${remainingLine}
  * rendered as reply chips), and used as-is by clients that want static chips.
  */
 export function beatChipHints(state: OnboardingChatState): string[] {
+  if (state.beat.type === "discover_habit") {
+    return []; // freeform — let the suggested-replies generator produce contextual chips
+  }
   if (state.beat.type === "plan_goal") {
     const definition = getGoalDefinition(state.beat.slug);
     return (definition?.actionItems ?? []).map((item) => item.label.toLowerCase());

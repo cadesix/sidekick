@@ -9,6 +9,7 @@ import { BOND_MAX, BOND_MIN } from '@sidekick/core';
 import {
   devAdjustCoins,
   devResetDailyBox,
+  devResetOnboarding,
   devResetProfile,
   devResetSessions,
   devSetBond,
@@ -98,7 +99,9 @@ export function DevPanel({ onJumpToReveal }: { onJumpToReveal?: () => void }) {
   };
   // wipe the onboarding gate so the 3D flow runs again from welcome
   const replayOnboarding = () => {
-    resetOnboarding()
+    // Wipe BOTH the local gate and the server onboarding chat + goals, so the
+    // funnel truly re-runs the guided-habit flow instead of resuming a finished one.
+    Promise.all([resetOnboarding(), devResetOnboarding().catch(() => {})])
       .then(() => refreshOnboarding(queryClient))
       .finally(() => router.replace('/onboarding'));
   };

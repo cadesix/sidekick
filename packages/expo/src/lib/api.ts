@@ -819,3 +819,8 @@ export function devResetProfile(): Promise<{ stateVersion: number; coins: number
 export function devResetDailyBox(): Promise<{ stateVersion: number; coins: number }> {
   return trpc.dev.resetDailyBox.mutate();
 }
+
+/** DEV: wipe the onboarding chat + goals so the funnel re-runs fresh. */
+export function devResetOnboarding(): Promise<{ ok: true }> {
+  return trpc.dev.resetOnboarding.mutate();
+}

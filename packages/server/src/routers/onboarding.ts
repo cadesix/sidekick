@@ -49,7 +49,9 @@ const completeInput = z.object({
  */
 export const onboardingRouter = router({
   startChat: protectedProcedure
-    .input(z.object({ goalSlugs: z.array(z.string().min(1)).min(1) }))
+    // Empty = the freeform first-habit flow (no catalog goal chosen); the chat
+    // discovers and commits the habit itself.
+    .input(z.object({ goalSlugs: z.array(z.string().min(1)) }))
     .mutation(({ ctx, input }) =>
       startOnboardingChat(ctx.db, ctx.model, ctx.userId, input.goalSlugs),
     ),
