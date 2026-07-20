@@ -89,7 +89,12 @@ export function GoalsSheet({
   };
 
   const progress = useSharedValue(0);
-  progress.value = withTiming(open ? 1 : 0, { duration: 300 });
+  // Drive the animation from an effect, NOT the render body: writing a shared
+  // value during render triggers a synchronous re-render on the New Architecture
+  // (Fabric) → an infinite render loop (which destabilized the whole app on device).
+  useEffect(() => {
+    progress.value = withTiming(open ? 1 : 0, { duration: 300 });
+  }, [open, progress]);
   const sheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: (1 - progress.value) * SHEET_H }],
     // opacity-gate so a closed sheet never peeks above the screen edge
