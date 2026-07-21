@@ -91,6 +91,10 @@ export type SidekickController = {
   setStarFace: (c: StarFaceConfig) => void;
   // swap the world environment (map travel): 'meadow' | biome id
   setEnvironment: (id: EnvironmentId) => void;
+  // whether the head-tracked overlay (speech bubble / star button) is on screen.
+  // When false the per-frame head projection + shared-value writes are skipped —
+  // pure waste while a full surface (chat/shop/map) covers the character.
+  setOverheadActive: (v: boolean) => void;
   // daily loot chest: spawn/hide (tier or null) + trigger the open animation
   setDailyBox: (tier: BoxTier | null) => void;
   popDailyBox: () => void;
@@ -110,7 +114,7 @@ export type SidekickController = {
 // Bump on every edit — logged at context creation so the debug loop can verify
 // the bundle it launched is actually the code it just changed (Metro sometimes
 // serves stale bundles; see scripts/sim-snap.sh).
-export const BUILD_MARKER = 'build-054-cam-clamp';
+export const BUILD_MARKER = 'build-056-fps-probe';
 
 // Lowest the orbiting eye may drop, in world Y. The meadow surface is ~0; this
 // keeps the camera just above it so a downward drag never reveals the ground's
@@ -185,6 +189,22 @@ export function createSidekickRenderer(
     // (z<1 = in front of camera). Drives head-tracked overlays (bond badge,
     // speech bubble); the canvas converts NDC→layout px. Web: overheadRef.
     onOverhead?: (x: number, y: number, visible: boolean) => void;
+    // DEV: ~2x/sec frame-timing report — avg fps, worst frame interval, the worst
+    // synchronous time spent INSIDE the render loop (JS thread), and the scene's
+    // GL draw calls + triangles. worstJs≈worstMs → the stall is our render code;
+    // worstJs small but worstMs large → it's outside the loop (React/GC/GPU).
+    onFrameStats?: (s: {
+      fps: number;
+      worstMs: number;
+      worstJsMs: number;
+      calls: number;
+      tris: number;
+      geometries: number;
+      textures: number;
+      programs: number;
+      skipped: number;
+      idle: number;
+    }) => void;
   },
 ): SidekickController {
   console.log(
@@ -507,6 +527,9 @@ export function createSidekickRenderer(
   let studio = !!opts.studio;
   let cosmos = !!opts.cosmos;
   let lookUp = false; // onboarding notif beat: tilt the head up toward the notice
+  // head-tracked overlay visible? gates the per-frame head projection below.
+  // Starts true (home shows the speech bubble); flipped off while a surface covers it.
+  let overheadActive = true;
   let disposed = false;
   // onboarding cinematics (no-ops unless entrance/jumpIn/shake are used): the
   // character launches from HIDDEN_Y with an eased arc, the camera shakes on
@@ -735,7 +758,30 @@ export function createSidekickRenderer(
   let studioT = 0; // eased meadow→studio blend (0 meadow, 1 studio)
   let cosmosT = 0; // eased meadow→night-sky blend (guided session)
   let lookUpT = 0; // eased head look-up (0 neutral, 1 fully up)
-  let camRate = 0.07; // per-frame camera ease toward framing (lower = slower/gentler)
+  let camRate = 0.07; // camera ease toward framing at 60fps (lower = slower/gentler)
+  // last frame's clock time, for a frame-rate-independent camera ease: dropped
+  // frames make the per-frame lerp advance too little and the move rubber-bands,
+  // so we scale the ease by how much real time actually passed.
+  let lastFrameNow = -1;
+  // DEV frame-timing probe: accumulate over a ~0.5s window and report fps + the
+  // single worst frame interval, so the on-screen overlay can show whether the
+  // JS thread is dropping frames (and confirm this bundle is actually running).
+  let statsSince = -1;
+  let statsFrames = 0;
+  let statsWorstMs = 0;
+  let statsWorstJsMs = 0; // worst synchronous time spent inside animate() itself
+  let statsSkipped = 0; // frames the scheduler skipped this window (idle throttle)
+  // --- render scheduler ---------------------------------------------------
+  // The scene is NEVER visually static (the mascot breathes/sways every frame),
+  // so we can't render-on-demand — but when nothing is *moving* (camera settled,
+  // no transitions, no recent touch) we throttle to 30fps. That roughly halves
+  // continuous GPU+JS work → the biggest lever on heat AND on GC frequency (fewer
+  // frames = less per-frame allocation churn). Full 60fps returns the instant
+  // anything moves. dt-based eases (above) already stay correct across the skip.
+  const IDLE_DT = 1 / 30; // idle frame cap (~30fps)
+  let lastRenderNow = -1; // clock time of the last frame we actually rendered
+  let sceneIdle = false; // was the scene idle at the end of the last rendered frame?
+  let lastPointerNow = -1; // clock time of the last pointer interaction
   let raf = 0;
   let snapFrame = 0;
   const studioMat = studioSphere.material as THREE.MeshBasicMaterial;
@@ -834,7 +880,55 @@ export function createSidekickRenderer(
   const animate = () => {
     if (disposed) return;
     raf = requestAnimationFrame(animate);
+    // wall-clock at the start of this frame's synchronous JS work (Date.now is
+    // fine at ms resolution for spotting a 100ms+ stall); compared at endFrameEXP
+    const jsT0 = opts.onFrameStats ? Date.now() : 0;
     const now = clock.getElapsedTime();
+    // Render scheduler: when the scene was idle at the end of the last rendered
+    // frame, cap to ~30fps by skipping ticks. rAF is already re-queued above, so
+    // a skipped tick just does no work. `lastFrameNow` isn't touched on a skip,
+    // so the dt-based eases below still measure the real (larger) gap.
+    if (sceneIdle && lastRenderNow >= 0 && now - lastRenderNow < IDLE_DT) {
+      statsSkipped++;
+      return;
+    }
+    lastRenderNow = now;
+    // Real seconds since the last frame, expressed in 60fps-frame units, so the
+    // camera ease below covers the same ground per unit of *time* regardless of
+    // frame rate. Clamp so a long stall (backgrounded, GC, a heavy React commit)
+    // catches up like ~15fps rather than snapping in one giant jump.
+    const dtFrames =
+      lastFrameNow < 0 ? 1 : Math.min(4, Math.max(0, (now - lastFrameNow) * 60));
+    // DEV probe: track fps + worst frame interval over a rolling ~0.5s window
+    if (opts.onFrameStats) {
+      const frameMs = lastFrameNow < 0 ? 0 : (now - lastFrameNow) * 1000;
+      if (frameMs > statsWorstMs) statsWorstMs = frameMs;
+      statsFrames++;
+      if (statsSince < 0) statsSince = now;
+      else if (now - statsSince >= 0.5) {
+        opts.onFrameStats({
+          fps: statsFrames / (now - statsSince),
+          worstMs: statsWorstMs,
+          worstJsMs: statsWorstJsMs,
+          calls: renderer.info.render.calls, // GL draw calls last frame
+          tris: renderer.info.render.triangles,
+          // resource counts — if these climb over a session it's a GL leak (the
+          // "slower the longer it's open" symptom): geometries/textures/programs
+          // created on remounts/cosmetic/biome swaps but never disposed.
+          geometries: renderer.info.memory.geometries,
+          textures: renderer.info.memory.textures,
+          programs: renderer.info.programs?.length ?? 0,
+          skipped: statsSkipped, // scheduler-throttled frames this window
+          idle: sceneIdle ? 1 : 0, // was the scene idle at report time?
+        });
+        statsSince = now;
+        statsFrames = 0;
+        statsWorstMs = 0;
+        statsWorstJsMs = 0;
+        statsSkipped = 0;
+      }
+    }
+    lastFrameNow = now;
     const fr = interact.update(now);
 
     // swap the world environment when travel changes it (masked by the map cover)
@@ -980,12 +1074,16 @@ export function createSidekickRenderer(
     // ease camera toward the current framing (smooth zoom on chat open). The
     // guided-session pan up to the sky uses a slower rate so the tilt reads as a
     // deliberate, felt move rather than a snap.
+    // Frame-rate-independent ease: the old per-frame `k` is the 60fps rate, so
+    // convert it to an equivalent alpha for however much time this frame spanned.
+    // At 60fps camK stays camK; at 30fps it ~doubles, keeping the wall-clock feel.
     const camK = cosmos ? 0.032 : camRate;
-    camBasePos.lerp(wantPos.fromArray(framing.pos), camK);
-    camBaseTarget.lerp(wantTgt.fromArray(framing.target), camK);
+    const camAlpha = 1 - Math.pow(1 - camK, dtFrames);
+    camBasePos.lerp(wantPos.fromArray(framing.pos), camAlpha);
+    camBaseTarget.lerp(wantTgt.fromArray(framing.target), camAlpha);
     const wantFov = framing.fov ?? camera.fov;
     if (Math.abs(wantFov - camera.fov) > 0.02) {
-      camera.fov += (wantFov - camera.fov) * camK;
+      camera.fov += (wantFov - camera.fov) * camAlpha;
       camera.updateProjectionMatrix();
     }
     // springy orbit offset around the framing; snaps back on release
@@ -1099,8 +1197,10 @@ export function createSidekickRenderer(
     }
     // pin head-tracked overlays (bond badge / speech bubble): project the head
     // bone (lifted +0.55) to NDC; the canvas maps NDC→layout px. Web does the
-    // same via overheadRef (sidekick-canvas.tsx).
-    if (opts.onOverhead && ready && bones.head) {
+    // same via overheadRef (sidekick-canvas.tsx). Skipped while a full surface
+    // hides the overlay (overheadActive=false) — the projection + three shared-
+    // value writes run 60x/sec and are pure waste when nothing reads them.
+    if (opts.onOverhead && overheadActive && ready && bones.head) {
       bones.head.getWorldPosition(overheadV);
       overheadV.y += 0.55;
       overheadV.project(camera);
@@ -1114,7 +1214,33 @@ export function createSidekickRenderer(
     if (__DEV__ && ++snapFrame % 600 === 0) {
       console.log('[sidekick] heartbeat frame', snapFrame);
     }
+
+    // Render scheduler: decide if the scene is still moving. Err toward "busy"
+    // (render every frame) — only throttle when we're confident nothing visible
+    // is in motion. `wantPos`/`wantTgt` already hold this frame's camera target.
+    const camMoving =
+      camBasePos.distanceToSquared(wantPos) > 1e-5 ||
+      camBaseTarget.distanceToSquared(wantTgt) > 1e-5 ||
+      Math.abs(camera.fov - (framing.fov ?? camera.fov)) > 0.05;
+    const transitionsSettled =
+      studioT === (studio ? 1 : 0) &&
+      cosmosT === (cosmos ? 1 : 0) &&
+      lookUpT === (lookUp ? 1 : 0) &&
+      Math.abs(phoneBlend - (holdingPhone ? 1 : 0)) < 0.02;
+    const recentPointer = lastPointerNow >= 0 && now - lastPointerNow < 0.9;
+    sceneIdle =
+      !camMoving &&
+      transitionsSettled &&
+      jump === null &&
+      shake === null &&
+      boxPop < 0 &&
+      !recentPointer;
+
     gl.endFrameEXP();
+    if (jsT0) {
+      const jsMs = Date.now() - jsT0;
+      if (jsMs > statsWorstJsMs) statsWorstJsMs = jsMs;
+    }
   };
   animate();
 
@@ -1143,6 +1269,9 @@ export function createSidekickRenderer(
     setStarFace: (c) => starFace.setConfig(c),
     setEnvironment: (id) => {
       environment = id;
+    },
+    setOverheadActive: (v) => {
+      overheadActive = v;
     },
     setDailyBox: (tier) => {
       dailyBox = tier;
@@ -1202,9 +1331,22 @@ export function createSidekickRenderer(
       bloomPass.radius = next.bloomRadius;
       bloomPass.threshold = next.bloomThreshold;
     },
-    pointerDown: interact.down,
-    pointerMove: interact.move,
-    pointerUp: interact.up,
+    // Wake the render loop to 60fps immediately on any touch (and hold it awake
+    // for the interaction + spring-settle window via lastPointerNow), so a drag
+    // never feels like it's running at the idle 30fps cap.
+    pointerDown: (x, y) => {
+      lastPointerNow = clock.getElapsedTime();
+      sceneIdle = false;
+      interact.down(x, y);
+    },
+    pointerMove: (x, y) => {
+      lastPointerNow = clock.getElapsedTime();
+      interact.move(x, y);
+    },
+    pointerUp: (x, y) => {
+      lastPointerNow = clock.getElapsedTime();
+      interact.up(x, y);
+    },
     dispose: () => {
       disposed = true;
       cancelAnimationFrame(raf);

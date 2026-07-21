@@ -1,4 +1,5 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
+import { appendFile } from "node:fs/promises";
 import * as Sentry from "@sentry/node";
 import { trpcServer } from "@hono/trpc-server";
 import { createMiddleware } from "hono/factory";
@@ -486,6 +487,27 @@ export function buildApp(services: Services) {
    * persisted (no DB writes, no `buildContextView`, no ads). Double-gated:
    * NODE_ENV=development + an authenticated user.
    */
+  /**
+   * DEV-ONLY perf telemetry sink. The on-device app can't be profiled from the
+   * dev host directly, so the client POSTs batched frame timings + timing marks
+   * here and we append them as JSONL to a file the dev can tail off-device. No
+   * auth (keeps the client poster fire-and-forget + low overhead); dev-gated.
+   */
+  app.post("/dev/perf", async (c) => {
+    if (process.env.NODE_ENV !== "development") {
+      return c.json({ error: "not found" }, 404);
+    }
+    try {
+      const body = (await c.req.json()) as { batch?: unknown[] };
+      const samples = Array.isArray(body?.batch) ? body.batch : [body];
+      const lines = samples.map((s) => JSON.stringify(s)).join("\n") + "\n";
+      await appendFile("/tmp/sidekick-perf.jsonl", lines);
+    } catch {
+      // telemetry is best-effort — never fail the request
+    }
+    return c.body(null, 204);
+  });
+
   app.post("/dev/chat-lab", async (c) => {
     if (process.env.NODE_ENV !== "development") {
       return c.json({ error: "not found" }, 404);

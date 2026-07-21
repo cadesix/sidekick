@@ -19,6 +19,7 @@ import {
 import { patchSnapshot, SNAPSHOT_QUERY_KEY, type SnapshotPatch, useSnapshot } from '../lib/state';
 import { refreshOnboarding, resetOnboarding } from '../lib/onboarding';
 import { useStarChat } from '../store/star-chat';
+import { TIMES, type TimeOfDay } from '../three/settings';
 
 // DEV-only user-state panel — the RN counterpart of the web app's dev chip
 // (packages/web/src/components/dev-panel.tsx). A tiny "DEV" chip pinned top-LEFT
@@ -40,7 +41,16 @@ const COIN_STEPS = [-1000, -100, 100, 1000, 5000];
 const BOND_PRESETS = [10, 25, 40, 55, 70, 85, 100];
 const STREAK_PRESETS = [1, 3, 6, 9, 13, 29, 89, 364];
 
-export function DevPanel({ onJumpToReveal }: { onJumpToReveal?: () => void }) {
+export function DevPanel({
+  onJumpToReveal,
+  timeOfDay,
+  onSetTimeOfDay,
+}: {
+  onJumpToReveal?: () => void;
+  // live time-of-day override (day/evening/night) for scene look-dev
+  timeOfDay?: TimeOfDay;
+  onSetTimeOfDay?: (t: TimeOfDay) => void;
+}) {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -110,6 +120,7 @@ export function DevPanel({ onJumpToReveal }: { onJumpToReveal?: () => void }) {
     <>
       <Pressable
         onPress={() => setOpen((o) => !o)}
+        hitSlop={10}
         style={[styles.chip, { top: Math.max(insets.top, 16) }]}
         accessibilityLabel="Toggle dev panel"
       >
@@ -128,6 +139,20 @@ export function DevPanel({ onJumpToReveal }: { onJumpToReveal?: () => void }) {
           <Row label="Onboarding">
             <Btn label="Replay onboarding" onPress={replayOnboarding} wide />
           </Row>
+
+          {onSetTimeOfDay ? (
+            <Row label="Time of day" value={timeOfDay}>
+              {TIMES.map((t) => (
+                <Btn
+                  key={t}
+                  label={t}
+                  active={t === timeOfDay}
+                  onPress={() => onSetTimeOfDay(t)}
+                  wide
+                />
+              ))}
+            </Row>
+          ) : null}
 
           <Row label="Bond" value={`${bond}%`}>
             {BOND_PRESETS.map((v) => (
@@ -186,10 +211,24 @@ function Row({
   );
 }
 
-function Btn({ label, onPress, wide }: { label: string; onPress: () => void; wide?: boolean }) {
+function Btn({
+  label,
+  onPress,
+  wide,
+  active,
+}: {
+  label: string;
+  onPress: () => void;
+  wide?: boolean;
+  active?: boolean;
+}) {
   return (
-    <Pressable onPress={onPress} style={[styles.btn, wide && styles.btnWide]}>
-      <Text style={styles.btnText}>{label}</Text>
+    <Pressable
+      onPress={onPress}
+      hitSlop={6}
+      style={[styles.btn, wide && styles.btnWide, active && styles.btnActive]}
+    >
+      <Text style={[styles.btnText, active && styles.btnTextActive]}>{label}</Text>
     </Pressable>
   );
 }
@@ -199,14 +238,16 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     zIndex: 50,
-    borderRadius: 6,
+    borderRadius: 8,
     backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    minHeight: 44,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   chipText: {
     fontFamily: 'monospace',
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: '700',
     letterSpacing: 1.5,
     color: '#bef264', // lime-300
@@ -215,21 +256,21 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     zIndex: 50,
-    maxHeight: 480,
-    width: 288,
-    borderRadius: 12,
+    maxHeight: 560,
+    width: 328,
+    borderRadius: 14,
     backgroundColor: 'rgba(23,23,23,0.96)', // neutral-900
   },
   panelContent: {
-    padding: 12,
-    gap: 10,
+    padding: 14,
+    gap: 14,
   },
   row: {
-    gap: 6,
+    gap: 8,
   },
   rowLabel: {
     fontFamily: 'monospace',
-    fontSize: 10,
+    fontSize: 11,
     letterSpacing: 1.5,
     color: '#737373', // neutral-500
   },
@@ -239,21 +280,30 @@ const styles = StyleSheet.create({
   btnWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
   },
   btn: {
-    borderRadius: 6,
+    minHeight: 44,
+    minWidth: 44,
+    borderRadius: 8,
     backgroundColor: '#404040', // neutral-700
-    paddingHorizontal: 8,
-    paddingVertical: 5,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   btnWide: {
     flexGrow: 1,
   },
+  btnActive: {
+    backgroundColor: '#bef264', // lime-300
+  },
   btnText: {
     fontFamily: 'monospace',
-    fontSize: 11,
+    fontSize: 14,
     fontWeight: '700',
     color: '#fff',
+  },
+  btnTextActive: {
+    color: '#171717', // neutral-900
   },
 });

@@ -2,7 +2,7 @@ import { BlurView } from "expo-blur";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { Alert, FlatList, Pressable, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
@@ -63,7 +63,8 @@ interface OverlayState {
  * stack is pinned to the drawer bottom and rides the keyboard via the
  * keyboard-controller translate.
  */
-export function ChatScreen({
+export const ChatScreen = memo(ChatScreenImpl);
+function ChatScreenImpl({
 	onClose,
 	onOpenGame,
 }: {

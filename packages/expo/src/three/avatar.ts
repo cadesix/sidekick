@@ -202,10 +202,19 @@ export function createAvatarRenderer(gl: ExpoWebGLRenderingContext): AvatarContr
     frameHead(body, cos, camera);
   })().catch((e) => console.warn('[sidekick] avatar load failed', e));
 
+  // This is a tiny head-only button (52px), not the main stage — it does NOT
+  // need 60fps. Two full three.js render loops (this + the main scene) on the one
+  // JS thread was ~halving the main loop's frame budget and cooking the device.
+  // Cap it to ~15fps: blinks/idle read fine at button size, at ~1/4 the JS cost.
+  const MIN_FRAME_DT = 1 / 15;
+  let lastRenderT = -1;
   const animate = () => {
     if (disposed || paused) return;
     raf = requestAnimationFrame(animate);
-    if (faceCtl) faceCtl.update(clock.getElapsedTime());
+    const t = clock.getElapsedTime();
+    if (lastRenderT >= 0 && t - lastRenderT < MIN_FRAME_DT) return; // throttle
+    lastRenderT = t;
+    if (faceCtl) faceCtl.update(t);
     renderer.render(scene, camera);
     gl.endFrameEXP();
   };

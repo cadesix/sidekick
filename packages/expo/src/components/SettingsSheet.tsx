@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useRef, useState } from 'react';
+import { memo, useRef, useState } from 'react';
 import { Dimensions, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,7 +31,8 @@ const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 const TABS = ['Scene', 'Grass', 'Char', 'Pose', 'Light', 'FX'] as const;
 type Tab = (typeof TABS)[number];
 
-export function SettingsSheet({
+export const SettingsSheet = memo(SettingsSheetImpl);
+function SettingsSheetImpl({
   open,
   onClose,
   controller,

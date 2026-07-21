@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { Alert, Dimensions, Pressable, ScrollView, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -45,7 +45,8 @@ const ICONS: Record<string, { icon: keyof typeof Ionicons.glyphMap; color: strin
 };
 const FALLBACK = { icon: 'flag' as const, color: '#8a8a8a' };
 
-export function GoalsSheet({
+export const GoalsSheet = memo(GoalsSheetImpl);
+function GoalsSheetImpl({
   open,
   onClose,
   onTalk,

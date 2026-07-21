@@ -42,11 +42,13 @@ export function SidekickCanvas({
   onControls,
   onController,
   overhead,
+  overheadActive,
   dailyBox,
   ground,
   cosmos,
   starFace,
   entrance,
+  onFrameStats,
 }: {
   style?: ViewStyle;
   framing: Framing;
@@ -68,9 +70,26 @@ export function SidekickCanvas({
   onController?: (c: SidekickController | null) => void;
   // head-tracked overlay position sink (bond badge / speech bubble)
   overhead?: OverheadTarget;
+  // whether that overlay is currently on screen; false while a full surface
+  // covers the character, so the renderer can skip the per-frame head projection
+  overheadActive?: boolean;
   // daily loot chest tier (spawns the 3D chest) + its ground-anchor sink
   dailyBox?: BoxTier | null;
   ground?: OverheadTarget;
+  // DEV: frame-timing report (fps, worst frame ms, worst in-loop JS ms, GL draw
+  // calls, triangles) ~2x/sec
+  onFrameStats?: (s: {
+    fps: number;
+    worstMs: number;
+    worstJsMs: number;
+    calls: number;
+    tris: number;
+    geometries: number;
+    textures: number;
+    programs: number;
+    skipped: number;
+    idle: number;
+  }) => void;
 }) {
   const controller = useRef<SidekickController | null>(null);
   // keep the latest callbacks without re-creating the GL scene
@@ -82,6 +101,8 @@ export function SidekickCanvas({
   overheadRef.current = overhead;
   const groundRef = useRef(ground);
   groundRef.current = ground;
+  const onFrameStatsRef = useRef(onFrameStats);
+  onFrameStatsRef.current = onFrameStats;
   const size = useRef({ w: 1, h: 1 });
 
   // NDC (-1..1, +y up) → layout px (top-left origin)
@@ -104,6 +125,7 @@ export function SidekickCanvas({
       onControls: (c) => onControlsRef.current?.(c),
       onOverhead: (nx, ny, visible) => project(overheadRef.current, nx, ny, visible),
       onGround: (nx, ny, visible) => project(groundRef.current, nx, ny, visible),
+      onFrameStats: (s) => onFrameStatsRef.current?.(s),
     });
     onControllerRef.current?.(controller.current);
   };
@@ -146,6 +168,10 @@ export function SidekickCanvas({
   }, [starFace]);
 
   useEffect(() => {
+    controller.current?.setOverheadActive(overheadActive !== false);
+  }, [overheadActive]);
+
+  useEffect(() => {
     controller.current?.setDailyBox(dailyBox ?? null);
   }, [dailyBox]);
 
@@ -174,12 +200,15 @@ export function SidekickCanvas({
       onResponderRelease={(e) => controller.current?.pointerUp(...toNdc(e))}
       onResponderTerminate={(e) => controller.current?.pointerUp(...toNdc(e))}
     >
-      {/* MSAA on real hardware (matches the web's antialias:true); 0 on the
-          simulator, whose MSAA resolve intermittently drops skinned draws */}
+      {/* MSAA on real hardware; 0 on the simulator, whose MSAA resolve
+          intermittently drops skinned draws. 2x (not 4x) on device: the 4x
+          multisample resolve was a measurable per-frame GPU cost during the
+          big camera moves, and 2x is nearly indistinguishable on a retina
+          panel while roughly halving that resolve bandwidth. */}
       <GLView
         style={styles.fill}
         pointerEvents="none"
-        msaaSamples={Device.isDevice ? 4 : 0}
+        msaaSamples={Device.isDevice ? 2 : 0}
         onContextCreate={onContextCreate}
       />
     </View>
