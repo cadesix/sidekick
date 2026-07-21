@@ -3,7 +3,7 @@ import { dayString } from '@sidekick/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Dimensions, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Dimensions, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Animated, {
   Easing,
@@ -18,6 +18,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { commitOnboardingResult, setSkinColor } from '../src/lib/api';
+import { Pressable } from '../src/components/Pressable';
 import { OnboardingIntroChat, type OnboardingResult } from '../src/components/OnboardingIntroChat';
 import {
   loadOnboarding,

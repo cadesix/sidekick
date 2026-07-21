@@ -1,6 +1,8 @@
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { Pressable } from "./Pressable";
 
 import { AuthOtpSteps, ErrorText } from "./auth/AuthOtpSteps";
 import { useAuthMethods } from "./auth/useAuthMethods";
