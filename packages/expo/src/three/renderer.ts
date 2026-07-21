@@ -778,7 +778,16 @@ export function createSidekickRenderer(
   // continuous GPU+JS work → the biggest lever on heat AND on GC frequency (fewer
   // frames = less per-frame allocation churn). Full 60fps returns the instant
   // anything moves. dt-based eases (above) already stay correct across the skip.
-  const IDLE_DT = 1 / 30; // idle frame cap (~30fps)
+  // Idle frame cap: ~30fps normally; ~15fps while the chat sheet is up and the
+  // character is at rest (holdingPhone && !talking) — the longest-dwell,
+  // highest-thermal state. Talking lifts chat back to 30 so the mouth stays
+  // fluid while a reply speaks. 15 is the floor: dtFrames clamps at 4 (a 15fps
+  // step), so anything slower would make the eases run slow instead of
+  // time-correct.
+  const idleDt = () => {
+    if (holdingPhone && !talking) return 1 / 15;
+    return 1 / 30;
+  };
   let lastRenderNow = -1; // clock time of the last frame we actually rendered
   let sceneIdle = false; // was the scene idle at the end of the last rendered frame?
   let lastPointerNow = -1; // clock time of the last pointer interaction
@@ -888,7 +897,7 @@ export function createSidekickRenderer(
     // frame, cap to ~30fps by skipping ticks. rAF is already re-queued above, so
     // a skipped tick just does no work. `lastFrameNow` isn't touched on a skip,
     // so the dt-based eases below still measure the real (larger) gap.
-    if (sceneIdle && lastRenderNow >= 0 && now - lastRenderNow < IDLE_DT) {
+    if (sceneIdle && lastRenderNow >= 0 && now - lastRenderNow < idleDt()) {
       statsSkipped++;
       return;
     }
