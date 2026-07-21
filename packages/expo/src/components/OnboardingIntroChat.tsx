@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Pressable } from './Pressable';
@@ -214,6 +214,45 @@ const SCRIPT: Node[] = [
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+// A reply button. Static style array (pressed via state) rather than the
+// `({pressed}) => …` callback — NativeWind's css-interop drops the function form
+// of `style` on native, which would leave the chip with no fill (invisible).
+function ReplyChip({ label, onPress }: { label: string; onPress: () => void }) {
+  const [pressed, setPressed] = useState(false);
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      style={[chipStyles.base, pressed ? chipStyles.pressed : null]}
+    >
+      <Text style={chipStyles.text}>{label}</Text>
+    </Pressable>
+  );
+}
+
+const chipStyles = StyleSheet.create({
+  base: {
+    maxWidth: '85%',
+    backgroundColor: colors.blue,
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    // hard (zero-blur) darker-blue underside → raised, pressable button
+    shadowColor: CHIP_SHADOW,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  pressed: {
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+    transform: [{ translateY: 3 }],
+  },
+  text: { color: '#fff', fontSize: 15, fontWeight: '600' },
+});
+
 // Map the collected vars into the persisted shape: the improve/action pair → a
 // daily habit goal; the talk topic/focus → check-in prefs.
 function buildResult(v: Vars): OnboardingResult {
@@ -347,7 +386,14 @@ export function OnboardingIntroChat({
       <ScrollView
         ref={scrollRef}
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 24, paddingBottom: 16, gap: 6 }}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: 24,
+          // extra bottom breathing room so the last message never sits in the
+          // bottom-left corner (there's no input field here to provide it).
+          paddingBottom: insets.bottom + 28,
+          gap: 6,
+        }}
         showsVerticalScrollIndicator={false}
         onContentSizeChange={scrollToEnd}
         keyboardDismissMode="interactive"
@@ -383,27 +429,7 @@ export function OnboardingIntroChat({
       {chips.length > 0 ? (
         <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: insets.bottom + 14, gap: 10, alignItems: 'flex-end' }}>
           {chips.map((chip) => (
-            <Pressable
-              key={chip.value}
-              onPress={() => onPick(chip)}
-              style={({ pressed }) => ({
-                maxWidth: '85%',
-                backgroundColor: colors.blue,
-                borderRadius: 20,
-                paddingHorizontal: 18,
-                paddingVertical: 11,
-                // hard "underside" edge → raised, pressable button; on press it
-                // sinks into the shadow.
-                shadowColor: CHIP_SHADOW,
-                shadowOffset: { width: 0, height: pressed ? 1 : 4 },
-                shadowOpacity: 1,
-                shadowRadius: 0,
-                elevation: pressed ? 1 : 4,
-                transform: [{ translateY: pressed ? 3 : 0 }],
-              })}
-            >
-              <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>{chip.label}</Text>
-            </Pressable>
+            <ReplyChip key={chip.value} label={chip.label} onPress={() => onPick(chip)} />
           ))}
         </View>
       ) : null}

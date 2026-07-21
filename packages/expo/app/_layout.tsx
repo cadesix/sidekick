@@ -77,7 +77,10 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
 
 function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
+    // iOS won't synthesize bold for a custom font, so each weight is its own family.
     'Diatype-Rounded': require('../assets/fonts/ABCDiatypeRounded.ttf'),
+    'Diatype-Rounded-Medium': require('../assets/fonts/ABCDiatypeRounded-Medium.otf'),
+    'Diatype-Rounded-Bold': require('../assets/fonts/ABCDiatypeRounded-Bold.otf'),
   });
 
   if (!fontsLoaded && !fontError) {

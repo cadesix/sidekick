@@ -600,11 +600,15 @@ function GenderStep({ onSubmit }: { onSubmit: (gender: string) => void }) {
   return (
     <Animated.View entering={FadeInUp.duration(450)} style={styles.centerFill}>
       <View style={styles.nameCol}>
-        <Text style={styles.h1small}>what's your gender?</Text>
+        <Text style={styles.h1small}>how would you describe yourself?</Text>
         <View style={{ height: 20 }} />
-        {['woman', 'man', 'non-binary', 'prefer not to say'].map((g) => (
-          <Pressable key={g} onPress={() => onSubmit(g)} style={styles.optionCard}>
-            <Text style={styles.optionText}>{g}</Text>
+        {[
+          { label: 'Female', value: 'female' },
+          { label: 'Male', value: 'male' },
+          { label: 'Other', value: 'other' },
+        ].map((o) => (
+          <Pressable key={o.value} onPress={() => onSubmit(o.value)} style={styles.optionCard}>
+            <Text style={styles.optionText}>{o.label}</Text>
           </Pressable>
         ))}
       </View>
@@ -779,11 +783,17 @@ function PrimaryButton({
   onPress: () => void;
   disabled?: boolean;
 }) {
+  // Static style array (not the `({pressed}) => …` callback form): NativeWind's
+  // css-interop drops the function form of `style` on native, which would leave
+  // the button with no fill. Track pressed via state instead.
+  const [pressed, setPressed] = useState(false);
   return (
     <Pressable
       onPress={onPress}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
       disabled={disabled}
-      style={({ pressed }) => [
+      style={[
         styles.btn,
         disabled ? styles.btnDisabled : null,
         pressed && !disabled ? styles.btnPressed : null,
@@ -832,12 +842,15 @@ const SHEET_TRAVEL = Dimensions.get('window').height;
 // The app's system font (loaded in app/_layout.tsx). Onboarding text was falling
 // back to the platform bold; use the rounded family everywhere for consistency.
 const FONT = 'Diatype-Rounded';
+// iOS won't faux-bold a custom font, so weights are separate families.
+const FONT_MEDIUM = 'Diatype-Rounded-Medium'; // 500–600
+const FONT_BOLD = 'Diatype-Rounded-Bold'; // 700–800
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#fff', overflow: 'hidden' },
   topCopy: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 32, alignItems: 'center' },
   h1: {
-    fontFamily: FONT,
+    fontFamily: FONT_BOLD,
     fontSize: 44,
     fontWeight: '800',
     letterSpacing: -1.4,
@@ -849,7 +862,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 10,
   },
   h1small: {
-    fontFamily: FONT,
+    fontFamily: FONT_BOLD,
     fontSize: 34,
     fontWeight: '800',
     letterSpacing: -1.1,
@@ -888,7 +901,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.85)',
   },
-  nameChipText: { fontFamily: FONT, fontSize: 15, fontWeight: '600', color: '#111' },
+  nameChipText: { fontFamily: FONT_MEDIUM, fontSize: 15, fontWeight: '600', color: '#111' },
   optionCard: {
     width: '100%',
     paddingVertical: 16,
@@ -897,7 +910,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 10,
   },
-  optionText: { fontFamily: FONT, fontSize: 17, fontWeight: '600', color: '#111' },
+  optionText: { fontFamily: FONT_MEDIUM, fontSize: 17, fontWeight: '600', color: '#111' },
   dobRow: { flexDirection: 'row', gap: 10, marginTop: 24 },
   dobField: {
     flex: 1,
@@ -907,7 +920,7 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.92)',
-    fontFamily: FONT,
+    fontFamily: FONT_MEDIUM,
     fontSize: 20,
     fontWeight: '500',
     color: '#111',
@@ -929,7 +942,7 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.92)',
-    fontFamily: FONT,
+    fontFamily: FONT_MEDIUM,
     fontSize: 17,
     fontWeight: '500',
     color: '#111',
@@ -956,7 +969,7 @@ const styles = StyleSheet.create({
   },
   btnPressed: { transform: [{ translateY: 3 }], shadowOffset: { width: 0, height: 2 } },
   btnDisabled: { opacity: 0.6 },
-  btnText: { fontFamily: FONT, color: '#fff', fontSize: 17, fontWeight: '700' },
+  btnText: { fontFamily: FONT_BOLD, color: '#fff', fontSize: 17, fontWeight: '700' },
   bannerWrap: { position: 'absolute', left: 0, right: 0, top: 0, paddingHorizontal: 10, alignItems: 'stretch' },
   banner: {
     width: '100%',
@@ -974,7 +987,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   bannerHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
-  bannerSender: { fontFamily: FONT, flex: 1, fontSize: 16, fontWeight: '700', color: '#111' },
+  bannerSender: { fontFamily: FONT_BOLD, flex: 1, fontSize: 16, fontWeight: '700', color: '#111' },
   bannerNow: { fontFamily: FONT, fontSize: 12, color: 'rgba(17,17,17,0.4)' },
   bannerText: { fontFamily: FONT, fontSize: 14, lineHeight: 18, color: 'rgba(17,17,17,0.8)' },
   notifCta: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 28, alignItems: 'center' },
@@ -1004,7 +1017,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#fff',
   },
-  appBadgeText: { fontFamily: FONT, color: '#fff', fontSize: 13, fontWeight: '800' },
+  appBadgeText: { fontFamily: FONT_BOLD, color: '#fff', fontSize: 13, fontWeight: '800' },
   chatSheet: {
     position: 'absolute',
     left: 0,
