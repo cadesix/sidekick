@@ -1,7 +1,7 @@
 import * as Device from 'expo-device';
 import { GLView, type ExpoWebGLRenderingContext } from 'expo-gl';
 import { useEffect, useRef } from 'react';
-import { StyleSheet, View, type GestureResponderEvent, type ViewStyle } from 'react-native';
+import { PixelRatio, StyleSheet, View, type GestureResponderEvent, type ViewStyle } from 'react-native';
 import type { SharedValue } from 'react-native-reanimated';
 
 import type { BoxTier } from '@sidekick/core';
@@ -12,6 +12,15 @@ import { createSidekickRenderer, type Framing, type SidekickController } from '.
 import type { CosmeticsControls } from '../three/wardrobe';
 import { SCENE_3D_ENABLED } from '../three/enabled';
 import { SceneFallback } from './SceneFallback';
+
+// Cap the effective render resolution at 2x DPR. expo-gl has no pixelRatio
+// API — the drawing buffer always matches the GLView's untransformed size ×
+// native scale — so on 3x devices the GLView is laid out at 2/3 size and
+// scaled back up to fill. That renders ~44% of the pixels, the single biggest
+// fill-rate (and thermal) lever we have; on-device A/B against native 3x was
+// visually indistinguishable.
+const dpr = PixelRatio.get();
+const RENDER_SCALE = Math.min(2, dpr) / dpr;
 
 // Head-tracked overlay target: the canvas writes the head-bone's on-screen
 // position (layout px) + visibility into these SharedValues every frame; a
@@ -190,7 +199,7 @@ export function SidekickCanvas({
     <View
       // NO_BROWSER_PAN: on web this drag orbits the camera, so the browser must
       // not also read it as a page pan/zoom
-      style={[styles.fill, NO_BROWSER_PAN, style]}
+      style={[styles.fill, RENDER_SCALE === 1 ? null : styles.center, NO_BROWSER_PAN, style]}
       onLayout={(e) => {
         size.current = { w: e.nativeEvent.layout.width || 1, h: e.nativeEvent.layout.height || 1 };
       }}
@@ -206,7 +215,7 @@ export function SidekickCanvas({
           big camera moves, and 2x is nearly indistinguishable on a retina
           panel while roughly halving that resolve bandwidth. */}
       <GLView
-        style={styles.fill}
+        style={RENDER_SCALE === 1 ? styles.fill : styles.scaled}
         pointerEvents="none"
         msaaSamples={Device.isDevice ? 2 : 0}
         onContextCreate={onContextCreate}
@@ -217,4 +226,11 @@ export function SidekickCanvas({
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  center: { alignItems: 'center', justifyContent: 'center' },
+  // undersized + scaled about its center, so it exactly fills the wrapper
+  scaled: {
+    width: `${RENDER_SCALE * 100}%`,
+    height: `${RENDER_SCALE * 100}%`,
+    transform: [{ scale: 1 / RENDER_SCALE }],
+  },
 });
