@@ -1,5 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -61,7 +61,8 @@ function AppTile({
 const ICON = Math.round(TILE * 0.62);
 const BAG = Math.round(TILE * 0.56);
 
-export function HomeDock({ hidden, unread = 0, mapDot, onMessages, onShop, onMap, onGoals }: DockProps) {
+export const HomeDock = memo(HomeDockImpl);
+function HomeDockImpl({ hidden, unread = 0, mapDot, onMessages, onShop, onMap, onGoals }: DockProps) {
   const insets = useSafeAreaInsets();
   const shown = useSharedValue(hidden ? 0 : 1);
   useEffect(() => {

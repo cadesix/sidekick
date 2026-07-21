@@ -1,12 +1,13 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { Profiler, useCallback, useEffect, useMemo, useState } from 'react';
 import { Redirect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Alert, AppState, Dimensions, Pressable, View, type AppStateStatus } from 'react-native';
+import { Alert, AppState, Dimensions, Pressable, Text, View, type AppStateStatus } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CHAT_SHEET_DETENT, ChatScreen } from '~/imessage';
+import { Glass } from '~/imessage/components/Glass';
 import { AppearanceSheet } from '../src/components/AppearanceSheet';
 import { OverheadSpeech } from '../src/components/OverheadSpeech';
 import { BoxRewardsModal, GroundBox, StreakSplash } from '../src/components/DailyBox';
@@ -24,7 +25,7 @@ import { SidekickAvatar } from '../src/components/SidekickAvatar';
 import { SpeechBubble } from '../src/components/SpeechBubble';
 import { StreakPill } from '../src/components/StreakPill';
 import { HomeDock } from '../src/components/HomeDock';
-import { type EnvironmentId } from '../src/three/biomes';
+import { BIOMES, type BiomeId, type EnvironmentId } from '../src/three/biomes';
 import { speak } from '../src/store/speech';
 import { BOND_MAX, nextSession as coreNextSession } from '@sidekick/core';
 import { SettingsSheet } from '../src/components/SettingsSheet';
@@ -32,7 +33,7 @@ import { ShopSheet } from '../src/components/ShopSheet';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { WorldMap } from '../src/components/WorldMap';
 import type { Framing, SidekickController } from '../src/three/renderer';
-import { hydrateSettings, loadSettings, refreshTimeOfDay, saveSettings, type SidekickSettings } from '../src/three/settings';
+import { hydrateSettings, loadSettings, refreshTimeOfDay, saveSettings, type SidekickSettings, type TimeOfDay } from '../src/three/settings';
 import type { CosmeticsControls } from '../src/three/wardrobe';
 import { useDeferredFlag } from '../src/lib/useDeferredFlag';
 import { claimDailyBox, fetchCapoff, type BoxContents } from '../src/lib/api';
@@ -42,6 +43,7 @@ import { useCosmeticVersion } from '../src/store/cosmeticVersion';
 import { hydrateSkinFromMirror, saveSkinMirror } from '../src/store/skin';
 import { useOnboardingState } from '../src/lib/onboarding';
 import { useAuthStore } from '../src/lib/auth-store';
+import { perfFrame, perfMark } from '../src/lib/perf-telemetry';
 
 // RN port of sidekick/src/home4.tsx: full-viewport 3D mascot with an iOS-style
 // dock. Messages presents the chat as a native sheet over the lower ~75%
@@ -120,6 +122,84 @@ const TRAVEL_LINES: Record<EnvironmentId, string> = {
 const { height: SCREEN_H } = Dimensions.get('window');
 // The chat drawer covers the lower 75%; the mascot lives in the band above.
 const DRAWER_TOP = SCREEN_H * (1 - CHAT_SHEET_DETENT);
+
+// DEV: on-screen frame-rate probe (top-center). Confirms the running bundle and
+// shows whether the JS thread is dropping frames during camera moves.
+const SHOW_FPS = process.env.NODE_ENV !== 'production';
+
+type FpsStat = {
+  fps: number;
+  worstMs: number;
+  worstJsMs: number;
+  calls: number;
+  tris: number;
+  geometries: number;
+  textures: number;
+  programs: number;
+  skipped: number;
+  idle: number;
+};
+// The overlay is a LEAF that owns its own 2x/sec state, fed through this module
+// singleton — so the render-loop's stats callback NEVER re-renders Home. (A root
+// setState twice a second was itself a ~100ms commit each time — an observer
+// effect that polluted the very frame-timing it was measuring.)
+let pushFps: ((s: FpsStat) => void) | null = null;
+const emitFps = (s: FpsStat) => {
+  pushFps?.(s); // on-screen overlay (isolated leaf)
+  perfFrame(s); // off-device telemetry sink
+};
+
+// DEV: measure Home's actual React commit cost. `actualDuration` is the time to
+// render the Home subtree for a commit — this is what the map-toggle re-render
+// costs (~100ms on device / ~7ms on web). Log the non-trivial ones to telemetry
+// so we can see which commits are expensive and correlate with map:close:call.
+function onHomeRender(
+  id: string,
+  phase: 'mount' | 'update' | 'nested-update',
+  actualDuration: number,
+) {
+  if (actualDuration > 3) perfMark('render', { id, phase, ms: Math.round(actualDuration) });
+}
+
+function FpsOverlay({ top }: { top: number }) {
+  const [s, setS] = useState<FpsStat | null>(null);
+  useEffect(() => {
+    pushFps = setS;
+    return () => {
+      if (pushFps === setS) pushFps = null;
+    };
+  }, []);
+  if (!s) return null;
+  return (
+    <View
+      pointerEvents="none"
+      style={{ position: 'absolute', top, left: 0, right: 0, alignItems: 'center', zIndex: 60 }}
+    >
+      <View style={{ backgroundColor: 'rgba(0,0,0,0.62)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}>
+        <Text
+          style={{
+            fontFamily: 'monospace',
+            fontSize: 12,
+            fontWeight: '700',
+            color: s.fps >= 50 ? '#bef264' : s.fps >= 30 ? '#fbbf24' : '#f87171',
+          }}
+        >
+          {s.fps.toFixed(0)} fps · {s.worstMs.toFixed(0)}ms · js {s.worstJsMs.toFixed(0)}ms · {s.calls} calls ·{' '}
+          {(s.tris / 1000).toFixed(0)}k tris · geo {s.geometries} · tex {s.textures} · prog {s.programs}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+// Relative luminance (Rec. 709) of a #rrggbb color, 0 = black … 1 = white.
+function hexLuminance(hex: string): number {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16) / 255;
+  const g = parseInt(h.slice(2, 4), 16) / 255;
+  const b = parseInt(h.slice(4, 6), 16) / 255;
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
 
 export default function Home() {
   // First-run gate: a signed-in account that hasn't finished onboarding is sent
@@ -242,17 +322,6 @@ export default function Home() {
     }
     if (changed) useCosmeticVersion.getState().bump();
   }, [snapshot, controls, controller]);
-  // travel to a biome: swap the 3D world, close the map, and drop an arrival
-  // line (bubble after the map reveal shrinks so it pops over the visible
-  // character) — mirrors home5.tsx onTravel.
-  const travelTo = (biome: EnvironmentId) => {
-    setEnvironment(biome);
-    closeMap();
-    const line = TRAVEL_LINES[biome];
-    if (line) {
-      setTimeout(() => speak(line), 650);
-    }
-  };
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
 
@@ -271,20 +340,32 @@ export default function Home() {
   const overheadX = useSharedValue(0);
   const overheadY = useSharedValue(0);
   const overheadVisible = useSharedValue(0);
-  const overhead = { x: overheadX, y: overheadY, visible: overheadVisible };
+  // stable object (shared values never change identity) so the memoized canvas
+  // + overlays don't see a new `overhead` prop on every Home re-render
+  const overhead = useMemo(
+    () => ({ x: overheadX, y: overheadY, visible: overheadVisible }),
+    [overheadX, overheadY, overheadVisible],
+  );
 
   // ground-anchor projection for the daily loot chest (canvas writes the chest's
   // on-screen base every frame; GroundBox pins its tap target/FX over it)
   const groundX = useSharedValue(0);
   const groundY = useSharedValue(0);
   const groundVisible = useSharedValue(0);
-  const ground = { x: groundX, y: groundY, visible: groundVisible };
+  const ground = useMemo(
+    () => ({ x: groundX, y: groundY, visible: groundVisible }),
+    [groundX, groundY, groundVisible],
+  );
 
-  const openChat = () => {
+  // Handlers are stabilized with useCallback so the memoized surfaces below
+  // (WorldMap/ShopSheet/HomeDock/…) don't re-render when an unrelated surface
+  // toggles — a full re-render of those heavy trees on the JS thread was stalling
+  // the 3D render loop and stuttering the camera ease.
+  const openChat = useCallback(() => {
     setChatOpen(true); // camera starts easing while the drawer slides up
     chatProgress.value = withTiming(1, { duration: 380 });
-  };
-  const closeChat = () => {
+  }, [chatProgress]);
+  const closeChat = useCallback(() => {
     setChatOpen(false);
     chatProgress.value = withTiming(0, { duration: 340 });
     // As the user walks back to the 3D sidekick, have it get the last word: a
@@ -300,18 +381,124 @@ export default function Home() {
         })
         .catch(() => {}); // silent — no bubble on failure
     }
-  };
+  }, [chatProgress, queryClient]);
 
-  const openMap = () => {
+  const openMap = useCallback(() => {
+    perfMark('map:open:call');
     setMapOpen(true); // camera rockets up + back immediately
     setTimeout(() => setMapShown(true), 60); // circle mask starts expanding almost right away
-  };
-  const closeMap = () => {
+  }, []);
+  const closeMap = useCallback(() => {
+    perfMark('map:close:call');
     setMapShown(false); // map scales back out…
     setMapOpen(false); // …while the camera flies back to the meadow
     // they've had their look — retire the unlock notification
     useSidekickContext.getState().clearUnseenIsland();
-  };
+  }, []);
+
+  // travel to a biome: swap the 3D world, close the map, and drop an arrival
+  // line (bubble after the map reveal shrinks so it pops over the visible
+  // character) — mirrors home5.tsx onTravel.
+  const travelTo = useCallback(
+    (biome: EnvironmentId) => {
+      setEnvironment(biome);
+      closeMap();
+      const line = TRAVEL_LINES[biome];
+      if (line) {
+        setTimeout(() => speak(line), 650);
+      }
+    },
+    [closeMap],
+  );
+
+  // Named, stable versions of the small inline arrows the memoized surfaces get.
+  const openShop = useCallback(() => setShopOpen(true), []);
+  const closeShop = useCallback(() => setShopOpen(false), []);
+  const openGoals = useCallback(() => setGoalsOpen(true), []);
+  const closeGoals = useCallback(() => setGoalsOpen(false), []);
+  const openAppearance = useCallback(() => setAppearanceOpen(true), []);
+  const closeAppearance = useCallback(() => setAppearanceOpen(false), []);
+  const closeStreakModal = useCallback(() => setStreakModalOpen(false), []);
+  const openStreakModal = useCallback(() => setStreakModalOpen(true), []);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  const goalsToChat = useCallback(() => {
+    setGoalsOpen(false);
+    openChat();
+  }, [openChat]);
+  const mapToChat = useCallback(() => {
+    closeMap();
+    openChat();
+  }, [closeMap, openChat]);
+  const startSessionFromMap = useCallback(
+    (id: string) => {
+      closeMap();
+      setSessionId(id);
+    },
+    [closeMap],
+  );
+  const onSkinChange = useCallback(
+    (next: SidekickSettings) => {
+      setSettings(next);
+      controller?.applySettings(next);
+    },
+    [controller],
+  );
+
+  // DEV: live time-of-day override (day/evening/night). Swaps the scene preset on
+  // the live controller. Not persisted meaningfully — loadSettings/refreshTimeOfDay
+  // force timeOfDay back to the wall clock — so this is a look toggle, reset on reload.
+  const setTimeOfDay = useCallback(
+    (tod: TimeOfDay) => {
+      if (!settings) return;
+      const next = { ...settings, timeOfDay: tod };
+      setSettings(next);
+      controller?.applySettings(next);
+    },
+    [settings, controller],
+  );
+
+  // The active camera framing per surface. Memoized so the canvas gets a stable
+  // prop (a new object literal every render would defeat its memo and re-fire the
+  // setFraming effect each time).
+  const framing = useMemo<Framing>(
+    () =>
+      skyMode
+        ? cosmosPanned
+          ? COSMOS_FRAMING // pan up to the sky (after the home beat)
+          : HERO_FRAMING // land on home first
+        : mapOpen
+          ? MAP_FRAMING
+          : shopOpen || appearanceOpen
+            ? SHOP_FRAMING
+            : chatOpen || settingsOpen
+              ? CHAT_FRAMING
+              : HERO_FRAMING,
+    [skyMode, cosmosPanned, mapOpen, shopOpen, appearanceOpen, chatOpen, settingsOpen],
+  );
+
+  // The top-right cluster (closet avatar / streak / settings) is hidden under any
+  // full surface. We keep it mounted and toggle `display` instead of unmounting,
+  // so the avatar's GL context survives (see the cluster JSX for why).
+  const clusterHidden = mapShown || shopOpen || chatOpen || skyMode;
+
+  // DEV: mark when a map open/close toggle actually commits, so the telemetry can
+  // measure React commit latency (map:close:call → this) against the frame stalls.
+  useEffect(() => {
+    perfMark('map:state-commit', { mapOpen, mapShown });
+  }, [mapOpen, mapShown]);
+
+  // The top-right glass cluster floats over the sky. When that sky is dark, both
+  // the glass material and its content adapt: the fill uses a DARK material (so it
+  // reads as translucent glass over dark, not a white panel) and the icon/text
+  // flip to white. Over a light sky it's the inverse. Keyed off the top-of-sky
+  // colour — the meadow's is time-of-day driven, a biome's comes from its preset.
+  const topSky =
+    environment === 'meadow'
+      ? settings
+        ? settings.scenes[settings.timeOfDay]?.skyTop ?? '#3ea1cc'
+        : '#3ea1cc'
+      : BIOMES[environment as BiomeId]?.preset.skyTop ?? '#3ea1cc';
+  const darkBackdrop = hexLuminance(topSky) < 0.4;
 
   // No opacity here: animating a parent's opacity permanently breaks descendant
   // UIGlassEffect views (expo/expo#41024) — the closed drawer is already fully
@@ -330,6 +517,7 @@ export default function Home() {
   }
 
   return (
+    <Profiler id="home" onRender={onHomeRender}>
     <View className="flex-1 bg-white">
       {/* Full-viewport 3D scene (mounted once saved look-dev state hydrates).
           Settings reuses the pulled-back chat framing so the meadow, sky and
@@ -337,19 +525,7 @@ export default function Home() {
       {settings ? (
         <SidekickCanvas
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-          framing={
-            skyMode
-              ? cosmosPanned
-                ? COSMOS_FRAMING // pan up to the sky (after the home beat)
-                : HERO_FRAMING // land on home first
-              : mapOpen
-                ? MAP_FRAMING
-                : shopOpen || appearanceOpen
-                  ? SHOP_FRAMING
-                  : chatOpen || settingsOpen
-                    ? CHAT_FRAMING
-                    : HERO_FRAMING
-          }
+          framing={framing}
           holdingPhone={chatOpen}
           studio={shopOpen || appearanceOpen}
           cosmos={cosmosPanned}
@@ -357,7 +533,9 @@ export default function Home() {
           environment={environment}
           onControls={setControls}
           onController={setController}
+          onFrameStats={SHOW_FPS ? emitFps : undefined}
           overhead={overhead}
+          overheadActive={!(mapShown || shopOpen || chatOpen || settingsOpen || skyMode)}
           ground={ground}
           dailyBox={boxStage === 'ground' || boxStage === 'rewards' ? (snapshot?.dailyBox.tier ?? null) : null}
         />
@@ -382,32 +560,60 @@ export default function Home() {
         />
       ) : null}
 
-      {/* top-right cluster: appearance + goals + streak (hidden under surfaces) */}
-      {!mapShown && !shopOpen && !chatOpen && !skyMode ? (
-        <View
-          style={{ position: 'absolute', top: insets.top + 8, right: 16, zIndex: 25, flexDirection: 'row', gap: 8, alignItems: 'center' }}
-          pointerEvents="box-none"
+      {/* top-right cluster: appearance + goals + streak. Kept MOUNTED and only
+          made transparent (opacity 0) while hidden — NOT display:none and NOT
+          unmounted — because either of those lets iOS tear down the offscreen
+          GLView, so showing it again rebuilds the closet-button avatar's GL
+          context (new context + GLB + wardrobe load), a ~hundreds-of-ms hitch
+          on the JS thread right as the camera eases back. opacity:0 keeps the
+          GLView laid out and its context alive; its render loop is paused while
+          hidden so it costs nothing per frame. */}
+      <View
+        style={{
+          position: 'absolute',
+          top: insets.top + 8,
+          right: 16,
+          zIndex: 25,
+          flexDirection: 'row',
+          gap: 8,
+          alignItems: 'center',
+          opacity: clusterHidden ? 0 : 1,
+        }}
+        pointerEvents={clusterHidden ? 'none' : 'box-none'}
+      >
+        <Pressable
+          onPress={openAppearance}
+          accessibilityLabel="Appearance"
+          style={{ height: 52, width: 52, borderRadius: 26, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
         >
-          <Pressable
-            onPress={() => setAppearanceOpen(true)}
-            accessibilityLabel="Appearance"
-            style={{ height: 52, width: 52, borderRadius: 26, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
-          >
-            {/* the live head avatar IS the closet button (mirrors web home5).
-                Freeze it while the Closet is open so its GL context isn't
-                competing with the sheet's image load + studio crossfade. */}
-            <SidekickAvatar size={52} style={{ transform: [{ scale: 1.1 }] }} paused={appearanceOpen} />
-          </Pressable>
-          <StreakPill onPress={() => setStreakModalOpen(true)} />
+          {/* the live head avatar IS the closet button (mirrors web home5).
+              Freeze it while the Closet is open OR while the cluster is hidden
+              under a surface — a paused loop frees the GPU and keeps the context
+              alive for an instant, hitch-free reveal on close. */}
+          <SidekickAvatar
+            size={52}
+            style={{ transform: [{ scale: 1.1 }] }}
+            paused={appearanceOpen || clusterHidden}
+          />
+        </Pressable>
+        <StreakPill onPress={openStreakModal} />
+        {/* Frosted glass — no `overflow:'hidden'` (it kills the glass effect); the
+            round shape comes from borderRadius, which Glass clips natively. The
+            material tint tracks the backdrop so the fill isn't a fixed white panel. */}
+        <Glass
+          isInteractive
+          tint={darkBackdrop ? 'systemThinMaterialDark' : 'systemThinMaterialLight'}
+          style={{ height: 52, width: 52, borderRadius: 26 }}
+        >
           <Pressable
             onPress={() => router.push('/settings')}
             accessibilityLabel="Settings"
-            style={{ height: 52, width: 52, borderRadius: 26, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center' }}
+            style={{ height: 52, width: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' }}
           >
-            <Ionicons name="settings-outline" size={26} color="#404040" />
+            <Ionicons name="settings-outline" size={26} color={darkBackdrop ? '#fff' : '#404040'} />
           </Pressable>
-        </View>
-      ) : null}
+        </Glass>
+      </View>
 
       {/* iOS-style home dock — the sheets slide up OVER it; only the
           full-screen map reveal hides it */}
@@ -415,9 +621,9 @@ export default function Home() {
         hidden={mapShown || skyMode}
         mapDot={!!unseenIsland}
         onMessages={openChat}
-        onShop={() => setShopOpen(true)}
+        onShop={openShop}
         onMap={openMap}
-        onGoals={() => setGoalsOpen(true)}
+        onGoals={openGoals}
       />
 
       {/* Full-screen world map — scales in from centre while the camera pulls
@@ -425,15 +631,9 @@ export default function Home() {
       <WorldMap
         open={mapShown}
         onClose={closeMap}
-        onChat={() => {
-          closeMap();
-          openChat();
-        }}
+        onChat={mapToChat}
         onTravel={travelTo}
-        onStartSession={(id) => {
-          closeMap();
-          setSessionId(id);
-        }}
+        onStartSession={startSessionFromMap}
       />
 
       {/* Guided session — the interface only mounts once the pan up to the sky
@@ -536,27 +736,17 @@ export default function Home() {
           style={{ position: 'absolute', top: 0, left: 0, right: 0, height: SCREEN_H * 0.48, zIndex: 20 }}
         />
       ) : null}
-      <ShopSheet open={shopOpen} onClose={() => setShopOpen(false)} controls={controls} />
+      <ShopSheet open={shopOpen} onClose={closeShop} controls={controls} />
 
       {/* goals, streak ladder, appearance/closet */}
-      <GoalsSheet
-        open={goalsOpen}
-        onClose={() => setGoalsOpen(false)}
-        onTalk={() => {
-          setGoalsOpen(false);
-          openChat();
-        }}
-      />
-      <StreakModal open={streakModalOpen} onClose={() => setStreakModalOpen(false)} />
+      <GoalsSheet open={goalsOpen} onClose={closeGoals} onTalk={goalsToChat} />
+      <StreakModal open={streakModalOpen} onClose={closeStreakModal} />
       {settings ? (
         <AppearanceSheet
           open={appearanceOpen}
-          onClose={() => setAppearanceOpen(false)}
+          onClose={closeAppearance}
           controls={controls}
-          onSkinChange={(next) => {
-            setSettings(next);
-            controller?.applySettings(next);
-          }}
+          onSkinChange={onSkinChange}
         />
       ) : null}
 
@@ -572,7 +762,7 @@ export default function Home() {
       {settings ? (
         <SettingsSheet
           open={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
+          onClose={closeSettings}
           controller={controller}
           settings={settings}
           onSettingsChange={setSettings}
@@ -625,13 +815,21 @@ export default function Home() {
         </View>
       ) : null}
 
+      {/* DEV frame-rate probe (top-center), isolated leaf so it never re-renders
+          Home. fps = avg over ~0.5s; worst = slowest single frame; js = time
+          inside the render loop; calls/tris = scene GL draw calls + triangles. */}
+      {SHOW_FPS ? <FpsOverlay top={insets.top + 6} /> : null}
+
       {/* DEV state controls (top-left chip → panel); renders nothing in prod */}
       <DevPanel
+        timeOfDay={settings?.timeOfDay}
+        onSetTimeOfDay={setTimeOfDay}
         onJumpToReveal={() => {
           useStarChat.getState().devSeedArtifact();
           setStarChatOpen(true);
         }}
       />
     </View>
+    </Profiler>
   );
 }

@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { memo } from 'react';
 import { Image, Modal, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -22,7 +23,8 @@ const FLAME = '#ff7a3d';
 
 const streakIcon = require('../../assets/icons/streak.png');
 
-export function StreakModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export const StreakModal = memo(StreakModalImpl);
+function StreakModalImpl({ open, onClose }: { open: boolean; onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const streak = useSnapshot().data?.streak;
   const count = streak?.count ?? 0;

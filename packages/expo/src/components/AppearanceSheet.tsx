@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { Alert, Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,7 +31,8 @@ import { type CosmeticsControls, type Wardrobe } from '../three/wardrobe';
 
 const SHEET_H = Math.round(Dimensions.get('window').height * 0.52);
 
-export function AppearanceSheet({
+export const AppearanceSheet = memo(AppearanceSheetImpl);
+function AppearanceSheetImpl({
   open,
   onClose,
   controls,

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
@@ -85,7 +85,10 @@ const MARK_H = 140;
 const PILL_W_GUESS = 150;
 const EDGE_PAD = 10;
 
-export function WorldMap({
+// memoized: Home re-renders on every surface toggle; the map only cares about
+// its own props, so skip the work (and the heavy image tree) when they're equal.
+export const WorldMap = memo(WorldMapImpl);
+function WorldMapImpl({
   open,
   onClose,
   onChat,

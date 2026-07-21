@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { Alert, Dimensions, Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   cancelAnimation,
@@ -270,7 +270,8 @@ function Countdown() {
   );
 }
 
-export function ShopSheet({
+export const ShopSheet = memo(ShopSheetImpl);
+function ShopSheetImpl({
   open,
   onClose,
   controls,
