@@ -1,0 +1,79 @@
+# What EAS uploads when it builds the app.
+#
+# IMPORTANT: this file REPLACES .gitignore for EAS uploads — it does not add to
+# it. Every pattern from the root .gitignore and packages/expo/.gitignore is
+# repeated below; dropping one here means that content starts getting uploaded
+# again, even though git still ignores it.
+#
+# On top of those, this excludes the parts of the monorepo an iOS build never
+# reads: the canonical art source, the Blender pipeline, and the docs. The app
+# renders from packages/expo/assets/ (the synced copy that cosmetics-manifest.ts
+# require()s), so the top-level assets/ tree is authoring input, not build input.
+
+# The repo's own history. Without .easignore, EAS archives via git and .git is
+# implicitly excluded; with .easignore it tars the directory instead, so this
+# has to be named explicitly or the whole object database (~229MB) ships.
+.git/
+
+# Authoring + tooling the build never reads
+/assets/
+/tools/
+/plans/
+/docs/
+/tests/
+/design-qa.md
+/chat-top.png
+
+# Dependencies (any package)
+node_modules
+
+# Build output / caches
+dist
+.vite
+.next
+web-build/
+*.tsbuildinfo
+.expo/
+.metro-health-check*
+__pycache__/
+
+# Generated native projects — EAS runs prebuild itself
+/packages/expo/ios
+/packages/expo/android
+.kotlin/
+
+# NOTE: packages/expo/targets/ is deliberately NOT excluded. NotificationService
+# is hand-written source that only lives there, and re-including one child of an
+# excluded directory ("targets/*" + "!targets/NotificationService/**") is fragile
+# — getting it wrong drops the target and the build fails late, in
+# CONFIGURE_XCODE_PROJECT, with "Could not find target in project.pbxproj". The
+# other three targets are re-copied by react-native-device-activity on prebuild
+# and total ~256K, so uploading them costs nothing.
+
+# Secrets + local env (build-time env comes from eas.json / EAS env vars)
+.env
+.env*.local
+.blob-store/
+*.jks
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision
+
+# Local state, logs, editor noise
+.claude/
+.logs/
+.vercel
+.playwright-mcp
+.DS_Store
+*.local
+*.orig.*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Local iteration artifacts
+packages/web/.illustrate/studio/
+tools/char-pipeline/renders/
+tools/char-pipeline/.wip/

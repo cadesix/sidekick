@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Pressable } from './Pressable';
 import { MessageBubble } from '../imessage/components/MessageBubble';
 import { TypingIndicator } from '../imessage/components/TypingIndicator';
 import { colors, type } from '../imessage/theme';

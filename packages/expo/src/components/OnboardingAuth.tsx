@@ -1,7 +1,8 @@
-import { useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { Pressable } from "./Pressable";
 
 import { AuthOtpSteps, ErrorText } from "./auth/AuthOtpSteps";
 import { useAuthMethods } from "./auth/useAuthMethods";
@@ -104,16 +105,11 @@ function BluePill({
   onPress: () => void;
   disabled?: boolean;
 }) {
-  // Static style array (pressed via state) — css-interop drops the `({pressed}) =>`
-  // callback form of `style` on native, leaving the pill with no fill.
-  const [pressed, setPressed] = useState(false);
   return (
     <Pressable
       onPress={onPress}
-      onPressIn={() => setPressed(true)}
-      onPressOut={() => setPressed(false)}
       disabled={disabled}
-      style={[
+      style={({ pressed }) => [
         styles.blue,
         disabled ? styles.pillDisabled : null,
         pressed && !disabled ? styles.bluePressed : null,
@@ -133,14 +129,11 @@ function WhitePill({
   onPress: () => void;
   disabled?: boolean;
 }) {
-  const [pressed, setPressed] = useState(false);
   return (
     <Pressable
       onPress={onPress}
-      onPressIn={() => setPressed(true)}
-      onPressOut={() => setPressed(false)}
       disabled={disabled}
-      style={[
+      style={({ pressed }) => [
         styles.white,
         disabled ? styles.pillDisabled : null,
         pressed && !disabled ? styles.whitePressed : null,

@@ -40,14 +40,20 @@
       "channel": "production",
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.sidekickchat.app"
+        "EXPO_PUBLIC_API_URL": "https://api.sidekickchat.app",
+        // Screen Time needs com.apple.developer.family-controls, whose
+        // Distribution variant requires manual Apple approval. Until that
+        // request is granted, App Store profiles can't carry the capability and
+        // the archive fails signing on all four targets. Remove this line the
+        // day approval lands — nothing else needs to change.
+        "EXPO_PUBLIC_DISABLE_DEVICE_ACTIVITY": "1"
       }
     }
   },
   "submit": {
     "production": {
       "ios": {
-        "ascAppId": "REPLACE_WITH_ASC_APP_ID"
+        "ascAppId": "6792917447"
       }
     }
   }

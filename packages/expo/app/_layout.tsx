@@ -3,13 +3,16 @@ import '../global.css';
 import * as Sentry from '@sentry/react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, type ErrorBoundaryProps } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
+import { Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import 'react-native-reanimated';
 
+import { PrimaryButton } from '~/components/PrimaryButton';
 import { AuthGate } from '~/lib/auth';
 import { NotificationObserver } from '~/lib/notifications/observer';
 import { useOtaUpdates } from '~/lib/ota-updates';
@@ -45,6 +48,30 @@ function ConnectedApp() {
         <Stack.Screen name="dev/face-sheet" options={{ presentation: 'modal' }} />
       </Stack>
     </>
+  );
+}
+
+/**
+ * expo-router mounts this for any render error below the root layout. Without it
+ * a throw leaves the Stack's white `contentStyle` on screen — its global handler
+ * hides the splash, the JS VM keeps running, and nothing reaches Sentry, so a
+ * fatal render bug looks exactly like a slow launch. Reporting here is what makes
+ * that class of failure diagnosable from a TestFlight build.
+ */
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  useEffect(() => {
+    Sentry.captureException(error);
+  }, [error]);
+
+  return (
+    <View className="flex-1 bg-white items-center justify-center px-8 gap-6">
+      <Text className="text-[15px] leading-[1.6] text-ink/55 text-center">
+        hmm, something went wrong on my end. mind trying again?
+      </Text>
+      <View className="w-full max-w-xs">
+        <PrimaryButton label="Try again" onPress={retry} />
+      </View>
+    </View>
   );
 }
 

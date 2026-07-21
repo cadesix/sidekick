@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { syncHealth, touchStreak } from '~/lib/api';
+import { useAuthStore } from '~/lib/auth-store';
 import { maybeRefreshFocusShield } from '~/lib/focus';
 import { readHealthDays } from '~/lib/health';
 import { HEALTH_CONNECTION_QUERY_KEY } from '~/lib/health-connection';
@@ -60,8 +61,18 @@ async function syncProgression(queryClient: QueryClient): Promise<void> {
 export function useForegroundSync(): void {
   const queryClient = useQueryClient();
   const appState = useRef(AppState.currentState);
+  // AuthGate mounts the app for signed-OUT users too (onboarding is the front
+  // door), so without this every signed-out cold start fires four tokenless
+  // requests. Three consecutive 401s trip api.ts's revoked-session handler,
+  // which signs out and clears the query cache under the mounted onboarding
+  // flow. Only a real session has anything to sync.
+  const signedIn = useAuthStore((state) => state.status) === 'signedIn';
 
   useEffect(() => {
+    if (!signedIn) {
+      return;
+    }
+
     function sync(): void {
       void Promise.allSettled([
         syncHealthData(queryClient),
@@ -80,5 +91,5 @@ export function useForegroundSync(): void {
     sync();
     const subscription = AppState.addEventListener('change', onChange);
     return () => subscription.remove();
-  }, [queryClient]);
+  }, [queryClient, signedIn]);
 }
