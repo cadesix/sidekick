@@ -16,10 +16,12 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BOND_MIN } from "@sidekick/core";
+import { SolidShadow } from "~/components/SolidShadow";
 import { StreakModal } from "~/components/StreakModal";
 import { locationStatus, trpc } from "~/lib/api";
 import { useSignOut } from "~/lib/auth";
 import { useSnapshot } from "~/lib/state";
+import { INK } from "~/lib/tokens";
 import { getLocalFocusSettings } from "~/lib/focus";
 import { HEALTH_CONNECTION_QUERY_KEY, loadHealthConnection } from "~/lib/health-connection";
 import { sidekickDisplayName } from "~/lib/sidekick-name";
@@ -31,9 +33,16 @@ import {
 import { colors } from "../theme";
 import { Glass } from "../components/Glass";
 import { Icon, type IconName } from "../components/Icon";
-import { enablePushNotifications } from "~/lib/notifications/registration";
-
 const STREAK_ICON = require("../../../assets/icons/streak.png");
+
+// design-system type (06 §1.2): one family, ABC Diatype Rounded — iOS won't
+// faux-bold it, so weights are separate families
+const FONT = "Diatype-Rounded";
+const FONT_MEDIUM = "Diatype-Rounded-Medium";
+const FONT_BOLD = "Diatype-Rounded-Bold";
+const INK_55 = "rgba(17,17,17,0.55)";
+const INK_45 = "rgba(17,17,17,0.45)";
+const INK_12 = "rgba(17,17,17,0.12)";
 
 /** An iOS-style grouped field: label on the left, editable value on the right. */
 function Field({
@@ -111,7 +120,10 @@ function Group({
 	return (
 		<View style={styles.group}>
 			<Text style={styles.groupTitle}>{title}</Text>
-			<View style={styles.card}>{children}</View>
+			{/* the brand surface (06 §2): hard 2px offset ink shadow, never blurred */}
+			<SolidShadow radius={16} className="bg-white">
+				{children}
+			</SolidShadow>
 			{footer ? <Text style={styles.groupFooter}>{footer}</Text> : null}
 		</View>
 	);
@@ -204,10 +216,6 @@ export function ProfileScreen() {
 		queryKey: HEALTH_CONNECTION_QUERY_KEY,
 		queryFn: loadHealthConnection,
 	});
-	const notifications = useQuery({
-		queryKey: ["notifications", "preferences"],
-		queryFn: () => trpc.notifications.preferences.query(),
-	});
 	// the character's name (bracketed diagnostic) — used in persona copy below;
 	// the iOS-Settings app-name reference stays the literal "Sidekick" brand
 	const sidekickName = sidekickDisplayName(me.data?.sidekickName);
@@ -242,40 +250,6 @@ export function ProfileScreen() {
 		},
 	});
 
-	const updateNotifications = useMutation({
-		mutationFn: async (patch: {
-			proactiveEnabled?: boolean;
-			checkinsEnabled?: boolean;
-			remindersEnabled?: boolean;
-			awakeStart?: string;
-			awakeEnd?: string;
-		}) => {
-			await trpc.notifications.updatePreferences.mutate(patch);
-			if (patch.proactiveEnabled) {
-				try {
-					const enabled = await enablePushNotifications();
-					if (!enabled) {
-						Alert.alert(
-							"Notifications are off",
-							`${sidekickName} can still leave messages in chat. You can turn alerts on in iOS Settings.`,
-							[
-								{ text: "Not now", style: "cancel" },
-								{ text: "Open Settings", onPress: () => void Linking.openSettings() },
-							],
-						);
-					}
-				} catch {
-					Alert.alert(
-						"Couldn’t register this device",
-						`Your preference was saved. ${sidekickName} will try notifications again when the app reconnects.`,
-					);
-				}
-			}
-		},
-		onSuccess: () =>
-			queryClient.invalidateQueries({ queryKey: ["notifications", "preferences"] }),
-	});
-
 	const signOut = useSignOut();
 	const signOutMutation = useMutation({ mutationFn: signOut });
 
@@ -305,43 +279,62 @@ export function ProfileScreen() {
 					{/* headline stats: the bond score, large, plus the streak (moved
 					    here from the home top-right; taps open the milestone ladder) */}
 					<View style={styles.statsRow}>
-						<View style={styles.statCard}>
-							<Text style={styles.statValue}>
-								<Text style={styles.statStar}>✦ </Text>
-								{bond}%
-							</Text>
-							<Text style={styles.statCaption}>bond</Text>
+						<View style={styles.statHalf}>
+							<SolidShadow radius={16} className="bg-white">
+								<View style={styles.statCard}>
+									<Text style={styles.statValue}>
+										<Text style={styles.statStar}>✦ </Text>
+										{bond}%
+									</Text>
+									<Text style={styles.statCaption}>bond</Text>
+								</View>
+							</SolidShadow>
 						</View>
-						<Pressable style={styles.statCard} onPress={() => setStreakOpen(true)}>
-							<View style={styles.statValueRow}>
-								<Image source={STREAK_ICON} style={styles.statIcon} />
-								<Text style={styles.statValue}>{streakCount}</Text>
-							</View>
-							<Text style={styles.statCaption}>day streak</Text>
-						</Pressable>
+						<View style={styles.statHalf}>
+							<SolidShadow radius={16} className="bg-white" onPress={() => setStreakOpen(true)}>
+								<View style={styles.statCard}>
+									<View style={styles.statValueRow}>
+										<Image source={STREAK_ICON} style={styles.statIcon} />
+										<Text style={styles.statValue}>{streakCount}</Text>
+									</View>
+									<Text style={styles.statCaption}>day streak</Text>
+								</View>
+							</SolidShadow>
+						</View>
 					</View>
 
 					{/* the latest astral card — same dark-purple treatment as the
-					    star-chat reveal, compact. Hidden until a first card exists. */}
-					{astral ? (
-						<View style={styles.astralCard}>
-							<View style={styles.astralLabelRow}>
-								<Text style={styles.astralStar}>✦</Text>
-								<Text style={styles.astralLabel}>your astral card</Text>
-							</View>
-							<Text style={styles.astralArchetype}>{astral.archetype}</Text>
-							{astral.traits.length ? (
-								<View style={styles.astralTraits}>
-									{astral.traits.map((tr, i) => (
-										<View key={i} style={styles.astralChip}>
-											<Text style={styles.astralChipText}>{tr}</Text>
-										</View>
-									))}
+					    star-chat reveal, compact; a nudge toward a first star chat
+					    until a card exists */}
+					<View style={styles.astralWrap}>
+						<SolidShadow radius={16} className="bg-[#160e2c]">
+							<View style={styles.astralCard}>
+								<View style={styles.astralLabelRow}>
+									<Text style={styles.astralStar}>✦</Text>
+									<Text style={styles.astralLabel}>your astral card</Text>
 								</View>
-							) : null}
-							<Text style={styles.astralReading}>{astral.reading}</Text>
-						</View>
-					) : null}
+								{astral ? (
+									<>
+										<Text style={styles.astralArchetype}>{astral.archetype}</Text>
+										{astral.traits.length ? (
+											<View style={styles.astralTraits}>
+												{astral.traits.map((tr, i) => (
+													<View key={i} style={styles.astralChip}>
+														<Text style={styles.astralChipText}>{tr}</Text>
+													</View>
+												))}
+											</View>
+										) : null}
+										<Text style={styles.astralReading}>{astral.reading}</Text>
+									</>
+								) : (
+									<Text style={styles.astralReading}>
+										Do an astral chat with {sidekickName} to reveal your card.
+									</Text>
+								)}
+							</View>
+						</SolidShadow>
+					</View>
 
 					<Group title="You">
 						<Field
@@ -364,65 +357,6 @@ export function ProfileScreen() {
 							<Text style={styles.rowValue}>{me.data.timezone ?? "—"}</Text>
 						</View>
 					</Group>
-					{notifications.data ? (
-						<Group
-							title="Notifications"
-							footer="Proactive messages wait until you’ve been away for 12 hours and arrive at a varied time inside your awake window."
-						>
-							<View style={styles.row}>
-								<Text style={styles.rowLabel}>Messages from {sidekickName}</Text>
-								<Switch
-									style={styles.switch}
-									value={notifications.data.proactiveEnabled}
-									disabled={updateNotifications.isPending}
-									onValueChange={(proactiveEnabled) =>
-										updateNotifications.mutate({ proactiveEnabled })
-									}
-									trackColor={{ false: colors.gray4, true: colors.green }}
-								/>
-							</View>
-							<View style={styles.divider} />
-							<View style={styles.row}>
-								<Text style={styles.rowLabel}>Goal check-ins</Text>
-								<Switch
-									style={styles.switch}
-									value={notifications.data.checkinsEnabled}
-									disabled={updateNotifications.isPending}
-									onValueChange={(checkinsEnabled) =>
-										updateNotifications.mutate({ checkinsEnabled })
-									}
-									trackColor={{ false: colors.gray4, true: colors.green }}
-								/>
-							</View>
-							<View style={styles.divider} />
-							<View style={styles.row}>
-								<Text style={styles.rowLabel}>Reminders</Text>
-								<Switch
-									style={styles.switch}
-									value={notifications.data.remindersEnabled}
-									disabled={updateNotifications.isPending}
-									onValueChange={(remindersEnabled) =>
-										updateNotifications.mutate({ remindersEnabled })
-									}
-									trackColor={{ false: colors.gray4, true: colors.green }}
-								/>
-							</View>
-							<View style={styles.divider} />
-							<Field
-								label="Awake from"
-								value={notifications.data.awakeStart}
-								placeholder="09:00"
-								onCommit={(awakeStart) => updateNotifications.mutate({ awakeStart })}
-							/>
-							<View style={styles.divider} />
-							<Field
-								label="Until"
-								value={notifications.data.awakeEnd}
-								placeholder="21:30"
-								onCommit={(awakeEnd) => updateNotifications.mutate({ awakeEnd })}
-							/>
-						</Group>
-					) : null}
 					<Group
 						title="Connected"
 						footer={`Each connection explains what stays on your iPhone and what ${sidekickName} can use. You can review or disconnect it anytime.`}
@@ -493,7 +427,7 @@ export function ProfileScreen() {
 const styles = StyleSheet.create({
 	screen: {
 		flex: 1,
-		backgroundColor: colors.gray6,
+		backgroundColor: "#FFFFFF", // design system: the app background is always white
 	},
 	header: {
 		flexDirection: "row",
@@ -518,31 +452,31 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 	},
 	title: {
+		fontFamily: FONT_BOLD,
 		fontSize: 17,
-		fontWeight: "700",
-		color: colors.label,
+		color: INK,
 	},
 	content: {
-		paddingHorizontal: 16,
+		paddingHorizontal: 20, // screen gutter (06 §1.3)
 	},
+	// heading role: 27/800, −0.02em tracking
 	profileName: {
 		marginTop: 18,
-		fontSize: 28,
-		fontWeight: "800",
+		fontFamily: FONT_BOLD,
+		fontSize: 27,
+		letterSpacing: -0.54,
 		textAlign: "center",
-		color: colors.label,
+		color: INK,
 	},
 	statsRow: {
-		marginTop: 14,
+		marginTop: 16,
 		flexDirection: "row",
 		gap: 10,
 	},
+	statHalf: { flex: 1 },
+	// fill/border/shadow come from the SolidShadow wrapper
 	statCard: {
-		flex: 1,
 		alignItems: "center",
-		backgroundColor: "#FFFFFF",
-		borderRadius: 18,
-		borderCurve: "continuous",
 		paddingVertical: 16,
 		gap: 2,
 	},
@@ -551,12 +485,11 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		gap: 6,
 	},
-	// brand font — iOS won't faux-bold Diatype, the Bold family carries weight
 	statValue: {
-		fontFamily: "Diatype-Rounded-Bold",
+		fontFamily: FONT_BOLD,
 		fontSize: 34,
 		lineHeight: 40,
-		color: colors.label,
+		color: INK,
 	},
 	statStar: {
 		fontSize: 22,
@@ -568,20 +501,16 @@ const styles = StyleSheet.create({
 		resizeMode: "contain",
 	},
 	statCaption: {
-		fontSize: 13,
-		fontWeight: "600",
+		fontFamily: FONT_MEDIUM,
+		fontSize: 12,
 		textTransform: "uppercase",
 		letterSpacing: 0.6,
-		color: colors.secondaryLabel,
+		color: INK_45,
 	},
-	// compact take on the star-chat reveal card (same palette)
+	astralWrap: { marginTop: 16 },
+	// compact take on the star-chat reveal card (same palette); the ink border +
+	// hard shadow come from the SolidShadow wrapper
 	astralCard: {
-		marginTop: 16,
-		borderRadius: 24,
-		borderCurve: "continuous",
-		borderWidth: 1,
-		borderColor: "rgba(201,188,255,0.3)",
-		backgroundColor: "#160e2c",
 		padding: 20,
 	},
 	astralLabelRow: {
@@ -594,17 +523,17 @@ const styles = StyleSheet.create({
 		color: "#C9BCFF",
 	},
 	astralLabel: {
+		fontFamily: FONT_BOLD,
 		fontSize: 11,
-		fontWeight: "800",
 		textTransform: "uppercase",
 		letterSpacing: 2,
 		color: "#C9BCFF",
 	},
 	astralArchetype: {
 		marginTop: 8,
+		fontFamily: FONT_BOLD,
 		fontSize: 24,
 		lineHeight: 28,
-		fontWeight: "800",
 		color: "#FFFFFF",
 	},
 	astralTraits: {
@@ -622,12 +551,13 @@ const styles = StyleSheet.create({
 		paddingVertical: 4,
 	},
 	astralChipText: {
+		fontFamily: FONT_MEDIUM,
 		fontSize: 12,
-		fontWeight: "600",
 		color: "#E7E0FF",
 	},
 	astralReading: {
 		marginTop: 12,
+		fontFamily: FONT,
 		fontSize: 14,
 		lineHeight: 21,
 		color: "rgba(231,224,255,0.9)",
@@ -636,24 +566,21 @@ const styles = StyleSheet.create({
 		marginTop: 22,
 	},
 	groupTitle: {
-		fontSize: 13,
+		fontFamily: FONT_MEDIUM,
+		fontSize: 12,
 		textTransform: "uppercase",
-		letterSpacing: 0.4,
-		color: colors.secondaryLabel,
+		letterSpacing: 0.6,
+		color: INK_45,
 		marginBottom: 8,
 		marginLeft: 4,
 	},
 	groupFooter: {
+		fontFamily: FONT,
 		fontSize: 13,
 		lineHeight: 18,
-		color: colors.secondaryLabel,
-		marginTop: 8,
+		color: INK_45,
+		marginTop: 10,
 		marginHorizontal: 4,
-	},
-	card: {
-		backgroundColor: "#FFFFFF",
-		borderRadius: 14,
-		borderCurve: "continuous",
 	},
 	row: {
 		flexDirection: "row",
@@ -665,19 +592,22 @@ const styles = StyleSheet.create({
 		height: 52,
 	},
 	rowLabel: {
+		fontFamily: FONT,
 		fontSize: 17,
-		color: colors.label,
+		color: INK,
 	},
 	rowInput: {
 		flex: 1,
+		fontFamily: FONT,
 		fontSize: 17,
-		color: colors.secondaryLabel,
+		color: INK_55,
 		textAlign: "right",
 	},
 	rowValue: {
 		flex: 1,
+		fontFamily: FONT,
 		fontSize: 17,
-		color: colors.secondaryLabel,
+		color: INK_55,
 		textAlign: "right",
 	},
 	rowChevron: {
@@ -685,6 +615,7 @@ const styles = StyleSheet.create({
 		alignItems: "flex-end",
 	},
 	signOutLabel: {
+		fontFamily: FONT_MEDIUM,
 		fontSize: 17,
 		color: colors.red,
 	},
@@ -695,7 +626,7 @@ const styles = StyleSheet.create({
 	},
 	divider: {
 		height: StyleSheet.hairlineWidth,
-		backgroundColor: colors.gray3,
+		backgroundColor: INK_12,
 		marginLeft: 16,
 	},
 	integrationRow: {
@@ -720,13 +651,14 @@ const styles = StyleSheet.create({
 		gap: 2,
 	},
 	integrationDescription: {
+		fontFamily: FONT,
 		fontSize: 13,
 		lineHeight: 17,
-		color: colors.secondaryLabel,
+		color: INK_55,
 	},
 	integrationDivider: {
 		height: StyleSheet.hairlineWidth,
-		backgroundColor: colors.gray3,
+		backgroundColor: INK_12,
 		marginLeft: 66,
 	},
 });
