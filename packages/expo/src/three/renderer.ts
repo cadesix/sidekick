@@ -279,7 +279,7 @@ export function createSidekickRenderer(
     const sn = v.scenes[v.timeOfDay];
     return {
       x: v.hillX, z: v.hillZ, radius: v.hillRadius, flat: v.hillFlat, sink: v.hillSink,
-      hillColor: v.hillColor, treeColor: sn.grassBase,
+      hillColor: v.hillColor, treeColor: sn.grassBase, tipColor: sn.grassTip,
       ridgeHeight: v.ridgeHeight, ridgeHaze: v.ridgeHaze, ridgeDepth: v.ridgeDepth, hazeColor: sn.fog,
     };
   };

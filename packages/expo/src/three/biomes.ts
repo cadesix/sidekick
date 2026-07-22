@@ -1018,6 +1018,8 @@ export type BackdropParams = {
   sink: number;
   hillColor: string;
   treeColor: string;
+  // bright grass-tip green — the cap tufts tint toward it (tips dominate at distance)
+  tipColor: string;
   // distant-ridge controls (live-tunable) + the per-scene colour they haze toward
   ridgeHeight: number;
   ridgeHaze: number;
@@ -1101,35 +1103,74 @@ export function makeMeadowBackdrop(
   // world Y of the hero cap surface at horizontal distance dh from its centre
   const capY = (dh: number) => -p.sink + p.radius * p.flat * Math.sqrt(Math.max(0, 1 - (dh / p.radius) ** 2));
 
-  // grass on the cap — blades scattered on the visible cap, baked into ONE merged
-  // geometry (one draw call, and the cel shader renders it like any solid mesh)
-  const bladeSrc = new THREE.ConeGeometry(0.05, 0.5, 3);
-  bladeSrc.translate(0, 0.25, 0);
-  const blades: THREE.BufferGeometry[] = [];
+  // grass on the cap — faked to read like the foreground lawn from ~4× the
+  // camera distance: blades sized ~2–2.5× the foreground's world size (so they
+  // still render smaller on screen), gathered into tuft pockets like the lawn's
+  // clump centres, and tinted per tuft from three base→tip mixes (bright tips
+  // dominate a lawn seen from afar) with a touch of haze for aerial perspective.
+  // Baked into THREE merged meshes (one per tint) — 3 draw calls, same geometry
+  // budget as before.
+  const bladeSrc = new THREE.ConeGeometry(0.028, 0.34, 3);
+  bladeSrc.translate(0, 0.17, 0);
+  const bladeTints = [0.3, 0.55, 0.8].map((t) => mix(mix(p.treeColor, p.tipColor, t), p.hazeColor, 0.12));
+  const blades: THREE.BufferGeometry[][] = bladeTints.map(() => []);
   const mtx = new THREE.Matrix4();
   const qt = new THREE.Quaternion();
   const pos = new THREE.Vector3();
   const scl = new THREE.Vector3();
   const axis = new THREE.Vector3();
-  const TARGET = 160;
-  for (let i = 0; blades.length < TARGET && i < TARGET * 4; i++) {
-    const a = rand(i * 1.3) * Math.PI * 2;
-    const dh = Math.sqrt(rand(i * 2.1)) * p.radius * 0.9;
+  // tuft pockets on the visible cap, each owning one of the three tints
+  type Tuft = { x: number; z: number; r: number; tint: number };
+  const tufts: Tuft[] = [];
+  for (let i = 0; tufts.length < 14 && i < 60; i++) {
+    const a = rand(i * 6.7 + 2) * Math.PI * 2;
+    const dh = Math.sqrt(rand(i * 8.3 + 5)) * p.radius * 0.82;
+    if (capY(dh) < 0.06) continue;
+    tufts.push({
+      x: Math.cos(a) * dh,
+      z: Math.sin(a) * dh,
+      r: 0.35 + rand(i * 9.1 + 3) * 0.45,
+      tint: Math.floor(rand(i * 4.9 + 7) * bladeTints.length),
+    });
+  }
+  const TARGET = 190;
+  let placed = 0;
+  for (let i = 0; placed < TARGET && i < TARGET * 4; i++) {
+    // ~3/4 of blades gather in tufts, the rest scatter loose between them
+    const tuft = rand(i * 2.9 + 1) < 0.75 && tufts.length ? tufts[Math.floor(rand(i * 7.7 + 4) * tufts.length)] : null;
+    let dx: number;
+    let dz: number;
+    if (tuft) {
+      const cr = tuft.r * Math.sqrt(rand(i * 2.1));
+      const ca = rand(i * 1.3) * Math.PI * 2;
+      dx = tuft.x + Math.cos(ca) * cr;
+      dz = tuft.z + Math.sin(ca) * cr;
+    } else {
+      const a = rand(i * 1.3) * Math.PI * 2;
+      const dh = Math.sqrt(rand(i * 2.1)) * p.radius * 0.9;
+      dx = Math.cos(a) * dh;
+      dz = Math.sin(a) * dh;
+    }
+    const dh = Math.hypot(dx, dz);
     const y = capY(dh);
     if (y < 0.03) continue; // only where the cap clears the ground
-    pos.set(p.x + Math.cos(a) * dh, y, p.z + Math.sin(a) * dh);
-    const sc = 0.5 + rand(i * 3.7) * 0.9;
-    scl.set(sc, sc * (0.7 + rand(i * 4.2) * 0.7), sc);
-    axis.set(Math.cos(a + 1.57), 0, Math.sin(a + 1.57));
+    pos.set(p.x + dx, y - 0.015, p.z + dz); // slight sink so tilted bases don't gap
+    // tuft members share the tuft's scale mood; loose blades run shorter
+    const sc = (tuft ? 0.7 + rand(i * 3.7) * 0.5 : 0.5 + rand(i * 3.7) * 0.4) * (0.75 + rand(i * 4.2) * 0.5);
+    scl.set(sc, sc * (0.8 + rand(i * 6.3) * 0.5), sc);
+    axis.set(Math.cos(rand(i * 5.9) * Math.PI * 2), 0, Math.sin(rand(i * 5.9) * Math.PI * 2));
     qt.setFromAxisAngle(axis, (rand(i * 5.1) - 0.5) * 0.5);
-    blades.push(bladeSrc.clone().applyMatrix4(mtx.compose(pos, qt, scl)));
+    const bucket = tuft ? tuft.tint : Math.floor(rand(i * 3.3 + 6) * bladeTints.length);
+    blades[bucket].push(bladeSrc.clone().applyMatrix4(mtx.compose(pos, qt, scl)));
+    placed++;
   }
   bladeSrc.dispose();
-  if (blades.length) {
-    const merged = mergeGeometries(blades, false);
-    blades.forEach((b) => b.dispose());
+  for (let b = 0; b < blades.length; b++) {
+    if (!blades[b].length) continue;
+    const merged = mergeGeometries(blades[b], false);
+    blades[b].forEach((g) => g.dispose());
     if (merged) {
-      const grass = new THREE.Mesh(merged, makeMat(p.treeColor));
+      const grass = new THREE.Mesh(merged, makeMat(bladeTints[b]));
       grass.castShadow = false;
       grass.receiveShadow = false;
       group.add(grass);
