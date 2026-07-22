@@ -26,7 +26,7 @@ import { SidekickAvatar } from '../src/components/SidekickAvatar';
 import { SpeechBubble } from '../src/components/SpeechBubble';
 import { StreakPill } from '../src/components/StreakPill';
 import { HomeDock } from '../src/components/HomeDock';
-import { BIOMES, type BiomeId, type EnvironmentId } from '../src/three/biomes';
+import { BIOMES, biomeLookForTime, type BiomeId, type EnvironmentId } from '../src/three/biomes';
 import { speak, useSpeech } from '../src/store/speech';
 import { FACE_EXPRESSIONS, type FaceExpression } from '../src/three/face';
 import { BOND_MAX, nextSession as coreNextSession } from '@sidekick/core';
@@ -534,7 +534,7 @@ export default function Home() {
   // distance / height) so /sidekick-3d previews the EXACT same camera. Falls back
   // to the literal HERO_FRAMING until settings hydrate.
   const hero = useMemo<Framing>(
-    () => (settings ? homeFraming(settings.fov, settings.camDist ?? 4.2, settings.camHeight ?? 0) : HERO_FRAMING),
+    () => (settings ? homeFraming(settings.fov, settings.camDist, settings.camHeight ?? 0) : HERO_FRAMING),
     [settings],
   );
 
@@ -572,13 +572,18 @@ export default function Home() {
   // the glass material and its content adapt: the fill uses a DARK material (so it
   // reads as translucent glass over dark, not a white panel) and the icon/text
   // flip to white. Over a light sky it's the inverse. Keyed off the top-of-sky
-  // colour — the meadow's is time-of-day driven, a biome's comes from its preset.
+  // colour — both time-of-day driven: the meadow reads its scene preset, a biome
+  // reads its preset run through biomeLookForTime (same as the renderer), so at
+  // evening/night the tint tracks the darkened sky instead of the day base.
+  const tod = settings?.timeOfDay ?? 'day';
   const topSky =
     environment === 'meadow'
       ? settings
-        ? settings.scenes[settings.timeOfDay]?.skyTop ?? '#3ea1cc'
+        ? settings.scenes[tod]?.skyTop ?? '#3ea1cc'
         : '#3ea1cc'
-      : BIOMES[environment as BiomeId]?.preset.skyTop ?? '#3ea1cc';
+      : BIOMES[environment as BiomeId]
+        ? biomeLookForTime(BIOMES[environment as BiomeId].preset, tod).skyTop
+        : '#3ea1cc';
   const darkBackdrop = hexLuminance(topSky) < 0.4;
 
   // No opacity here: animating a parent's opacity permanently breaks descendant

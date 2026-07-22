@@ -301,7 +301,7 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
   // map yet (expo-gl risk), so the value is carried but inert
   shadowOpacity: 0.2316,
   fov: 41.1, // home camera (matches the original HERO_FRAMING)
-  camDist: 4.2,
+  camDist: Math.hypot(0, 0.1, 4.2), // = |HERO pos − target|; reproduces it exactly (k=1)
   camHeight: 0,
   camPos: [-0.8622328104178634, 0.8720766906255945, 5.542186848594252],
   dofAperture: 0.0012,

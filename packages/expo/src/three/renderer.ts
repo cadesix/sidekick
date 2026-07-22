@@ -142,8 +142,9 @@ const DOF_FOCUS_AT = new THREE.Vector3(0, 0.5, 0); // focal point ≈ character 
 
 // The home camera framing, derived from the look-dev camera settings (fov /
 // camDist / camHeight) so the /sidekick-3d editor and the live home render the
-// EXACT same shot. Defaults (41.1 / 4.2 / 0) reproduce the original HERO_FRAMING
-// (pos [0, 0.66, 4.2], target [0, 0.56, 0]).
+// EXACT same shot. Defaults (41.1 / 4.20119 / 0) reproduce the original
+// HERO_FRAMING (pos [0, 0.66, 4.2], target [0, 0.56, 0]) — camDist is the true
+// offset length |pos − target| so k = 1 and the position is exact.
 const HOME_CAM_DIR: [number, number, number] = [0, 0.1, 4.2]; // (pos − target), len ≈ 4.2012
 const HOME_CAM_TY = 0.56; // base target height (character upper body)
 export function homeFraming(fov: number, dist: number, height: number): Framing {
@@ -277,9 +278,16 @@ export function createSidekickRenderer(
     hillColor: v.hillColor, treeColor,
     ridgeHeight: v.ridgeHeight, ridgeHaze: v.ridgeHaze, ridgeDepth: v.ridgeDepth, hazeColor,
   });
-  const backdropSig = (v: SidekickSettings, treeColor: string, hazeColor: string) =>
-    `${v.hillX},${v.hillZ},${v.hillRadius},${v.hillFlat},${v.hillSink},${v.hillColor},${treeColor},` +
-    `${v.ridgeHeight},${v.ridgeHaze},${v.ridgeDepth},${hazeColor},${v.timeOfDay}`;
+  const backdropSig = (v: SidekickSettings, treeColor: string, hazeColor: string) => {
+    const sn = v.scenes[v.timeOfDay];
+    return (
+      `${v.hillX},${v.hillZ},${v.hillRadius},${v.hillFlat},${v.hillSink},${v.hillColor},${treeColor},` +
+      `${v.ridgeHeight},${v.ridgeHaze},${v.ridgeDepth},${hazeColor},${v.timeOfDay},` +
+      // cel-material inputs (makeCelMaterial reads these) so the backdrop rebuilds
+      // when they're tuned live, not just on a time-of-day switch
+      `${sn.charTint},${sn.shadeColor},${v.celSoftness},${v.celShadowAmt}`
+    );
+  };
   // cel-shade the backdrop with the character's own shader so it reads smooth +
   // cel, matching the sidekick (flat solid colour, no map). Ridges haze toward the
   // scene fog colour so evening/night get their own look for free.
@@ -575,6 +583,12 @@ export function createSidekickRenderer(
     aperture: s.dofAperture,
     maxblur: s.dofMaxblur,
   });
+  // BokehPass allocates a HalfFloat depth target; expo-gl has no float render-target
+  // support (same reason bloom's targets are forced to byte above), so force it to
+  // 8-bit. Depth is RGBA-packed (RGBADepthPacking), so there's no precision loss —
+  // without this the composer throws on device and DoF silently never runs.
+  (bokehPass as unknown as { _renderTargetDepth: THREE.WebGLRenderTarget })._renderTargetDepth.texture.type =
+    THREE.UnsignedByteType;
   bokehPass.enabled = HOME_DOF;
   composer.addPass(bokehPass);
   composer.addPass(new OutputPass());

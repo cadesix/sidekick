@@ -127,7 +127,7 @@ export default function SidekickLookEditor() {
           {s ? (
             <SidekickCanvas
               style={{ width: vpW, height: vpH }}
-              framing={homeFraming(s.fov, s.camDist ?? 4.2, s.camHeight ?? 0)}
+              framing={homeFraming(s.fov, s.camDist, s.camHeight ?? 0)}
               onController={setController}
               onControls={setCosmetics}
             />
@@ -170,7 +170,7 @@ export default function SidekickLookEditor() {
             <>
               <GuiFolder title="Camera" defaultOpen>
                 <GuiSlider label="fov" value={s.fov} min={15} max={70} onChange={(v) => setTop('fov', v)} />
-                <GuiSlider label="distance" value={s.camDist ?? 4.2} min={2} max={12} onChange={(v) => setTop('camDist', v)} />
+                <GuiSlider label="distance" value={s.camDist} min={2} max={12} onChange={(v) => setTop('camDist', v)} />
                 <GuiSlider label="height" value={s.camHeight ?? 0} min={-1.5} max={1.5} onChange={(v) => setTop('camHeight', v)} />
               </GuiFolder>
 
