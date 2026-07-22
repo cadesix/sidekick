@@ -273,28 +273,29 @@ export function createSidekickRenderer(
   // One right-side hill + a couple trees behind the character — parented to the
   // grass group so it shows on the meadow and hides during map travel. Built from
   // live settings (position/shape/colour), rebuilt in applySettings on change.
-  const backdropParams = (v: SidekickSettings, treeColor: string, hazeColor: string): BackdropParams => ({
-    x: v.hillX, z: v.hillZ, radius: v.hillRadius, flat: v.hillFlat, sink: v.hillSink,
-    hillColor: v.hillColor, treeColor,
-    ridgeHeight: v.ridgeHeight, ridgeHaze: v.ridgeHaze, ridgeDepth: v.ridgeDepth, hazeColor,
-  });
-  const backdropSig = (v: SidekickSettings, treeColor: string, hazeColor: string) => {
+  // Backdrop colours all derive from the active scene (tree = grassBase, ridge haze
+  // = fog), so params take only the settings — no caller can pass a mismatched pair.
+  const backdropParams = (v: SidekickSettings): BackdropParams => {
     const sn = v.scenes[v.timeOfDay];
-    return (
-      `${v.hillX},${v.hillZ},${v.hillRadius},${v.hillFlat},${v.hillSink},${v.hillColor},${treeColor},` +
-      `${v.ridgeHeight},${v.ridgeHaze},${v.ridgeDepth},${hazeColor},${v.timeOfDay},` +
-      // cel-material inputs (makeCelMaterial reads these) so the backdrop rebuilds
-      // when they're tuned live, not just on a time-of-day switch
-      `${sn.charTint},${sn.shadeColor},${v.celSoftness},${v.celShadowAmt}`
-    );
+    return {
+      x: v.hillX, z: v.hillZ, radius: v.hillRadius, flat: v.hillFlat, sink: v.hillSink,
+      hillColor: v.hillColor, treeColor: sn.grassBase,
+      ridgeHeight: v.ridgeHeight, ridgeHaze: v.ridgeHaze, ridgeDepth: v.ridgeDepth, hazeColor: sn.fog,
+    };
   };
-  // cel-shade the backdrop with the character's own shader so it reads smooth +
-  // cel, matching the sidekick (flat solid colour, no map). Ridges haze toward the
-  // scene fog colour so evening/night get their own look for free.
+  // The params fully describe the geometry + colours; append only the cel-material
+  // inputs makeCelMaterial reads (not part of BackdropParams) so live cel tuning
+  // rebuilds too. Deriving from the params object keeps ONE field list.
+  const backdropSig = (v: SidekickSettings) => {
+    const sn = v.scenes[v.timeOfDay];
+    return `${JSON.stringify(backdropParams(v))}|${v.timeOfDay},${sn.charTint},${sn.shadeColor},${v.celSoftness},${v.celShadowAmt}`;
+  };
+  // cel-shade the backdrop with the character's own shader so it reads smooth + cel,
+  // matching the sidekick (flat solid colour, no map).
   const backdropMat = (v: SidekickSettings) => (color: string) =>
     makeCelMaterial(v, { map: null, normalMap: null, vertexColors: false }, color);
-  let backdrop = makeMeadowBackdrop(backdropParams(s, sc.grassBase, sc.fog), backdropMat(s));
-  let backdropKey = backdropSig(s, sc.grassBase, sc.fog);
+  let backdrop = makeMeadowBackdrop(backdropParams(s), backdropMat(s));
+  let backdropKey = backdropSig(s);
   grass.group.add(backdrop);
   const disposeGroup = (g: THREE.Object3D) =>
     g.traverse((o) => {
@@ -584,11 +585,11 @@ export function createSidekickRenderer(
     maxblur: s.dofMaxblur,
   });
   // BokehPass allocates a HalfFloat depth target; expo-gl has no float render-target
-  // support (same reason bloom's targets are forced to byte above), so force it to
-  // 8-bit. Depth is RGBA-packed (RGBADepthPacking), so there's no precision loss —
-  // without this the composer throws on device and DoF silently never runs.
-  (bokehPass as unknown as { _renderTargetDepth: THREE.WebGLRenderTarget })._renderTargetDepth.texture.type =
-    THREE.UnsignedByteType;
+  // support, so force it to 8-bit via the same helper the bloom targets use. Depth is
+  // RGBA-packed (RGBADepthPacking) so there's no precision loss — without this the
+  // composer throws on device and DoF silently never runs. (No public accessor for
+  // the target, hence the cast.)
+  forceByte((bokehPass as unknown as { _renderTargetDepth: THREE.WebGLRenderTarget })._renderTargetDepth);
   bokehPass.enabled = HOME_DOF;
   composer.addPass(bokehPass);
   composer.addPass(new OutputPass());
@@ -1442,12 +1443,12 @@ export function createSidekickRenderer(
       }
       // background hill — rebuild only when its params (or the tree's scene-driven
       // colour) actually change, so dragging unrelated sliders doesn't churn it
-      const nextKey = backdropSig(next, nsc.grassBase, nsc.fog);
+      const nextKey = backdropSig(next);
       if (nextKey !== backdropKey) {
         backdropKey = nextKey;
         grass.group.remove(backdrop);
         disposeGroup(backdrop);
-        backdrop = makeMeadowBackdrop(backdropParams(next, nsc.grassBase, nsc.fog), backdropMat(next));
+        backdrop = makeMeadowBackdrop(backdropParams(next), backdropMat(next));
         grass.group.add(backdrop);
       }
       // Standing in a biome? Re-derive its look for the (possibly new) time of

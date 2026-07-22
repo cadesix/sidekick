@@ -8,6 +8,11 @@ import { StyleSheet, type StyleProp, type ViewStyle } from "react-native";
 // heavy gray) without disturbing the native liquid-glass look.
 export const liquidGlass = isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
 
+// Fallback-path material for glass over an adaptive backdrop: dark material over a
+// dark backdrop (so it reads as translucent glass, not a white panel), light otherwise.
+export const glassTint = (dark?: boolean): BlurViewProps["tint"] =>
+  dark ? "systemThinMaterialDark" : "systemThinMaterialLight";
+
 interface GlassProps {
   style?: StyleProp<ViewStyle>;
   children?: ReactNode;

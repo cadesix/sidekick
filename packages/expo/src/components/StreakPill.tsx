@@ -1,6 +1,6 @@
 import { Image, Pressable, StyleSheet, Text } from 'react-native';
 
-import { Glass } from '~/imessage/components/Glass';
+import { Glass, glassTint } from '~/imessage/components/Glass';
 import { Skeleton } from './Skeleton';
 import { useSnapshot } from '../lib/state';
 
@@ -19,7 +19,7 @@ export function StreakPill({ onPress, darkBg }: { onPress?: () => void; darkBg?:
     // Frosted glass pill. The tap target (Pressable) lives INSIDE the glass, and
     // the glass carries no `overflow:'hidden'` — clipping a glass view kills the
     // effect; borderRadius alone rounds it into a pill.
-    <Glass tint={darkBg ? 'systemThinMaterialDark' : 'systemThinMaterialLight'} style={styles.pill}>
+    <Glass tint={glassTint(darkBg)} style={styles.pill}>
       <Pressable onPress={onPress} style={styles.inner} accessibilityLabel={`${count ?? 0} day streak`}>
         <Image source={STREAK_ICON} style={styles.icon} />
         {count == null ? (

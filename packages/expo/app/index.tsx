@@ -7,7 +7,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CHAT_SHEET_DETENT, ChatScreen } from '~/imessage';
-import { Glass } from '~/imessage/components/Glass';
+import { Glass, glassTint } from '~/imessage/components/Glass';
 import { AppearanceSheet } from '../src/components/AppearanceSheet';
 import { OverheadSpeech } from '../src/components/OverheadSpeech';
 import { BoxRewardsModal, GroundBox, StreakSplash } from '../src/components/DailyBox';
@@ -35,7 +35,7 @@ import { ShopSheet } from '../src/components/ShopSheet';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { WorldMap } from '../src/components/WorldMap';
 import { homeFraming, type Framing, type SidekickController } from '../src/three/renderer';
-import { hydrateSettings, loadSettings, refreshTimeOfDay, saveSettings, type SidekickSettings, type TimeOfDay } from '../src/three/settings';
+import { DEFAULT_SETTINGS, hydrateSettings, loadSettings, refreshTimeOfDay, saveSettings, type SidekickSettings, type TimeOfDay } from '../src/three/settings';
 import type { CosmeticsControls } from '../src/three/wardrobe';
 import { useDeferredFlag } from '../src/lib/useDeferredFlag';
 import { askGoalCheckin, claimDailyBox, fetchCapoff, fetchHabitAck, startHabitChat, type BoxContents } from '../src/lib/api';
@@ -53,11 +53,9 @@ import { perfFrame, perfMark } from '../src/lib/perf-telemetry';
 // Shop swaps the meadow for a studio and opens the wardrobe sheet, Map rockets
 // the camera up while the world map circle-reveals over it.
 
-const HERO_FRAMING: Framing = {
-  pos: [0, 0.66, 4.2],
-  target: [0, 0.56, 0],
-  fov: 41.1,
-};
+// Derived from the same homeFraming + defaults the live home uses, so there's one
+// source of truth (was a hand-kept literal). Only used as the pre-hydration fallback.
+const HERO_FRAMING: Framing = homeFraming(DEFAULT_SETTINGS.fov, DEFAULT_SETTINGS.camDist, DEFAULT_SETTINGS.camHeight);
 
 // The chat sheet covers ~82% of the screen (CHAT_SHEET_DETENT), so the mascot
 // gets only the thin band at the top. It has to be small: at the old fov 30 / z 6
@@ -534,8 +532,8 @@ export default function Home() {
   // distance / height) so /sidekick-3d previews the EXACT same camera. Falls back
   // to the literal HERO_FRAMING until settings hydrate.
   const hero = useMemo<Framing>(
-    () => (settings ? homeFraming(settings.fov, settings.camDist, settings.camHeight ?? 0) : HERO_FRAMING),
-    [settings],
+    () => (settings ? homeFraming(settings.fov, settings.camDist, settings.camHeight) : HERO_FRAMING),
+    [settings?.fov, settings?.camDist, settings?.camHeight],
   );
 
   // The active camera framing per surface. Memoized so the canvas gets a stable
@@ -576,14 +574,19 @@ export default function Home() {
   // reads its preset run through biomeLookForTime (same as the renderer), so at
   // evening/night the tint tracks the darkened sky instead of the day base.
   const tod = settings?.timeOfDay ?? 'day';
-  const topSky =
-    environment === 'meadow'
-      ? settings
-        ? settings.scenes[tod]?.skyTop ?? '#3ea1cc'
-        : '#3ea1cc'
-      : BIOMES[environment as BiomeId]
-        ? biomeLookForTime(BIOMES[environment as BiomeId].preset, tod).skyTop
-        : '#3ea1cc';
+  // Memoized: the biome branch runs biomeLookForTime (builds a whole preset) — no
+  // need to redo it on every unrelated Home re-render, only when env/tod/scene change.
+  const topSky = useMemo(
+    () =>
+      environment === 'meadow'
+        ? settings
+          ? settings.scenes[tod]?.skyTop ?? '#3ea1cc'
+          : '#3ea1cc'
+        : BIOMES[environment as BiomeId]
+          ? biomeLookForTime(BIOMES[environment as BiomeId].preset, tod).skyTop
+          : '#3ea1cc',
+    [environment, tod, settings],
+  );
   const darkBackdrop = hexLuminance(topSky) < 0.4;
 
   // No opacity here: animating a parent's opacity permanently breaks descendant
@@ -693,7 +696,7 @@ export default function Home() {
             material tint tracks the backdrop so the fill isn't a fixed white panel. */}
         <Glass
           isInteractive
-          tint={darkBackdrop ? 'systemThinMaterialDark' : 'systemThinMaterialLight'}
+          tint={glassTint(darkBackdrop)}
           style={{ height: 52, width: 52, borderRadius: 26 }}
         >
           <Pressable

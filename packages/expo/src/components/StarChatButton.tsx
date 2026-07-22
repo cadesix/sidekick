@@ -14,7 +14,7 @@ import Animated, {
 
 import { BOND_MIN } from '@sidekick/core';
 
-import { Glass } from '~/imessage/components/Glass';
+import { Glass, glassTint } from '~/imessage/components/Glass';
 import { Pressable } from './Pressable';
 import { useSnapshot } from '../lib/state';
 import type { OverheadTarget } from './SidekickCanvas';
@@ -145,7 +145,7 @@ export function StarChatButton({
           it reads as glass over the sky rather than a fixed white chip. */}
       <Glass
         isInteractive
-        tint={darkBg ? 'systemThinMaterialDark' : 'systemThinMaterialLight'}
+        tint={glassTint(darkBg)}
         style={styles.pill}
       >
         <Pressable

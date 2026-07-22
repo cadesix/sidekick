@@ -1045,10 +1045,6 @@ function lobeMesh(lobes: Lobe[], mat: THREE.Material, detail: number): THREE.Mes
   return m;
 }
 
-function lerpHex(a: string, b: string, t: number): string {
-  return '#' + new THREE.Color(a).lerp(new THREE.Color(b), t).getHexString();
-}
-
 // Built with the character's own cel shader (passed in as `makeMat`) and SMOOTH
 // normals — low-poly geometry that renders as soft cinematic cel forms, not
 // faceted blobs. It layers depth: a few RECEDING RIDGES of irregular merged lobes
@@ -1081,7 +1077,7 @@ export function makeMeadowBackdrop(
       lobes.push({ x: fx, y: band.yb, z, rx: w, ry: h, rz: w * 0.7 });
     }
     const t = Math.min(0.94, band.t * p.ridgeHaze);
-    group.add(lobeMesh(lobes, makeMat(lerpHex(p.hillColor, p.hazeColor, t)), 1));
+    group.add(lobeMesh(lobes, makeMat(mix(p.hillColor, p.hazeColor, t)), 1));
   }
 
   // --- hero hill (irregular merged lobes, not a ball): a main dome + shoulders,
