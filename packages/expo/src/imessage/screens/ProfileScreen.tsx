@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { type ReactNode, useState } from "react";
 import {
 	Alert,
+	Image,
 	Linking,
 	Pressable,
 	ScrollView,
@@ -14,6 +15,8 @@ import {
 	View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BOND_MIN } from "@sidekick/core";
+import { StreakModal } from "~/components/StreakModal";
 import { locationStatus, trpc } from "~/lib/api";
 import { useSignOut } from "~/lib/auth";
 import { useSnapshot } from "~/lib/state";
@@ -29,6 +32,8 @@ import { colors } from "../theme";
 import { Glass } from "../components/Glass";
 import { Icon, type IconName } from "../components/Icon";
 import { enablePushNotifications } from "~/lib/notifications/registration";
+
+const STREAK_ICON = require("../../../assets/icons/streak.png");
 
 /** An iOS-style grouped field: label on the left, editable value on the right. */
 function Field({
@@ -187,8 +192,12 @@ export function ProfileScreen() {
 	const router = useRouter();
 	const queryClient = useQueryClient();
 	const me = useQuery({ queryKey: ["me"], queryFn: () => trpc.users.me.query() });
-	// the latest astral card — server-owned, refreshed by each completed star chat
-	const astral = useSnapshot().data?.astral ?? null;
+	// the latest astral card, bond and streak — all server-owned snapshot slices
+	const snapshot = useSnapshot().data;
+	const astral = snapshot?.astral ?? null;
+	const bond = snapshot?.bond ?? BOND_MIN;
+	const streakCount = snapshot?.streak.count ?? 0;
+	const [streakOpen, setStreakOpen] = useState(false);
 	const location = useQuery({ queryKey: ["location", "setting"], queryFn: loadLocationSetting });
 	const focus = useQuery({ queryKey: ["focus-local"], queryFn: getLocalFocusSettings });
 	const health = useQuery({
@@ -292,6 +301,25 @@ export function ProfileScreen() {
 				>
 					{/* your name, big at the top — edited via the You group below */}
 					<Text style={styles.profileName}>{me.data.name ?? "You"}</Text>
+
+					{/* headline stats: the bond score, large, plus the streak (moved
+					    here from the home top-right; taps open the milestone ladder) */}
+					<View style={styles.statsRow}>
+						<View style={styles.statCard}>
+							<Text style={styles.statValue}>
+								<Text style={styles.statStar}>✦ </Text>
+								{bond}%
+							</Text>
+							<Text style={styles.statCaption}>bond</Text>
+						</View>
+						<Pressable style={styles.statCard} onPress={() => setStreakOpen(true)}>
+							<View style={styles.statValueRow}>
+								<Image source={STREAK_ICON} style={styles.statIcon} />
+								<Text style={styles.statValue}>{streakCount}</Text>
+							</View>
+							<Text style={styles.statCaption}>day streak</Text>
+						</Pressable>
+					</View>
 
 					{/* the latest astral card — same dark-purple treatment as the
 					    star-chat reveal, compact. Hidden until a first card exists. */}
@@ -455,6 +483,9 @@ export function ProfileScreen() {
 					) : null}
 				</ScrollView>
 			) : null}
+
+			{/* streak milestone ladder — opened from the streak stat card */}
+			<StreakModal open={streakOpen} onClose={() => setStreakOpen(false)} />
 		</View>
 	);
 }
@@ -500,6 +531,48 @@ const styles = StyleSheet.create({
 		fontWeight: "800",
 		textAlign: "center",
 		color: colors.label,
+	},
+	statsRow: {
+		marginTop: 14,
+		flexDirection: "row",
+		gap: 10,
+	},
+	statCard: {
+		flex: 1,
+		alignItems: "center",
+		backgroundColor: "#FFFFFF",
+		borderRadius: 18,
+		borderCurve: "continuous",
+		paddingVertical: 16,
+		gap: 2,
+	},
+	statValueRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+	},
+	// brand font — iOS won't faux-bold Diatype, the Bold family carries weight
+	statValue: {
+		fontFamily: "Diatype-Rounded-Bold",
+		fontSize: 34,
+		lineHeight: 40,
+		color: colors.label,
+	},
+	statStar: {
+		fontSize: 22,
+		color: "#7A5AF8",
+	},
+	statIcon: {
+		width: 30,
+		height: 30,
+		resizeMode: "contain",
+	},
+	statCaption: {
+		fontSize: 13,
+		fontWeight: "600",
+		textTransform: "uppercase",
+		letterSpacing: 0.6,
+		color: colors.secondaryLabel,
 	},
 	// compact take on the star-chat reveal card (same palette)
 	astralCard: {

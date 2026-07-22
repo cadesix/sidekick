@@ -32,16 +32,17 @@ const SIZE = 48; // pill height (BADGE 36 + 6 padding each side) — vertical ce
 // star reads as hanging in the SKY the chat pans up into rather than as a button
 // stuck to the character.
 //
-// Horizontally the whole row (star + score) is CENTRED on the head: the head is
-// centre-screen on a phone, so any fixed rightward offset ran the label off the
-// edge. Centring is measured, not guessed, because the row's width moves with
-// the score ("bond score 5%" vs "bond score 100%").
+// Horizontally the row (star + score) is centred on the head then nudged LEFT —
+// the closet avatar floats on the right side, so the pair reads as a loose halo
+// around the head rather than a stack. Centring is measured, not guessed
+// (the row's width moves with the score: "5%" vs "100%").
 //
-// Vertically it sits above the head, close enough to read as the sidekick's own
-// star rather than a detached UI chip. It can brush the top of a tall speech
-// bubble (which bottom-anchors at the same head point and grows UPWARD); that's
-// the accepted trade for keeping it near the character.
-const OFFSET_Y = -100;
+// Vertically it hangs just above the head, close enough to read as the
+// sidekick's own star rather than a detached UI chip. It can brush the top of a
+// tall speech bubble (which bottom-anchors at the same head point and grows
+// UPWARD); that's the accepted trade for keeping it near the character.
+const OFFSET_X = -18;
+const OFFSET_Y = -84;
 
 // A lazy drift so it feels like it's floating rather than pinned. Two sines at
 // different rates (and out of phase) trace a slow wander instead of an obvious
@@ -116,7 +117,7 @@ export function StarChatButton({
     const fy = Math.sin(p * 0.63 + 1.1) * FLOAT_Y;
     return {
       transform: [
-        { translateX: overhead.x.value + fx - rowW.value / 2 },
+        { translateX: overhead.x.value + OFFSET_X + fx - rowW.value / 2 },
         { translateY: overhead.y.value + OFFSET_Y + fy - SIZE / 2 },
       ],
       opacity: hidden ? 0 : overhead.visible.value,
@@ -162,7 +163,7 @@ export function StarChatButton({
             </View>
           </View>
           <Animated.Text style={[styles.label, darkBg && styles.labelLight, labelStyle]}>
-            bond score {bond}%
+            {bond}%
           </Animated.Text>
         </Pressable>
       </Glass>
@@ -225,11 +226,11 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: '#fff',
   },
-  // dark ink over light glass; flips to white when the glass goes dark
+  // dark ink over light glass; flips to white when the glass goes dark.
+  // Brand font — iOS won't faux-bold Diatype, so the Bold family carries weight.
   label: {
-    fontFamily: 'monospace',
-    fontSize: 14,
-    fontWeight: '700',
+    fontFamily: 'Diatype-Rounded-Bold',
+    fontSize: 15,
     color: '#1a1a1a',
   },
   labelLight: { color: '#fff' },

@@ -15,16 +15,14 @@ import { DevPanel } from '../src/components/DevPanel';
 import { GameOverlay } from '../src/components/GameOverlay';
 import { GoalsSheet } from '../src/components/GoalsSheet';
 import { GuidedHabitChat } from '../src/components/GuidedHabitChat';
-import { StreakModal } from '../src/components/StreakModal';
+import { ClosetButton } from '../src/components/ClosetButton';
 import { SessionChat, STAR_FACE_TUNING } from '../src/components/SessionChat';
 import { StarChat } from '../src/components/StarChat';
 import { StarChatButton } from '../src/components/StarChatButton';
 import { useStarChat } from '../src/store/star-chat';
 import { useStarFaceConfig } from '../src/store/starFaceConfig';
 import { useSidekickContext, type Astral } from '../src/store/context';
-import { SidekickAvatar } from '../src/components/SidekickAvatar';
 import { SpeechBubble } from '../src/components/SpeechBubble';
-import { StreakPill } from '../src/components/StreakPill';
 import { HomeDock } from '../src/components/HomeDock';
 import { BIOMES, biomeLookForTime, type BiomeId, type EnvironmentId } from '../src/three/biomes';
 import { speak, useSpeech } from '../src/store/speech';
@@ -265,7 +263,6 @@ export default function Home() {
   // Messages sheet is open, else null.
   const [habitConvId, setHabitConvId] = useState<string | null>(null);
   const habitOpen = habitConvId !== null;
-  const [streakModalOpen, setStreakModalOpen] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   // imperative handle the canvas publishes once cosmetics are ready; the Shop
   // uses it to dress the live character
@@ -445,8 +442,6 @@ export default function Home() {
   const closeGoals = useCallback(() => setGoalsOpen(false), []);
   const openAppearance = useCallback(() => setAppearanceOpen(true), []);
   const closeAppearance = useCallback(() => setAppearanceOpen(false), []);
-  const closeStreakModal = useCallback(() => setStreakModalOpen(false), []);
-  const openStreakModal = useCallback(() => setStreakModalOpen(true), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   // Tap a goal → open the main chat onto a "did you [action] today?" question the
   // sidekick just dropped in; the user's reply is logged by the chat's always-on
@@ -655,14 +650,20 @@ export default function Home() {
         />
       ) : null}
 
-      {/* top-right cluster: appearance + streak + map pin. Kept MOUNTED and only
-          made transparent (opacity 0) while hidden — NOT display:none and NOT
-          unmounted — because either of those lets iOS tear down the offscreen
-          GLView, so showing it again rebuilds the closet-button avatar's GL
-          context (new context + GLB + wardrobe load), a ~hundreds-of-ms hitch
-          on the JS thread right as the camera eases back. opacity:0 keeps the
-          GLView laid out and its context alive; its render loop is paused while
-          hidden so it costs nothing per frame. */}
+      {/* the closet/inventory entry: the live head avatar floating beside the
+          sidekick's head (the star pill hangs above-left, this balances right).
+          Always mounted — it owns a GL context (see ClosetButton for the iOS
+          teardown caveat); hidden via opacity, frozen while covered or while
+          the Closet itself is open. */}
+      <ClosetButton
+        overhead={overhead}
+        hidden={clusterHidden}
+        paused={appearanceOpen || clusterHidden}
+        onPress={openAppearance}
+      />
+
+      {/* top-right: the map pin, alone now (streak lives in Profile, the closet
+          floats by the head). Hidden under any full surface. */}
       <View
         style={{
           position: 'absolute',
@@ -676,22 +677,6 @@ export default function Home() {
         }}
         pointerEvents={clusterHidden ? 'none' : 'box-none'}
       >
-        <Pressable
-          onPress={openAppearance}
-          accessibilityLabel="Appearance"
-          style={{ height: 52, width: 52, borderRadius: 26, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
-        >
-          {/* the live head avatar IS the closet button (mirrors web home5).
-              Freeze it while the Closet is open OR while the cluster is hidden
-              under a surface — a paused loop frees the GPU and keeps the context
-              alive for an instant, hitch-free reveal on close. */}
-          <SidekickAvatar
-            size={52}
-            style={{ transform: [{ scale: 1.1 }] }}
-            paused={appearanceOpen || clusterHidden}
-          />
-        </Pressable>
-        <StreakPill onPress={openStreakModal} darkBg={darkBackdrop} />
         {/* Frosted glass — no `overflow:'hidden'` (it kills the glass effect); the
             round shape comes from borderRadius, which Glass clips natively. The
             material tint tracks the backdrop so the fill isn't a fixed white panel.
@@ -879,7 +864,6 @@ export default function Home() {
           </View>
         </Animated.View>
       ) : null}
-      <StreakModal open={streakModalOpen} onClose={closeStreakModal} />
       {settings ? (
         <AppearanceSheet
           open={appearanceOpen}
