@@ -26,6 +26,7 @@ import {
 import { Pressable } from './Pressable';
 import { type EnvironmentId } from '../three/biomes';
 import { ISLANDS, type Island } from '../lib/islands';
+import { useSidekickDisplayName } from '../lib/sidekick-name';
 import { loadSettings } from '../three/settings';
 import { snapshotSessions, useSnapshot } from '../lib/state';
 import { useSidekickContext } from '../store/context';
@@ -102,6 +103,7 @@ function WorldMapImpl({
   onStartSession?: (islandId: string) => void;
 }) {
   const insets = useSafeAreaInsets();
+  const sidekickName = useSidekickDisplayName();
   // live, so the map keeps filling the viewport when it changes (web resize,
   // rotation) instead of staying pinned to whatever it measured at module load
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
@@ -456,9 +458,20 @@ function WorldMapImpl({
               pointerEvents="none"
             />
             <View
-              className="flex-row items-center justify-end px-4"
+              className="flex-row items-center justify-between px-4"
               style={{ paddingTop: Math.max(insets.top, 12) }}
             >
+              {/* travel back to the home meadow — always available so the user is
+                  never stranded in a biome */}
+              <Pressable
+                onPress={() => onTravel?.('meadow')}
+                accessibilityLabel="Travel home"
+                className="h-9 flex-row items-center rounded-full"
+                style={{ backgroundColor: 'rgba(255,255,255,0.9)', paddingHorizontal: 12, gap: 6 }}
+              >
+                <Ionicons name="home" size={16} color="#404040" />
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#404040' }}>Home</Text>
+              </Pressable>
               <Pressable
                 onPress={onClose}
                 accessibilityLabel="Close map"
@@ -657,13 +670,15 @@ function WorldMapImpl({
                 elevation: 14,
               }}
             >
-              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#F2C94C', alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="happy" size={22} color="#fff" />
+              {/* the iOS Messages app tile — green rounded square + white speech
+                  bubble, matching the onboarding notif beat */}
+              <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: '#34C759', alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="chatbubble" size={22} color="#fff" />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontSize: 13, fontWeight: '800', color: '#171717' }}>Sidekick</Text>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#171717' }}>{sidekickName}</Text>
                 <Text style={{ fontSize: 13, fontWeight: '500', lineHeight: 17, color: '#525252' }}>
-                  I need to get to know you better before we can travel that far
+                  Complete a star chat to unlock this!
                 </Text>
               </View>
             </View>

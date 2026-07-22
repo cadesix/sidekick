@@ -17,6 +17,7 @@ import {
 
 import type { fetchTranscript } from '../imessage/server';
 import { trpc } from '../lib/api';
+import { useSidekickDisplayName } from '../lib/sidekick-name';
 import { patchSnapshot } from '../lib/state';
 import { holdGameReveal } from '../store/game-reveal';
 import { NO_BROWSER_PAN } from '../lib/web-style';
@@ -182,6 +183,7 @@ function GroupDots({ hud, group }: { hud: PoolHud; group: 'solids' | 'stripes' |
 
 export function GameOverlay({ matchId, onClose }: { matchId: string; onClose: () => void }) {
   const insets = useSafeAreaInsets();
+  const sidekickName = useSidekickDisplayName();
   const queryClient = useQueryClient();
 
   const [phase, setPhaseState] = useState<Phase>('loading');
@@ -785,7 +787,7 @@ export function GameOverlay({ matchId, onClose }: { matchId: string; onClose: ()
               {poolHud ? <GroupDots hud={poolHud} group={poolHud.userGroup} /> : null}
             </View>
             <View style={[styles.scorePill, styles.poolPill]}>
-              <Text style={styles.scoreText}>Sidekick</Text>
+              <Text style={styles.scoreText}>{sidekickName}</Text>
               {poolHud ? (
                 <GroupDots
                   hud={poolHud}
@@ -806,7 +808,7 @@ export function GameOverlay({ matchId, onClose }: { matchId: string; onClose: ()
               <Text style={styles.scoreText}>You · {cups ? cups.user : '–'}</Text>
             </View>
             <View style={styles.scorePill}>
-              <Text style={styles.scoreText}>Sidekick · {cups ? cups.sidekick : '–'}</Text>
+              <Text style={styles.scoreText}>{sidekickName} · {cups ? cups.sidekick : '–'}</Text>
             </View>
           </>
         )}
@@ -910,7 +912,7 @@ export function GameOverlay({ matchId, onClose }: { matchId: string; onClose: ()
 
       {phase === 'replay' ? (
         <View style={styles.hintWrap} pointerEvents="none">
-          <Text style={styles.hint}>Sidekick's turn · tap to skip</Text>
+          <Text style={styles.hint}>{sidekickName}'s turn · tap to skip</Text>
         </View>
       ) : null}
       {phase === 'aim' && !isPool ? (
@@ -955,7 +957,7 @@ export function GameOverlay({ matchId, onClose }: { matchId: string; onClose: ()
       {phase === 'ended' && winner !== null ? (
         <View style={styles.bannerWrap} pointerEvents="none">
           <View style={styles.banner}>
-            <Text style={styles.bannerText}>{winner === 'user' ? 'You won' : 'Sidekick wins'}</Text>
+            <Text style={styles.bannerText}>{winner === 'user' ? 'You won' : `${sidekickName} wins`}</Text>
           </View>
         </View>
       ) : null}

@@ -2,6 +2,7 @@ import { Platform, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { hapticTap } from "../lib/haptics";
 import { Pressable } from "./Pressable";
 
 import { AuthOtpSteps, ErrorText } from "./auth/AuthOtpSteps";
@@ -15,6 +16,10 @@ import { useAuthMethods } from "./auth/useAuthMethods";
 // watches the auth store's `status` and advances when it flips to signedIn.
 
 const ACCENT = "#4F46F0";
+// System font — Diatype Rounded (iOS won't faux-bold, so weights are separate families).
+const FONT = "Diatype-Rounded";
+const FONT_MEDIUM = "Diatype-Rounded-Medium";
+const FONT_BOLD = "Diatype-Rounded-Bold";
 // Dev login shows in any non-production build (incl. Expo Web dev, where __DEV__
 // is false — same reason DevPanel gates on its own flag). Stripped in prod.
 const SHOW_DEV = process.env.NODE_ENV !== "production";
@@ -41,40 +46,46 @@ export function OnboardingAuth() {
         style={[styles.topCopy, { top: insets.top + 48 }]}
         pointerEvents="none"
       >
-        <Text style={styles.h1}>someone’s excited{"\n"}to meet you.</Text>
-        <Text style={styles.sub}>sign in to meet your sidekick.</Text>
+        <Text style={styles.h1}>Someone’s excited{"\n"}to meet you.</Text>
+        <Text style={styles.sub}>Sign in to meet your sidekick.</Text>
       </Animated.View>
 
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
         <View style={styles.col}>
           {Platform.OS === "ios" ? (
             <BluePill
-              label="continue with apple"
+              label="Continue with Apple"
               onPress={m.apple.signInWithApple}
               disabled={m.providerBusy}
             />
           ) : null}
           <PhonePill
-            label="continue with phone number"
+            label="Continue with phone number"
             onPress={() => m.openMethod("phone")}
             disabled={m.providerBusy}
           />
           {m.showMoreOptions ? (
             <>
               <WhitePill
-                label="continue with google"
+                label="Continue with Google"
                 onPress={m.google.signInWithGoogle}
                 disabled={m.providerBusy || !m.google.isGoogleAvailable}
               />
               <WhitePill
-                label="continue with email"
+                label="Continue with email"
                 onPress={() => m.openMethod("email")}
                 disabled={m.providerBusy}
               />
             </>
           ) : (
-            <Pressable hitSlop={8} onPress={() => m.setShowMoreOptions(true)}>
-              <Text style={styles.moreOptions}>more options</Text>
+            <Pressable
+              hitSlop={8}
+              onPress={() => {
+                hapticTap();
+                m.setShowMoreOptions(true);
+              }}
+            >
+              <Text style={styles.moreOptions}>More options</Text>
             </Pressable>
           )}
           {m.apple.error ? <ErrorText message={m.apple.error} /> : null}
@@ -83,10 +94,13 @@ export function OnboardingAuth() {
             <Pressable
               hitSlop={8}
               disabled={m.providerBusy}
-              onPress={m.dev.signInAsDev}
+              onPress={() => {
+                hapticTap();
+                m.dev.signInAsDev();
+              }}
               style={{ paddingVertical: 8 }}
             >
-              <Text style={styles.devText}>{m.dev.isLoading ? "signing in…" : "dev login"}</Text>
+              <Text style={styles.devText}>{m.dev.isLoading ? "Signing in…" : "Dev login"}</Text>
               {m.dev.error ? <ErrorText message={m.dev.error} /> : null}
             </Pressable>
           ) : null}
@@ -107,7 +121,10 @@ function BluePill({
 }) {
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => {
+        hapticTap();
+        onPress();
+      }}
       disabled={disabled}
       style={({ pressed }) => [
         styles.blue,
@@ -131,7 +148,10 @@ function WhitePill({
 }) {
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => {
+        hapticTap();
+        onPress();
+      }}
       disabled={disabled}
       style={({ pressed }) => [
         styles.white,
@@ -147,6 +167,7 @@ function WhitePill({
 const styles = StyleSheet.create({
   topCopy: { position: "absolute", left: 0, right: 0, paddingHorizontal: 32, alignItems: "center" },
   h1: {
+    fontFamily: FONT_BOLD,
     fontSize: 34,
     fontWeight: "800",
     letterSpacing: -1.1,
@@ -158,6 +179,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 10,
   },
   sub: {
+    fontFamily: FONT,
     marginTop: 12,
     fontSize: 17,
     lineHeight: 22,
@@ -182,7 +204,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   bluePressed: { transform: [{ translateY: 3 }], shadowOffset: { width: 0, height: 2 } },
-  blueText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  blueText: { fontFamily: FONT_BOLD, color: "#fff", fontSize: 16, fontWeight: "700" },
   white: {
     width: "100%",
     paddingVertical: 16,
@@ -196,9 +218,10 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   whitePressed: { transform: [{ translateY: 2 }], shadowOffset: { width: 0, height: 2 } },
-  whiteText: { color: "#111", fontSize: 16, fontWeight: "600" },
+  whiteText: { fontFamily: FONT_MEDIUM, color: "#111", fontSize: 16, fontWeight: "600" },
   pillDisabled: { opacity: 0.5 },
   moreOptions: {
+    fontFamily: FONT,
     fontSize: 14,
     color: "rgba(255,255,255,0.85)",
     textAlign: "center",
@@ -208,6 +231,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 6,
   },
   devText: {
+    fontFamily: FONT,
     fontSize: 13,
     color: "rgba(255,255,255,0.6)",
     textAlign: "center",

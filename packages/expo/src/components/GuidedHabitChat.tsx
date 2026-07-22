@@ -9,9 +9,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { TypingDots } from './chat-stream';
 import { ChatInputBar } from '../imessage/components/ChatInputBar';
 import { MessageBubble } from '../imessage/components/MessageBubble';
+import { TypingIndicator } from '../imessage/components/TypingIndicator';
 import { colors } from '../imessage/theme';
 import { streamChatTurn, trpc } from '../lib/api';
 
@@ -51,23 +51,32 @@ export function GuidedHabitChat({
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
   }, []);
 
-  // Load the intro message the server generated when the conversation started.
+  // Play the server's opener(s) in like a live conversation — typing dots, then
+  // the message, one at a time — rather than dumping them all instantly on mount.
   useEffect(() => {
     let alive = true;
+    const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
     trpc.chat.history
       .query({ conversationId, limit: 50 })
-      .then((rows) => {
+      .then(async (rows) => {
         if (!alive) return;
-        const mapped: Msg[] = rows
-          .filter((r) => r.role === 'user' || r.role === 'assistant')
-          .reverse()
-          .map((r) => ({
-            id: String(r.id),
-            role: r.role === 'user' ? 'me' : 'them',
-            text: r.content,
-          }));
-        setMessages(mapped);
-        scrollToEnd();
+        const history = rows.filter((r) => r.role === 'user' || r.role === 'assistant').reverse();
+        for (const r of history) {
+          if (!alive) return;
+          const id = `h-${r.id}`;
+          if (r.role === 'user') {
+            setMessages((m) => [...m, { id, role: 'me', text: r.content }]);
+            scrollToEnd();
+            continue;
+          }
+          setMessages((m) => [...m, { id, role: 'them', text: '' }]); // typing dots
+          scrollToEnd();
+          await sleep(Math.min(1400, 450 + r.content.length * 18));
+          if (!alive) return;
+          setMessages((m) => m.map((x) => (x.id === id ? { ...x, text: r.content } : x))); // reveal
+          scrollToEnd();
+          await sleep(340);
+        }
       })
       .catch(() => {});
     return () => {
@@ -126,6 +135,7 @@ export function GuidedHabitChat({
     >
       <ScrollView
         ref={scrollRef}
+        style={{ flex: 1 }}
         contentContainerStyle={{ padding: 16, paddingBottom: 12, gap: 6 }}
         onContentSizeChange={scrollToEnd}
         keyboardDismissMode="interactive"
@@ -133,23 +143,27 @@ export function GuidedHabitChat({
         {messages.map((m) => {
           const mine = m.role === 'me';
           const waiting = !mine && m.text === '';
+          // typing: the exact animated bubble-with-ellipses from the main chat
+          if (waiting) {
+            return (
+              <View key={m.id} style={{ alignItems: 'flex-start' }}>
+                <TypingIndicator />
+              </View>
+            );
+          }
           return (
             <View key={m.id} style={{ alignItems: mine ? 'flex-end' : 'flex-start' }}>
               <View style={{ maxWidth: '82%' }}>
                 <MessageBubble from={mine ? 'me' : 'them'} tail>
-                  {waiting ? (
-                    <TypingDots />
-                  ) : (
-                    <Text
-                      style={{
-                        color: mine ? colors.sentText : colors.receivedText,
-                        fontSize: 16,
-                        lineHeight: 21,
-                      }}
-                    >
-                      {m.text}
-                    </Text>
-                  )}
+                  <Text
+                    style={{
+                      color: mine ? colors.sentText : colors.receivedText,
+                      fontSize: 16,
+                      lineHeight: 21,
+                    }}
+                  >
+                    {m.text}
+                  </Text>
                 </MessageBubble>
               </View>
             </View>
@@ -162,7 +176,8 @@ export function GuidedHabitChat({
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 12, gap: 8, paddingBottom: 8 }}
+          style={{ flexGrow: 0 }}
+          contentContainerStyle={{ paddingHorizontal: 12, gap: 8, paddingBottom: 8, alignItems: 'center' }}
         >
           {chips.map((chip) => (
             <Pressable

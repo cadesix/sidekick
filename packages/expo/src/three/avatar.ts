@@ -24,7 +24,7 @@ import { loadWardrobe, type WardrobeSlot } from './wardrobe';
 // context (browsers cap at ~16; native GPU cost adds up).
 
 const MASCOT_GLB = require('../../assets/models/sidekick-rigged.stripped.glb');
-const FACE_SHEET = require('../../assets/textures/face-sheet-v6.png');
+const FACE_SHEET = require('../../assets/textures/face-sheet-v7.png');
 
 // only the head-region slots matter for a head shot (mirrors web HEAD_SLOTS)
 const HEAD_SLOTS: WardrobeSlot[] = ['hat', 'beanie', 'bucket', 'wizard', 'crown', 'glasses'];

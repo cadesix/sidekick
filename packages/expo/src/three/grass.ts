@@ -16,8 +16,10 @@ import * as THREE from 'three';
 //  - setOpacity() fades every meadow material together (the Shop's meadow →
 //    studio crossfade drives it every frame).
 
-// gently domed lawn: crest at the origin where the character stands
-const GROUND_CURVE = 0.012;
+// gently domed lawn: crest at the origin where the character stands. A shallow
+// curve so the ground reads as terrain extending back to the hills rather than a
+// small planet he's balanced on top of.
+const GROUND_CURVE = 0.006;
 export const groundY = (x: number, z: number) => -GROUND_CURVE * (x * x + z * z);
 
 const GRASS_HILL = '#57a336';

@@ -25,9 +25,15 @@ export const checkinsTools: SidekickTool[] = [
       note: z.string().optional().describe("One short phrase of color, e.g. 'ran 3mi, knee sore'"),
     }),
     execute: async ({ goal_id, date, result, note }, { db, userId }) => {
+      // Clamp a future date to the user's local today. In the evening in the
+      // Americas the model sometimes resolves "today" to the UTC date (a day
+      // ahead), which would file the outcome on a day the Goals UI — keyed to
+      // local "today" — never shows. Never file ahead of the user's today.
+      const today = localDate(await userTimezone(db, userId), new Date());
+      const day = date > today ? today : date;
       const logged = await logGoalProgress(db, userId, {
         goalId: goal_id,
-        date,
+        date: day,
         outcome: result,
         note,
         source: "inferred",

@@ -13,7 +13,7 @@ import {
 } from "@sidekick/shared";
 import type { Reaction } from "@sidekick/shared";
 import { TRPCError } from "@trpc/server";
-import { generateText } from "ai";
+import { generateObject, generateText } from "ai";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { protectedProcedure, router } from "../trpc";
@@ -25,6 +25,7 @@ import {
   recordDeviceToolResult,
   sendChatTurn,
 } from "../chat/turn";
+import { overheadExpressionSchema, type OverheadExpression } from "../chat/expression";
 import { ingestAttachment } from "../attachments/ingest";
 import {
   attachmentStatuses,
@@ -98,15 +99,21 @@ export const chatRouter = router({
       .map((row) => `${row.role === "user" ? "them" : "you"}: ${row.content}`)
       .join("\n");
     if (transcript.trim().length === 0) {
-      return { quip: null as string | null };
+      return { quip: null as string | null, expression: "neutral" as OverheadExpression };
     }
-    const { text } = await generateText({
+    // one call yields both the line AND the face to wear over his head — the
+    // expression rides along for free (a rounding-error token cost, no new request)
+    const { object } = await generateObject({
       model: ctx.captionModel,
+      schema: z.object({ quip: z.string(), expression: overheadExpressionSchema }),
       system: CAPOFF_SYSTEM,
-      prompt: `the conversation:\n${transcript}\n\nwrite the one-liner now.`,
+      prompt: `the conversation:\n${transcript}\n\nwrite the one-liner and pick the matching face now.`,
     });
-    const quip = text.trim();
-    return { quip: (quip.length > 0 ? quip : null) as string | null };
+    const quip = object.quip.trim();
+    return {
+      quip: (quip.length > 0 ? quip : null) as string | null,
+      expression: object.expression,
+    };
   }),
 
   send: protectedProcedure.input(chatSendInput).mutation(async ({ ctx, input }) => {

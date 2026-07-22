@@ -5,22 +5,21 @@ import * as THREE from 'three';
 // and configured here). The GLB's "FaceSprite" plane samples one cell of a 4×4
 // expression sheet; this controller drives blink/talk/expression pulses.
 
-const GRID = 4;
+const GRID = 3;
 
-// name → [col, row]; keep in sync with face-sheet-v6.png
+// name → [col, row]; keep in sync with face-sheet-v7.png (3×3, row-major:
+// left→right then top→bottom). blink and happy share the top-middle cell.
 export const FACE_CELLS = {
   neutral: [0, 0],
-  blink: [2, 0],
-  happy: [2, 0],
-  excited: [3, 0],
-  cheer: [0, 1],
-  sad: [1, 1],
-  sleepy: [2, 1],
-  thinking: [3, 1],
-  surprised: [0, 2],
-  wink: [1, 2],
-  talkOpen: [2, 2],
-  talkClosed: [3, 2],
+  blink: [1, 0],
+  happy: [1, 0],
+  excited: [2, 0],
+  surprised: [0, 1],
+  talkOpen: [1, 1],
+  talkClosed: [2, 1],
+  angry: [0, 2],
+  annoyed: [1, 2],
+  sad: [2, 2],
 } as const;
 export type FaceExpression = keyof typeof FACE_CELLS;
 export const FACE_EXPRESSIONS = Object.keys(FACE_CELLS) as FaceExpression[];

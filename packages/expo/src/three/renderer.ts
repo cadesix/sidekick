@@ -1,6 +1,7 @@
 import { Renderer } from 'expo-three';
 import type { ExpoWebGLRenderingContext } from 'expo-gl';
 import * as THREE from 'three';
+import { BokehPass } from 'three/examples/jsm/postprocessing/BokehPass.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -8,13 +9,13 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 
 import { deinterleaveGeometry, loadGLB, loadTexture } from './assets';
 import { createCosmetics, type CosmeticsHandle } from './cosmetics';
-import { configureFaceTexture, createFaceController, type FaceController } from './face';
+import { configureFaceTexture, createFaceController, type FaceController, type FaceExpression } from './face';
 import { patchWorldFog } from './fog-patch';
 import { fillGradientTexture, makeGradientTexture, makeRadialShadowTexture } from './gradient';
-import { BIOMES, type BiomeId, type EnvironmentId } from './biomes';
+import { BIOMES, biomeLookForTime, makeMeadowBackdrop, type BackdropParams, type BiomeId, type EnvironmentId } from './biomes';
 import { makeGrassEnvironment } from './grass';
 import { makeStarFace, type StarFaceConfig } from './star-face';
-import { createInteraction, POKE_FACE, type Interaction } from './interact';
+import { createInteraction, type Interaction } from './interact';
 import { loadSettings, type SidekickSettings } from './settings';
 import {
   cloneWardrobe,
@@ -24,6 +25,7 @@ import {
   type CosmeticsControls,
 } from './wardrobe';
 import {
+  makeCelMaterial,
   makeCharacterMaterials,
   makeItemMaterial,
   makeOutlineMaterial,
@@ -44,7 +46,7 @@ import type { BoxTier } from '@sidekick/core';
 // require() the bundled, texture-stripped model (scripts/strip-glb.mjs).
 const MASCOT_GLB = require('../../assets/models/sidekick-rigged.stripped.glb');
 const LOOTBOX_GLB = require('../../assets/props/lootbox-v1.glb');
-const FACE_SHEET = require('../../assets/textures/face-sheet-v6.png');
+const FACE_SHEET = require('../../assets/textures/face-sheet-v7.png');
 
 const BONE_MAP = {
   head: 'Head',
@@ -102,6 +104,8 @@ export type SidekickController = {
   // and shake the camera ("build" ramps, "impact" spikes then decays)
   jumpIn: (opts?: { duration?: number }) => void;
   shake: (opts?: { amp?: number; duration?: number; mode?: 'impact' | 'build' }) => void;
+  // pulse a face expression for a beat — drives the overhead-bubble emotion
+  pulseFace: (expr: FaceExpression, seconds: number) => void;
   // live look-dev: re-apply a full settings object to the running scene
   applySettings: (next: SidekickSettings) => void;
   // touch input in NDC (-1..1, +y up) — fed by the canvas component
@@ -125,6 +129,33 @@ const GROUND_EYE_MIN = 0.15;
 // /home5 renders direct (no post) with antialias, so we match it. Flip on only
 // if a home-screen glow effect is deliberately wanted.
 const HOME_BLOOM = false;
+
+// Depth-of-field on the home composition: a Bokeh pass that blurs by DISTANCE
+// from the focal plane (kept on the character each frame), so the far backdrop
+// hill softens while the character stays crisp — true DoF, not screen-space.
+// Routes the home through the composer (otherwise direct) + a depth pass, so it
+// has real cost — check device FPS (HOME_DOF = false reverts to direct render).
+const HOME_DOF = true;
+// aperture / maxblur / focus-offset are live settings (dofAperture/dofMaxblur/
+// dofFocus); this is just the fixed point the auto-focus distance is measured to.
+const DOF_FOCUS_AT = new THREE.Vector3(0, 0.5, 0); // focal point ≈ character head
+
+// The home camera framing, derived from the look-dev camera settings (fov /
+// camDist / camHeight) so the /sidekick-3d editor and the live home render the
+// EXACT same shot. Defaults (41.1 / 4.20119 / 0) reproduce the original
+// HERO_FRAMING (pos [0, 0.66, 4.2], target [0, 0.56, 0]) — camDist is the true
+// offset length |pos − target| so k = 1 and the position is exact.
+const HOME_CAM_DIR: [number, number, number] = [0, 0.1, 4.2]; // (pos − target), len ≈ 4.2012
+const HOME_CAM_TY = 0.56; // base target height (character upper body)
+export function homeFraming(fov: number, dist: number, height: number): Framing {
+  const k = dist / Math.hypot(HOME_CAM_DIR[0], HOME_CAM_DIR[1], HOME_CAM_DIR[2]);
+  const ty = HOME_CAM_TY + height;
+  return {
+    pos: [HOME_CAM_DIR[0] * k, ty + HOME_CAM_DIR[1] * k, HOME_CAM_DIR[2] * k],
+    target: [0, ty, 0],
+    fov,
+  };
+}
 
 // Warm-sunset image-based-lighting scene, PMREM'd into scene.environment. This
 // is the single biggest reason web's meadow reads lighter + warmer than a plain
@@ -239,6 +270,41 @@ export function createSidekickRenderer(
   grass.setColors(sc.grassHill, sc.grassBase, sc.grassTip, sc.rock);
   grass.setClouds(sc.keyColor, sc.fog);
   grass.relayout(s.grassHeight, s.grassClumping);
+  // One right-side hill + a couple trees behind the character — parented to the
+  // grass group so it shows on the meadow and hides during map travel. Built from
+  // live settings (position/shape/colour), rebuilt in applySettings on change.
+  // Backdrop colours all derive from the active scene (tree = grassBase, ridge haze
+  // = fog), so params take only the settings — no caller can pass a mismatched pair.
+  const backdropParams = (v: SidekickSettings): BackdropParams => {
+    const sn = v.scenes[v.timeOfDay];
+    return {
+      x: v.hillX, z: v.hillZ, radius: v.hillRadius, flat: v.hillFlat, sink: v.hillSink,
+      hillColor: v.hillColor, treeColor: sn.grassBase,
+      ridgeHeight: v.ridgeHeight, ridgeHaze: v.ridgeHaze, ridgeDepth: v.ridgeDepth, hazeColor: sn.fog,
+    };
+  };
+  // The params fully describe the geometry + colours; append only the cel-material
+  // inputs makeCelMaterial reads (not part of BackdropParams) so live cel tuning
+  // rebuilds too. Deriving from the params object keeps ONE field list.
+  const backdropSig = (v: SidekickSettings) => {
+    const sn = v.scenes[v.timeOfDay];
+    return `${JSON.stringify(backdropParams(v))}|${v.timeOfDay},${sn.charTint},${sn.shadeColor},${v.celSoftness},${v.celShadowAmt}`;
+  };
+  // cel-shade the backdrop with the character's own shader so it reads smooth + cel,
+  // matching the sidekick (flat solid colour, no map).
+  const backdropMat = (v: SidekickSettings) => (color: string) =>
+    makeCelMaterial(v, { map: null, normalMap: null, vertexColors: false }, color);
+  let backdrop = makeMeadowBackdrop(backdropParams(s), backdropMat(s));
+  let backdropKey = backdropSig(s);
+  grass.group.add(backdrop);
+  const disposeGroup = (g: THREE.Object3D) =>
+    g.traverse((o) => {
+      const m = o as THREE.Mesh;
+      m.geometry?.dispose?.();
+      const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+      if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+      else mat?.dispose?.();
+    });
   scene.add(grass.group);
 
   // Shop "studio" look, crossfaded in by `studio`: an inward backdrop sphere
@@ -421,23 +487,24 @@ export function createSidekickRenderer(
   const tmpDir = new THREE.Vector3();
   let envFog: THREE.Fog | null = meadowFog;
   let activeGround: THREE.Object3D = grass.group;
-  type BiomeBuilt = { group: THREE.Group; sky: THREE.DataTexture; fog: THREE.Fog };
-  const biomeCache = new Map<BiomeId, BiomeBuilt>();
-  const getBiome = (id: BiomeId): BiomeBuilt => {
-    let bc = biomeCache.get(id);
-    if (!bc) {
-      const def = BIOMES[id];
-      const group = def.build();
-      group.visible = false;
-      scene.add(group);
-      const p = def.preset;
-      const sky = makeGradientTexture(skyStops(p));
-      const fog = new THREE.Fog(p.fog, p.fogNear, p.fogFar);
-      bc = { group, sky, fog };
-      biomeCache.set(id, bc);
+  // Biome geometry is time-independent → build the ground group once and cache
+  // it. The sky/fog/light rig are derived per time-of-day in applyEnv
+  // (biomeLookForTime), so a biome respects the clock like the meadow does.
+  const biomeGroups = new Map<BiomeId, THREE.Group>();
+  const getBiomeGroup = (id: BiomeId): THREE.Group => {
+    let g = biomeGroups.get(id);
+    if (!g) {
+      g = BIOMES[id].build();
+      g.visible = false;
+      scene.add(g);
+      biomeGroups.set(id, g);
     }
-    return bc;
+    return g;
   };
+  // one reusable biome fog (mutated in place so `envFog` references stay valid)
+  // + a biome sky texture that's rebuilt per time-of-day and disposed on replace
+  const biomeFog = new THREE.Fog('#000000', 1, 50);
+  let biomeSky: THREE.DataTexture | null = null;
   const applyEnv = (id: EnvironmentId) => {
     activeGround.visible = false;
     let look: typeof sc | (typeof BIOMES)[BiomeId]['preset'];
@@ -449,11 +516,17 @@ export function createSidekickRenderer(
       key.position.copy(meadowKeyPos);
       rim.position.copy(meadowRimPos);
     } else {
-      const bc = getBiome(id);
-      look = BIOMES[id].preset;
-      scene.background = bc.sky;
-      envFog = bc.fog;
-      activeGround = bc.group;
+      const p = biomeLookForTime(BIOMES[id].preset, s.timeOfDay);
+      look = p;
+      // rebuild this biome's sky gradient for the current time of day
+      biomeSky?.dispose();
+      biomeSky = makeGradientTexture(skyStops(p));
+      scene.background = biomeSky;
+      biomeFog.color.set(p.fog);
+      biomeFog.near = p.fogNear;
+      biomeFog.far = p.fogFar;
+      envFog = biomeFog;
+      activeGround = getBiomeGroup(id);
       key.position.copy(tmpDir.fromArray(BIOMES[id].preset.keyDir).normalize()).multiplyScalar(16);
       rim.position.copy(tmpDir.fromArray(BIOMES[id].preset.rimDir).normalize()).multiplyScalar(12);
     }
@@ -501,7 +574,24 @@ export function createSidekickRenderer(
   forceByte(bloomPass.renderTargetBright);
   bloomPass.renderTargetsHorizontal.forEach(forceByte);
   bloomPass.renderTargetsVertical.forEach(forceByte);
+  bloomPass.enabled = HOME_BLOOM; // built either way; only glows when wanted
   composer.addPass(bloomPass);
+  // Depth-of-field (Bokeh): blurs by depth distance from `focus` (updated to the
+  // camera→character distance each frame in the loop), softening the far hill
+  // while the character stays sharp. aperture/maxblur tune the strength.
+  const bokehPass = new BokehPass(scene, camera, {
+    focus: 4.5,
+    aperture: s.dofAperture,
+    maxblur: s.dofMaxblur,
+  });
+  // BokehPass allocates a HalfFloat depth target; expo-gl has no float render-target
+  // support, so force it to 8-bit via the same helper the bloom targets use. Depth is
+  // RGBA-packed (RGBADepthPacking) so there's no precision loss — without this the
+  // composer throws on device and DoF silently never runs. (No public accessor for
+  // the target, hence the cast.)
+  forceByte((bokehPass as unknown as { _renderTargetDepth: THREE.WebGLRenderTarget })._renderTargetDepth);
+  bokehPass.enabled = HOME_DOF;
+  composer.addPass(bokehPass);
   composer.addPass(new OutputPass());
   // if the composer chain dies on expo-gl, fall back to direct rendering
   let bloomBroken = false;
@@ -739,9 +829,9 @@ export function createSidekickRenderer(
     camera,
     bone: (n) => bones[n],
     cameraDrag: true,
-    onPoke: (part) => {
-      const expr = POKE_FACE[part];
-      if (expr) faceCtl?.pulse(expr, 1.6);
+    onPoke: (_part, _point, expr) => {
+      // interact.ts decides the expression (incl. the annoyed/angry escalation)
+      if (expr) faceCtl?.pulse(expr as FaceExpression, 1.6);
     },
   });
 
@@ -1187,18 +1277,23 @@ export function createSidekickRenderer(
       faceCtl.update(now);
       if (faceMat && faceSheet) syncCelMapTransform(faceMat, faceSheet);
     }
-    // Direct render, matching web /home5 (sidekick-canvas.tsx), which renders
-    // straight to the antialiased default framebuffer with NO post-processing.
-    // The bloom composer is kept wired (for the /sidekick-3d look-dev editor and
-    // future effects) but the production home does NOT bloom — its UnrealBloom
-    // added a flower glow /home5 never had, and its non-MSAA render target
-    // aliased the grass. HOME_BLOOM flips it back on if ever wanted.
-    if (HOME_BLOOM && s.bloomEnabled && !bloomBroken) {
+    // Render path: direct (matching web /home5 — straight to the antialiased
+    // default framebuffer, no post) UNLESS a composer effect is on. The composer
+    // is used for HOME_DOF (depth-of-field) and/or HOME_BLOOM; both are disabled
+    // per-pass above when their flag is off, so an enabled composer only does what
+    // it's told. Its render target is MSAA (samples:4) so grass AA still holds.
+    const useComposer = !bloomBroken && (HOME_DOF || (HOME_BLOOM && s.bloomEnabled));
+    if (useComposer) {
       try {
+        // keep the focal plane on the character (its head bone, ~y 0.5) so it
+        // stays sharp as the camera dollies/orbits; the far hill falls out of focus
+        if (HOME_DOF)
+          (bokehPass.uniforms as Record<string, THREE.IUniform>).focus.value =
+            camera.position.distanceTo(DOF_FOCUS_AT) + s.dofFocus;
         composer.render();
       } catch (err) {
         bloomBroken = true;
-        console.warn('[sidekick] bloom composer failed — falling back to direct render', err);
+        console.warn('[sidekick] post composer failed — falling back to direct render', err);
         renderer.render(scene, camera);
       }
     } else {
@@ -1301,6 +1396,7 @@ export function createSidekickRenderer(
         mode: o?.mode ?? 'impact',
       };
     },
+    pulseFace: (expr, seconds) => faceCtl?.pulse(expr, seconds),
     applySettings: (next) => {
       const prevHeight = s.grassHeight;
       const prevClumping = s.grassClumping;
@@ -1339,6 +1435,28 @@ export function createSidekickRenderer(
       bloomPass.strength = next.bloomStrength;
       bloomPass.radius = next.bloomRadius;
       bloomPass.threshold = next.bloomThreshold;
+      // depth-of-field (focus is set per-frame in the loop)
+      {
+        const bu = bokehPass.uniforms as Record<string, THREE.IUniform>;
+        bu.aperture.value = next.dofAperture;
+        bu.maxblur.value = next.dofMaxblur;
+      }
+      // background hill — rebuild only when its params (or the tree's scene-driven
+      // colour) actually change, so dragging unrelated sliders doesn't churn it
+      const nextKey = backdropSig(next);
+      if (nextKey !== backdropKey) {
+        backdropKey = nextKey;
+        grass.group.remove(backdrop);
+        disposeGroup(backdrop);
+        backdrop = makeMeadowBackdrop(backdropParams(next), backdropMat(next));
+        grass.group.add(backdrop);
+      }
+      // Standing in a biome? Re-derive its look for the (possibly new) time of
+      // day — the meadow updates above just wrote meadow lights/exposure, so
+      // re-apply the biome to both restore it and pick up the clock change.
+      if (curEnv !== 'meadow') {
+        applyEnv(curEnv);
+      }
     },
     // Wake the render loop to 60fps immediately on any touch (and hold it awake
     // for the interaction + spring-settle window via lastPointerNow), so a drag
