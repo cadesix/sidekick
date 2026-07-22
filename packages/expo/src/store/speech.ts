@@ -9,15 +9,20 @@ type SpeechState = {
   text: string;
   ms: number;
   nonce: number;
-  speak: (text: string, ms?: number) => void;
+  // the face the sidekick wears while this line is up (null = leave his face be)
+  expression: string | null;
+  speak: (text: string, ms?: number, expression?: string | null) => void;
 };
 
 export const useSpeech = create<SpeechState>((set) => ({
   text: '',
   ms: 4500,
   nonce: 0,
-  speak: (text, ms = 4500) => set((s) => ({ text, ms, nonce: s.nonce + 1 })),
+  expression: null,
+  speak: (text, ms = 4500, expression = null) =>
+    set((s) => ({ text, ms, expression, nonce: s.nonce + 1 })),
 }));
 
-// module-level helper mirroring web's speak(text, ms)
-export const speak = (text: string, ms?: number) => useSpeech.getState().speak(text, ms);
+// module-level helper mirroring web's speak(text, ms, expression)
+export const speak = (text: string, ms?: number, expression?: string | null) =>
+  useSpeech.getState().speak(text, ms, expression);

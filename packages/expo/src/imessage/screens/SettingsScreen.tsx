@@ -18,6 +18,7 @@ import { locationStatus, trpc } from "~/lib/api";
 import { useSignOut } from "~/lib/auth";
 import { getLocalFocusSettings } from "~/lib/focus";
 import { HEALTH_CONNECTION_QUERY_KEY, loadHealthConnection } from "~/lib/health-connection";
+import { sidekickDisplayName } from "~/lib/sidekick-name";
 import {
 	disableLocationAccess,
 	enableLocationAccess,
@@ -115,12 +116,15 @@ async function loadLocationSetting() {
 	return { access, status };
 }
 
-function locationDescription(setting: Awaited<ReturnType<typeof loadLocationSetting>> | undefined): string {
+function locationDescription(
+	setting: Awaited<ReturnType<typeof loadLocationSetting>> | undefined,
+	sidekickName: string,
+): string {
 	if (!setting?.access.enabled) {
 		return "Share your city for nearby ideas and local context";
 	}
 	if (setting.status.city) {
-		return `Sharing ${setting.status.city} with your Sidekick`;
+		return `Sharing ${setting.status.city} with ${sidekickName}`;
 	}
 	return "Finding your city…";
 }
@@ -192,6 +196,9 @@ export function SettingsScreen() {
 		queryKey: ["notifications", "preferences"],
 		queryFn: () => trpc.notifications.preferences.query(),
 	});
+	// the character's name (bracketed diagnostic) — used in persona copy below;
+	// the iOS-Settings app-name reference stays the literal "Sidekick" brand
+	const sidekickName = sidekickDisplayName(me.data?.sidekickName);
 
 	const save = useMutation({
 		mutationFn: (patch: { name?: string; sidekickName?: string }) =>
@@ -238,7 +245,7 @@ export function SettingsScreen() {
 					if (!enabled) {
 						Alert.alert(
 							"Notifications are off",
-							"Sidekick can still leave messages in chat. You can turn alerts on in iOS Settings.",
+							`${sidekickName} can still leave messages in chat. You can turn alerts on in iOS Settings.`,
 							[
 								{ text: "Not now", style: "cancel" },
 								{ text: "Open Settings", onPress: () => void Linking.openSettings() },
@@ -248,7 +255,7 @@ export function SettingsScreen() {
 				} catch {
 					Alert.alert(
 						"Couldn’t register this device",
-						"Your preference was saved. Sidekick will try notifications again when the app reconnects.",
+						`Your preference was saved. ${sidekickName} will try notifications again when the app reconnects.`,
 					);
 				}
 			}
@@ -288,7 +295,7 @@ export function SettingsScreen() {
 							onCommit={(name) => save.mutate({ name })}
 						/>
 					</Group>
-					<Group title="Sidekick">
+					<Group title={sidekickName}>
 						<Field
 							label="Name"
 							value={me.data.sidekickName ?? ""}
@@ -307,7 +314,7 @@ export function SettingsScreen() {
 							footer="Proactive messages wait until you’ve been away for 12 hours and arrive at a varied time inside your awake window."
 						>
 							<View style={styles.row}>
-								<Text style={styles.rowLabel}>Messages from Sidekick</Text>
+								<Text style={styles.rowLabel}>Messages from {sidekickName}</Text>
 								<Switch
 									style={styles.switch}
 									value={notifications.data.proactiveEnabled}
@@ -362,7 +369,7 @@ export function SettingsScreen() {
 					) : null}
 					<Group
 						title="Connected"
-						footer="Each connection explains what stays on your iPhone and what Sidekick can use. You can review or disconnect it anytime."
+						footer={`Each connection explains what stays on your iPhone and what ${sidekickName} can use. You can review or disconnect it anytime.`}
 					>
 						<View style={styles.integrationRow}>
 							<View style={styles.integrationIcon}>
@@ -370,7 +377,7 @@ export function SettingsScreen() {
 							</View>
 							<View style={styles.integrationCopy}>
 								<Text style={styles.rowLabel}>Location</Text>
-								<Text style={styles.integrationDescription}>{locationDescription(location.data)}</Text>
+								<Text style={styles.integrationDescription}>{locationDescription(location.data, sidekickName)}</Text>
 							</View>
 							<Switch
 								style={styles.switch}

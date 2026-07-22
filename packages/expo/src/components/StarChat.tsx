@@ -42,10 +42,12 @@ const { height: SCREEN_H } = Dimensions.get('window');
 // (scripted nudges advance by the phase cap) and ends on a fallback artifact.
 
 const OPENING = [
-  "hey, i'm gonna get to know you through a little conversation,",
-  'then give you a personality read: how you think, connect, and move through life ✦',
+  'ooh look we made it into the stars!',
+  'this is our star chat, where i can get to know you and your personality',
+  'the more we chat, the smarter i become! 🤓',
+  "i'm going to ask you some questions and then give you a read on your personality...",
 ];
-const PHASE1_OPENER = 'ok cool. so what do you do day to day, work, school, both?';
+const PHASE1_OPENER = "first off, what's your life like? do you work, go to school, have a family?";
 const SCRIPTED_NUDGE = 'mm, say more?';
 
 // The chat sits over the 3D night sky, and the sidekick's star-head constellation
@@ -462,19 +464,21 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
             </Pressable>
           ) : (
             <View className="flex-row items-center gap-2">
+              {/* input + send sit a half-step lighter than the night-sky background
+                  (a faint translucent-white lift), white text */}
               <TextInput
                 value={input}
                 onChangeText={setInput}
                 placeholder="message"
-                placeholderTextColor="rgba(17,17,17,0.4)"
-                className="flex-1 rounded-full bg-white/90 px-5 py-3 text-[15px] text-[#111]"
+                placeholderTextColor="rgba(255,255,255,0.5)"
+                className="flex-1 rounded-full bg-white/10 px-5 py-3 text-[15px] text-white"
                 onSubmitEditing={submit}
                 returnKeyType="send"
               />
               <Pressable
                 onPress={submit}
                 disabled={sendDisabled}
-                className={`w-11 h-11 rounded-full bg-[#7A5AF8] items-center justify-center ${sendDisabled ? 'opacity-40' : ''}`}
+                className={`w-11 h-11 rounded-full bg-white/10 items-center justify-center ${sendDisabled ? 'opacity-40' : ''}`}
               >
                 <Ionicons name="arrow-up" size={20} color="#fff" />
               </Pressable>

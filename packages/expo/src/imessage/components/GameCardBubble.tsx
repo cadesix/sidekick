@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useSidekickDisplayName } from "../../lib/sidekick-name";
 import { colors } from "../theme";
 import type { GameCard, GameType } from "../types";
 
@@ -18,12 +19,12 @@ export function gameName(gameType: GameType): string {
 	return NAMES[gameType];
 }
 
-function statusLine(game: GameCard): string {
+function statusLine(game: GameCard, sidekickName: string): string {
 	if (game.winner === "user") {
 		return "You won";
 	}
 	if (game.winner === "sidekick") {
-		return "Sidekick wins";
+		return `${sidekickName} wins`;
 	}
 	if (game.status === "expired") {
 		return "Expired";
@@ -118,6 +119,7 @@ export function GameCardBubble({
 	onOpenGame?: (matchId: string) => void;
 }) {
 	const [pressed, setPressed] = useState(false);
+	const sidekickName = useSidekickDisplayName();
 	if (!game.latest) {
 		return (
 			<View style={styles.pill}>
@@ -141,7 +143,7 @@ export function GameCardBubble({
 				<Text style={styles.stripGlyph}>{GLYPHS[game.gameType]}</Text>
 				<View style={styles.stripText}>
 					<Text style={styles.name}>{NAMES[game.gameType]}</Text>
-					<Text style={styles.status}>{statusLine(game)}</Text>
+					<Text style={styles.status}>{statusLine(game, sidekickName)}</Text>
 				</View>
 			</View>
 		</Pressable>

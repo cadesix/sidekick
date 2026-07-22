@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Pressable } from './Pressable';
+import { regulateAction } from '../lib/api';
+import { hapticMessage, hapticTap } from '../lib/haptics';
 import { MessageBubble } from '../imessage/components/MessageBubble';
 import { TypingIndicator } from '../imessage/components/TypingIndicator';
 import { colors, type } from '../imessage/theme';
@@ -103,7 +105,15 @@ type Node =
   // a tap that just posts a user bubble and advances (no branching); the options
   // are interchangeable phrasings of "continue"
   | { kind: 'reply'; when?: (v: Vars) => boolean; labels: string[] }
-  | { kind: 'choose'; when?: (v: Vars) => boolean; set: keyof Vars; options: (v: Vars) => Choice[] }
+  // `input` adds a free-text field alongside the chips; `regulate` routes what
+  // they type through the LLM to normalize it into a daily checkpoint first.
+  | {
+      kind: 'choose';
+      when?: (v: Vars) => boolean;
+      set: keyof Vars;
+      options: (v: Vars) => Choice[];
+      input?: { placeholder: string; regulate?: boolean };
+    }
   | { kind: 'act'; when?: (v: Vars) => boolean; act: 'notif' | 'finish' };
 
 const notTalk = (v: Vars) => v.reason !== 'talk';
@@ -186,6 +196,7 @@ const SCRIPT: Node[] = [
     when: notTalk,
     set: 'action',
     options: (v) => (IMPROVE[v.improve]?.actions ?? []).map((a) => ({ label: a, value: a })),
+    input: { placeholder: 'or type your own…', regulate: true },
   },
   {
     kind: 'say',
@@ -221,7 +232,10 @@ function ReplyChip({ label, onPress }: { label: string; onPress: () => void }) {
   const [pressed, setPressed] = useState(false);
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => {
+        hapticTap();
+        onPress();
+      }}
       onPressIn={() => setPressed(true)}
       onPressOut={() => setPressed(false)}
       style={[chipStyles.base, pressed ? chipStyles.pressed : null]}
@@ -284,6 +298,9 @@ export function OnboardingIntroChat({
   const [messages, setMessages] = useState<Msg[]>([]);
   const [typing, setTyping] = useState(false);
   const [chips, setChips] = useState<Choice[]>([]);
+  // the current step's free-text field (only the action step has one), + its value
+  const [inputCfg, setInputCfg] = useState<{ placeholder: string; regulate?: boolean } | null>(null);
+  const [inputText, setInputText] = useState('');
   const scrollRef = useRef<ScrollView>(null);
   const idRef = useRef(0);
   const aliveRef = useRef(true);
@@ -323,6 +340,7 @@ export function OnboardingIntroChat({
             setTyping(false);
             const text = fill(raw, varsRef.current);
             setMessages((m) => [...m, { id: nextId(), role: 'them', text }]);
+            hapticMessage(); // soft pop as each incoming message lands
             scrollToEnd();
             await sleep(320);
           }
@@ -335,8 +353,9 @@ export function OnboardingIntroChat({
         } else if (node.kind === 'choose') {
           pendingRef.current = { index: i, set: node.set };
           setChips(node.options(v));
+          setInputCfg(node.input ?? null);
           scrollToEnd();
-          return; // wait for a tap (resumed in onPick)
+          return; // wait for a tap or typed answer (resumed in onPick / onSubmitInput)
         } else {
           if (node.act === 'notif') {
             try {
@@ -361,12 +380,71 @@ export function OnboardingIntroChat({
       if (!pending) return;
       pendingRef.current = null;
       setChips([]);
+      setInputCfg(null);
       setMessages((m) => [...m, { id: nextId(), role: 'me', text: choice.label }]);
       if (pending.set) varsRef.current = { ...varsRef.current, [pending.set]: choice.value };
       scrollToEnd();
       void pump(pending.index + 1);
     },
     [pump, scrollToEnd],
+  );
+
+  // The free-text answer at a `choose` step with an `input`. For the action step
+  // (`regulate`), the typed idea is run through the LLM: a daily-checkpoint
+  // rewrite continues the flow, while a non-daily idea gets a nudge and re-asks.
+  const onSubmitInput = useCallback(
+    async (raw: string) => {
+      const text = raw.trim();
+      const pending = pendingRef.current;
+      if (!text || !pending || !pending.set || typing) return;
+      hapticTap();
+      setMessages((m) => [...m, { id: nextId(), role: 'me', text }]);
+      setInputText('');
+      setChips([]);
+      setInputCfg(null);
+      const node = SCRIPT[pending.index];
+      const cfg = node.kind === 'choose' ? node.input : undefined;
+      // no regulation → take the raw text as the value and continue
+      if (!cfg?.regulate) {
+        pendingRef.current = null;
+        varsRef.current = { ...varsRef.current, [pending.set]: text };
+        scrollToEnd();
+        void pump(pending.index + 1);
+        return;
+      }
+      // regulate: the sidekick "thinks", then either accepts a daily version or nudges
+      setTyping(true);
+      scrollToEnd();
+      const improveLabel = IMPROVE[varsRef.current.improve]?.label ?? varsRef.current.improve;
+      let res: Awaited<ReturnType<typeof regulateAction>>;
+      try {
+        res = await regulateAction(improveLabel, text);
+      } catch {
+        res = { ok: true, action: text }; // network hiccup — accept as-is, never block onboarding
+      }
+      if (!aliveRef.current) return;
+      setTyping(false);
+      if (res.ok) {
+        setMessages((m) => [...m, { id: nextId(), role: 'them', text: `love it — ${res.action} a day 💪` }]);
+        hapticMessage();
+        pendingRef.current = null;
+        varsRef.current = { ...varsRef.current, [pending.set]: res.action };
+        scrollToEnd();
+        // small beat so the confirmation reads before the next scripted line
+        await sleep(650);
+        if (!aliveRef.current) return;
+        void pump(pending.index + 1);
+      } else {
+        // stay on this step: nudge, then re-show the chips + input for another try
+        setMessages((m) => [...m, { id: nextId(), role: 'them', text: res.nudge }]);
+        hapticMessage();
+        const v = varsRef.current;
+        setChips(node.kind === 'choose' ? node.options(v) : []);
+        setInputCfg(cfg);
+        scrollToEnd();
+      }
+    },
+    [pump, scrollToEnd, typing],
   );
 
   // Start the script once. Kept separate from the unmount teardown below so a
@@ -382,7 +460,10 @@ export function OnboardingIntroChat({
   }, []);
 
   return (
-    <View style={{ flex: 1 }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <ScrollView
         ref={scrollRef}
         style={{ flex: 1 }}
@@ -397,6 +478,7 @@ export function OnboardingIntroChat({
         showsVerticalScrollIndicator={false}
         onContentSizeChange={scrollToEnd}
         keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
       >
         {messages.map((m) => {
           const mine = m.role === 'me';
@@ -420,19 +502,84 @@ export function OnboardingIntroChat({
         })}
         {/* same loading bubble as the home chat */}
         {typing ? <TypingIndicator /> : null}
+
+        {/* reply options sit right below the last message — where your reply
+            would land — right-aligned like an outgoing bubble, scrolling with the
+            transcript instead of in a separate bottom bar. iMessage-blue, styled
+            as buttons — no tail, white text, hard (zero-blur) darker-blue edge. */}
+        {chips.length > 0 ? (
+          <View style={{ marginTop: 8, gap: 10, alignItems: 'flex-end' }}>
+            {chips.map((chip) => (
+              <ReplyChip key={chip.value} label={chip.label} onPress={() => onPick(chip)} />
+            ))}
+          </View>
+        ) : null}
       </ScrollView>
 
-      {/* reply options anchored to the bottom of the container so it's always
-          clear they're tappable. The ScrollView above (flex:1) shrinks to fit, so
-          messages scroll cleanly without being cut off behind these. iMessage-blue,
-          styled as buttons — no tail, white text, hard (zero-blur) darker-blue edge. */}
-      {chips.length > 0 ? (
-        <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: insets.bottom + 14, gap: 10, alignItems: 'flex-end' }}>
-          {chips.map((chip) => (
-            <ReplyChip key={chip.value} label={chip.label} onPress={() => onPick(chip)} />
-          ))}
+      {/* free-text composer — only on steps that allow it (the action step). Pinned
+          below the transcript so "or type your own…" sits under the preset chips. */}
+      {inputCfg ? (
+        <View
+          style={{
+            paddingHorizontal: 16,
+            paddingTop: 8,
+            paddingBottom: insets.bottom + 10,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <TextInput
+            value={inputText}
+            onChangeText={setInputText}
+            placeholder={inputCfg.placeholder}
+            placeholderTextColor="#9aa0a6"
+            style={composerStyles.field}
+            returnKeyType="send"
+            onSubmitEditing={() => void onSubmitInput(inputText)}
+            editable={!typing}
+          />
+          <Pressable
+            accessibilityLabel="Send"
+            onPress={() => void onSubmitInput(inputText)}
+            disabled={typing || inputText.trim().length === 0}
+            style={[
+              composerStyles.send,
+              typing || inputText.trim().length === 0 ? composerStyles.sendDisabled : null,
+            ]}
+          >
+            <Text style={composerStyles.sendGlyph}>↑</Text>
+          </Pressable>
         </View>
       ) : null}
-    </View>
+    </KeyboardAvoidingView>
   );
 }
+
+const composerStyles = StyleSheet.create({
+  field: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    fontSize: 15,
+    color: '#111',
+    // soft flat shadow to match the onboarding container styling
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  send: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.blue,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendDisabled: { opacity: 0.4 },
+  sendGlyph: { color: '#fff', fontSize: 20, fontWeight: '800', lineHeight: 22 },
+});

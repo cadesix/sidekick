@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { cadenceSchema } from "@sidekick/shared";
 import { protectedProcedure, router } from "../trpc";
-import { startHabitChat } from "../onboarding/chat";
+import { generateHabitAck, regulateHabitAction, startHabitChat } from "../onboarding/chat";
 import { commitOnboardingResult } from "../onboarding/commit-result";
 
 /**
@@ -15,6 +15,24 @@ export const onboardingRouter = router({
   startHabitChat: protectedProcedure.mutation(({ ctx }) =>
     startHabitChat(ctx.db, ctx.model, ctx.userId),
   ),
+
+  /** A personalized ack line for the home speech bubble after a "+" habit is set. */
+  habitAck: protectedProcedure
+    .input(z.object({ conversationId: z.string().min(1) }))
+    .query(({ ctx, input }) =>
+      generateHabitAck(ctx.db, ctx.captionModel, ctx.userId, input.conversationId),
+    ),
+
+  /**
+   * Regulate a freeform onboarding action into a daily checkpoint (scripted
+   * intro chat's "which feels doable?" step, when the user types their own).
+   * Returns `{ ok: true, action }` (normalized) or `{ ok: false, nudge }`.
+   */
+  regulateAction: protectedProcedure
+    .input(z.object({ improve: z.string().min(1), text: z.string().min(1).max(200) }))
+    .mutation(({ ctx, input }) =>
+      regulateHabitAction(ctx.captionModel, input.improve, input.text),
+    ),
 
   /**
    * The scripted onboarding's single completion write: profile + onboardingCompletedAt

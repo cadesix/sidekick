@@ -63,6 +63,29 @@ class Spring {
   }
 }
 
+// A short, decaying oscillation overlaid on a channel — a head-shake ("no-no-no")
+// or a ticklish body-wiggle. Triggered on poke, sampled per frame, self-clears.
+class Wiggle {
+  private amp = 0;
+  private freq = 0;
+  private start = -1;
+  trigger(amp: number, freq: number, t: number): void {
+    this.amp = amp;
+    this.freq = freq;
+    this.start = t;
+  }
+  sample(t: number): number {
+    if (this.start < 0) return 0;
+    const e = t - this.start;
+    const decay = Math.exp(-e * 5.5); // ~0.5s tail
+    if (decay < 0.02) {
+      this.start = -1;
+      return 0;
+    }
+    return this.amp * decay * Math.sin(e * this.freq * Math.PI * 2);
+  }
+}
+
 const TAP_MAX_NDC = 0.02; // pointer travel below this counts as a tap
 const TAP_MAX_MS = 350;
 const HAND_RADIUS = 0.14; // character is normalized to 1 unit tall
@@ -80,7 +103,7 @@ export function createInteraction(opts: {
   camera: THREE.Camera;
   bone: (n: 'head' | 'handL' | 'handR') => THREE.Object3D | undefined;
   cameraDrag?: boolean;
-  onPoke?: (part: PokePart, point: THREE.Vector3) => void;
+  onPoke?: (part: PokePart, point: THREE.Vector3, expr: string | null) => void;
 }): Interaction {
   const { camera } = opts;
 
@@ -101,6 +124,14 @@ export function createInteraction(opts: {
   const squash = new Spring(110, 6);
   const camYaw = new Spring(70, 7);
   const camPitch = new Spring(70, 7);
+
+  // emotive poke overlays + escalation. Rapid repeated pokes within POKE_WINDOW
+  // stack pokeCount toward annoyance (3+) then anger (5+); an isolated poke resets it.
+  const headShake = new Wiggle();
+  const bodyWiggle = new Wiggle();
+  let pokeCount = 0;
+  let lastPokeAt = -10;
+  const POKE_WINDOW = 1.3; // seconds
 
   const raycaster = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
@@ -217,18 +248,52 @@ export function createInteraction(opts: {
     bendX.target = bendZ.target = legL.target = legR.target = 0;
     camYaw.target = camPitch.target = 0;
     if (!wasTap) return;
-    // tap: look at the point, and poked parts react physically
+    // tap: look at the point, then react — physically (spring kicks + wiggles)
+    // and emotionally (a face expression). Rapid repeated pokes escalate his
+    // mood from playful → annoyed → angry; leaving him alone resets it.
     ndc.set(x, y);
     pointerPoint(lookPoint);
     lookHoldUntil = now + LOOK_HOLD;
-    if (part === 'body') squash.kick(1.1);
-    if (part === 'head') {
-      headPitch.kick(-2.2); // little startled head-bob
+
+    const gap = now - lastPokeAt;
+    pokeCount = gap < POKE_WINDOW ? pokeCount + 1 : 1;
+    lastPokeAt = now;
+    const annoyed = pokeCount >= 3;
+    const angry = pokeCount >= 5;
+
+    let expr: string | null;
+    if (annoyed) {
+      // irritated recoil wherever he's poked: a sharp head-shake, a lean back,
+      // arms flicking in, a stomp-y squash — bigger the more you keep jabbing
+      const m = angry ? 1.5 : 1;
+      headShake.trigger(0.42 * m, 5.5, now);
+      tiltX.kick(0.7 * m);
+      squash.kick(0.7 * m);
+      arm.L.swing.kick(-3 * m);
+      arm.R.swing.kick(3 * m);
+      expr = angry ? 'angry' : 'annoyed';
+    } else if (part === 'body') {
+      // ticklish: a squish plus a quick squirming twist
+      squash.kick(1.1);
+      bodyWiggle.trigger(0.16, 3.5, now);
+      expr = 'surprised';
+    } else if (part === 'head') {
+      headPitch.kick(-2.2); // startled head-bob…
+      tiltX.kick(0.18); // …plus a tiny recoil back
       squash.kick(0.5);
+      expr = 'happy';
+    } else if (part === 'handL') {
+      arm.L.swing.kick(5);
+      squash.kick(0.4); // little hop
+      expr = 'excited';
+    } else if (part === 'handR') {
+      arm.R.swing.kick(-5);
+      squash.kick(0.4);
+      expr = 'excited';
+    } else {
+      expr = POKE_FACE[part]; // ground: no reaction
     }
-    if (part === 'handL') arm.L.swing.kick(5);
-    if (part === 'handR') arm.R.swing.kick(-5);
-    opts.onPoke?.(part, lookPoint);
+    opts.onPoke?.(part, lookPoint, expr);
   };
 
   const frame: InteractionFrame = {
@@ -277,7 +342,8 @@ export function createInteraction(opts: {
       }
 
       frame.headPitch = headPitch.update(dt);
-      frame.headYaw = headYaw.update(dt);
+      // + the emotive head-shake overlay ("no-no-no" when annoyed)
+      frame.headYaw = headYaw.update(dt) + headShake.sample(now);
       for (const [key, sp] of [
         [frame.armL, arm.L],
         [frame.armR, arm.R],
@@ -291,7 +357,8 @@ export function createInteraction(opts: {
       frame.tiltX = tiltX.update(dt);
       frame.tiltZ = tiltZ.update(dt);
       frame.bendX = bendX.update(dt);
-      frame.bendZ = bendZ.update(dt);
+      // + the ticklish body-wiggle overlay (a quick squirming twist)
+      frame.bendZ = bendZ.update(dt) + bodyWiggle.sample(now);
       frame.legL.lift = legL.update(dt);
       frame.legR.lift = legR.update(dt);
       // a lifted leg dangles: the knee curls back with the lift

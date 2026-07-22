@@ -291,11 +291,23 @@ export function fetchGoals(): Promise<GoalsList> {
 }
 
 /**
+ * Tapping a goal card → the sidekick asks about it in the main chat. Drops a
+ * "did you [action] today?" message into the main conversation and returns its
+ * id; the caller revalidates the transcript and slides the chat open. The
+ * user's reply is logged by the chat's always-on `log_checkin` tool.
+ */
+export function askGoalCheckin(goalId: string): Promise<{ conversationId: string }> {
+  return trpc.goals.askCheckin.mutate({ goalId });
+}
+
+/**
  * A snarky sign-off line for the 3D home speech bubble, generated from the tail
  * of the conversation. Fired when the user closes the chat. `quip` is null when
  * there's nothing to riff on.
  */
-export function fetchCapoff(conversationId: string): Promise<{ quip: string | null }> {
+export function fetchCapoff(
+  conversationId: string,
+): Promise<Awaited<ReturnType<typeof trpc.chat.capoff.query>>> {
   return trpc.chat.capoff.query({ conversationId });
 }
 
@@ -537,8 +549,27 @@ export function updateProfile(input: ProfileUpdate): Promise<{ ok: boolean }> {
 }
 
 /** Open a fresh guided habit-add chat (goal-screen "+"). */
+/** Personalized home-bubble ack after a "+" habit is created (riffs on the chat). */
+export function fetchHabitAck(
+  conversationId: string,
+): Promise<Awaited<ReturnType<typeof trpc.onboarding.habitAck.query>>> {
+  return trpc.onboarding.habitAck.query({ conversationId });
+}
+
 export function startHabitChat(): Promise<{ conversationId: string }> {
   return trpc.onboarding.startHabitChat.mutate();
+}
+
+/**
+ * Regulate a freeform onboarding action (typed at the "which feels doable?"
+ * step) into a daily checkpoint. `{ ok: true, action }` = a normalized daily
+ * action to use; `{ ok: false, nudge }` = ask the user for a smaller daily one.
+ */
+export function regulateAction(
+  improve: string,
+  text: string,
+): Promise<{ ok: true; action: string } | { ok: false; nudge: string }> {
+  return trpc.onboarding.regulateAction.mutate({ improve, text });
 }
 
 /** Persist the streamlined onboarding intro chat's picks (habit → goal, talk → prefs). */

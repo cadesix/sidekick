@@ -18,6 +18,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { commitOnboardingResult, setSkinColor } from '../src/lib/api';
+import { hapticNotif, hapticTap, playRevealHaptics } from '../src/lib/haptics';
 import { Pressable } from '../src/components/Pressable';
 import { OnboardingIntroChat, type OnboardingResult } from '../src/components/OnboardingIntroChat';
 import {
@@ -27,6 +28,7 @@ import {
   saveOnboardingField,
   saveStep,
 } from '../src/lib/onboarding';
+import { Glass } from '../src/imessage/components/Glass';
 import { OnboardingAuth } from '../src/components/OnboardingAuth';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { useAuthStore } from '../src/lib/auth-store';
@@ -104,6 +106,10 @@ const PHASES: Record<Phase, { framing: Framing; characterVisible: boolean }> = {
   chat: { framing: SLIVER_FRAMING, characterVisible: true },
 };
 
+// DEV-only onboarding skip controls — same gate as OnboardingAuth's dev login,
+// so they're stripped from production builds.
+const SHOW_DEV = process.env.NODE_ENV !== 'production';
+
 // Force the evening look live (in-memory, never persisted) so onboarding always
 // plays at dusk regardless of the real time-of-day — and Home is untouched.
 function eveningSettings() {
@@ -131,6 +137,9 @@ export default function Onboarding() {
   const [sidekickName, setSidekickName] = useState('');
   const [colorId, setColorId] = useState<string>(SKIN_COLORS[0].id);
   const [notifIn, setNotifIn] = useState(false);
+  // he only glances UP at the notice a beat after it lands (see submitSidekickName),
+  // so the look-up is gated on this rather than on the banner's own arrival.
+  const [notifLookUp, setNotifLookUp] = useState(false);
   const [chatMounted, setChatMounted] = useState(false);
   // chat sheet slide-up (0 = fully below the screen, 1 = docked). Driven when the
   // chat phase mounts so the sheet rises from the bottom as the camera zooms out.
@@ -168,6 +177,7 @@ export default function Onboarding() {
       setPhase(initial);
       setFraming(PHASES[initial].framing);
       setNotifIn(initial === 'notif' || initial === 'chat');
+      setNotifLookUp(initial === 'notif' || initial === 'chat');
       setChatMounted(initial === 'chat');
       if (initial === 'chat') sheetProgress.value = 1; // resume: sheet already docked
       setReady(true);
@@ -183,11 +193,12 @@ export default function Onboarding() {
     c?.applySettings(eveningSettings());
   }, []);
 
-  // notif beat: once the notice has dropped in, the sidekick looks up at it — and
-  // keeps looking up until "open chat" is tapped (openChat clears it).
+  // notif beat: a beat after the notice lands, the sidekick looks up at it (phone
+  // still in hand) — and keeps looking up until "open chat" is tapped (which
+  // clears it by leaving the notif phase).
   useEffect(() => {
-    controllerRef.current?.setLookUp(phase === 'notif' && notifIn);
-  }, [phase, notifIn]);
+    controllerRef.current?.setLookUp(phase === 'notif' && notifLookUp);
+  }, [phase, notifLookUp]);
 
   // every phase change lands here: persist the resume step + apply its framing.
   const goTo = (next: Phase, opts?: { keepFraming?: boolean }) => {
@@ -264,6 +275,7 @@ export default function Onboarding() {
     setAnimating(true);
     goTo('reveal');
     controllerRef.current?.shake({ amp: 0.06, duration: 1.4, mode: 'build' });
+    playRevealHaptics(); // rumble builds with the shake, hard hit at touchdown
     setTimeout(() => controllerRef.current?.jumpIn({ duration: 800 }), 1100);
     setTimeout(() => setAnimating(false), 2100);
   };
@@ -282,13 +294,20 @@ export default function Onboarding() {
   // 4 → 5: name him (hero framing, centered input).
   const toNameSidekick = () => goTo('nameSidekick');
 
-  // 5 → 6: drop the notification banner in.
+  // 5 → 6: the notif beat, choreographed in three: (1) he pulls out his phone
+  // (holdingPhone turns on with the 'notif' phase, same pose as opening Messages),
+  // (2) ~0.8s later the notification drops in with a firm haptic hit, (3) a beat
+  // after that he glances up at it — phone still in hand.
   const submitSidekickName = (name: string) => {
     setSidekickName(name);
     void saveOnboardingField('sidekickName', name);
-    goTo('notif');
+    goTo('notif'); // phone comes out here (see holdingPhone on the canvas)
     // NOTE: slot for the real push-notification permission prompt.
-    setTimeout(() => setNotifIn(true), 300);
+    setTimeout(() => {
+      setNotifIn(true);
+      hapticNotif(); // the message lands
+    }, 850);
+    setTimeout(() => setNotifLookUp(true), 1200); // then he looks up at it
   };
 
   // 6 → 7: tap the banner → he lifts the phone (holdingPhone) + chat opens.
@@ -348,6 +367,62 @@ export default function Onboarding() {
 
   const sender = sidekickName.trim() || 'Sidekick';
 
+  // DEV: skip the current part using its real advance handler, so camera moves /
+  // reveal / notif cinematics still play. Tap repeatedly to step through each part.
+  const devAdvance = () => {
+    if (animating) return;
+    switch (phase) {
+      case 'auth':
+        goTo('welcome');
+        break;
+      case 'welcome':
+        startNaming();
+        break;
+      case 'askName':
+        submitUserName(userName || 'Dev');
+        break;
+      case 'gender':
+        submitGender('other');
+        break;
+      case 'birthday':
+        submitBirthday('2000-01-01');
+        break;
+      case 'reveal':
+        toCustomize();
+        break;
+      case 'customize':
+        toNameSidekick();
+        break;
+      case 'nameSidekick':
+        submitSidekickName(sidekickName || 'Mochi');
+        break;
+      case 'notif':
+        openChat();
+        break;
+      case 'chat':
+        finish();
+        break;
+    }
+  };
+
+  // DEV: step back one phase. Best-effort — restores the previous screen's beat
+  // state (notif banner / chat sheet); the character may stay visible on the
+  // pre-reveal steps since we don't replay its park cinematic in reverse.
+  const devBack = () => {
+    if (animating) return;
+    const i = PHASE_ORDER.indexOf(phase);
+    if (i <= 0) return;
+    const prev = PHASE_ORDER[i - 1];
+    if (phase === 'chat') {
+      setChatMounted(false);
+      sheetProgress.value = 0;
+    }
+    const atNotif = prev === 'notif';
+    setNotifIn(atNotif); // show the banner again only if we're landing back on notif
+    setNotifLookUp(atNotif);
+    goTo(prev);
+  };
+
   return (
     <View style={styles.root}>
       {/* Locked evening stage — persists across every phase. Character parked
@@ -356,7 +431,7 @@ export default function Onboarding() {
         <SidekickCanvas
           style={StyleSheet.absoluteFillObject}
           framing={framing}
-          holdingPhone={phase === 'chat'}
+          holdingPhone={phase === 'notif' || phase === 'chat'}
           entrance={!PHASES[initialPhaseRef.current].characterVisible}
           onController={onController}
         />
@@ -378,7 +453,7 @@ export default function Onboarding() {
             <Text style={styles.sub}>Ready to meet your sidekick?</Text>
           </Animated.View>
           <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
-            <PrimaryButton label="let's go" onPress={startNaming} disabled={animating} />
+            <PrimaryButton label="Let's go" onPress={startNaming} disabled={animating} />
           </View>
         </>
       ) : null}
@@ -387,8 +462,8 @@ export default function Onboarding() {
       {phase === 'askName' && !animating ? (
         <NameEntry
           key="askName"
-          title="what's your name?"
-          placeholder="your name"
+          title="What's your name?"
+          placeholder="Your name"
           cta="continue"
           onSubmit={submitUserName}
         />
@@ -405,13 +480,13 @@ export default function Onboarding() {
         <>
           <Animated.View
             entering={FadeInUp.duration(500)}
-            style={[styles.topCopy, { top: insets.top + 24 }]}
+            style={[styles.topCopy, { top: insets.top + 96 }]}
             pointerEvents="none"
           >
             <Text style={styles.h1small}>Hey {userName || 'there'}, meet your sidekick!</Text>
           </Animated.View>
           <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
-            <PrimaryButton label="continue" onPress={toCustomize} />
+            <PrimaryButton label="Continue" onPress={toCustomize} />
           </View>
         </>
       ) : null}
@@ -421,11 +496,11 @@ export default function Onboarding() {
         <>
           <Animated.View
             entering={FadeInUp.duration(500)}
-            style={[styles.topCopy, { top: insets.top + 24 }]}
+            style={[styles.topCopy, { top: insets.top + 96 }]}
             pointerEvents="none"
           >
             <Text style={styles.h1small}>Customize your sidekick</Text>
-            <Text style={styles.sub}>pick a color</Text>
+            <Text style={styles.sub}>Pick a color</Text>
           </Animated.View>
           <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
             <View style={styles.swatchRow}>
@@ -434,7 +509,10 @@ export default function Onboarding() {
                 return (
                   <Pressable
                     key={c.id}
-                    onPress={() => pickColor(c)}
+                    onPress={() => {
+                      hapticTap();
+                      pickColor(c);
+                    }}
                     accessibilityLabel={c.id}
                     style={[
                       styles.swatch,
@@ -445,7 +523,7 @@ export default function Onboarding() {
                 );
               })}
             </View>
-            <PrimaryButton label="continue" onPress={toNameSidekick} />
+            <PrimaryButton label="Continue" onPress={toNameSidekick} />
           </View>
         </>
       ) : null}
@@ -454,12 +532,12 @@ export default function Onboarding() {
       {phase === 'nameSidekick' && !animating ? (
         <NameEntry
           key="nameSidekick"
-          title="what's your sidekick's name?"
-          placeholder="name your sidekick"
+          title="What's your sidekick's name?"
+          placeholder="Name your sidekick"
           cta="continue"
           onSubmit={submitSidekickName}
           layout="top"
-          suggestions={['Milo', 'Bao', 'Pip', 'Nova', 'Biscuit']}
+          suggestions={['Mochi', 'Luna', 'Coco', 'Peaches', 'Boba']}
         />
       ) : null}
 
@@ -473,7 +551,7 @@ export default function Onboarding() {
           {notifIn ? (
             <View style={[styles.notifCta, { paddingBottom: insets.bottom + 22 }]} pointerEvents="box-none">
               <Animated.View entering={FadeInUp.duration(420).delay(650)} style={styles.notifCtaBtn}>
-                <ShakeButton label="open chat" onPress={openChat} />
+                <ShakeButton label="Open chat" onPress={openChat} />
               </Animated.View>
             </View>
           ) : null}
@@ -488,6 +566,21 @@ export default function Onboarding() {
             <OnboardingIntroChat sidekickName={sidekickName} onComplete={finish} />
           </View>
         </Animated.View>
+      ) : null}
+
+      {/* DEV-only: skip through onboarding. Stripped in production (SHOW_DEV). */}
+      {SHOW_DEV ? (
+        <View style={styles.devBar} pointerEvents="box-none">
+          <Pressable onPress={devBack} style={styles.devBtn}>
+            <Text style={styles.devBtnText}>← back</Text>
+          </Pressable>
+          <Pressable onPress={devAdvance} style={styles.devBtn}>
+            <Text style={styles.devBtnText}>skip: {phase} →</Text>
+          </Pressable>
+          <Pressable onPress={() => finish()} style={styles.devBtn}>
+            <Text style={styles.devBtnText}>⏭ end</Text>
+          </Pressable>
+        </View>
       ) : null}
     </View>
   );
@@ -533,7 +626,14 @@ function NameEntry({
     suggestions && suggestions.length > 0 ? (
       <View style={styles.chipRow}>
         {suggestions.map((s) => (
-          <Pressable key={s} onPress={() => setValue(s)} style={styles.nameChip}>
+          <Pressable
+            key={s}
+            onPress={() => {
+              hapticTap();
+              setValue(s);
+            }}
+            style={styles.nameChip}
+          >
             <Text style={styles.nameChipText}>{s}</Text>
           </Pressable>
         ))}
@@ -560,7 +660,7 @@ function NameEntry({
         style={StyleSheet.absoluteFill}
         pointerEvents="box-none"
       >
-        <View style={[styles.topCopy, { top: insets.top + 24 }]}>
+        <View style={[styles.topCopy, { top: insets.top + 96 }]}>
           <Text style={styles.h1small}>{title}</Text>
         </View>
         <KeyboardAvoidingView
@@ -600,14 +700,21 @@ function GenderStep({ onSubmit }: { onSubmit: (gender: string) => void }) {
   return (
     <Animated.View entering={FadeInUp.duration(450)} style={styles.centerFill}>
       <View style={styles.nameCol}>
-        <Text style={styles.h1small}>how would you describe yourself?</Text>
+        <Text style={styles.h1small}>How would you describe yourself?</Text>
         <View style={{ height: 20 }} />
         {[
           { label: 'Female', value: 'female' },
           { label: 'Male', value: 'male' },
           { label: 'Other', value: 'other' },
         ].map((o) => (
-          <Pressable key={o.value} onPress={() => onSubmit(o.value)} style={styles.optionCard}>
+          <Pressable
+            key={o.value}
+            onPress={() => {
+              hapticTap();
+              onSubmit(o.value);
+            }}
+            style={styles.optionCard}
+          >
             <Text style={styles.optionText}>{o.label}</Text>
           </Pressable>
         ))}
@@ -637,12 +744,12 @@ function BirthdayStep({ onSubmit }: { onSubmit: (birthday: string) => void }) {
   if (Platform.OS !== 'web') {
     return (
       <Animated.View entering={FadeInUp.duration(450)} style={StyleSheet.absoluteFill} pointerEvents="box-none">
-        <View style={[styles.topCopy, { top: insets.top + 24 }]}>
-          <Text style={styles.h1small}>when's your birthday?</Text>
+        <View style={[styles.topCopy, { top: insets.top + 96 }]}>
+          <Text style={styles.h1small}>When's your birthday?</Text>
         </View>
-        <View style={[styles.nameBottomWrap, { paddingBottom: insets.bottom + 20 }]}>
+        <View style={styles.centerFill} pointerEvents="box-none">
           <View style={styles.nameCol}>
-            <View style={styles.dobPickerCard}>
+            <Glass style={styles.dobPickerGlass}>
               <DateTimePicker
                 value={date}
                 mode="date"
@@ -653,9 +760,9 @@ function BirthdayStep({ onSubmit }: { onSubmit: (birthday: string) => void }) {
                 }}
                 textColor="#111"
               />
-            </View>
-            <View style={{ height: 12 }} />
-            <PrimaryButton label="continue" onPress={() => onSubmit(dayString(date))} />
+            </Glass>
+            <View style={{ height: 16 }} />
+            <PrimaryButton label="Continue" onPress={() => onSubmit(dayString(date))} />
           </View>
         </View>
       </Animated.View>
@@ -675,8 +782,8 @@ function BirthdayStep({ onSubmit }: { onSubmit: (birthday: string) => void }) {
   };
   return (
     <Animated.View entering={FadeInUp.duration(450)} style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      <View style={[styles.topCopy, { top: insets.top + 24 }]}>
-        <Text style={styles.h1small}>when's your birthday?</Text>
+      <View style={[styles.topCopy, { top: insets.top + 96 }]}>
+        <Text style={styles.h1small}>When's your birthday?</Text>
       </View>
       <View style={[styles.nameBottomWrap, { paddingBottom: insets.bottom + 20 }]}>
         <View style={styles.nameCol}>
@@ -710,7 +817,7 @@ function BirthdayStep({ onSubmit }: { onSubmit: (birthday: string) => void }) {
             />
           </View>
           <View style={{ height: 12 }} />
-          <PrimaryButton label="continue" onPress={submitWeb} disabled={!can} />
+          <PrimaryButton label="Continue" onPress={submitWeb} disabled={!can} />
         </View>
       </View>
     </Animated.View>
@@ -740,7 +847,13 @@ function NotificationBanner({
   return (
     <View style={[styles.bannerWrap, { paddingTop: topInset + 8 }]} pointerEvents="box-none">
       <Animated.View style={style}>
-        <Pressable onPress={onTap} style={styles.banner}>
+        <Pressable
+          onPress={() => {
+            hapticTap();
+            onTap();
+          }}
+          style={styles.banner}
+        >
           <MessagesAppIcon size={46} badge={false} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <View style={styles.bannerHeader}>
@@ -789,7 +902,10 @@ function PrimaryButton({
   const [pressed, setPressed] = useState(false);
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => {
+        hapticTap();
+        onPress();
+      }}
       onPressIn={() => setPressed(true)}
       onPressOut={() => setPressed(false)}
       disabled={disabled}
@@ -848,6 +964,14 @@ const FONT_BOLD = 'Diatype-Rounded-Bold'; // 700–800
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#fff', overflow: 'hidden' },
+  devBar: { position: 'absolute', left: 12, bottom: 40, flexDirection: 'row', gap: 8, zIndex: 100 },
+  devBtn: {
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  devBtnText: { fontFamily: 'monospace', fontSize: 11, fontWeight: '700', color: '#bef264' },
   topCopy: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 32, alignItems: 'center' },
   h1: {
     fontFamily: FONT_BOLD,
@@ -895,20 +1019,32 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 4,
   },
+  // Flat white cards/inputs with a hard (zero-blur) grey drop shadow — a raised,
+  // solid look. Reused across the onboarding inputs + option cards + chips.
   nameChip: {
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.85)',
+    backgroundColor: '#fff',
+    shadowColor: '#c4c4c4',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
   },
   nameChipText: { fontFamily: FONT_MEDIUM, fontSize: 15, fontWeight: '600', color: '#111' },
   optionCard: {
     width: '100%',
     paddingVertical: 16,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: '#fff',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
+    shadowColor: '#c4c4c4',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
   },
   optionText: { fontFamily: FONT_MEDIUM, fontSize: 17, fontWeight: '600', color: '#111' },
   dobRow: { flexDirection: 'row', gap: 10, marginTop: 24 },
@@ -919,7 +1055,7 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 20,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: '#fff',
     fontFamily: FONT_MEDIUM,
     fontSize: 20,
     fontWeight: '500',
@@ -934,6 +1070,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     paddingVertical: 4,
   },
+  // liquid-glass fill for the birthday spinner. NO overflow:'hidden' — clipping a
+  // UIGlassEffect view stops the glass from rendering (GlassView clips borderRadius natively).
+  dobPickerGlass: { borderRadius: 20, paddingVertical: 6, paddingHorizontal: 8 },
   field: {
     marginTop: 24,
     width: '100%',
@@ -941,7 +1080,7 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 20,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: '#fff',
     fontFamily: FONT_MEDIUM,
     fontSize: 17,
     fontWeight: '500',

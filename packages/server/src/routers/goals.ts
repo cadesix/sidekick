@@ -1,11 +1,12 @@
 import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import { z } from "zod";
-import { actionItems, checkIns, goals, progressEvents } from "@sidekick/db";
+import { actionItems, checkIns, goals, messages, progressEvents } from "@sidekick/db";
 import type { Database } from "@sidekick/db";
 import {
   cadenceSchema,
   currentStreak,
+  estimateTokens,
   getActionItemTemplate,
   getGoalDefinition,
   localDate,
@@ -16,6 +17,7 @@ import {
   userTimezone,
   weekStart,
 } from "@sidekick/shared";
+import { ensureMainConversation } from "../chat/turn";
 import { adoptGoal } from "../onboarding/adopt";
 import { userStreak } from "../rewards/service";
 import { protectedProcedure, router } from "../trpc";
@@ -76,18 +78,19 @@ export const goalsRouter = router({
     }
     const itemIds = [...itemByGoal.values()].map((i) => i.id);
 
-    const weekEvents =
+    // All events (not just this week) so we can derive each goal's current
+    // day-streak; the week strip is filtered out of the same set below.
+    const allEvents =
       itemIds.length > 0
         ? await db
-            .select()
+            .select({
+              actionItemId: progressEvents.actionItemId,
+              date: progressEvents.date,
+              outcome: progressEvents.outcome,
+              note: progressEvents.note,
+            })
             .from(progressEvents)
-            .where(
-              and(
-                inArray(progressEvents.actionItemId, itemIds),
-                gte(progressEvents.date, windowStart),
-                lte(progressEvents.date, today),
-              ),
-            )
+            .where(inArray(progressEvents.actionItemId, itemIds))
         : [];
 
     const checkInRow = await db
@@ -100,11 +103,16 @@ export const goalsRouter = router({
 
     const goalStates = goalRows.map((goal) => {
       const item = itemByGoal.get(goal.id);
-      const events = item ? weekEvents.filter((e) => e.actionItemId === item.id) : [];
+      const events = item ? allEvents.filter((e) => e.actionItemId === item.id) : [];
       const todayEvent = events.find((e) => e.date === today);
-      const weekCompleted = events.filter(
-        (e) => e.outcome === "hit" || e.outcome === "partial",
+      const hitDates = events
+        .filter((e) => e.outcome === "hit" || e.outcome === "partial")
+        .map((e) => e.date);
+      const weekCompleted = hitDates.filter(
+        (d) => d >= windowStart && d <= today,
       ).length;
+      // consecutive-day streak ending today (or yesterday) — days in a row done
+      const goalStreak = currentStreak(hitDates, today);
       const parsedCadence = item ? cadenceSchema.safeParse(item.cadence) : null;
       const cadence = parsedCadence?.success ? parsedCadence.data : null;
       const target = cadence?.type === "weekly" ? cadence.target : null;
@@ -124,6 +132,7 @@ export const goalsRouter = router({
           note: todayEvent?.note ?? null,
         },
         week: { completed: weekCompleted, target },
+        streak: goalStreak,
       };
     });
 
@@ -253,6 +262,53 @@ export const goalsRouter = router({
     }
     return { date: input.date, outcome: logged.outcome };
   }),
+
+  /**
+   * Goal tap → the sidekick asks about it in the MAIN chat. Drops a canned
+   * "did you [action] today?" assistant message into the user's main
+   * conversation; the user's reply then flows through a normal turn, where the
+   * always-on `log_checkin` tool marks the goal from their answer (hit/missed/
+   * partial). Returns the main conversation id so the client can revalidate the
+   * transcript and slide the chat open onto the question.
+   */
+  askCheckin: protectedProcedure
+    .input(z.object({ goalId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const { db, userId } = ctx;
+      await assertGoalOwned(db, input.goalId, userId);
+
+      const goalRows = await db.select().from(goals).where(eq(goals.id, input.goalId)).limit(1);
+      const goal = goalRows[0];
+      if (!goal) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "goal not found" });
+      }
+      const itemRows = await db
+        .select({ label: actionItems.label })
+        .from(actionItems)
+        .where(and(eq(actionItems.goalId, goal.id), eq(actionItems.status, "active")))
+        .orderBy(desc(actionItems.createdAt))
+        .limit(1);
+      const definition = getGoalDefinition(goal.slug);
+      // the concrete daily action (falls back to the goal label), lowercased for the
+      // mid-sentence texting voice — mirrors the GoalCard phrasing on the client
+      const action = (
+        itemRows[0]?.label ??
+        goal.label ??
+        definition?.label ??
+        goal.slug
+      ).toLowerCase();
+      const question = `did you ${action} today?`;
+
+      const conversation = await ensureMainConversation(db, userId);
+      await db.insert(messages).values({
+        conversationId: conversation.id,
+        role: "assistant",
+        content: question,
+        tokenEstimate: estimateTokens(question),
+      });
+
+      return { conversationId: conversation.id };
+    }),
 
   pause: protectedProcedure
     .input(z.object({ goalId: z.string().uuid() }))

@@ -101,7 +101,7 @@ export default function defineConfig({
     experiments: {
       typedRoutes: true,
       reactCompiler: true,
-      buildCacheProvider: "eas",
+      buildCacheProvider: process.env.EXPO_SKIP_EAS_CACHE ? undefined : "eas",
     },
     plugins: getPlugins(),
   };
