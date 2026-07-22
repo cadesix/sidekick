@@ -54,8 +54,8 @@ export const SCENE_DEFAULTS: Record<TimeOfDay, ScenePreset> = {
     skyMid: '#6aa8e0',
     skyHorizon: '#dcecfb',
     fog: '#dcecfb',
-    fogNear: 8,
-    fogFar: 32.5,
+    fogNear: 12,
+    fogFar: 52,
     grassHill: '#c0d265',
     grassBase: '#519d2d',
     grassTip: '#93cf4f',
@@ -78,8 +78,8 @@ export const SCENE_DEFAULTS: Record<TimeOfDay, ScenePreset> = {
     skyMid: '#d18a72',
     skyHorizon: '#ffe0a0',
     fog: '#e8a877',
-    fogNear: 0,
-    fogFar: 76.5,
+    fogNear: 10,
+    fogFar: 54,
     grassHill: '#a69c36',
     grassBase: '#6fa13a',
     grassTip: '#b9c25e',
@@ -102,8 +102,8 @@ export const SCENE_DEFAULTS: Record<TimeOfDay, ScenePreset> = {
     skyMid: '#2c1a47',
     skyHorizon: '#5b407d',
     fog: '#26355c',
-    fogNear: 0,
-    fogFar: 12,
+    fogNear: 6,
+    fogFar: 34,
     grassHill: '#424601',
     grassBase: '#274115',
     grassTip: '#235421',
@@ -149,6 +149,11 @@ export type SidekickSettings = {
   celSoftness: number;
   celShadowAmt: number;
   celRimWidth: number;
+  // the character's own backlight (fresnel rim on the cel body) — a dedicated
+  // warm light shown ONLY at evening (a warm dusk glow), NOT the scene rim.
+  // celRimStrength is its opacity/intensity at evening; day + night get none.
+  celRimColor: string;
+  celRimStrength: number;
   goochCool: string;
   goochWarm: string;
   halftoneScale: number;
@@ -200,7 +205,23 @@ export type SidekickSettings = {
   bloomThreshold: number;
   shadowOpacity: number;
   fov: number;
+  camDist: number; // home/editor camera distance to the character (dolly)
+  camHeight: number; // home/editor camera height offset (pedestal)
   camPos: [number, number, number] | null;
+  // Depth-of-field (home + editor). focus tracks the character; dofFocus offsets it.
+  dofAperture: number;
+  dofMaxblur: number;
+  dofFocus: number;
+  // Background hill (home meadow): position/shape + colour.
+  hillX: number;
+  hillZ: number;
+  hillRadius: number;
+  hillFlat: number;
+  hillSink: number;
+  hillColor: string;
+  ridgeHeight: number; // distant-ridge peak scale
+  ridgeHaze: number; // how far ridges fade toward the horizon colour
+  ridgeDepth: number; // how far back the ridge bands sit
   camTarget: [number, number, number] | null;
 };
 
@@ -224,6 +245,9 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
   celSoftness: 0,
   celShadowAmt: 0.463,
   celRimWidth: 0.32455,
+  // warm, red-leaning backlight at a moderate opacity — evening-only (tune on device)
+  celRimColor: '#ff6a2e',
+  celRimStrength: 0.5,
   goochCool: '#7a86b8',
   goochWarm: '#fff1d6',
   halftoneScale: 7.432,
@@ -232,8 +256,8 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
   outline: false,
   outlineWidth: 0.00722,
   outlineColor: '#b77d1a',
-  faceZoom: 1.07,
-  faceHeight: 0.185,
+  faceZoom: 1.34,
+  faceHeight: 0.022,
   shirtEnabled: true,
   shirtColor: '#5c8ad6',
   poseArmDown: 1.29,
@@ -276,8 +300,22 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
   // NOTE: web home4 drives a real shadow map with this; mobile has no shadow
   // map yet (expo-gl risk), so the value is carried but inert
   shadowOpacity: 0.2316,
-  fov: 25.214,
+  fov: 41.1, // home camera (matches the original HERO_FRAMING)
+  camDist: 4.2,
+  camHeight: 0,
   camPos: [-0.8622328104178634, 0.8720766906255945, 5.542186848594252],
+  dofAperture: 0.0012,
+  dofMaxblur: 0.008,
+  dofFocus: 0,
+  hillX: 6,
+  hillZ: -12,
+  hillRadius: 8,
+  hillFlat: 0.5,
+  hillSink: 3.2,
+  hillColor: '#c0d265',
+  ridgeHeight: 1,
+  ridgeHaze: 1,
+  ridgeDepth: 1,
   camTarget: [0, 0.7, 0],
 };
 

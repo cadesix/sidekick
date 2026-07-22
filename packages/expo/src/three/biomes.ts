@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+
+import type { TimeOfDay } from './settings';
 
 // Ported near-verbatim from web's src/components/sidekick-biomes.ts (+ the
 // AREA_BIOME island→biome map, which lived in web's world-map.tsx).
@@ -886,6 +889,108 @@ export const BIOMES: Record<BiomeId, Biome> = {
   volcano: { preset: VOLCANO_PRESET, build: buildVolcano },
 };
 
+// ---- time-of-day modulation for biomes ------------------------------------
+// Biome presets are authored as a bright "day" look. Rather than hand-paint a
+// separate evening/night preset for all six, derive them procedurally: blend
+// each look toward a shared dusk / night mood and scale the light intensities +
+// exposure. Every biome becomes time-of-day aware from one place — tune the two
+// factor tables below (and VERIFY on a physical device; the simulator's GL lies).
+
+const _a = new THREE.Color();
+const _b = new THREE.Color();
+// blend `hex` toward `target` by t (0..1) → hex string
+function mix(hex: string, target: string, t: number): string {
+  _a.set(hex);
+  _b.set(target);
+  return '#' + _a.lerp(_b, t).getHexString();
+}
+// scale a color's brightness toward black → hex string
+function dim(hex: string, f: number): string {
+  return '#' + _a.set(hex).multiplyScalar(f).getHexString();
+}
+
+// [tint, mixAmount] blends a color; light entries add an intensity multiplier
+// (and rim adds a floor so dusk/night always get a little backlight).
+type TodMod = {
+  skyTop: [string, number];
+  skyMid: [string, number];
+  skyHorizon: [string, number];
+  skyDim: number;
+  fog: [string, number];
+  fogFar: number; // multiplier
+  key: [string, number, number]; // tint, mix, intensity×
+  fill: [string, number, number];
+  rim: [string, number, number, number]; // tint, mix, intensity×, floor
+  hemiSky: [string, number];
+  hemiGround: [string, number];
+  hemiScale: number;
+  exposure: number; // multiplier
+};
+
+const TOD_MOD: Record<Exclude<TimeOfDay, 'day'>, TodMod> = {
+  evening: {
+    skyTop: ['#40407a', 0.35],
+    skyMid: ['#e8a877', 0.4],
+    skyHorizon: ['#ffd28a', 0.45],
+    skyDim: 0.92,
+    fog: ['#e8a877', 0.5],
+    fogFar: 1,
+    key: ['#ffb257', 0.5, 0.9],
+    fill: ['#6a6bb0', 0.3, 0.95],
+    rim: ['#ff6a1a', 0.5, 1, 0.4],
+    hemiSky: ['#ffcf9a', 0.4],
+    hemiGround: ['#3a3560', 0.3],
+    hemiScale: 0.8,
+    exposure: 0.96,
+  },
+  night: {
+    skyTop: ['#0c0a29', 0.6],
+    skyMid: ['#2c1a47', 0.55],
+    skyHorizon: ['#3b2a5d', 0.5],
+    skyDim: 0.55,
+    fog: ['#26355c', 0.6],
+    fogFar: 0.6,
+    key: ['#4f7aff', 0.6, 0.55],
+    fill: ['#3a4a80', 0.5, 0.8],
+    rim: ['#2a5aff', 0.5, 0.5, 0.1],
+    hemiSky: ['#2a3a66', 0.6],
+    hemiGround: ['#0f1529', 0.6],
+    hemiScale: 0.5,
+    exposure: 2.0,
+  },
+};
+
+/**
+ * A biome's look for a given time of day. `day` returns the authored preset
+ * unchanged; `evening`/`night` blend it toward the dusk/night mood above. The
+ * ground geometry is time-independent (built once) — only the sky/fog/light rig
+ * this returns changes, so the renderer re-derives it on travel + on clock ticks.
+ */
+export function biomeLookForTime(base: BiomePreset, tod: TimeOfDay): BiomePreset {
+  if (tod === 'day') {
+    return base;
+  }
+  const m = TOD_MOD[tod];
+  return {
+    ...base,
+    skyTop: dim(mix(base.skyTop, m.skyTop[0], m.skyTop[1]), m.skyDim),
+    skyMid: dim(mix(base.skyMid, m.skyMid[0], m.skyMid[1]), m.skyDim),
+    skyHorizon: dim(mix(base.skyHorizon, m.skyHorizon[0], m.skyHorizon[1]), m.skyDim),
+    fog: mix(base.fog, m.fog[0], m.fog[1]),
+    fogFar: base.fogFar * m.fogFar,
+    keyColor: mix(base.keyColor, m.key[0], m.key[1]),
+    keyIntensity: base.keyIntensity * m.key[2],
+    fillColor: mix(base.fillColor, m.fill[0], m.fill[1]),
+    fillIntensity: base.fillIntensity * m.fill[2],
+    rimColor: mix(base.rimColor, m.rim[0], m.rim[1]),
+    rimIntensity: Math.max(base.rimIntensity * m.rim[2], m.rim[3]),
+    hemiSky: mix(base.hemiSky, m.hemiSky[0], m.hemiSky[1]),
+    hemiGround: mix(base.hemiGround, m.hemiGround[0], m.hemiGround[1]),
+    hemiIntensity: base.hemiIntensity * m.hemiScale,
+    exposure: base.exposure * m.exposure,
+  };
+}
+
 // island id → travel environment (the session-complete "see the island" hop).
 // Ported from web's world-map.tsx AREA_BIOME, which derived this from the AREAS
 // list; inlined here so the biome module owns its own island mapping and the
@@ -898,3 +1003,173 @@ export const AREA_BIOME: Record<string, EnvironmentId> = {
   palmcove: 'tropical',
   ember: 'volcano',
 };
+
+// One low hill on the RIGHT of the home composition (9:16 portrait), its left
+// slope descending as a diagonal that converges just past screen-centre — a
+// simple bit of background depth to sit the character against (and to fall out
+// of focus under the DoF). A couple of trees on the slope. Flat-shaded, no
+// shadows. Parented to the grass group in the renderer so it shows on the meadow
+// and hides during travel. `hillColor` should match the foreground grass-hill.
+export type BackdropParams = {
+  x: number;
+  z: number;
+  radius: number;
+  flat: number;
+  sink: number;
+  hillColor: string;
+  treeColor: string;
+  // distant-ridge controls (live-tunable) + the per-scene colour they haze toward
+  ridgeHeight: number;
+  ridgeHaze: number;
+  ridgeDepth: number;
+  hazeColor: string;
+};
+
+type Lobe = { x: number; y: number; z: number; rx: number; ry: number; rz: number };
+
+// Merge a set of overlapping ellipsoid lobes into ONE cel mesh. Merging (rather
+// than separate meshes) is what makes a mass read as a single soft form instead
+// of spheres with hard grey creases at every overlap — same trick the clouds use.
+function lobeMesh(lobes: Lobe[], mat: THREE.Material, detail: number): THREE.Mesh {
+  const geos = lobes.map((l) => {
+    const g = new THREE.IcosahedronGeometry(1, detail);
+    g.scale(l.rx, l.ry, l.rz);
+    g.translate(l.x, l.y, l.z);
+    return g;
+  });
+  const merged = mergeGeometries(geos, false);
+  geos.forEach((g) => g.dispose());
+  const m = new THREE.Mesh(merged ?? new THREE.BufferGeometry(), mat);
+  m.castShadow = false;
+  m.receiveShadow = false;
+  return m;
+}
+
+function lerpHex(a: string, b: string, t: number): string {
+  return '#' + new THREE.Color(a).lerp(new THREE.Color(b), t).getHexString();
+}
+
+// Built with the character's own cel shader (passed in as `makeMat`) and SMOOTH
+// normals — low-poly geometry that renders as soft cinematic cel forms, not
+// faceted blobs. It layers depth: a few RECEDING RIDGES of irregular merged lobes
+// hazing toward the scene's horizon colour (atmospheric perspective → reads as a
+// big world; per time-of-day for free), the tunable "hero" hill on the right (also
+// irregular lobes, not a ball), grass on its cap, and a couple of trees.
+export function makeMeadowBackdrop(
+  p: BackdropParams,
+  makeMat: (color: string) => THREE.Material,
+): THREE.Group {
+  const group = new THREE.Group();
+
+  // --- distant ridges: 3 bands receding behind the character, each hazed further
+  // toward the scene haze colour + placed deeper so the fog fades them into the
+  // sky. ridgeHeight/Depth/Haze scale the whole set live. Lobe heights vary per
+  // band for a natural, non-uniform horizon silhouette.
+  const bands = [
+    { z: -20, yb: -2.2, span: 42, n: 8, peak: 4.2, t: 0.16 },
+    { z: -32, yb: -1.6, span: 56, n: 10, peak: 3.4, t: 0.42 },
+    { z: -46, yb: -1.0, span: 72, n: 12, peak: 2.7, t: 0.66 },
+  ];
+  for (let b = 0; b < bands.length; b++) {
+    const band = bands[b];
+    const lobes: Lobe[] = [];
+    for (let i = 0; i < band.n; i++) {
+      const fx = (i / (band.n - 1) - 0.5) * band.span + (rand(b * 17 + i) - 0.5) * 4;
+      const h = band.peak * p.ridgeHeight * (0.55 + rand(b * 7 + i * 2) * 0.75); // height variance
+      const w = h * (1.5 + rand(b * 5 + i * 3) * 1.0);
+      const z = band.z * p.ridgeDepth + (rand(b * 3 + i) - 0.5) * 6;
+      lobes.push({ x: fx, y: band.yb, z, rx: w, ry: h, rz: w * 0.7 });
+    }
+    const t = Math.min(0.94, band.t * p.ridgeHaze);
+    group.add(lobeMesh(lobes, makeMat(lerpHex(p.hillColor, p.hazeColor, t)), 1));
+  }
+
+  // --- hero hill (irregular merged lobes, not a ball): a main dome + shoulders,
+  // built from the tunable params so the Backdrop sliders still shape it.
+  const R = p.radius;
+  const F = p.flat;
+  const S = p.sink;
+  group.add(
+    lobeMesh(
+      [
+        { x: p.x, y: -S, z: p.z, rx: R, ry: R * F, rz: R },
+        { x: p.x - R * 0.72, y: -S * 1.12, z: p.z + R * 0.22, rx: R * 0.62, ry: R * F * 0.82, rz: R * 0.7 },
+        { x: p.x + R * 0.55, y: -S * 0.95, z: p.z - R * 0.16, rx: R * 0.72, ry: R * F * 1.06, rz: R * 0.76 },
+        { x: p.x - R * 0.28, y: -S, z: p.z - R * 0.42, rx: R * 0.5, ry: R * F * 0.72, rz: R * 0.56 },
+      ],
+      makeMat(p.hillColor),
+      2,
+    ),
+  );
+
+  // world Y of the hero cap surface at horizontal distance dh from its centre
+  const capY = (dh: number) => -p.sink + p.radius * p.flat * Math.sqrt(Math.max(0, 1 - (dh / p.radius) ** 2));
+
+  // grass on the cap — blades scattered on the visible cap, baked into ONE merged
+  // geometry (one draw call, and the cel shader renders it like any solid mesh)
+  const bladeSrc = new THREE.ConeGeometry(0.05, 0.5, 3);
+  bladeSrc.translate(0, 0.25, 0);
+  const blades: THREE.BufferGeometry[] = [];
+  const mtx = new THREE.Matrix4();
+  const qt = new THREE.Quaternion();
+  const pos = new THREE.Vector3();
+  const scl = new THREE.Vector3();
+  const axis = new THREE.Vector3();
+  const TARGET = 160;
+  for (let i = 0; blades.length < TARGET && i < TARGET * 4; i++) {
+    const a = rand(i * 1.3) * Math.PI * 2;
+    const dh = Math.sqrt(rand(i * 2.1)) * p.radius * 0.9;
+    const y = capY(dh);
+    if (y < 0.03) continue; // only where the cap clears the ground
+    pos.set(p.x + Math.cos(a) * dh, y, p.z + Math.sin(a) * dh);
+    const sc = 0.5 + rand(i * 3.7) * 0.9;
+    scl.set(sc, sc * (0.7 + rand(i * 4.2) * 0.7), sc);
+    axis.set(Math.cos(a + 1.57), 0, Math.sin(a + 1.57));
+    qt.setFromAxisAngle(axis, (rand(i * 5.1) - 0.5) * 0.5);
+    blades.push(bladeSrc.clone().applyMatrix4(mtx.compose(pos, qt, scl)));
+  }
+  bladeSrc.dispose();
+  if (blades.length) {
+    const merged = mergeGeometries(blades, false);
+    blades.forEach((b) => b.dispose());
+    if (merged) {
+      const grass = new THREE.Mesh(merged, makeMat(p.treeColor));
+      grass.castShadow = false;
+      grass.receiveShadow = false;
+      group.add(grass);
+    }
+  }
+
+  // two round cel-shaded trees on the slope (smooth blobs), offset from the hill
+  // centre + scaled with its radius so they track it on reposition/resize
+  const rk = p.radius / 8;
+  const spots: [number, number, number][] = [
+    [-2.4 * rk, 1.4 * rk, 0.95 * rk], // lower on the slope, toward centre
+    [-0.6 * rk, -0.8 * rk, 1.15 * rk], // higher, nearer the crest
+  ];
+  const trunkMat = makeMat('#6b4a2f');
+  const leafMat = makeMat(p.treeColor);
+  for (let i = 0; i < spots.length; i++) {
+    const [ox, oz, scale] = spots[i];
+    const t = new THREE.Group();
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.19, 1.0, 8), trunkMat);
+    trunk.position.y = 0.5;
+    t.add(trunk);
+    for (let b = 0; b < 3; b++) {
+      const r = 0.5 + rand(i * 3 + b) * 0.3;
+      const blob = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 2), leafMat); // detail 2 = smooth silhouette
+      blob.position.set((rand(i + b) - 0.5) * 0.6, 1.1 + b * 0.4, (rand(i + b * 2) - 0.5) * 0.6);
+      blob.scale.y = 0.92;
+      t.add(blob);
+    }
+    t.scale.setScalar(scale);
+    t.position.set(p.x + ox, capY(Math.hypot(ox, oz)) - 0.15 * rk, p.z + oz);
+    t.traverse((o) => {
+      o.castShadow = false;
+      (o as THREE.Mesh).receiveShadow = false;
+    });
+    group.add(t);
+  }
+
+  return group;
+}

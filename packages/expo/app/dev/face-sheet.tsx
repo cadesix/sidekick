@@ -6,17 +6,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FACE_CELLS, type FaceExpression } from '~/three/face';
 
-// Dev tool: lay out face-sheet-v6.png as its 4×4 grid so we can click each cell
-// and check every expression reads correctly. The sheet's cells are drawn on a
-// transparent background (they composite onto the yellow head), so the backdrop
-// toggle previews them over head-yellow / white / dark.
-//
-// This is a 2D contact-sheet QA pass; the on-head 3D preview and the eyes/mouth
-// split land on top of it next. Mapping comes straight from FACE_CELLS in
-// three/face.ts, so this view stays honest as that table changes.
+// Dev tool: lay out face-sheet-v7.png as its 3×3 grid so we can tap each cell and
+// check every expression reads correctly. The cells are drawn on a transparent
+// background (they composite onto the yellow head), so the backdrop toggle
+// previews them over head-yellow / white / dark. Mapping comes straight from
+// FACE_CELLS in three/face.ts, so this view stays honest as that table changes.
 
-const SHEET = require('../../assets/textures/face-sheet-v6.png');
-const GRID = 4;
+const SHEET = require('../../assets/textures/face-sheet-v7.png');
+const GRID = 3;
 const HEAD_YELLOW = '#f2b13c';
 
 type Backdrop = { key: string; label: string; color: string; ink: string };
@@ -26,8 +23,8 @@ const BACKDROPS: Backdrop[] = [
   { key: 'dark', label: 'Dark', color: '#1a1a1e', ink: '#eee' },
 ];
 
-// Invert FACE_CELLS into a [col][row] lookup — a cell can carry >1 name (the
-// current sheet aliases blink/happy onto the same cell), and some are empty.
+// Invert FACE_CELLS into a [col][row] lookup — a cell can carry >1 name (blink and
+// happy share the top-middle cell), and some may be empty.
 function buildGrid(): FaceExpression[][][] {
   const grid: FaceExpression[][][] = Array.from({ length: GRID }, () =>
     Array.from({ length: GRID }, () => [] as FaceExpression[]),
@@ -108,9 +105,7 @@ export default function FaceSheetRoute() {
 
       <ScrollView contentContainerStyle={{ padding: pad, paddingBottom: insets.bottom + 32, alignItems: 'center' }}>
         {/* large preview of the selected cell */}
-        <View
-          style={{ borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#0001' }}
-        >
+        <View style={{ borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#0001' }}>
           <CellImage col={selCol} row={selRow} size={previewSize} bg={backdrop.color} />
         </View>
         <View className="h-3" />
@@ -144,7 +139,7 @@ export default function FaceSheetRoute() {
           })}
         </View>
 
-        {/* the 4×4 grid */}
+        {/* the 3×3 grid */}
         <View style={{ width: gridW }}>
           {Array.from({ length: GRID }, (_, r) => (
             <View key={r} style={{ flexDirection: 'row', gap, marginBottom: r < GRID - 1 ? gap : 0 }}>

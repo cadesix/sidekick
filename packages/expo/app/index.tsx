@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { Profiler, useCallback, useEffect, useMemo, useState } from 'react';
+import { Profiler, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Redirect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Alert, AppState, Dimensions, Pressable, Text, View, type AppStateStatus } from 'react-native';
@@ -14,6 +14,7 @@ import { BoxRewardsModal, GroundBox, StreakSplash } from '../src/components/Dail
 import { DevPanel } from '../src/components/DevPanel';
 import { GameOverlay } from '../src/components/GameOverlay';
 import { GoalsSheet } from '../src/components/GoalsSheet';
+import { GuidedHabitChat } from '../src/components/GuidedHabitChat';
 import { StreakModal } from '../src/components/StreakModal';
 import { SessionChat, STAR_FACE_TUNING } from '../src/components/SessionChat';
 import { StarChat } from '../src/components/StarChat';
@@ -26,17 +27,18 @@ import { SpeechBubble } from '../src/components/SpeechBubble';
 import { StreakPill } from '../src/components/StreakPill';
 import { HomeDock } from '../src/components/HomeDock';
 import { BIOMES, type BiomeId, type EnvironmentId } from '../src/three/biomes';
-import { speak } from '../src/store/speech';
+import { speak, useSpeech } from '../src/store/speech';
+import { FACE_EXPRESSIONS, type FaceExpression } from '../src/three/face';
 import { BOND_MAX, nextSession as coreNextSession } from '@sidekick/core';
 import { SettingsSheet } from '../src/components/SettingsSheet';
 import { ShopSheet } from '../src/components/ShopSheet';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { WorldMap } from '../src/components/WorldMap';
-import type { Framing, SidekickController } from '../src/three/renderer';
+import { homeFraming, type Framing, type SidekickController } from '../src/three/renderer';
 import { hydrateSettings, loadSettings, refreshTimeOfDay, saveSettings, type SidekickSettings, type TimeOfDay } from '../src/three/settings';
 import type { CosmeticsControls } from '../src/three/wardrobe';
 import { useDeferredFlag } from '../src/lib/useDeferredFlag';
-import { claimDailyBox, fetchCapoff, type BoxContents } from '../src/lib/api';
+import { askGoalCheckin, claimDailyBox, fetchCapoff, fetchHabitAck, startHabitChat, type BoxContents } from '../src/lib/api';
 import { patchBoxClaim, snapshotSessions, useSnapshot } from '../src/lib/state';
 import { reconcileWardrobe } from '../src/lib/wardrobe-sync';
 import { useCosmeticVersion } from '../src/store/cosmeticVersion';
@@ -124,8 +126,10 @@ const { height: SCREEN_H } = Dimensions.get('window');
 const DRAWER_TOP = SCREEN_H * (1 - CHAT_SHEET_DETENT);
 
 // DEV: on-screen frame-rate probe (top-center). Confirms the running bundle and
-// shows whether the JS thread is dropping frames during camera moves.
-const SHOW_FPS = process.env.NODE_ENV !== 'production';
+// shows whether the JS thread is dropping frames during camera moves. Hidden for
+// now — flip back to `process.env.NODE_ENV !== 'production'` to re-enable (also
+// re-arms the frame-stats telemetry, which is gated on this same flag).
+const SHOW_FPS = false;
 
 type FpsStat = {
   fps: number;
@@ -211,6 +215,9 @@ export default function Home() {
   // chatOpen drives the camera/holdingPhone; chatProgress slides the drawer
   const [chatOpen, setChatOpen] = useState(false);
   const chatProgress = useSharedValue(0);
+  // guided habit-add ("+" from Goals) presents in an IDENTICAL drawer to the main
+  // chat — same camera/pose/slide — driven by this progress value.
+  const habitProgress = useSharedValue(0);
   // mapOpen drives the camera pull-back; mapShown drives the map's circle
   // reveal, a beat later, so the camera starts flying out before the map grows.
   const [mapOpen, setMapOpen] = useState(false);
@@ -256,6 +263,10 @@ export default function Home() {
   const [boxStage, setBoxStage] = useState<'init' | 'streak' | 'ground' | 'rewards' | 'done'>('init');
   const [boxReward, setBoxReward] = useState<BoxContents | null>(null);
   const [goalsOpen, setGoalsOpen] = useState(false);
+  // guided habit-add ("+" from Goals): the conversation id while the full-screen
+  // Messages sheet is open, else null.
+  const [habitConvId, setHabitConvId] = useState<string | null>(null);
+  const habitOpen = habitConvId !== null;
   const [streakModalOpen, setStreakModalOpen] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   // imperative handle the canvas publishes once cosmetics are ready; the Shop
@@ -263,6 +274,22 @@ export default function Home() {
   const [controls, setControls] = useState<CosmeticsControls | null>(null);
   // raw scene controller for the Settings sheet's live look-dev
   const [controller, setController] = useState<SidekickController | null>(null);
+
+  // Overhead bubble → face. When a line pops over his head, pulse the matching
+  // expression for the bubble's duration. The server picks the emotion for
+  // LLM-generated lines (capoff, habit ack); static lines pass one in. Bridged
+  // off the speech store's nonce so ANY speak() with an expression drives it.
+  const speechNonce = useSpeech((s) => s.nonce);
+  const lastFaceNonce = useRef(0);
+  useEffect(() => {
+    const st = useSpeech.getState();
+    if (st.nonce === 0 || st.nonce === lastFaceNonce.current || !controller) return;
+    lastFaceNonce.current = st.nonce;
+    const expr = st.expression;
+    if (expr && (FACE_EXPRESSIONS as readonly string[]).includes(expr)) {
+      controller.pulseFace(expr as FaceExpression, Math.max(1.6, st.ms / 1000));
+    }
+  }, [speechNonce, controller]);
   // saved look-dev state must hydrate BEFORE the GL scene builds from it; the
   // mirrored server skin then overwrites its cel colors (plan 20 decision 10)
   const [settings, setSettings] = useState<SidekickSettings | null>(null);
@@ -374,9 +401,9 @@ export default function Home() {
     const conversationId = queryClient.getQueryData<{ id: string }>(['chat', 'main'])?.id;
     if (conversationId) {
       fetchCapoff(conversationId)
-        .then(({ quip }) => {
+        .then(({ quip, expression }) => {
           if (quip) {
-            setTimeout(() => speak(quip, 4500), 500);
+            setTimeout(() => speak(quip, 4500, expression), 500);
           }
         })
         .catch(() => {}); // silent — no bubble on failure
@@ -405,7 +432,8 @@ export default function Home() {
       closeMap();
       const line = TRAVEL_LINES[biome];
       if (line) {
-        setTimeout(() => speak(line), 650);
+        // arrivals are upbeat; home is more content
+        setTimeout(() => speak(line, undefined, biome === 'meadow' ? 'happy' : 'excited'), 650);
       }
     },
     [closeMap],
@@ -421,10 +449,55 @@ export default function Home() {
   const closeStreakModal = useCallback(() => setStreakModalOpen(false), []);
   const openStreakModal = useCallback(() => setStreakModalOpen(true), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
-  const goalsToChat = useCallback(() => {
+  // Tap a goal → open the main chat onto a "did you [action] today?" question the
+  // sidekick just dropped in; the user's reply is logged by the chat's always-on
+  // log_checkin tool. Open the drawer right away (snappy); revalidate the
+  // transcript when the insert lands so the question is there as it slides up.
+  const goalCheckin = useCallback(
+    (goalId: string) => {
+      setGoalsOpen(false);
+      openChat();
+      askGoalCheckin(goalId)
+        .then(({ conversationId }) => {
+          void queryClient.invalidateQueries({
+            queryKey: ['chat', 'transcript', conversationId],
+          });
+        })
+        .catch(() => {});
+    },
+    [openChat, queryClient],
+  );
+  // "Add a Habit or Goal": close Goals, start a fresh guided-habit conversation,
+  // and open it full-screen in the Messages sheet.
+  const openAddHabit = useCallback(() => {
     setGoalsOpen(false);
-    openChat();
-  }, [openChat]);
+    startHabitChat()
+      .then(({ conversationId }) => {
+        setHabitConvId(conversationId); // camera → CHAT_FRAMING + phone (via habitOpen)
+        habitProgress.value = withTiming(1, { duration: 380 }); // drawer slides up
+      })
+      .catch(() => {});
+  }, [habitProgress]);
+  // slide the drawer down, then unmount a beat later so the camera eases back home.
+  const abortAddHabit = useCallback(() => {
+    habitProgress.value = withTiming(0, { duration: 340 });
+    setTimeout(() => setHabitConvId(null), 340);
+  }, [habitProgress]);
+  // habit set → close the drawer (land home), refresh goals, and have the sidekick
+  // pop a personalized ack over his head once the camera has settled.
+  const finishAddHabit = useCallback(() => {
+    const cid = habitConvId;
+    habitProgress.value = withTiming(0, { duration: 340 });
+    setTimeout(() => setHabitConvId(null), 340);
+    void queryClient.invalidateQueries({ queryKey: ['goals', 'list'] });
+    if (cid) {
+      fetchHabitAck(cid)
+        .then(({ line, expression }) => {
+          if (line) setTimeout(() => speak(line, 6000, expression), 900);
+        })
+        .catch(() => {});
+    }
+  }, [habitConvId, habitProgress, queryClient]);
   const mapToChat = useCallback(() => {
     closeMap();
     openChat();
@@ -457,6 +530,14 @@ export default function Home() {
     [settings, controller],
   );
 
+  // The home ("hero") shot is derived from the look-dev camera settings (fov /
+  // distance / height) so /sidekick-3d previews the EXACT same camera. Falls back
+  // to the literal HERO_FRAMING until settings hydrate.
+  const hero = useMemo<Framing>(
+    () => (settings ? homeFraming(settings.fov, settings.camDist ?? 4.2, settings.camHeight ?? 0) : HERO_FRAMING),
+    [settings],
+  );
+
   // The active camera framing per surface. Memoized so the canvas gets a stable
   // prop (a new object literal every render would defeat its memo and re-fire the
   // setFraming effect each time).
@@ -465,21 +546,21 @@ export default function Home() {
       skyMode
         ? cosmosPanned
           ? COSMOS_FRAMING // pan up to the sky (after the home beat)
-          : HERO_FRAMING // land on home first
+          : hero // land on home first
         : mapOpen
           ? MAP_FRAMING
           : shopOpen || appearanceOpen
             ? SHOP_FRAMING
-            : chatOpen || settingsOpen
+            : chatOpen || settingsOpen || habitOpen
               ? CHAT_FRAMING
-              : HERO_FRAMING,
-    [skyMode, cosmosPanned, mapOpen, shopOpen, appearanceOpen, chatOpen, settingsOpen],
+              : hero,
+    [skyMode, cosmosPanned, mapOpen, shopOpen, appearanceOpen, chatOpen, settingsOpen, habitOpen, hero],
   );
 
   // The top-right cluster (closet avatar / streak / settings) is hidden under any
   // full surface. We keep it mounted and toggle `display` instead of unmounting,
   // so the avatar's GL context survives (see the cluster JSX for why).
-  const clusterHidden = mapShown || shopOpen || chatOpen || skyMode;
+  const clusterHidden = mapShown || shopOpen || chatOpen || skyMode || habitOpen;
 
   // DEV: mark when a map open/close toggle actually commits, so the telemetry can
   // measure React commit latency (map:close:call → this) against the frame stalls.
@@ -506,6 +587,10 @@ export default function Home() {
   const drawerStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: (1 - chatProgress.value) * (SCREEN_H - DRAWER_TOP) }],
   }));
+  // identical to drawerStyle, for the guided habit-add drawer
+  const habitDrawerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: (1 - habitProgress.value) * (SCREEN_H - DRAWER_TOP) }],
+  }));
 
   // Front-door gate (see the query at the top). Placed after every hook so the
   // hook order is stable across renders; a one-frame blank while it resolves.
@@ -526,7 +611,7 @@ export default function Home() {
         <SidekickCanvas
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           framing={framing}
-          holdingPhone={chatOpen}
+          holdingPhone={chatOpen || habitOpen}
           studio={shopOpen || appearanceOpen}
           cosmos={cosmosPanned}
           starFace={starFace}
@@ -535,7 +620,7 @@ export default function Home() {
           onController={setController}
           onFrameStats={SHOW_FPS ? emitFps : undefined}
           overhead={overhead}
-          overheadActive={!(mapShown || shopOpen || chatOpen || settingsOpen || skyMode)}
+          overheadActive={!(mapShown || shopOpen || chatOpen || settingsOpen || skyMode || habitOpen)}
           ground={ground}
           dailyBox={boxStage === 'ground' || boxStage === 'rewards' ? (snapshot?.dailyBox.tier ?? null) : null}
         />
@@ -544,7 +629,7 @@ export default function Home() {
       {/* what the sidekick is saying, over its head (hidden while a full
           surface covers the scene). The bond score lives on the star now. */}
       {settings ? (
-        <OverheadSpeech overhead={overhead} hidden={mapShown || shopOpen || chatOpen || settingsOpen || skyMode}>
+        <OverheadSpeech overhead={overhead} hidden={mapShown || shopOpen || chatOpen || settingsOpen || skyMode || habitOpen}>
           <SpeechBubble />
         </OverheadSpeech>
       ) : null}
@@ -555,8 +640,9 @@ export default function Home() {
       {settings && snapshot && nextStarChat ? (
         <StarChatButton
           overhead={overhead}
-          hidden={mapShown || shopOpen || chatOpen || settingsOpen || skyMode}
+          hidden={mapShown || shopOpen || chatOpen || settingsOpen || skyMode || habitOpen}
           onPress={() => setStarChatOpen(true)}
+          darkBg={darkBackdrop}
         />
       ) : null}
 
@@ -596,7 +682,7 @@ export default function Home() {
             paused={appearanceOpen || clusterHidden}
           />
         </Pressable>
-        <StreakPill onPress={openStreakModal} />
+        <StreakPill onPress={openStreakModal} darkBg={darkBackdrop} />
         {/* Frosted glass — no `overflow:'hidden'` (it kills the glass effect); the
             round shape comes from borderRadius, which Glass clips natively. The
             material tint tracks the backdrop so the fill isn't a fixed white panel. */}
@@ -654,11 +740,11 @@ export default function Home() {
               // comes off the snapshot, patched by the completion response.
               setSessionId(null);
               const line = astralNews(snapshot?.astral ?? null);
-              setTimeout(() => speak(line, 6000), 2600);
+              setTimeout(() => speak(line, 6000, 'excited'), 2600);
               // if the bond isn't full yet, nudge them to keep going — a beat
               // after the astral line so it reads as a second thought
               if ((snapshot?.bond ?? 0) < BOND_MAX) {
-                setTimeout(() => speak("let's complete our bond ✦", 5000), 9200);
+                setTimeout(() => speak("let's complete our bond ✦", 5000, 'excited'), 9200);
               }
             }}
           />
@@ -676,10 +762,10 @@ export default function Home() {
               // shouldn't have the sidekick claim the card updated.
               if (!updated) return;
               const line = astralNews(snapshot?.astral ?? null);
-              setTimeout(() => speak(line, 6000), 2600);
+              setTimeout(() => speak(line, 6000, 'excited'), 2600);
               // if there's more of the reading left, invite them back whenever
               if (coreNextSession(sessions)) {
-                setTimeout(() => speak('we can do your next astral chat whenever you\'re ready ✦', 5000), 9200);
+                setTimeout(() => speak('we can do your next astral chat whenever you\'re ready ✦', 5000, 'happy'), 9200);
               }
             }}
           />
@@ -688,7 +774,7 @@ export default function Home() {
 
 
       {/* Daily-box flow (home only): streak splash → ground chest → rewards */}
-      {settings && !mapShown && !shopOpen && !chatOpen && !settingsOpen && !skyMode ? (
+      {settings && !mapShown && !shopOpen && !chatOpen && !settingsOpen && !skyMode && !habitOpen ? (
         <>
           {boxStage === 'streak' ? (
             <StreakSplash streak={streakCount} onDone={() => setBoxStage('ground')} />
@@ -739,7 +825,44 @@ export default function Home() {
       <ShopSheet open={shopOpen} onClose={closeShop} controls={controls} />
 
       {/* goals, streak ladder, appearance/closet */}
-      <GoalsSheet open={goalsOpen} onClose={closeGoals} onTalk={goalsToChat} />
+      <GoalsSheet open={goalsOpen} onClose={closeGoals} onCheckin={goalCheckin} onAddHabit={openAddHabit} />
+
+      {/* guided habit-add — presented in a drawer IDENTICAL to the main chat
+          (same slide/pose/framing, no title); tap the band above to close */}
+      {habitOpen ? (
+        <Pressable
+          onPress={abortAddHabit}
+          accessibilityLabel="Close add habit"
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: DRAWER_TOP, zIndex: 30 }}
+        />
+      ) : null}
+      {habitConvId ? (
+        <Animated.View
+          style={[
+            habitDrawerStyle,
+            {
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: DRAWER_TOP,
+              height: SCREEN_H - DRAWER_TOP,
+              zIndex: 40,
+              shadowColor: '#000',
+              shadowOpacity: 0.12,
+              shadowRadius: 24,
+              shadowOffset: { width: 0, height: -8 },
+            },
+          ]}
+        >
+          {/* same white, rounded, grabbered panel as the main chat */}
+          <View style={{ flex: 1, backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' }}>
+            <View style={{ alignItems: 'center', paddingTop: 8, paddingBottom: 2 }}>
+              <View style={{ width: 36, height: 5, borderRadius: 3, backgroundColor: 'rgba(60,60,67,0.3)' }} />
+            </View>
+            <GuidedHabitChat conversationId={habitConvId} onComplete={finishAddHabit} />
+          </View>
+        </Animated.View>
+      ) : null}
       <StreakModal open={streakModalOpen} onClose={closeStreakModal} />
       {settings ? (
         <AppearanceSheet

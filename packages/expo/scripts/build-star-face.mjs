@@ -43,12 +43,16 @@ import sharp from 'sharp';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GLB = join(HERE, '../assets/models/sidekick-rigged.stripped.glb');
+// The star-chat constellation deliberately uses the ORIGINAL v6 (4×4) face art,
+// NOT the current in-app v7 sheet — the night-sky face is its own look and we
+// keep it as it was before the sheet was reworked. Re-running this regenerates
+// the SAME old constellation; do not repoint it at v7.
 const SHEET = join(HERE, '../assets/textures/face-sheet-v6.png');
 const OUT_JSON = join(HERE, '../src/three/star-face.json');
 const OUT_PREVIEW = join(HERE, '../src/three/star-face.preview.png');
 
 const HEAD_BONE = 'Head';
-const GRID = 4; // face.ts: the sheet is 4x4
+const GRID = 4; // v6 sheet is 4×4
 const CELL = { col: 0, row: 0 }; // 'neutral' — the resting smile
 const ALPHA_MIN = 128;
 const MIN_BLOB = 400;

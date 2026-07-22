@@ -159,10 +159,11 @@ export function makeCelMaterial(
       uCelSoft: { value: 0.015 + 0.6 * THREE.MathUtils.clamp(s.celSoftness, 0, 1) },
       uCelShadow: { value: new THREE.Color(scene.shadeColor).multiply(envTint) },
       uCelAmt: { value: s.celShadowAmt },
-      // rim = the per-time-of-day scene rim (used un-tinted, matching the scene
-      // rim light); width stays a global shape knob
-      uRimColor: { value: new THREE.Color(scene.rimColor) },
-      uRimStrength: { value: scene.rimIntensity },
+      // rim = the character's OWN warm backlight (a dedicated red-leaning light),
+      // not the scene rim. Shown ONLY at evening — a warm dusk glow; day + night
+      // get none. strength is its opacity; width stays a shape knob
+      uRimColor: { value: new THREE.Color(s.celRimColor) },
+      uRimStrength: { value: s.timeOfDay === 'evening' ? s.celRimStrength : 0 },
       uRimWidth: { value: s.celRimWidth },
     },
   ]) as Record<string, THREE.IUniform>;
@@ -216,8 +217,8 @@ export function retintCelMaterial(
   (u.uCelShadow.value as THREE.Color).set(scene.shadeColor).multiply(envTint);
   u.uCelAmt.value = s.celShadowAmt;
   if (u.uRimColor) {
-    (u.uRimColor.value as THREE.Color).set(scene.rimColor);
-    u.uRimStrength.value = scene.rimIntensity;
+    (u.uRimColor.value as THREE.Color).set(s.celRimColor);
+    u.uRimStrength.value = s.timeOfDay === 'evening' ? s.celRimStrength : 0;
     u.uRimWidth.value = s.celRimWidth;
   }
 }

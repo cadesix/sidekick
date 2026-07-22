@@ -1,7 +1,5 @@
 import { useEffect, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-
-import { Pressable } from './Pressable';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -16,6 +14,8 @@ import Animated, {
 
 import { BOND_MIN } from '@sidekick/core';
 
+import { Glass } from '~/imessage/components/Glass';
+import { Pressable } from './Pressable';
 import { useSnapshot } from '../lib/state';
 import type { OverheadTarget } from './SidekickCanvas';
 
@@ -37,13 +37,11 @@ const SIZE = 48; // pill height (BADGE 36 + 6 padding each side) — vertical ce
 // edge. Centring is measured, not guessed, because the row's width moves with
 // the score ("bond score 5%" vs "bond score 100%").
 //
-// Vertically it must clear the speech bubble, which bottom-anchors at the same
-// head point and grows UPWARD as its line wraps (OverheadSpeech). Centring the
-// row removed the sideways clearance the old offset had, so the star started
-// painting over what the sidekick was saying. This sits above the bubble's
-// realistic reach: ~100px of wrapped text, plus the star's half-height and its
-// vertical drift.
-const OFFSET_Y = -150;
+// Vertically it sits above the head, close enough to read as the sidekick's own
+// star rather than a detached UI chip. It can brush the top of a tall speech
+// bubble (which bottom-anchors at the same head point and grows UPWARD); that's
+// the accepted trade for keeping it near the character.
+const OFFSET_Y = -100;
 
 // A lazy drift so it feels like it's floating rather than pinned. Two sines at
 // different rates (and out of phase) trace a slow wander instead of an obvious
@@ -58,10 +56,13 @@ export function StarChatButton({
   overhead,
   hidden,
   onPress,
+  darkBg,
 }: {
   overhead: OverheadTarget;
   hidden?: boolean;
   onPress: () => void;
+  // the sky/scene behind the pill is dark → dark glass material + light label
+  darkBg?: boolean;
 }) {
   // server-driven bond (plan 20): the snapshot, patched when a session completes
   const bond = useSnapshot().data?.bond ?? BOND_MIN;
@@ -138,23 +139,33 @@ export function StarChatButton({
         rowW.value = e.nativeEvent.layout.width;
       }}
     >
-      {/* one pill = one tap target: the star and the bond score sit inside it,
-          and tapping anywhere on it opens the star chat */}
-      <Pressable
-        onPress={onPress}
-        accessibilityLabel={`Start a star chat — bond score ${bond} percent`}
-        style={({ pressed }) => [styles.pill, { transform: [{ scale: pressed ? 0.96 : 1 }] }]}
+      {/* one liquid-glass pill = one tap target: the star and the bond score sit
+          inside it, and tapping anywhere on it opens the star chat. No
+          `overflow:'hidden'` (it kills the glass); the tint tracks the backdrop so
+          it reads as glass over the sky rather than a fixed white chip. */}
+      <Glass
+        isInteractive
+        tint={darkBg ? 'systemThinMaterialDark' : 'systemThinMaterialLight'}
+        style={styles.pill}
       >
-        <View style={styles.starWrap}>
-          <Animated.View pointerEvents="none" style={[styles.glow, glowStyle]} />
-          <View style={styles.starBadge}>
-            <Animated.View style={starStyle}>
-              <Text style={styles.star}>✦</Text>
-            </Animated.View>
+        <Pressable
+          onPress={onPress}
+          accessibilityLabel={`Start a star chat — bond score ${bond} percent`}
+          style={styles.inner}
+        >
+          <View style={styles.starWrap}>
+            <Animated.View pointerEvents="none" style={[styles.glow, glowStyle]} />
+            <View style={styles.starBadge}>
+              <Animated.View style={starStyle}>
+                <Text style={styles.star}>✦</Text>
+              </Animated.View>
+            </View>
           </View>
-        </View>
-        <Animated.Text style={[styles.label, labelStyle]}>bond score {bond}%</Animated.Text>
-      </Pressable>
+          <Animated.Text style={[styles.label, darkBg && styles.labelLight, labelStyle]}>
+            bond score {bond}%
+          </Animated.Text>
+        </Pressable>
+      </Glass>
     </Animated.View>
   );
 }
@@ -168,21 +179,23 @@ const styles = StyleSheet.create({
     left: 0,
     zIndex: 26,
   },
-  // the whole pill is the tap target
+  // the glass shell — Glass shrink-wraps the inner row; fill comes from the glass
   pill: {
+    borderRadius: 999,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  // the row layout + tap target
+  inner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingLeft: 6,
     paddingRight: 15,
     paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    elevation: 4,
   },
   starWrap: {
     width: BADGE,
@@ -212,11 +225,12 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: '#fff',
   },
-  // dark ink now — it sits inside a light pill, not over the open sky
+  // dark ink over light glass; flips to white when the glass goes dark
   label: {
     fontFamily: 'monospace',
     fontSize: 14,
     fontWeight: '700',
     color: '#1a1a1a',
   },
+  labelLight: { color: '#fff' },
 });
