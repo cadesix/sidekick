@@ -216,6 +216,9 @@ export function createSidekickRenderer(
     // handed the imperative dressing controls once cosmetics are ready (and
     // null on dispose) — the Shop sheet drives the live character through it
     onControls?: (c: CosmeticsControls | null) => void;
+    // the poke escalation boiled over (5+ rapid pokes): the scene plays the
+    // jump itself; the host layer adds haptics + the "Hey!" speech bubble
+    onAngryPoke?: () => void;
     // per-frame head-bone screen position in NDC (-1..1, +y up) + visibility
     // (z<1 = in front of camera). Drives head-tracked overlays (bond badge,
     // speech bubble); the canvas converts NDC→layout px. Web: overheadRef.
@@ -626,7 +629,9 @@ export function createSidekickRenderer(
   // build-up + touchdown. Ported from the web sidekick-canvas.
   const HIDDEN_Y = -3;
   let entranceY = opts.entrance ? HIDDEN_Y : 0;
-  let jump: { start: number; dur: number } | null = null;
+  // hop: an in-scene jump from the ground (poke boil-over) — same arms-up/tuck
+  // envelopes as the entrance, but the arc starts at 0 instead of HIDDEN_Y
+  let jump: { start: number; dur: number; hop?: boolean } | null = null;
   let landed = false;
   let shake: { start: number; dur: number; amp: number; mode: 'impact' | 'build' } | null = null;
   let cos: CosmeticsHandle | null = null;
@@ -829,9 +834,15 @@ export function createSidekickRenderer(
     camera,
     bone: (n) => bones[n],
     cameraDrag: true,
-    onPoke: (_part, _point, expr) => {
-      // interact.ts decides the expression (incl. the annoyed/angry escalation)
+    onPoke: (_part, _point, expr, big) => {
+      // interact.ts decides the expression (incl. the annoyed/big escalation)
       if (expr) faceCtl?.pulse(expr as FaceExpression, 1.6);
+      if (big) {
+        // boil-over: jump off the ground, hands thrown up (the jump envelopes
+        // raise the arms); the host layer layers haptics + the "Hey!" bubble
+        jump = { start: clock.getElapsedTime(), dur: 0.7, hop: true };
+        opts.onAngryPoke?.();
+      }
     },
   });
 
@@ -1073,15 +1084,21 @@ export function createSidekickRenderer(
     scene.fog = inCover ? null : envFog;
 
     // jump-into-frame entrance: launch from HIDDEN_Y with an eased rise + a
-    // short arc overshoot; fire the impact shake at touchdown (onboarding only)
+    // short arc overshoot; fire the impact shake at touchdown (onboarding only).
+    // A `hop` jump is the in-scene variant: a plain sine arc off the ground
+    // (poke boil-over), no camera shake.
     if (jump) {
       const p = THREE.MathUtils.clamp((now - jump.start) / jump.dur, 0, 1);
-      const rise = 1 - Math.pow(1 - p, 3);
-      const hop = Math.sin(p * Math.PI) * 0.3;
-      entranceY = THREE.MathUtils.lerp(HIDDEN_Y, 0, rise) + hop;
-      if (p >= 0.9 && !landed) {
-        landed = true;
-        shake = { start: now, dur: 0.55, amp: 0.2, mode: 'impact' };
+      if (jump.hop) {
+        entranceY = Math.sin(p * Math.PI) * 0.24;
+      } else {
+        const rise = 1 - Math.pow(1 - p, 3);
+        const hop = Math.sin(p * Math.PI) * 0.3;
+        entranceY = THREE.MathUtils.lerp(HIDDEN_Y, 0, rise) + hop;
+        if (p >= 0.9 && !landed) {
+          landed = true;
+          shake = { start: now, dur: 0.55, amp: 0.2, mode: 'impact' };
+        }
       }
       if (p >= 1) {
         entranceY = 0;

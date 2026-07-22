@@ -103,7 +103,9 @@ export function createInteraction(opts: {
   camera: THREE.Camera;
   bone: (n: 'head' | 'handL' | 'handR') => THREE.Object3D | undefined;
   cameraDrag?: boolean;
-  onPoke?: (part: PokePart, point: THREE.Vector3, expr: string | null) => void;
+  // `big` = the boiling-over reaction (kept-at-it pokes): the renderer plays a
+  // jump with hands thrown up; the host layer adds haptics + a "Hey!" bubble
+  onPoke?: (part: PokePart, point: THREE.Vector3, expr: string | null, big?: boolean) => void;
 }): Interaction {
   const { camera } = opts;
 
@@ -126,7 +128,8 @@ export function createInteraction(opts: {
   const camPitch = new Spring(70, 7);
 
   // emotive poke overlays + escalation. Rapid repeated pokes within POKE_WINDOW
-  // stack pokeCount toward annoyance (3+) then anger (5+); an isolated poke resets it.
+  // stack pokeCount toward annoyance (3+) then the big boil-over (5+ — jump,
+  // hands up, "Hey!"); an isolated poke resets it.
   const headShake = new Wiggle();
   const bodyWiggle = new Wiggle();
   let pokeCount = 0;
@@ -259,29 +262,36 @@ export function createInteraction(opts: {
     pokeCount = gap < POKE_WINDOW ? pokeCount + 1 : 1;
     lastPokeAt = now;
     const annoyed = pokeCount >= 3;
-    const angry = pokeCount >= 5;
+    const big = pokeCount >= 5;
 
     let expr: string | null;
-    if (annoyed) {
+    if (big) {
+      // boiling over: the renderer plays the jump (hands thrown up) off the
+      // `big` flag; here just the sharp head-shake — arm kicks would fight the
+      // jump's own arms-overhead envelope. Counter resets so the escalation
+      // starts from playful again.
+      headShake.trigger(0.5, 5.5, now);
+      expr = 'annoyed';
+      pokeCount = 0;
+    } else if (annoyed) {
       // irritated recoil wherever he's poked: a sharp head-shake, a lean back,
-      // arms flicking in, a stomp-y squash — bigger the more you keep jabbing
-      const m = angry ? 1.5 : 1;
-      headShake.trigger(0.42 * m, 5.5, now);
-      tiltX.kick(0.7 * m);
-      squash.kick(0.7 * m);
-      arm.L.swing.kick(-3 * m);
-      arm.R.swing.kick(3 * m);
-      expr = angry ? 'angry' : 'annoyed';
+      // arms flicking in, a stomp-y squash
+      headShake.trigger(0.42, 5.5, now);
+      tiltX.kick(0.7);
+      squash.kick(0.7);
+      arm.L.swing.kick(-3);
+      arm.R.swing.kick(3);
+      expr = 'annoyed';
     } else if (part === 'body') {
       // ticklish: a squish plus a quick squirming twist
       squash.kick(1.1);
       bodyWiggle.trigger(0.16, 3.5, now);
-      expr = 'surprised';
+      expr = 'excited';
     } else if (part === 'head') {
       headPitch.kick(-2.2); // startled head-bob…
       tiltX.kick(0.18); // …plus a tiny recoil back
       squash.kick(0.5);
-      expr = 'happy';
+      expr = 'excited';
     } else if (part === 'handL') {
       arm.L.swing.kick(5);
       squash.kick(0.4); // little hop
@@ -293,7 +303,7 @@ export function createInteraction(opts: {
     } else {
       expr = POKE_FACE[part]; // ground: no reaction
     }
-    opts.onPoke?.(part, lookPoint, expr);
+    opts.onPoke?.(part, lookPoint, expr, big);
   };
 
   const frame: InteractionFrame = {
@@ -373,10 +383,11 @@ export function createInteraction(opts: {
   };
 }
 
-// face pulse per poked part
+// face pulse per poked part — a single poke always reads as delight; the
+// annoyed/big escalation above overrides it when he's being jabbed at
 export const POKE_FACE = {
-  head: 'happy',
-  body: 'surprised',
+  head: 'excited',
+  body: 'excited',
   handL: 'excited',
   handR: 'excited',
   ground: null,
