@@ -15,6 +15,9 @@ import { Glass } from '~/imessage/components/Glass';
 type DockProps = {
   hidden?: boolean;
   unread?: number;
+  // wordless news dots: unseen shop restock / a goal not yet done today
+  shopDot?: boolean;
+  goalsDot?: boolean;
   onMessages: () => void;
   onShop?: () => void;
   onGoals?: () => void;
@@ -60,7 +63,7 @@ const ICON = Math.round(TILE * 0.62);
 const BAG = Math.round(TILE * 0.56);
 
 export const HomeDock = memo(HomeDockImpl);
-function HomeDockImpl({ hidden, unread = 0, onMessages, onShop, onGoals, onProfile }: DockProps) {
+function HomeDockImpl({ hidden, unread = 0, shopDot, goalsDot, onMessages, onShop, onGoals, onProfile }: DockProps) {
   const insets = useSafeAreaInsets();
   const shown = useSharedValue(hidden ? 0 : 1);
   useEffect(() => {
@@ -98,26 +101,32 @@ function HomeDockImpl({ hidden, unread = 0, onMessages, onShop, onGoals, onProfi
           ) : null}
         </View>
 
-        {/* Shop — shopping bag on an orange gradient */}
-        <AppTile label="Shop" onPress={onShop} gradient={['#FF9E5A', '#FF5E3A']}>
-          <Svg viewBox="0 0 24 24" width={BAG} height={BAG}>
-            <Path
-              fill="#fff"
-              fillRule="evenodd"
-              clipRule="evenodd"
-              d="M9 8V7.4a3 3 0 0 1 6 0V8h2.1c.53 0 .97.4 1.02.93l.8 8.7A2 2 0 0 1 16.93 20H7.07a2 2 0 0 1-1.99-2.37l.8-8.7A1.02 1.02 0 0 1 6.9 8H9zm1.6 0h2.8v-.6a1.4 1.4 0 0 0-2.8 0V8zm-1.6 2.6a.9.9 0 1 0 0-1.8.9.9 0 0 0 0 1.8zm6 0a.9.9 0 1 0 0-1.8.9.9 0 0 0 0 1.8z"
-            />
-          </Svg>
-        </AppTile>
+        {/* Shop — shopping bag on an orange gradient; dot = unseen restock */}
+        <View>
+          <AppTile label="Shop" onPress={onShop} gradient={['#FF9E5A', '#FF5E3A']}>
+            <Svg viewBox="0 0 24 24" width={BAG} height={BAG}>
+              <Path
+                fill="#fff"
+                fillRule="evenodd"
+                clipRule="evenodd"
+                d="M9 8V7.4a3 3 0 0 1 6 0V8h2.1c.53 0 .97.4 1.02.93l.8 8.7A2 2 0 0 1 16.93 20H7.07a2 2 0 0 1-1.99-2.37l.8-8.7A1.02 1.02 0 0 1 6.9 8H9zm1.6 0h2.8v-.6a1.4 1.4 0 0 0-2.8 0V8zm-1.6 2.6a.9.9 0 1 0 0-1.8.9.9 0 0 0 0 1.8zm6 0a.9.9 0 1 0 0-1.8.9.9 0 0 0 0 1.8z"
+              />
+            </Svg>
+          </AppTile>
+          {shopDot ? <View style={styles.dot} pointerEvents="none" /> : null}
+        </View>
 
-        {/* Goals — bullseye target on a blue gradient */}
-        <AppTile label="Goals" onPress={onGoals} gradient={['#6BB6FF', '#3D7BFF']}>
-          <Svg viewBox="0 0 24 24" width={ICON} height={ICON}>
-            <Circle cx="12" cy="12" r="8.5" fill="none" stroke="#fff" strokeWidth={2} />
-            <Circle cx="12" cy="12" r="4.75" fill="none" stroke="#fff" strokeWidth={2} />
-            <Circle cx="12" cy="12" r="1.6" fill="#fff" />
-          </Svg>
-        </AppTile>
+        {/* Goals — bullseye target on a blue gradient; dot = a goal still open today */}
+        <View>
+          <AppTile label="Goals" onPress={onGoals} gradient={['#6BB6FF', '#3D7BFF']}>
+            <Svg viewBox="0 0 24 24" width={ICON} height={ICON}>
+              <Circle cx="12" cy="12" r="8.5" fill="none" stroke="#fff" strokeWidth={2} />
+              <Circle cx="12" cy="12" r="4.75" fill="none" stroke="#fff" strokeWidth={2} />
+              <Circle cx="12" cy="12" r="1.6" fill="#fff" />
+            </Svg>
+          </AppTile>
+          {goalsDot ? <View style={styles.dot} pointerEvents="none" /> : null}
+        </View>
 
         {/* Profile — person on the astral purple gradient (name, card, settings) */}
         <AppTile label="Profile" onPress={onProfile} gradient={['#B79CFF', '#7A5AF8']}>
@@ -171,5 +180,17 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   badgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  // same anchor as `badge`, but wordless — there's no count to show, just news
+  dot: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 15,
+    height: 15,
+    borderRadius: 8,
+    backgroundColor: '#FF3B30',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+  },
   center: { alignItems: 'center', justifyContent: 'center' },
 });

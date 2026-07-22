@@ -1,4 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Profiler, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Redirect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -36,7 +36,9 @@ import { homeFraming, type Framing, type SidekickController } from '../src/three
 import { DEFAULT_SETTINGS, hydrateSettings, loadSettings, refreshTimeOfDay, saveSettings, type SidekickSettings, type TimeOfDay } from '../src/three/settings';
 import type { CosmeticsControls } from '../src/three/wardrobe';
 import { useDeferredFlag } from '../src/lib/useDeferredFlag';
-import { askGoalCheckin, claimDailyBox, fetchCapoff, fetchHabitAck, startHabitChat, type BoxContents } from '../src/lib/api';
+import { askGoalCheckin, claimDailyBox, fetchCapoff, fetchGoals, fetchHabitAck, startHabitChat, type BoxContents } from '../src/lib/api';
+import { fetchTranscript, mainConversation } from '../src/imessage/server';
+import { localDay, useDockBadges } from '../src/store/dockBadges';
 import { patchBoxClaim, snapshotSessions, useSnapshot } from '../src/lib/state';
 import { reconcileWardrobe } from '../src/lib/wardrobe-sync';
 import { useCosmeticVersion } from '../src/store/cosmeticVersion';
@@ -243,8 +245,29 @@ export default function Home() {
   // from the snapshot's sessions slice, so it re-evaluates the moment one
   // completes (the completion response patches the cache).
   const sessions = snapshotSessions(snapshot);
-  // an island opened but not yet looked at — dot on the dock's map icon
+  // an island opened but not yet looked at — dot on the top-right map pin
   const unseenIsland = useSidekickContext((s) => s.unseenIsland);
+  // dock notification badges (dockBadges store): each clears when its surface is
+  // looked at. Goals shares GoalsSheet's cached query (the sheet is always
+  // mounted, so this adds no fetch); Messages reads a small head-of-transcript
+  // page so unread arrivals badge without opening the chat.
+  const { goalsSeenDate, shopSeenDate, msgsSeenAt } = useDockBadges();
+  const goalsList = useQuery({ queryKey: ['goals', 'list'], queryFn: fetchGoals });
+  const chatMain = useQuery({ queryKey: ['chat', 'main'], queryFn: mainConversation, staleTime: Number.POSITIVE_INFINITY });
+  const chatHead = useQuery({
+    queryKey: ['chat', 'head', chatMain.data?.id],
+    queryFn: () => fetchTranscript(chatMain.data?.id ?? '', 8),
+    enabled: chatMain.data?.id !== undefined,
+  });
+  const today = localDay();
+  const goalsDot =
+    goalsSeenDate !== today &&
+    (goalsList.data?.goals.some((g) => g.today.outcome !== 'hit' && g.today.outcome !== 'partial') ?? false);
+  const shopDot = shopSeenDate !== today; // rotation restocks at local midnight
+  const unread =
+    msgsSeenAt === null
+      ? 0
+      : chatHead.data?.messages.filter((m) => m.role === 'them' && m.createdAt > msgsSeenAt).length ?? 0;
   const nextStarChat = coreNextSession(sessions);
   // guided-session constellation reveal: how many nodes are lit (the night sky
   // draws it as beats complete)
@@ -386,10 +409,21 @@ export default function Home() {
   const openChat = useCallback(() => {
     setChatOpen(true); // camera starts easing while the drawer slides up
     chatProgress.value = withTiming(1, { duration: 380 });
+    // they're looking at the chat — everything that exists right now is seen
+    useDockBadges.getState().markMsgsSeen(Date.now());
   }, [chatProgress]);
   const closeChat = useCallback(() => {
     setChatOpen(false);
     chatProgress.value = withTiming(0, { duration: 340 });
+    // stamp the newest message actually on screen (server clocks can run ahead
+    // of Date.now(), which would otherwise leave the reply "unread")
+    const cid = queryClient.getQueryData<{ id: string }>(['chat', 'main'])?.id;
+    const msgs = cid
+      ? queryClient.getQueryData<{ messages: { createdAt: number }[] }>(['chat', 'transcript', cid])?.messages
+      : undefined;
+    const newest = msgs?.reduce((mx, m) => Math.max(mx, m.createdAt), 0) ?? 0;
+    useDockBadges.getState().markMsgsSeen(Math.max(newest, Date.now()));
+    void queryClient.invalidateQueries({ queryKey: ['chat', 'head'] });
     // As the user walks back to the 3D sidekick, have it get the last word: a
     // snarky one-liner capping off the conversation, over its head. The 500ms
     // beat lets the drawer clear and the camera ease back to HERO first.
@@ -436,9 +470,15 @@ export default function Home() {
 
   // Named, stable versions of the small inline arrows the memoized surfaces get.
   const openProfile = useCallback(() => router.push('/profile'), []);
-  const openShop = useCallback(() => setShopOpen(true), []);
+  const openShop = useCallback(() => {
+    setShopOpen(true);
+    useDockBadges.getState().markShopSeen(); // today's restock: looked at
+  }, []);
   const closeShop = useCallback(() => setShopOpen(false), []);
-  const openGoals = useCallback(() => setGoalsOpen(true), []);
+  const openGoals = useCallback(() => {
+    setGoalsOpen(true);
+    useDockBadges.getState().markGoalsSeen(); // today's goals: looked at
+  }, []);
   const closeGoals = useCallback(() => setGoalsOpen(false), []);
   const openAppearance = useCallback(() => setAppearanceOpen(true), []);
   const closeAppearance = useCallback(() => setAppearanceOpen(false), []);
@@ -707,6 +747,9 @@ export default function Home() {
           full-screen map reveal hides it */}
       <HomeDock
         hidden={mapShown || skyMode}
+        unread={unread}
+        shopDot={shopDot}
+        goalsDot={goalsDot}
         onMessages={openChat}
         onShop={openShop}
         onGoals={openGoals}
