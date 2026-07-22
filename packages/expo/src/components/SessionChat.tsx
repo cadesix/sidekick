@@ -89,7 +89,7 @@ const FALLBACK_ANALYSIS: Analysis = {
 // setStarFace, and the canvas's starFace prop — the uniforms stay.
 export const STAR_FACE_TUNING = true; // TEMP: re-tuning the star sky (bake + flip back when done)
 
-function StarFaceTuner() {
+export function StarFaceTuner() {
   const cfg = useStarFaceConfig();
   const set = useStarFaceConfig((s) => s.set);
   const reset = useStarFaceConfig((s) => s.reset);
