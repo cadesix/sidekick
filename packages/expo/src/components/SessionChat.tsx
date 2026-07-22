@@ -87,7 +87,7 @@ const FALLBACK_ANALYSIS: Analysis = {
 // (the sliders start from those same values). To delete the tool for good: this
 // flag + StarFaceTuner below, store/starFaceConfig.ts, the renderer's
 // setStarFace, and the canvas's starFace prop — the uniforms stay.
-export const STAR_FACE_TUNING = true; // TEMP: re-tuning the star sky (bake + flip back when done)
+export const STAR_FACE_TUNING = false;
 
 export function StarFaceTuner() {
   const cfg = useStarFaceConfig();

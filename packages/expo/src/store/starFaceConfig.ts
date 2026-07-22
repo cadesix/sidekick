@@ -34,18 +34,18 @@ export type StarFaceConfig = {
 
 // the values currently baked into renderer.ts — sliders start here
 export const STAR_FACE_DEFAULTS: StarFaceConfig = {
-  lineAlpha: 0.323,
-  dustWeight: 0.571,
-  starSize: 1.251,
-  shineSpeed: 1.379,
-  shineDepth: 0.45,
-  size: 14.08,
-  height: 29.82,
+  lineAlpha: 0.276,
+  dustWeight: 0.33,
+  starSize: 1.106,
+  shineSpeed: 1.634,
+  shineDepth: 0.544,
+  size: 15.01,
+  height: 28.93,
   depth: -29,
   pitch: Math.atan2(7.4, 15),
-  pulseAmt: 0.035,
-  pulseDepth: 0.9,
-  pulseHz: 0.05,
+  pulseAmt: 0.042,
+  pulseDepth: 1.906,
+  pulseHz: 0.087,
 };
 
 const KEYS = Object.keys(STAR_FACE_DEFAULTS) as (keyof StarFaceConfig)[];
