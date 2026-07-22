@@ -35,6 +35,9 @@ export function NotificationObserver(): null {
       void queryClient.invalidateQueries({
         queryKey: ["chat", "transcript", payload.conversationId],
       });
+      // the home dock's unread badge reads a head-of-transcript page — refresh
+      // it so a proactive message badges while the user sits on home
+      void queryClient.invalidateQueries({ queryKey: ["chat", "head"] });
     }
 
     async function responded(response: Notifications.NotificationResponse): Promise<void> {

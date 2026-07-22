@@ -79,6 +79,8 @@ export function useForegroundSync(): void {
         syncLocation(queryClient),
         syncFocus(queryClient),
         syncProgression(queryClient),
+        // the dock's unread badge — messages that arrived while backgrounded
+        queryClient.invalidateQueries({ queryKey: ['chat', 'head'] }),
       ]);
     }
     function onChange(next: AppStateStatus): void {

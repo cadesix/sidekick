@@ -7,7 +7,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 // Not shipped: SessionChat renders these as sliders in place of the chat when
 // STAR_FACE_TUNING is on, so the sky can be dialled in live instead of edit →
 // reload → wait out a camera pan. Once the numbers are agreed they get baked
-// back into the constants in three/renderer.ts (and the counts in
+// back into the constants in three/star-face.ts (and the counts in
 // scripts/build-star-face.mjs) and this whole file goes away.
 //
 // Every change persists immediately, so a reload never loses a tuning session.
@@ -32,7 +32,7 @@ export type StarFaceConfig = {
   pulseHz: number; // breaths per second — very slow by design
 };
 
-// the values currently baked into renderer.ts — sliders start here
+// the values currently baked into three/star-face.ts — sliders start here
 export const STAR_FACE_DEFAULTS: StarFaceConfig = {
   lineAlpha: 0.276,
   dustWeight: 0.33,
@@ -71,7 +71,7 @@ export const useStarFaceConfig = create<Store>()(
   ),
 );
 
-// A paste-ready block for three/renderer.ts, so a tuning session can actually
+// A paste-ready block for three/star-face.ts, so a tuning session can actually
 // land in the code rather than living in device storage forever.
 export function starFaceSnippet(c: StarFaceConfig): string {
   const n = (v: number, d = 3) => Number(v.toFixed(d));

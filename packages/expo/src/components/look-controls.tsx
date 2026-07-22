@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NO_BROWSER_PAN } from '../lib/web-style';
 
-// Shared look-dev controls used by both the compact SettingsSheet and the full
+// Shared look-dev controls used by the full
 // /sidekick-3d editor route: a dependency-free slider, a color row that opens a
 // lil-gui-style HSV picker in a bottom-anchored modal, and a section header.
 // Kept in one place so the two editors can never drift.

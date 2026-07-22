@@ -26,7 +26,7 @@ type DockProps = {
 
 const TILE = 60; // iPhone home-screen app-icon size
 
-// one squircle tile: gradient (or a full-bleed SVG for Map) + press-in scale
+// one squircle tile: gradient fill + press-in scale
 function AppTile({
   label,
   onPress,

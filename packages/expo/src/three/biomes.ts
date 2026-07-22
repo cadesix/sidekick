@@ -1108,8 +1108,8 @@ export function makeMeadowBackdrop(
   // still render smaller on screen), gathered into tuft pockets like the lawn's
   // clump centres, and tinted per tuft from three base→tip mixes (bright tips
   // dominate a lawn seen from afar) with a touch of haze for aerial perspective.
-  // Baked into THREE merged meshes (one per tint) — 3 draw calls, same geometry
-  // budget as before.
+  // Baked into THREE merged meshes (one per tint) — 3 draw calls, ~190 tiny
+  // cones (barely more than the old 160).
   const bladeSrc = new THREE.ConeGeometry(0.028, 0.34, 3);
   bladeSrc.translate(0, 0.17, 0);
   const bladeTints = [0.3, 0.55, 0.8].map((t) => mix(mix(p.treeColor, p.tipColor, t), p.hazeColor, 0.12));

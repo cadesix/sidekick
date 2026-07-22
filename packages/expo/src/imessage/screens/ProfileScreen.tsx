@@ -119,8 +119,7 @@ function Group({
 	return (
 		<View style={styles.group}>
 			<Text style={styles.groupTitle}>{title}</Text>
-			{/* strokeless card on the app's hard bottom shadow (grey, centered,
-			    zero blur — the onboarding/shop squishy-card recipe) */}
+			{/* the shared card surface: a friendly grey stroke, no shadow */}
 			<View style={styles.card}>{children}</View>
 			{footer ? <Text style={styles.groupFooter}>{footer}</Text> : null}
 		</View>
@@ -501,7 +500,7 @@ const styles = StyleSheet.create({
 		color: INK_45,
 	},
 	// compact take on the star-chat reveal card (same palette), on the shared
-	// card shadow; its dark fill overrides the card's white
+	// card stroke; its dark fill overrides the card's white
 	astralCard: {
 		marginTop: 16,
 		backgroundColor: "#160e2c",

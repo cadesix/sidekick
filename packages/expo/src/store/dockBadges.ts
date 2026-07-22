@@ -21,6 +21,9 @@ type Store = {
   // newest chat timestamp (ms) the user has seen; null = never opened the chat,
   // which deliberately shows NO badge (onboarding walks them into it anyway)
   msgsSeenAt: number | null;
+  // AsyncStorage rehydrates async — dots wait for it so the pre-hydration nulls
+  // can't flash a dot the stored stamps would suppress
+  hydrated: boolean;
   markGoalsSeen: () => void;
   markShopSeen: () => void;
   markMsgsSeen: (at: number) => void;
@@ -32,11 +35,19 @@ export const useDockBadges = create<Store>()(
       goalsSeenDate: null,
       shopSeenDate: null,
       msgsSeenAt: null,
+      hydrated: false,
       markGoalsSeen: () => set({ goalsSeenDate: localDay() }),
       markShopSeen: () => set({ shopSeenDate: localDay() }),
       // never move the stamp backwards — a stale caller can't resurrect a badge
       markMsgsSeen: (at) => set((s) => ({ msgsSeenAt: Math.max(s.msgsSeenAt ?? 0, at) })),
     }),
-    { name: 'sidekick_dock_badges', storage: createJSONStorage(() => AsyncStorage) },
+    {
+      name: 'sidekick_dock_badges',
+      storage: createJSONStorage(() => AsyncStorage),
+      partialize: (s) => ({ goalsSeenDate: s.goalsSeenDate, shopSeenDate: s.shopSeenDate, msgsSeenAt: s.msgsSeenAt }),
+      onRehydrateStorage: () => () => {
+        useDockBadges.setState({ hydrated: true });
+      },
+    },
   ),
 );

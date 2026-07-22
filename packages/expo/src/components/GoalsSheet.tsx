@@ -15,7 +15,7 @@ import { fetchGoals, type GoalsList } from '../lib/api';
 // or not done today. Tapping a card opens the main chat, where the sidekick asks
 // "did you [action] today?" and logs the answer (goals.askCheckin → the chat's
 // always-on log_checkin tool). Mirrors the web reference; the reanimated
-// slide-up + grabber/header shell matches SettingsSheet.
+// slide-up + grabber/header shell matches the other bottom sheets.
 //
 // NOTE: the goal slug (e.g. 'get-fit') keys the icon, and the webp goal icons
 // from web aren't bundled into the Expo app. So instead of an <Image>, we

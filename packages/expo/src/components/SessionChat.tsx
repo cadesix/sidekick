@@ -82,7 +82,7 @@ const FALLBACK_ANALYSIS: Analysis = {
 };
 
 // ---- TEMPORARY: star-face look-dev -----------------------------------------
-// OFF: the tuned numbers are baked into the constants in three/renderer.ts, so
+// OFF: the tuned numbers are baked into the constants in three/star-face.ts, so
 // the chat transcript is back. Flip this to true to dial the sky in live again
 // (the sliders start from those same values). To delete the tool for good: this
 // flag + StarFaceTuner below, store/starFaceConfig.ts, the renderer's
@@ -95,7 +95,7 @@ export function StarFaceTuner() {
   const reset = useStarFaceConfig((s) => s.reset);
   const [saved, setSaved] = useState(false);
   // Every drag already persists (the store is on AsyncStorage), so this is the
-  // last mile: print the values as a paste-ready block for renderer.ts, which is
+  // last mile: print the values as a paste-ready block for star-face.ts, which is
   // the only way a tuning session actually lands in the code.
   const save = () => {
     console.log('\n' + starFaceSnippet(cfg) + '\n');

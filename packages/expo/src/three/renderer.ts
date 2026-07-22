@@ -839,8 +839,11 @@ export function createSidekickRenderer(
       if (expr) faceCtl?.pulse(expr as FaceExpression, 1.6);
       if (big) {
         // boil-over: jump off the ground, hands thrown up (the jump envelopes
-        // raise the arms); the host layer layers haptics + the "Hey!" bubble
-        jump = { start: clock.getElapsedTime(), dur: 0.7, hop: true };
+        // raise the arms); the host layer layers haptics + the "hey!" bubble.
+        // Guarded like popDailyBox so it can't clobber a mid-flight entrance.
+        if (jump === null || jump.hop) {
+          jump = { start: clock.getElapsedTime(), dur: 0.7, hop: true };
+        }
         opts.onAngryPoke?.();
       }
     },

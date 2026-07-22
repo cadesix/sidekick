@@ -28,7 +28,6 @@ import { BIOMES, biomeLookForTime, type BiomeId, type EnvironmentId } from '../s
 import { speak, useSpeech } from '../src/store/speech';
 import { FACE_EXPRESSIONS, type FaceExpression } from '../src/three/face';
 import { BOND_MAX, nextSession as coreNextSession } from '@sidekick/core';
-import { SettingsSheet } from '../src/components/SettingsSheet';
 import { ShopSheet } from '../src/components/ShopSheet';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { WorldMap } from '../src/components/WorldMap';
@@ -221,7 +220,6 @@ export default function Home() {
   const [mapOpen, setMapOpen] = useState(false);
   const [mapShown, setMapShown] = useState(false);
   const [shopOpen, setShopOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   // world environment (map travel) + the active guided session (if any)
   const [environment, setEnvironment] = useState<EnvironmentId>('meadow');
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -250,20 +248,31 @@ export default function Home() {
   // dock notification badges (dockBadges store): each clears when its surface is
   // looked at. Goals shares GoalsSheet's cached query (the sheet is always
   // mounted, so this adds no fetch); Messages reads a small head-of-transcript
-  // page so unread arrivals badge without opening the chat.
-  const { goalsSeenDate, shopSeenDate, msgsSeenAt } = useDockBadges();
-  const goalsList = useQuery({ queryKey: ['goals', 'list'], queryFn: fetchGoals });
-  const chatMain = useQuery({ queryKey: ['chat', 'main'], queryFn: mainConversation, staleTime: Number.POSITIVE_INFINITY });
+  // page so unread arrivals badge without opening the chat. The chat queries are
+  // gated on a signed-in, onboarded session — Home redirects those cases, but
+  // hooks fire before the redirect and shouldn't send tokenless requests (three
+  // consecutive 401s trip api.ts's revoked-session handler).
+  const sessionReady = authStatus === 'signedIn' && onboarding.data?.complete === true;
+  const { goalsSeenDate, shopSeenDate, msgsSeenAt, hydrated: badgesHydrated } = useDockBadges();
+  const goalsList = useQuery({ queryKey: ['goals', 'list'], queryFn: fetchGoals, enabled: sessionReady });
+  const chatMain = useQuery({
+    queryKey: ['chat', 'main'],
+    queryFn: mainConversation,
+    staleTime: Number.POSITIVE_INFINITY,
+    enabled: sessionReady,
+  });
   const chatHead = useQuery({
     queryKey: ['chat', 'head', chatMain.data?.id],
-    queryFn: () => fetchTranscript(chatMain.data?.id ?? '', 8),
-    enabled: chatMain.data?.id !== undefined,
+    queryFn: () => fetchTranscript(chatMain.data?.id ?? '', 20),
+    enabled: sessionReady && chatMain.data?.id !== undefined,
   });
+  // dots wait for the store to rehydrate — pre-hydration nulls would flash them
   const today = localDay();
   const goalsDot =
+    badgesHydrated &&
     goalsSeenDate !== today &&
     (goalsList.data?.goals.some((g) => g.today.outcome !== 'hit' && g.today.outcome !== 'partial') ?? false);
-  const shopDot = shopSeenDate !== today; // rotation restocks at local midnight
+  const shopDot = badgesHydrated && shopSeenDate !== today; // rotation restocks at local midnight
   const unread =
     msgsSeenAt === null
       ? 0
@@ -406,23 +415,30 @@ export default function Home() {
   // (WorldMap/ShopSheet/HomeDock/…) don't re-render when an unrelated surface
   // toggles — a full re-render of those heavy trees on the JS thread was stalling
   // the 3D render loop and stuttering the camera ease.
+  // Stamp "everything currently known is seen" from SERVER timestamps (the head
+  // page + the open transcript cache). Client Date.now() is only the last-ditch
+  // fallback: a device clock ahead of the server would otherwise stamp the
+  // future and swallow real unread arrivals.
+  const stampMsgsSeen = useCallback(() => {
+    const cid = queryClient.getQueryData<{ id: string }>(['chat', 'main'])?.id;
+    let newest = 0;
+    if (cid) {
+      for (const key of [['chat', 'head', cid], ['chat', 'transcript', cid]]) {
+        const msgs = queryClient.getQueryData<{ messages: { createdAt: number }[] }>(key)?.messages;
+        if (msgs) for (const m of msgs) newest = Math.max(newest, m.createdAt);
+      }
+    }
+    useDockBadges.getState().markMsgsSeen(newest > 0 ? newest : Date.now());
+  }, [queryClient]);
   const openChat = useCallback(() => {
     setChatOpen(true); // camera starts easing while the drawer slides up
     chatProgress.value = withTiming(1, { duration: 380 });
-    // they're looking at the chat — everything that exists right now is seen
-    useDockBadges.getState().markMsgsSeen(Date.now());
-  }, [chatProgress]);
+    stampMsgsSeen(); // they're looking at the chat — what exists now is seen
+  }, [chatProgress, stampMsgsSeen]);
   const closeChat = useCallback(() => {
     setChatOpen(false);
     chatProgress.value = withTiming(0, { duration: 340 });
-    // stamp the newest message actually on screen (server clocks can run ahead
-    // of Date.now(), which would otherwise leave the reply "unread")
-    const cid = queryClient.getQueryData<{ id: string }>(['chat', 'main'])?.id;
-    const msgs = cid
-      ? queryClient.getQueryData<{ messages: { createdAt: number }[] }>(['chat', 'transcript', cid])?.messages
-      : undefined;
-    const newest = msgs?.reduce((mx, m) => Math.max(mx, m.createdAt), 0) ?? 0;
-    useDockBadges.getState().markMsgsSeen(Math.max(newest, Date.now()));
+    stampMsgsSeen(); // include everything received while the drawer was up
     void queryClient.invalidateQueries({ queryKey: ['chat', 'head'] });
     // As the user walks back to the 3D sidekick, have it get the last word: a
     // snarky one-liner capping off the conversation, over its head. The 500ms
@@ -437,7 +453,7 @@ export default function Home() {
         })
         .catch(() => {}); // silent — no bubble on failure
     }
-  }, [chatProgress, queryClient]);
+  }, [chatProgress, queryClient, stampMsgsSeen]);
 
   const openMap = useCallback(() => {
     perfMark('map:open:call');
@@ -482,7 +498,6 @@ export default function Home() {
   const closeGoals = useCallback(() => setGoalsOpen(false), []);
   const openAppearance = useCallback(() => setAppearanceOpen(true), []);
   const closeAppearance = useCallback(() => setAppearanceOpen(false), []);
-  const closeSettings = useCallback(() => setSettingsOpen(false), []);
   // Tap a goal → open the main chat onto a "did you [action] today?" question the
   // sidekick just dropped in; the user's reply is logged by the chat's always-on
   // log_checkin tool. Open the drawer right away (snappy); revalidate the
@@ -585,15 +600,15 @@ export default function Home() {
           ? MAP_FRAMING
           : shopOpen || appearanceOpen
             ? SHOP_FRAMING
-            : chatOpen || settingsOpen || habitOpen
+            : chatOpen || habitOpen
               ? CHAT_FRAMING
               : hero,
-    [skyMode, cosmosPanned, mapOpen, shopOpen, appearanceOpen, chatOpen, settingsOpen, habitOpen, hero],
+    [skyMode, cosmosPanned, mapOpen, shopOpen, appearanceOpen, chatOpen, habitOpen, hero],
   );
 
-  // The top-right cluster (closet avatar / streak / map pin) is hidden under any
-  // full surface. We keep it mounted and toggle `display` instead of unmounting,
-  // so the avatar's GL context survives (see the cluster JSX for why).
+  // Anything covered by a full surface: the top-right map pin and the floating
+  // closet avatar share this. Both stay MOUNTED and hide via opacity — the
+  // closet button owns a GL context (see ClosetButton for the teardown caveat).
   const clusterHidden = mapShown || shopOpen || chatOpen || skyMode || habitOpen;
 
   // DEV: mark when a map open/close toggle actually commits, so the telemetry can
@@ -664,7 +679,7 @@ export default function Home() {
           onController={setController}
           onFrameStats={SHOW_FPS ? emitFps : undefined}
           overhead={overhead}
-          overheadActive={!(mapShown || shopOpen || chatOpen || settingsOpen || skyMode || habitOpen)}
+          overheadActive={!(mapShown || shopOpen || chatOpen || skyMode || habitOpen)}
           ground={ground}
           dailyBox={boxStage === 'ground' || boxStage === 'rewards' ? (snapshot?.dailyBox.tier ?? null) : null}
         />
@@ -673,7 +688,7 @@ export default function Home() {
       {/* what the sidekick is saying, over its head (hidden while a full
           surface covers the scene). The bond score lives on the star now. */}
       {settings ? (
-        <OverheadSpeech overhead={overhead} hidden={mapShown || shopOpen || chatOpen || settingsOpen || skyMode || habitOpen}>
+        <OverheadSpeech overhead={overhead} hidden={mapShown || shopOpen || chatOpen || skyMode || habitOpen}>
           <SpeechBubble />
         </OverheadSpeech>
       ) : null}
@@ -684,7 +699,7 @@ export default function Home() {
       {settings && snapshot && nextStarChat ? (
         <StarChatButton
           overhead={overhead}
-          hidden={mapShown || shopOpen || chatOpen || settingsOpen || skyMode || habitOpen}
+          hidden={mapShown || shopOpen || chatOpen || skyMode || habitOpen}
           onPress={() => setStarChatOpen(true)}
           darkBg={darkBackdrop}
         />
@@ -818,7 +833,7 @@ export default function Home() {
 
 
       {/* Daily-box flow (home only): streak splash → ground chest → rewards */}
-      {settings && !mapShown && !shopOpen && !chatOpen && !settingsOpen && !skyMode && !habitOpen ? (
+      {settings && !mapShown && !shopOpen && !chatOpen && !skyMode && !habitOpen ? (
         <>
           {boxStage === 'streak' ? (
             <StreakSplash streak={streakCount} onDone={() => setBoxStage('ground')} />
@@ -913,25 +928,6 @@ export default function Home() {
           onClose={closeAppearance}
           controls={controls}
           onSkinChange={onSkinChange}
-        />
-      ) : null}
-
-      {/* Look-dev settings sheet — compact so the scene stays visible above it;
-          every control tick applies to the live scene */}
-      {settingsOpen ? (
-        <Pressable
-          onPress={() => setSettingsOpen(false)}
-          accessibilityLabel="Close settings"
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: SCREEN_H * 0.5, zIndex: 20 }}
-        />
-      ) : null}
-      {settings ? (
-        <SettingsSheet
-          open={settingsOpen}
-          onClose={closeSettings}
-          controller={controller}
-          settings={settings}
-          onSettingsChange={setSettings}
         />
       ) : null}
 

@@ -253,11 +253,16 @@ export function createInteraction(opts: {
     if (!wasTap) return;
     // tap: look at the point, then react — physically (spring kicks + wiggles)
     // and emotionally (a face expression). Rapid repeated pokes escalate his
-    // mood from playful → annoyed → angry; leaving him alone resets it.
+    // mood from playful → annoyed → the boil-over jump; a pause resets it.
     ndc.set(x, y);
     pointerPoint(lookPoint);
     lookHoldUntil = now + LOOK_HOLD;
 
+    // ground taps aren't pokes AT him — they don't react and don't escalate
+    if (part === 'ground') {
+      opts.onPoke?.(part, lookPoint, POKE_FACE.ground, false);
+      return;
+    }
     const gap = now - lastPokeAt;
     pokeCount = gap < POKE_WINDOW ? pokeCount + 1 : 1;
     lastPokeAt = now;
@@ -296,12 +301,10 @@ export function createInteraction(opts: {
       arm.L.swing.kick(5);
       squash.kick(0.4); // little hop
       expr = 'excited';
-    } else if (part === 'handR') {
+    } else {
       arm.R.swing.kick(-5);
       squash.kick(0.4);
       expr = 'excited';
-    } else {
-      expr = POKE_FACE[part]; // ground: no reaction
     }
     opts.onPoke?.(part, lookPoint, expr, big);
   };

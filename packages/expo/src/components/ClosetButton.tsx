@@ -30,8 +30,10 @@ const SIZE = 48;
 const OFFSET_X = 64;
 const OFFSET_Y = -64;
 
-// same wander recipe as the star, different rates/phase so they don't move in
-// lockstep (that would read as one rigid plate)
+// same wander recipe as the star, different period/phases so they don't move in
+// lockstep (that would read as one rigid plate). Rates are INTEGER multiples of
+// the repeating 0→1 ramp — sin(k·2π + φ) = sin(φ) — so the withRepeat wrap is
+// seamless instead of a visible snap every cycle.
 const FLOAT_X = 6;
 const FLOAT_Y = 9;
 const FLOAT_MS = 13000;
@@ -61,8 +63,8 @@ export function ClosetButton({
 
   const boxStyle = useAnimatedStyle(() => {
     const p = drift.value * TAU;
-    const fx = Math.sin(p * 0.83 + 2.4) * FLOAT_X;
-    const fy = Math.sin(p * 0.57 + 0.4) * FLOAT_Y;
+    const fx = Math.sin(p + 2.4) * FLOAT_X;
+    const fy = Math.sin(p * 2 + 0.4) * FLOAT_Y;
     return {
       transform: [
         { translateX: overhead.x.value + OFFSET_X + fx - SIZE / 2 },

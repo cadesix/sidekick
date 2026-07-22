@@ -111,10 +111,11 @@ export function StarChatButton({
 
   const boxStyle = useAnimatedStyle(() => {
     const p = drift.value * TAU;
-    // 1 : 0.63 with a phase offset — near enough to a Lissajous that the path
-    // never visibly repeats at a glance
+    // 1 : 2 with a phase offset — a lazy figure-eight. Integer rates so the
+    // withRepeat wrap is seamless (sin(k·2π + φ) = sin(φ)); the old 0.63 rate
+    // snapped ~10px every cycle when the ramp wrapped.
     const fx = Math.sin(p) * FLOAT_X;
-    const fy = Math.sin(p * 0.63 + 1.1) * FLOAT_Y;
+    const fy = Math.sin(p * 2 + 1.1) * FLOAT_Y;
     return {
       transform: [
         { translateX: overhead.x.value + OFFSET_X + fx - rowW.value / 2 },

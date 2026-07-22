@@ -135,10 +135,11 @@ export function SidekickCanvas({
       dailyBox,
       onControls: (c) => onControlsRef.current?.(c),
       // poke boil-over: the scene is already jumping/annoyed — layer on a buzz
-      // and the "Hey!" bubble over his head (the speech store drives it)
+      // and the "hey!" bubble over his head (the speech store drives it;
+      // lowercase — the sidekick's voice, per the design system)
       onAngryPoke: () => {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        speak('Hey!', 2200);
+        speak('hey!!', 2200);
       },
       onOverhead: (nx, ny, visible) => project(overheadRef.current, nx, ny, visible),
       onGround: (nx, ny, visible) => project(groundRef.current, nx, ny, visible),
