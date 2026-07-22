@@ -1398,7 +1398,15 @@ export function createSidekickRenderer(
       dailyBox = tier;
     },
     popDailyBox: () => {
-      if (boxPop < 0) boxPop = clock.getElapsedTime();
+      if (boxPop < 0) {
+        boxPop = clock.getElapsedTime();
+        // celebrate with the chest: the same hands-up hop as the poke
+        // boil-over, but delighted (guarded so it can't clobber an entrance)
+        if (jump === null) {
+          jump = { start: boxPop, dur: 0.75, hop: true };
+          faceCtl?.pulse('excited', 2);
+        }
+      }
     },
     jumpIn: (o) => {
       jump = { start: clock.getElapsedTime(), dur: (o?.duration ?? 800) / 1000 };
