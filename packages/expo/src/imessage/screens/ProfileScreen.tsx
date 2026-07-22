@@ -16,7 +16,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BOND_MIN } from "@sidekick/core";
-import { SolidShadow } from "~/components/SolidShadow";
 import { StreakModal } from "~/components/StreakModal";
 import { locationStatus, trpc } from "~/lib/api";
 import { useSignOut } from "~/lib/auth";
@@ -120,10 +119,9 @@ function Group({
 	return (
 		<View style={styles.group}>
 			<Text style={styles.groupTitle}>{title}</Text>
-			{/* the brand surface (06 §2): hard 2px offset ink shadow, never blurred */}
-			<SolidShadow radius={16} className="bg-white">
-				{children}
-			</SolidShadow>
+			{/* strokeless card on the app's hard bottom shadow (grey, centered,
+			    zero blur — the onboarding/shop squishy-card recipe) */}
+			<View style={styles.card}>{children}</View>
 			{footer ? <Text style={styles.groupFooter}>{footer}</Text> : null}
 		</View>
 	);
@@ -279,61 +277,49 @@ export function ProfileScreen() {
 					{/* headline stats: the bond score, large, plus the streak (moved
 					    here from the home top-right; taps open the milestone ladder) */}
 					<View style={styles.statsRow}>
-						<View style={styles.statHalf}>
-							<SolidShadow radius={16} className="bg-white">
-								<View style={styles.statCard}>
-									<Text style={styles.statValue}>
-										<Text style={styles.statStar}>✦ </Text>
-										{bond}%
-									</Text>
-									<Text style={styles.statCaption}>bond</Text>
-								</View>
-							</SolidShadow>
+						<View style={[styles.card, styles.statCard]}>
+							<Text style={styles.statValue}>
+								<Text style={styles.statStar}>✦ </Text>
+								{bond}%
+							</Text>
+							<Text style={styles.statCaption}>bond</Text>
 						</View>
-						<View style={styles.statHalf}>
-							<SolidShadow radius={16} className="bg-white" onPress={() => setStreakOpen(true)}>
-								<View style={styles.statCard}>
-									<View style={styles.statValueRow}>
-										<Image source={STREAK_ICON} style={styles.statIcon} />
-										<Text style={styles.statValue}>{streakCount}</Text>
-									</View>
-									<Text style={styles.statCaption}>day streak</Text>
-								</View>
-							</SolidShadow>
-						</View>
+						<Pressable style={[styles.card, styles.statCard]} onPress={() => setStreakOpen(true)}>
+							<View style={styles.statValueRow}>
+								<Image source={STREAK_ICON} style={styles.statIcon} />
+								<Text style={styles.statValue}>{streakCount}</Text>
+							</View>
+							<Text style={styles.statCaption}>day streak</Text>
+						</Pressable>
 					</View>
 
 					{/* the latest astral card — same dark-purple treatment as the
 					    star-chat reveal, compact; a nudge toward a first star chat
 					    until a card exists */}
-					<View style={styles.astralWrap}>
-						<SolidShadow radius={16} className="bg-[#160e2c]">
-							<View style={styles.astralCard}>
-								<View style={styles.astralLabelRow}>
-									<Text style={styles.astralStar}>✦</Text>
-									<Text style={styles.astralLabel}>your astral card</Text>
-								</View>
-								{astral ? (
-									<>
-										<Text style={styles.astralArchetype}>{astral.archetype}</Text>
-										{astral.traits.length ? (
-											<View style={styles.astralTraits}>
-												{astral.traits.map((tr, i) => (
-													<View key={i} style={styles.astralChip}>
-														<Text style={styles.astralChipText}>{tr}</Text>
-													</View>
-												))}
+					<View style={[styles.card, styles.astralCard]}>
+						<View style={styles.astralLabelRow}>
+							<Text style={styles.astralStar}>✦</Text>
+							<Text style={styles.astralLabel}>your astral card</Text>
+						</View>
+						{astral ? (
+							<>
+								<Text style={styles.astralArchetype}>{astral.archetype}</Text>
+								{astral.traits.length ? (
+									<View style={styles.astralTraits}>
+										{astral.traits.map((tr, i) => (
+											<View key={i} style={styles.astralChip}>
+												<Text style={styles.astralChipText}>{tr}</Text>
 											</View>
-										) : null}
-										<Text style={styles.astralReading}>{astral.reading}</Text>
-									</>
-								) : (
-									<Text style={styles.astralReading}>
-										Do an astral chat with {sidekickName} to reveal your card.
-									</Text>
-								)}
-							</View>
-						</SolidShadow>
+										))}
+									</View>
+								) : null}
+								<Text style={styles.astralReading}>{astral.reading}</Text>
+							</>
+						) : (
+							<Text style={styles.astralReading}>
+								Do an astral chat with {sidekickName} to reveal your card.
+							</Text>
+						)}
 					</View>
 
 					<Group title="You">
@@ -468,14 +454,25 @@ const styles = StyleSheet.create({
 		textAlign: "center",
 		color: INK,
 	},
+	// the app's card surface: strokeless, on the hard bottom shadow used by the
+	// onboarding option cards / shop buttons — light grey, x-centered, zero blur
+	card: {
+		backgroundColor: "#FFFFFF",
+		borderRadius: 16,
+		borderCurve: "continuous",
+		shadowColor: "#c4c4c4",
+		shadowOffset: { width: 0, height: 4 },
+		shadowOpacity: 1,
+		shadowRadius: 0,
+		elevation: 3,
+	},
 	statsRow: {
 		marginTop: 16,
 		flexDirection: "row",
 		gap: 10,
 	},
-	statHalf: { flex: 1 },
-	// fill/border/shadow come from the SolidShadow wrapper
 	statCard: {
+		flex: 1,
 		alignItems: "center",
 		paddingVertical: 16,
 		gap: 2,
@@ -507,10 +504,11 @@ const styles = StyleSheet.create({
 		letterSpacing: 0.6,
 		color: INK_45,
 	},
-	astralWrap: { marginTop: 16 },
-	// compact take on the star-chat reveal card (same palette); the ink border +
-	// hard shadow come from the SolidShadow wrapper
+	// compact take on the star-chat reveal card (same palette), on the shared
+	// card shadow; its dark fill overrides the card's white
 	astralCard: {
+		marginTop: 16,
+		backgroundColor: "#160e2c",
 		padding: 20,
 	},
 	astralLabelRow: {
