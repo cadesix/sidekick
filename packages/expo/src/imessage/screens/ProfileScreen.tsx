@@ -445,26 +445,21 @@ const styles = StyleSheet.create({
 	content: {
 		paddingHorizontal: 20, // screen gutter (06 §1.3)
 	},
-	// heading role: 27/800, −0.02em tracking
+	// heading role: 27/800, −0.02em tracking — left-aligned like the rest
 	profileName: {
 		marginTop: 18,
 		fontFamily: FONT_BOLD,
 		fontSize: 27,
 		letterSpacing: -0.54,
-		textAlign: "center",
 		color: INK,
 	},
-	// the app's card surface: strokeless, on the hard bottom shadow used by the
-	// onboarding option cards / shop buttons — light grey, x-centered, zero blur
+	// the card surface: no shadow, just a friendly slightly-thick grey stroke
 	card: {
 		backgroundColor: "#FFFFFF",
 		borderRadius: 16,
 		borderCurve: "continuous",
-		shadowColor: "#c4c4c4",
-		shadowOffset: { width: 0, height: 4 },
-		shadowOpacity: 1,
-		shadowRadius: 0,
-		elevation: 3,
+		borderWidth: 1.5,
+		borderColor: "#E4E4E7",
 	},
 	statsRow: {
 		marginTop: 16,
@@ -473,8 +468,9 @@ const styles = StyleSheet.create({
 	},
 	statCard: {
 		flex: 1,
-		alignItems: "center",
+		alignItems: "flex-start",
 		paddingVertical: 16,
+		paddingHorizontal: 16,
 		gap: 2,
 	},
 	statValueRow: {
