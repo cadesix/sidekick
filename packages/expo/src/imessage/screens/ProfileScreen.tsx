@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { locationStatus, trpc } from "~/lib/api";
 import { useSignOut } from "~/lib/auth";
+import { useSnapshot } from "~/lib/state";
 import { getLocalFocusSettings } from "~/lib/focus";
 import { HEALTH_CONNECTION_QUERY_KEY, loadHealthConnection } from "~/lib/health-connection";
 import { sidekickDisplayName } from "~/lib/sidekick-name";
@@ -181,11 +182,13 @@ function IntegrationLinkRow({
 	);
 }
 
-export function SettingsScreen() {
+export function ProfileScreen() {
 	const insets = useSafeAreaInsets();
 	const router = useRouter();
 	const queryClient = useQueryClient();
 	const me = useQuery({ queryKey: ["me"], queryFn: () => trpc.users.me.query() });
+	// the latest astral card — server-owned, refreshed by each completed star chat
+	const astral = useSnapshot().data?.astral ?? null;
 	const location = useQuery({ queryKey: ["location", "setting"], queryFn: loadLocationSetting });
 	const focus = useQuery({ queryKey: ["focus-local"], queryFn: getLocalFocusSettings });
 	const health = useQuery({
@@ -278,7 +281,7 @@ export function SettingsScreen() {
 						<Icon name="chevronLeft" size={20} color={colors.blue} strokeWidth={2.5} />
 					</Pressable>
 				</Glass>
-				<Text style={styles.title}>Settings</Text>
+				<Text style={styles.title}>Profile</Text>
 				<View style={styles.glassButton} />
 			</View>
 
@@ -287,6 +290,31 @@ export function SettingsScreen() {
 					contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
 					keyboardDismissMode="on-drag"
 				>
+					{/* your name, big at the top — edited via the You group below */}
+					<Text style={styles.profileName}>{me.data.name ?? "You"}</Text>
+
+					{/* the latest astral card — same dark-purple treatment as the
+					    star-chat reveal, compact. Hidden until a first card exists. */}
+					{astral ? (
+						<View style={styles.astralCard}>
+							<View style={styles.astralLabelRow}>
+								<Text style={styles.astralStar}>✦</Text>
+								<Text style={styles.astralLabel}>your astral card</Text>
+							</View>
+							<Text style={styles.astralArchetype}>{astral.archetype}</Text>
+							{astral.traits.length ? (
+								<View style={styles.astralTraits}>
+									{astral.traits.map((tr, i) => (
+										<View key={i} style={styles.astralChip}>
+											<Text style={styles.astralChipText}>{tr}</Text>
+										</View>
+									))}
+								</View>
+							) : null}
+							<Text style={styles.astralReading}>{astral.reading}</Text>
+						</View>
+					) : null}
+
 					<Group title="You">
 						<Field
 							label="Name"
@@ -465,6 +493,71 @@ const styles = StyleSheet.create({
 	},
 	content: {
 		paddingHorizontal: 16,
+	},
+	profileName: {
+		marginTop: 18,
+		fontSize: 28,
+		fontWeight: "800",
+		textAlign: "center",
+		color: colors.label,
+	},
+	// compact take on the star-chat reveal card (same palette)
+	astralCard: {
+		marginTop: 16,
+		borderRadius: 24,
+		borderCurve: "continuous",
+		borderWidth: 1,
+		borderColor: "rgba(201,188,255,0.3)",
+		backgroundColor: "#160e2c",
+		padding: 20,
+	},
+	astralLabelRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+	},
+	astralStar: {
+		fontSize: 12,
+		color: "#C9BCFF",
+	},
+	astralLabel: {
+		fontSize: 11,
+		fontWeight: "800",
+		textTransform: "uppercase",
+		letterSpacing: 2,
+		color: "#C9BCFF",
+	},
+	astralArchetype: {
+		marginTop: 8,
+		fontSize: 24,
+		lineHeight: 28,
+		fontWeight: "800",
+		color: "#FFFFFF",
+	},
+	astralTraits: {
+		marginTop: 10,
+		flexDirection: "row",
+		flexWrap: "wrap",
+		gap: 6,
+	},
+	astralChip: {
+		borderRadius: 999,
+		borderWidth: 1,
+		borderColor: "rgba(255,255,255,0.1)",
+		backgroundColor: "rgba(255,255,255,0.1)",
+		paddingHorizontal: 10,
+		paddingVertical: 4,
+	},
+	astralChipText: {
+		fontSize: 12,
+		fontWeight: "600",
+		color: "#E7E0FF",
+	},
+	astralReading: {
+		marginTop: 12,
+		fontSize: 14,
+		lineHeight: 21,
+		color: "rgba(231,224,255,0.9)",
 	},
 	group: {
 		marginTop: 22,

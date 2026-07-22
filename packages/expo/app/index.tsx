@@ -438,6 +438,7 @@ export default function Home() {
   );
 
   // Named, stable versions of the small inline arrows the memoized surfaces get.
+  const openProfile = useCallback(() => router.push('/profile'), []);
   const openShop = useCallback(() => setShopOpen(true), []);
   const closeShop = useCallback(() => setShopOpen(false), []);
   const openGoals = useCallback(() => setGoalsOpen(true), []);
@@ -555,7 +556,7 @@ export default function Home() {
     [skyMode, cosmosPanned, mapOpen, shopOpen, appearanceOpen, chatOpen, settingsOpen, habitOpen, hero],
   );
 
-  // The top-right cluster (closet avatar / streak / settings) is hidden under any
+  // The top-right cluster (closet avatar / streak / map pin) is hidden under any
   // full surface. We keep it mounted and toggle `display` instead of unmounting,
   // so the avatar's GL context survives (see the cluster JSX for why).
   const clusterHidden = mapShown || shopOpen || chatOpen || skyMode || habitOpen;
@@ -654,7 +655,7 @@ export default function Home() {
         />
       ) : null}
 
-      {/* top-right cluster: appearance + goals + streak. Kept MOUNTED and only
+      {/* top-right cluster: appearance + streak + map pin. Kept MOUNTED and only
           made transparent (opacity 0) while hidden — NOT display:none and NOT
           unmounted — because either of those lets iOS tear down the offscreen
           GLView, so showing it again rebuilds the closet-button avatar's GL
@@ -693,31 +694,38 @@ export default function Home() {
         <StreakPill onPress={openStreakModal} darkBg={darkBackdrop} />
         {/* Frosted glass — no `overflow:'hidden'` (it kills the glass effect); the
             round shape comes from borderRadius, which Glass clips natively. The
-            material tint tracks the backdrop so the fill isn't a fixed white panel. */}
+            material tint tracks the backdrop so the fill isn't a fixed white panel.
+            The map's entry point: a small pin. Carries the unseen-island dot. */}
         <Glass
           isInteractive
           tint={glassTint(darkBackdrop)}
           style={{ height: 52, width: 52, borderRadius: 26 }}
         >
           <Pressable
-            onPress={() => router.push('/settings')}
-            accessibilityLabel="Settings"
+            onPress={openMap}
+            accessibilityLabel="Map"
             style={{ height: 52, width: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' }}
           >
-            <Ionicons name="settings-outline" size={26} color={darkBackdrop ? '#fff' : '#404040'} />
+            <Ionicons name="location-outline" size={26} color={darkBackdrop ? '#fff' : '#404040'} />
           </Pressable>
         </Glass>
+        {/* a new island is open and hasn't been looked at yet */}
+        {unseenIsland ? (
+          <View
+            pointerEvents="none"
+            style={{ position: 'absolute', top: -2, right: -2, width: 15, height: 15, borderRadius: 8, backgroundColor: '#FF3B30', borderWidth: 2, borderColor: 'rgba(255,255,255,0.9)' }}
+          />
+        ) : null}
       </View>
 
       {/* iOS-style home dock — the sheets slide up OVER it; only the
           full-screen map reveal hides it */}
       <HomeDock
         hidden={mapShown || skyMode}
-        mapDot={!!unseenIsland}
         onMessages={openChat}
         onShop={openShop}
-        onMap={openMap}
         onGoals={openGoals}
+        onProfile={openProfile}
       />
 
       {/* Full-screen world map — scales in from centre while the camera pulls

@@ -3,24 +3,22 @@ import { memo, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, Path, Rect } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
 
 import { Glass } from '~/imessage/components/Glass';
 
-// iOS-home-screen-style dock — exact port of sidekick/src/components/home-dock.tsx.
-// Frosted glass panel with four squircle app tiles (Messages / Shop / Map /
-// Goals), each the same hand-drawn SVG + gradient as web. Fades down while a
-// sheet covers the dock.
+// iOS-home-screen-style dock — port of sidekick/src/components/home-dock.tsx.
+// Frosted glass panel with four squircle app tiles (Messages / Shop / Goals /
+// Profile), each a hand-drawn SVG + gradient. Fades down while a sheet covers
+// the dock. (Map moved to the top-right pin; Profile folds in settings.)
 
 type DockProps = {
   hidden?: boolean;
   unread?: number;
-  // an island unlocked but not yet seen — a dot on the map icon
-  mapDot?: boolean;
   onMessages: () => void;
   onShop?: () => void;
-  onMap?: () => void;
   onGoals?: () => void;
+  onProfile?: () => void;
 };
 
 const TILE = 60; // iPhone home-screen app-icon size
@@ -62,7 +60,7 @@ const ICON = Math.round(TILE * 0.62);
 const BAG = Math.round(TILE * 0.56);
 
 export const HomeDock = memo(HomeDockImpl);
-function HomeDockImpl({ hidden, unread = 0, mapDot, onMessages, onShop, onMap, onGoals }: DockProps) {
+function HomeDockImpl({ hidden, unread = 0, onMessages, onShop, onGoals, onProfile }: DockProps) {
   const insets = useSafeAreaInsets();
   const shown = useSharedValue(hidden ? 0 : 1);
   useEffect(() => {
@@ -112,28 +110,20 @@ function HomeDockImpl({ hidden, unread = 0, mapDot, onMessages, onShop, onMap, o
           </Svg>
         </AppTile>
 
-        {/* Map — Apple-Maps mini-map: lake, park, roads, red pin */}
-        <AppTile label="Map" onPress={onMap}>
-          <Svg viewBox="0 0 60 60" width={TILE} height={TILE}>
-            <Rect width="60" height="60" fill="#eaf1e2" />
-            <Path d="M0 42C10 44 16 52 18 60L0 60Z" fill="#9fd0ff" />
-            <Path d="M60 0L60 22C50 22 44 14 44 0Z" fill="#c7e6a8" />
-            <Path d="M-6 16C18 26 34 30 66 12" stroke="#f2d9a0" strokeWidth={8} fill="none" />
-            <Path d="M-6 16C18 26 34 30 66 12" stroke="#fff" strokeWidth={1.6} strokeDasharray="3 3" fill="none" />
-            <Path d="M14 62L30 -2" stroke="#ffffff" strokeWidth={4} fill="none" />
-            <Path d="M36 22c0-3.3-2.7-6-6-6s-6 2.7-6 6c0 4.5 6 11 6 11s6-6.5 6-11z" fill="#ff5b4d" />
-            <Circle cx="30" cy="22" r="2.2" fill="#fff" />
-          </Svg>
-          {/* a new island is open and hasn't been looked at yet */}
-          {mapDot ? <View style={styles.dot} pointerEvents="none" /> : null}
-        </AppTile>
-
         {/* Goals — bullseye target on a blue gradient */}
         <AppTile label="Goals" onPress={onGoals} gradient={['#6BB6FF', '#3D7BFF']}>
           <Svg viewBox="0 0 24 24" width={ICON} height={ICON}>
             <Circle cx="12" cy="12" r="8.5" fill="none" stroke="#fff" strokeWidth={2} />
             <Circle cx="12" cy="12" r="4.75" fill="none" stroke="#fff" strokeWidth={2} />
             <Circle cx="12" cy="12" r="1.6" fill="#fff" />
+          </Svg>
+        </AppTile>
+
+        {/* Profile — person on the astral purple gradient (name, card, settings) */}
+        <AppTile label="Profile" onPress={onProfile} gradient={['#B79CFF', '#7A5AF8']}>
+          <Svg viewBox="0 0 24 24" width={ICON} height={ICON}>
+            <Circle cx="12" cy="8.2" r="3.9" fill="#fff" />
+            <Path fill="#fff" d="M12 13.6c-4.5 0-7.6 2.6-7.6 5.6 0 .5.4.8.9.8h13.4c.5 0 .9-.3.9-.8 0-3-3.1-5.6-7.6-5.6z" />
           </Svg>
         </AppTile>
       </Glass>
@@ -181,17 +171,5 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   badgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  // same anchor as `badge`, but wordless — there's no count to show, just news
-  dot: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    width: 15,
-    height: 15,
-    borderRadius: 8,
-    backgroundColor: '#FF3B30',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.9)',
-  },
   center: { alignItems: 'center', justifyContent: 'center' },
 });
