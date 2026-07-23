@@ -3,7 +3,7 @@ import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
-import { Alert, FlatList, Pressable, StyleSheet, View } from "react-native";
+import { Alert, Dimensions, FlatList, Pressable, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, {
@@ -157,11 +157,20 @@ function ChatScreenImpl({
 	// Short feather above the composer so messages dissolve into it instead of
 	// cutting hard at its edge — without a fixed slab overhanging readable text.
 	const FADE_FEATHER = 24;
+	// Floating ("sky") presentation: reserve the bottom of the screen for the
+	// character — the newest message rests ABOVE his head, and the band between
+	// the input bar and the transcript shows only the environment. Fraction of
+	// screen height, tuned to SKY_CHAT_FRAMING's standing-body framing.
+	const CHARACTER_ZONE = Math.round(Dimensions.get("window").height * 0.3);
 	// In an inverted list the header renders at the visual bottom; it reserves
 	// room for the input bar (plus the fade feather) and however far the keyboard
 	// lifted it — so the newest message rests ABOVE the fade, not under it.
 	const bottomSpacerStyle = useAnimatedStyle(() => ({
-		height: inputBarHeight.value - keyboard.height.value + FADE_FEATHER,
+		height:
+			inputBarHeight.value -
+			keyboard.height.value +
+			FADE_FEATHER +
+			(floating ? CHARACTER_ZONE : 0),
 	}));
 	// The bottom fade tracks the live composer height (which now grows with
 	// multi-line text) plus that feather, so it hugs the composer instead of the
