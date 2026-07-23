@@ -44,6 +44,7 @@ import { mainConversation } from '../src/imessage/server';
 import { CHAT_MAIN_KEY, chatTranscriptKey, fetchMainTranscript } from '~/imessage/useSidekickChat';
 import { GOALS_QUERY_KEY } from '../src/components/GoalsSheet';
 import { useDockBadges } from '../src/store/dockBadges';
+import { useDevPrefs } from '../src/store/devPrefs';
 import { patchBoxClaim, snapshotSessions, useSnapshot } from '../src/lib/state';
 import { reconcileWardrobe } from '../src/lib/wardrobe-sync';
 import { useCosmeticVersion } from '../src/store/cosmeticVersion';
@@ -70,6 +71,15 @@ const CHAT_FRAMING: Framing = {
   pos: [0, 1.8, 7.6],
   target: [0, -2.25, 0],
   fov: 46,
+};
+
+// Chat UI v3 ("sky"): the camera pans UP so the character sits at the BOTTOM
+// of the frame on his phone, and the chat floats in the sky above him.
+// Tune-by-eye values.
+const SKY_CHAT_FRAMING: Framing = {
+  pos: [0, 1.2, 6.4],
+  target: [0, 4.2, -4],
+  fov: 50,
 };
 
 // Opening the map: the camera rapidly rockets up + back (pull away from the
@@ -214,7 +224,9 @@ export default function Home() {
   // redirect itself lives just before the return so every hook still runs.
   const onboarding = useOnboardingState();
   const authStatus = useAuthStore((s) => s.status);
-  // chatOpen drives the camera/holdingPhone; chatProgress runs the zoom-open
+  // which Messages presentation is live — DEV experiment switch (DevPanel)
+  const chatUi = useDevPrefs((s) => s.chatUiMode);
+  // chatOpen drives the camera/holdingPhone; chatProgress runs the open animation
   const [chatOpen, setChatOpen] = useState(false);
   const chatProgress = useSharedValue(0);
   // the dock tile the chat grows out of (window coords; see openChat)
@@ -468,11 +480,15 @@ export default function Home() {
     chatOrigin.w.value = origin?.width ?? 60;
     chatOrigin.h.value = origin?.height ?? 60;
     setChatOpen(true);
-    // a spring drives the whole flight: quick, lively through the middle,
-    // decelerating into a settle at the end (curves below shape the geometry)
-    chatProgress.value = withSpring(1, { damping: 16, stiffness: 170, mass: 0.75 });
+    if (chatUi === 'fullscreen') {
+      // a spring drives the whole flight: quick, lively through the middle,
+      // decelerating into a settle at the end (curves below shape the geometry)
+      chatProgress.value = withSpring(1, { damping: 16, stiffness: 170, mass: 0.75 });
+    } else {
+      chatProgress.value = withTiming(1, { duration: 400, easing: Easing.out(Easing.cubic) });
+    }
     stampMsgsSeen(); // they're looking at the chat — what exists now is seen
-  }, [chatProgress, chatOrigin, stampMsgsSeen]);
+  }, [chatProgress, chatOrigin, chatUi, stampMsgsSeen]);
   const closeChat = useCallback(() => {
     setChatOpen(false);
     chatProgress.value = withTiming(0, { duration: 340, easing: Easing.linear });
@@ -637,10 +653,14 @@ export default function Home() {
           ? MAP_FRAMING
           : shopOpen || appearanceOpen
             ? SHOP_FRAMING
-            : chatOpen || habitOpen
-              ? CHAT_FRAMING
-              : hero,
-    [skyMode, cosmosPanned, mapOpen, shopOpen, appearanceOpen, chatOpen, habitOpen, hero],
+            : chatOpen
+              ? chatUi === 'sky'
+                ? SKY_CHAT_FRAMING
+                : CHAT_FRAMING
+              : habitOpen
+                ? CHAT_FRAMING
+                : hero,
+    [skyMode, cosmosPanned, mapOpen, shopOpen, appearanceOpen, chatOpen, chatUi, habitOpen, hero],
   );
 
   // Anything covered by a full surface — ONE predicate for every head-tracked /
@@ -724,6 +744,15 @@ export default function Home() {
       opacity: p > 0.005 ? 1 : 0,
     };
   });
+  // v1 sheet: the original slide-up drawer over the lower ~82%
+  const chatSheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: (1 - chatProgress.value) * (SCREEN_H - DRAWER_TOP) }],
+  }));
+  // v3 sky: the chat floats down-to-up into the sky band above the character
+  const chatSkyStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: (1 - chatProgress.value) * 90 }],
+    opacity: chatProgress.value,
+  }));
   // The icon clone rides ON TOP of the chat inside the morphing rect and fades
   // away in a BLINK (~2 frames) — one stretched half-icon/half-app frame, then
   // it's the screen. (Fading the OVERLAY, never the chat content, keeps
@@ -1006,40 +1035,110 @@ export default function Home() {
         />
       ) : null}
 
-      {/* Messages — a full-screen takeover that zooms out of the dock's
-          Messages tile (and shrinks back into it on close). The close chevron
-          lives in ChatScreen's header. */}
-      <Animated.View
-        style={[
-          chatZoomStyle,
-          {
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 40,
-            overflow: 'hidden',
-            backgroundColor: '#fff',
-          },
-        ]}
-        pointerEvents={chatOpen ? 'auto' : 'none'}
-      >
-        <View style={{ flex: 1, paddingTop: insets.top }}>
-          <ChatScreen onClose={closeChat} onOpenGame={setActiveMatchId} />
-        </View>
-        {/* the launching app icon: stretches with the rect, fades into the app */}
+      {/* Messages — three DEV-selectable presentations (DevPanel → Chat UI):
+          v1 'sheet': the original slide-up drawer, character peeking above it
+          v2 'fullscreen': takeover zooming out of the dock tile (icon morph)
+          v3 'sky': camera pans up (SKY_CHAT_FRAMING), the chat floats above
+          the character in the sky band; tap his band below to close */}
+      {chatUi === 'sheet' ? (
+        <>
+          {chatOpen ? (
+            <Pressable
+              onPress={closeChat}
+              accessibilityLabel="Close chat"
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, height: DRAWER_TOP, zIndex: 30 }}
+            />
+          ) : null}
+          <Animated.View
+            style={[
+              chatSheetStyle,
+              {
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                top: DRAWER_TOP,
+                height: SCREEN_H - DRAWER_TOP,
+                zIndex: 40,
+                shadowColor: '#000',
+                shadowOpacity: 0.12,
+                shadowRadius: 24,
+                shadowOffset: { width: 0, height: -8 },
+              },
+            ]}
+            pointerEvents={chatOpen ? 'auto' : 'none'}
+          >
+            <ChatScreen onClose={closeChat} onOpenGame={setActiveMatchId} />
+          </Animated.View>
+        </>
+      ) : chatUi === 'sky' ? (
+        <>
+          {chatOpen ? (
+            <Pressable
+              onPress={closeChat}
+              accessibilityLabel="Close chat"
+              style={{ position: 'absolute', left: 0, right: 0, top: SCREEN_H * 0.62, bottom: 0, zIndex: 30 }}
+            />
+          ) : null}
+          <Animated.View
+            style={[
+              chatSkyStyle,
+              {
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                top: 0,
+                height: SCREEN_H * 0.62,
+                zIndex: 40,
+                borderBottomLeftRadius: 28,
+                borderBottomRightRadius: 28,
+                overflow: 'hidden',
+                backgroundColor: '#fff',
+                shadowColor: '#000',
+                shadowOpacity: 0.12,
+                shadowRadius: 24,
+                shadowOffset: { width: 0, height: 8 },
+              },
+            ]}
+            pointerEvents={chatOpen ? 'auto' : 'none'}
+          >
+            <View style={{ flex: 1, paddingTop: insets.top }}>
+              <ChatScreen onClose={closeChat} onOpenGame={setActiveMatchId} />
+            </View>
+          </Animated.View>
+        </>
+      ) : (
         <Animated.View
-          pointerEvents="none"
-          style={[chatIconFadeStyle, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]}
+          style={[
+            chatZoomStyle,
+            {
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 40,
+              overflow: 'hidden',
+              backgroundColor: '#fff',
+            },
+          ]}
+          pointerEvents={chatOpen ? 'auto' : 'none'}
         >
-          <LinearGradient colors={MESSAGES_GRADIENT} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-            <Svg viewBox="0 0 24 24" width="62%" height="62%" preserveAspectRatio="none">
-              <Path fill="#fff" d={MESSAGES_BUBBLE_PATH} />
-            </Svg>
-          </LinearGradient>
+          <View style={{ flex: 1, paddingTop: insets.top }}>
+            <ChatScreen onClose={closeChat} onOpenGame={setActiveMatchId} />
+          </View>
+          {/* the launching app icon: stretches with the rect, fades into the app */}
+          <Animated.View
+            pointerEvents="none"
+            style={[chatIconFadeStyle, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]}
+          >
+            <LinearGradient colors={MESSAGES_GRADIENT} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+              <Svg viewBox="0 0 24 24" width="62%" height="62%" preserveAspectRatio="none">
+                <Path fill="#fff" d={MESSAGES_BUBBLE_PATH} />
+              </Svg>
+            </LinearGradient>
+          </Animated.View>
         </Animated.View>
-      </Animated.View>
+      )}
 
       {/* Game overlay (plan 21) — the full-screen turn player, over the chat
           drawer; a turn card tap or the picker sheet opens it */}

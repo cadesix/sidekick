@@ -19,6 +19,7 @@ import {
 import { patchSnapshot, SNAPSHOT_QUERY_KEY, type SnapshotPatch, useSnapshot } from '../lib/state';
 import { refreshOnboarding, resetOnboarding } from '../lib/onboarding';
 import { useStarChat } from '../store/star-chat';
+import { CHAT_UI_MODES, useDevPrefs } from '../store/devPrefs';
 import { TIMES, type TimeOfDay } from '../three/settings';
 
 // DEV-only user-state panel — the RN counterpart of the web app's dev chip
@@ -55,6 +56,7 @@ export function DevPanel({
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const snapshot = useSnapshot().data;
+  const chatUi = useDevPrefs((s) => s.chatUiMode);
 
   if (!SHOW_DEV) return null;
 
@@ -138,6 +140,19 @@ export function DevPanel({
 
           <Row label="Onboarding">
             <Btn label="Replay onboarding" onPress={replayOnboarding} wide />
+          </Row>
+
+          {/* which Messages presentation is live (store/devPrefs) */}
+          <Row label="Chat UI" value={chatUi}>
+            {CHAT_UI_MODES.map((m) => (
+              <Btn
+                key={m}
+                label={m}
+                active={m === chatUi}
+                onPress={() => useDevPrefs.getState().setChatUiMode(m)}
+                wide
+              />
+            ))}
           </Row>
 
           {onSetTimeOfDay ? (
