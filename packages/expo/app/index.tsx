@@ -381,25 +381,28 @@ export default function Home() {
   // that re-completes) always restarts from the top instead of resuming at a
   // stale step. `armed` then gates the driver so it fires exactly once per arm.
   const wasPending = useRef(false);
+  const introFired = useRef(false); // guards the one-shot driver below
   const [armed, setArmed] = useState(false);
   useEffect(() => {
-    if (__DEV__) console.log('[home-intro] introPending=', introPending, 'settings=', !!settings, 'controller=', !!controller);
     if (introPending && !wasPending.current) {
       setIntroStep(null);
       setIntroBond(0);
+      introFired.current = false;
       setArmed(true);
     }
     if (!introPending) setArmed(false);
     wasPending.current = introPending;
   }, [introPending]);
   useEffect(() => {
-    // Gate ONLY on armed + settings — NOT on `snapshot` (a fresh account's can
-    // lag; the count-up defaults its target to 10) and NOT on `controller` (the
-    // canvas can lose the WebGL-context race when we arrive here straight from
-    // onboarding, leaving controller null indefinitely). The speech, count-up
-    // and star don't need the controller; only the head-tilt does, and it reads
-    // a live ref so it fires if/when the context comes up and no-ops otherwise.
-    if (!armed || !settings || introStep !== null) return;
+    // Gate on armed + settings + a FIRED-ONCE ref. Crucially NOT on `introStep`
+    // — this effect SETS introStep, so depending on it would re-run the effect
+    // and its cleanup would cancel the very timers we just scheduled (they'd
+    // never fire; the sequence would freeze at 'line'). Also not on `snapshot`
+    // (a fresh account's can lag; count-up defaults the target to 10) or
+    // `controller` (the canvas can lose the WebGL-context race arriving from
+    // onboarding — only the head-tilt needs it, via a live ref).
+    if (!armed || !settings || introFired.current) return;
+    introFired.current = true;
     if (__DEV__) console.log('[home-intro] driver firing');
     setIntroStep('line');
     const timers = [
@@ -417,7 +420,7 @@ export default function Home() {
       }, 10700),
     ];
     return () => timers.forEach(clearTimeout);
-  }, [armed, settings, introStep]);
+  }, [armed, settings]);
   // the 0→N count-up (screen 17); each tick re-fires the pill's pop
   useEffect(() => {
     if (introStep !== 'bond' && introStep !== 'star') return;
