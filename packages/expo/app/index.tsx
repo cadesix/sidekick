@@ -686,10 +686,17 @@ export default function Home() {
   // The driver is LINEAR; all shaping lives in these curves.
   const chatZoomStyle = useAnimatedStyle(() => {
     const p = chatProgress.value;
-    const b = p - 1;
-    const pTop = 1 + 2.2 * b * b * b + 1.2 * b * b; // back-out: overshoots ~6% past the top
-    const pBot = p * p; // ease-in: trails
-    const pX = 1 - (1 - p) * (1 - p); // ease-out: sides in between
+    // top: compressed into the first ~55% of the flight with a hard back-out —
+    // it FLIES up and fills its corners early, overshooting ~10% then settling
+    const tT = Math.min(1, p / 0.55);
+    const bT = tT - 1;
+    const pTop = 1 + 2.7 * bT * bT * bT + 1.7 * bT * bT;
+    // bottom: gravity-pinned near the tile for most of the flight, then a late
+    // whip — p^4 keeps it at ~13% travel when the top has already landed
+    const pBot = p * p * p * p;
+    // sides: quick ease-out, resolved by ~70% so the width leads the bottom
+    const tX = Math.min(1, p / 0.7);
+    const pX = 1 - (1 - tX) * (1 - tX);
     const top = chatOrigin.y.value * (1 - pTop);
     const bottom = (chatOrigin.y.value + chatOrigin.h.value) * (1 - pBot) + SCREEN_H * pBot;
     const left = chatOrigin.x.value * (1 - pX);
@@ -699,7 +706,7 @@ export default function Home() {
         { perspective: 900 },
         { translateX: (left + right) / 2 - SCREEN_W / 2 },
         { translateY: (top + bottom) / 2 - SCREEN_H / 2 },
-        { rotateX: `${8 * Math.sin(Math.PI * Math.min(1, Math.max(0, p)))}deg` },
+        { rotateX: `${10 * Math.sin(Math.PI * Math.min(1, Math.max(0, p / 0.7)))}deg` },
         { scaleX: Math.max(0.001, (right - left) / SCREEN_W) },
         { scaleY: Math.max(0.001, (bottom - top) / SCREEN_H) },
       ],
@@ -710,12 +717,11 @@ export default function Home() {
     };
   });
   // The icon clone rides ON TOP of the chat inside the morphing rect and fades
-  // away mid-flight — the elongating icon crossfades into the screen (fading
-  // the OVERLAY, never the chat content, keeps UIGlassEffect descendants alive
-  // — expo/expo#41024). Around p≈0.5 you get iOS's "half icon, half app,
-  // stretched" frame for free.
+  // away in a BLINK (~2 frames) — one stretched half-icon/half-app frame, then
+  // it's the screen. (Fading the OVERLAY, never the chat content, keeps
+  // UIGlassEffect descendants alive — expo/expo#41024.)
   const chatIconFadeStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(chatProgress.value, [0, 0.32, 0.62, 1], [1, 1, 0, 0]),
+    opacity: interpolate(chatProgress.value, [0, 0.3, 0.38, 1], [1, 1, 0, 0]),
   }));
   // identical to drawerStyle, for the guided habit-add drawer
   const habitDrawerStyle = useAnimatedStyle(() => ({
