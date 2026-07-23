@@ -9,8 +9,8 @@ import Animated, { useAnimatedStyle, useSharedValue, withDelay, withRepeat, with
 export const STREAM_CPS = 42; // characters per second
 export const STREAM_GAP_MS = 260; // breath between lines, after one finishes
 
-export function streamDurationMs(text: string): number {
-  return Math.ceil(text.length * (1000 / STREAM_CPS));
+export function streamDurationMs(text: string, cps: number = STREAM_CPS): number {
+  return Math.ceil(text.length * (1000 / cps));
 }
 
 // keeps white text legible where it overlaps the constellation's white stars
@@ -28,11 +28,14 @@ export function StreamedText({
   className,
   style,
   onReveal,
+  cps = STREAM_CPS,
 }: {
   text: string;
   className?: string;
   style?: TextStyle;
   onReveal?: () => void;
+  // characters/sec — onboarding's big-copy lines stream slower than chat
+  cps?: number;
 }) {
   const [shown, setShown] = useState(1);
   useEffect(() => {
@@ -40,9 +43,9 @@ export function StreamedText({
     const id = setTimeout(() => {
       setShown((n) => Math.min(text.length, n + 1));
       onReveal?.();
-    }, 1000 / STREAM_CPS);
+    }, 1000 / cps);
     return () => clearTimeout(id);
-  }, [shown, text, onReveal]);
+  }, [shown, text, onReveal, cps]);
   return (
     <Text className={className} style={style}>
       {text.slice(0, shown)}

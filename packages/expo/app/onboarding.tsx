@@ -13,6 +13,7 @@ import Animated, {
   withDelay,
   withRepeat,
   withSequence,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,7 +34,8 @@ import { OnboardingAuth } from '../src/components/OnboardingAuth';
 import { OverheadSpeech } from '../src/components/OverheadSpeech';
 import { SpeechBubble } from '../src/components/SpeechBubble';
 import { speak } from '../src/store/speech';
-import { StreamedText } from '../src/components/chat-stream';
+import { streamDurationMs, StreamedText } from '../src/components/chat-stream';
+import Svg, { Path } from 'react-native-svg';
 import { FAUX_KB_HEIGHT, FAUX_KB_VISIBLE, FauxKeyboard } from '../src/components/FauxKeyboard';
 
 // bottom inset for a keyboard-input step: real keyboards are handled by
@@ -316,8 +318,8 @@ export default function Onboarding() {
     if (animating) return;
     setAnimating(true);
     setFraming(NAME_FRAMING); // down…
-    setTimeout(() => goTo('hereLeft'), 800); // …then left
-    setTimeout(() => setAnimating(false), 1500);
+    setTimeout(() => goTo('hereLeft'), 1700); // …sit a beat… then left
+    setTimeout(() => setAnimating(false), 2400);
   };
 
   // hereLeft → hereRight: whip pan the other way.
@@ -536,11 +538,9 @@ export default function Onboarding() {
       {/* 1. Hey! — dead-centre, shaking, over the sky */}
       {phase === 'hey' && !animating ? (
         <>
-          <Animated.View entering={FadeInUp.duration(500)} style={styles.centerCopy} pointerEvents="none">
-            <SubtleShake>
-              <Text style={styles.h1Hero}>Hey!</Text>
-            </SubtleShake>
-          </Animated.View>
+          <View style={styles.centerCopy} pointerEvents="none">
+            <HeyTitle />
+          </View>
           <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
             <PrimaryButton label="Get Started" onPress={() => goTo('askName')} disabled={animating} />
           </View>
@@ -552,16 +552,7 @@ export default function Onboarding() {
         <NameEntry
           key="askName"
           title="what should i call you?"
-          header={
-            <View>
-              <Animated.View entering={FadeInUp.duration(400)}>
-                <Text style={styles.h1small}>i'm your sidekick!</Text>
-              </Animated.View>
-              <View style={{ marginTop: 6 }}>
-                <StreamedText text="what should i call you? 🤔" style={styles.h1small} />
-              </View>
-            </View>
-          }
+          header={<StreamedLines lines={["i'm your sidekick!", 'what should i call you? 🤔']} style={styles.h1small} />}
           placeholder="Your name"
           cta="continue"
           onSubmit={submitUserName}
@@ -583,7 +574,7 @@ export default function Onboarding() {
       {phase === 'lookDown' && !animating ? (
         <>
           <View style={styles.centerCopy} pointerEvents="none">
-            <StreamedText text="your head is in the clouds… look down here!" style={styles.h1small} />
+            <StreamedLines lines={['your head is in the clouds…', 'look down here!']} style={styles.h1small} gapMs={900} />
           </View>
           <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
             <PrimaryButton label="look down" onPress={lookDown} />
@@ -595,15 +586,20 @@ export default function Onboarding() {
       {phase === 'hereLeft' && !animating ? (
         <Pressable style={StyleSheet.absoluteFill} onPress={overHere}>
           <Animated.View entering={FadeInUp.duration(350)} style={[styles.sideCopy, styles.sideRight]} pointerEvents="none">
-            <Text style={styles.h1small}>I'M OVER HERE!</Text>
+            <SubtleShake intensity={2.2} speed={1.5}>
+              <Text style={styles.h1small}>I'M OVER HERE!</Text>
+            </SubtleShake>
           </Animated.View>
           <Text style={[styles.tapHint, { bottom: insets.bottom + 28 }]}>tap to continue</Text>
         </Pressable>
       ) : null}
       {phase === 'hereRight' && !animating ? (
         <Pressable style={StyleSheet.absoluteFill} onPress={startMeet}>
-          <Animated.View entering={FadeInUp.duration(350)} style={[styles.sideCopy, styles.sideLeft]} pointerEvents="none">
-            <Text style={styles.h1small}>NO OVER HERE!</Text>
+          {/* the camera lands first; the line pops a beat later */}
+          <Animated.View entering={FadeInUp.duration(350).delay(550)} style={[styles.sideCopy, styles.sideLeft]} pointerEvents="none">
+            <SubtleShake intensity={2.2} speed={1.5}>
+              <Text style={styles.h1small}>NO, OVER HERE!</Text>
+            </SubtleShake>
           </Animated.View>
           <Text style={[styles.tapHint, { bottom: insets.bottom + 28 }]}>tap to continue</Text>
         </Pressable>
@@ -715,18 +711,82 @@ function currentColorId(): string {
 // the input component below.)
 // A barely-there idle wiggle for a CTA that wants to be pressed — ±1.2° of
 // rotation with a touch of sway, slow loop, never big enough to read as broken.
-function SubtleShake({ children }: { children: React.ReactNode }) {
+function SubtleShake({
+  children,
+  intensity = 1,
+  speed = 1,
+}: {
+  children: React.ReactNode;
+  // multipliers over the base ±1.2° / 1px sway — the "Hey!" and over-here
+  // titles crank these
+  intensity?: number;
+  speed?: number;
+}) {
   const t = useSharedValue(0);
   useEffect(() => {
-    t.value = withRepeat(withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.quad) }), -1, true);
-  }, [t]);
+    t.value = withRepeat(
+      withTiming(1, { duration: 1400 / speed, easing: Easing.inOut(Easing.quad) }),
+      -1,
+      true,
+    );
+  }, [t, speed]);
   const style = useAnimatedStyle(() => ({
     transform: [
-      { rotate: `${Math.sin(t.value * Math.PI * 2) * 1.2}deg` },
-      { translateX: Math.sin(t.value * Math.PI * 4) * 1 },
+      { rotate: `${Math.sin(t.value * Math.PI * 2) * 1.2 * intensity}deg` },
+      { translateX: Math.sin(t.value * Math.PI * 4) * intensity },
     ],
   }));
   return <Animated.View style={style}>{children}</Animated.View>;
+}
+
+// "Hey!" springs in from small, shakes hard, and carries a little curved
+// underline — a swoosh hinting the voice is coming from somewhere below.
+function HeyTitle() {
+  const sc = useSharedValue(0.3);
+  useEffect(() => {
+    sc.value = withSpring(1, { damping: 9, stiffness: 150, mass: 0.7 });
+  }, [sc]);
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: sc.value }] }));
+  return (
+    <Animated.View style={[style, { alignItems: 'center' }]}>
+      <SubtleShake intensity={2.6} speed={1.7}>
+        <Text style={styles.h1Hero}>Hey!</Text>
+      </SubtleShake>
+      <Svg width={132} height={26} viewBox="0 0 132 26" style={{ marginTop: 8 }}>
+        <Path d="M10 5 Q 66 27 122 5" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
+      </Svg>
+    </Animated.View>
+  );
+}
+
+// Streams `lines` one after another (each fully types out, a beat, then the
+// next begins) — the sequential, slower cadence the sky copy wants.
+function StreamedLines({
+  lines,
+  style,
+  cps = 12,
+  gapMs = 600,
+}: {
+  lines: string[];
+  style?: import('react-native').TextStyle;
+  cps?: number;
+  gapMs?: number;
+}) {
+  const [visible, setVisible] = useState(1);
+  useEffect(() => {
+    if (visible >= lines.length) return;
+    const id = setTimeout(() => setVisible((v) => v + 1), streamDurationMs(lines[visible - 1], cps) + gapMs);
+    return () => clearTimeout(id);
+  }, [visible, lines, cps, gapMs]);
+  return (
+    <View>
+      {lines.slice(0, visible).map((l, i) => (
+        <View key={i} style={i ? { marginTop: 8 } : null}>
+          <StreamedText text={l} style={style} cps={cps} />
+        </View>
+      ))}
+    </View>
+  );
 }
 
 function NameEntry({
@@ -1105,8 +1165,8 @@ const styles = StyleSheet.create({
     right: 0,
     textAlign: 'center',
     fontFamily: FONT_MEDIUM,
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.75)',
+    fontSize: 17,
+    color: '#fff',
   },
   h1: {
     fontFamily: FONT_BOLD,
