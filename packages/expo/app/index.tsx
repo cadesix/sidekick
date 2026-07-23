@@ -375,7 +375,7 @@ export default function Home() {
   // up and explains the bond score, the score counts 0→N on the star pill, then
   // the star appears with a prompt. Tapping the star consumes the intro.
   const introPending = onboarding.data?.homeIntro === true;
-  const [introStep, setIntroStep] = useState<'line' | 'bond' | 'star' | null>(null);
+  const [introStep, setIntroStep] = useState<'bond' | 'star' | null>(null);
   const [introBond, setIntroBond] = useState(0);
   // reset on the RISING edge too, so a re-arm (dev replay, or a second launch
   // that re-completes) always restarts from the top instead of resuming at a
@@ -384,6 +384,7 @@ export default function Home() {
   const introFired = useRef(false); // guards the one-shot driver below
   const [armed, setArmed] = useState(false);
   useEffect(() => {
+    // (diagnostics removed — the intro is confirmed working)
     if (introPending && !wasPending.current) {
       setIntroStep(null);
       setIntroBond(0);
@@ -403,21 +404,17 @@ export default function Home() {
     // onboarding — only the head-tilt needs it, via a live ref).
     if (!armed || !settings || introFired.current) return;
     introFired.current = true;
-    if (__DEV__) console.log('[home-intro] driver firing');
-    setIntroStep('line');
+    // the star pill + percent pop up right away (introStep 'bond' both shows the
+    // star and runs the 0→N count-up); he looks UP at it, then names it, then
+    // prompts the tap.
+    setIntroStep('bond');
     const timers = [
-      setTimeout(() => {
-        controllerRef.current?.setLookUp(true); // glance up (if the scene is up)
-        speak('the more i get to know you, the higher our bond score goes, and i become better at guiding you', 7200, 'happy');
-      }, 700),
-      setTimeout(() => {
-        controllerRef.current?.setLookUp(false);
-        setIntroStep('bond');
-      }, 8300),
+      setTimeout(() => controllerRef.current?.setLookUp(true), 450), // look up at the star
+      setTimeout(() => speak("that's our bond score", 3200, 'happy'), 1400),
       setTimeout(() => {
         setIntroStep('star');
         speak('tap the star to open our star chat! ✦', 6000, 'excited');
-      }, 10700),
+      }, 4600),
     ];
     return () => timers.forEach(clearTimeout);
   }, [armed, settings]);
