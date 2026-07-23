@@ -24,10 +24,10 @@ import { devArmHomeIntro } from '../src/lib/onboarding';
 import { Pressable } from '../src/components/Pressable';
 import { OnboardingIntroChat, type OnboardingResult } from '../src/components/OnboardingIntroChat';
 import {
+  type CollectedFields,
   loadOnboarding,
   markOnboardingComplete,
   ONBOARDING_QUERY_KEY,
-  saveOnboardingField,
   saveStep,
 } from '../src/lib/onboarding';
 import { Glass } from '../src/imessage/components/Glass';
@@ -141,6 +141,19 @@ const PHASE_ORDER: Phase[] = [
   'chat',
 ];
 
+// Phases advanced ONLY by an in-flight timer/cinematic — they have no CTA or tap
+// of their own (meetTitle = the pre-pop tremble, celebrate = the hop, textIntro =
+// the "let me text u" beat). Their advancing timer fires from the transition
+// handler, never on mount, so a cold resume (kill/reload mid-transition) that
+// landed on one would strand the user on a dead screen. On resume we skip forward
+// to the next phase the user can actually act on.
+const TRANSIENT_PHASES = new Set<Phase>(['meetTitle', 'celebrate', 'textIntro']);
+function resumablePhase(phase: Phase): Phase {
+  let i = PHASE_ORDER.indexOf(phase);
+  while (i >= 0 && i < PHASE_ORDER.length - 1 && TRANSIENT_PHASES.has(PHASE_ORDER[i])) i += 1;
+  return PHASE_ORDER[i] ?? phase;
+}
+
 // Declarative entry state per phase: what the scene must look like when you land
 // on a phase COLD (deep link / reload-resume), independent of whatever cinematic
 // normally plays on the way in.
@@ -207,6 +220,18 @@ export default function Onboarding() {
   const [animating, setAnimating] = useState(false);
   const [userName, setUserName] = useState('');
   const [sidekickName, setSidekickName] = useState('');
+  // birthday lives in component state too (not only AsyncStorage) so a dropped/
+  // slow persisted write can't silently omit it from the server commit — same
+  // in-memory fallback userName/sidekickName already have.
+  const [birthday, setBirthday] = useState('');
+  // A synchronously-updated mirror of the collected fields, folded into EVERY
+  // persisted step write (see goTo). This enforces the invariant "persisted phase
+  // never advances past a missing collected field": if a field-bearing write is
+  // dropped (swallowed storage failure), the next successful step write re-asserts
+  // every known field, so a cold resume can't land past a field screen with the
+  // field absent. (A ref, not state, because the submit handlers persist in the
+  // same tick they set state — the state update wouldn't be visible yet.)
+  const collectedRef = useRef<CollectedFields>({});
   const [colorId, setColorId] = useState<string>(SKIN_COLORS[0].id);
   const [notifIn, setNotifIn] = useState(false);
   // he only glances UP at the notice a beat after it lands (see submitSidekickName),
@@ -241,10 +266,19 @@ export default function Onboarding() {
       // signed out → auth first (regardless of any saved step); signed in →
       // resume the saved step (never 'auth' — already signed in), else hey.
       const saved = (PHASE_ORDER as string[]).includes(st.phase) ? (st.phase as Phase) : null;
-      const initial: Phase = signedOut ? 'auth' : saved && saved !== 'auth' ? saved : 'birthday';
+      // resume the saved step (never 'auth' — already signed in), skipping any
+      // transient phase forward to the next actionable one, else start at birthday.
+      const initial: Phase =
+        signedOut ? 'auth' : saved && saved !== 'auth' ? resumablePhase(saved) : 'birthday';
       initialPhaseRef.current = initial;
       setUserName(st.userName);
       setSidekickName(st.sidekickName);
+      setBirthday(st.birthday);
+      collectedRef.current = {
+        userName: st.userName,
+        sidekickName: st.sidekickName,
+        birthday: st.birthday,
+      };
       setColorId(currentColorId());
       setPhase(initial);
       setFraming(PHASES[initial].framing);
@@ -273,10 +307,12 @@ export default function Onboarding() {
   }, [phase, notifLookUp]);
 
   // every phase change lands here: persist the resume step + apply its framing.
+  // ALL collected fields ride along in the same atomic write, so the persisted
+  // phase can never advance past a field that failed to persist earlier.
   const goTo = (next: Phase, opts?: { keepFraming?: boolean }) => {
     setPhase(next);
     if (!opts?.keepFraming) setFraming(PHASES[next].framing);
-    void saveStep(next);
+    void saveStep(next, collectedRef.current);
   };
 
   // Leave for Home, but tear down OUR scene first so its GL context is released
@@ -319,17 +355,18 @@ export default function Onboarding() {
 
   // name captured LAST (after the sidekick names himself) → the text segue.
   const submitUserName = (name: string) => {
+    collectedRef.current.userName = name;
     setUserName(name);
-    void saveOnboardingField('userName', name);
     goTo('textIntro');
     speak('let me text u so we can talk!', 2400, 'happy');
     setTimeout(() => notifBeat(), 2600);
   };
 
   // birthday → hey: still in the sky — the pan waits until lookDown's CTA.
-  const submitBirthday = (birthday: string) => {
+  const submitBirthday = (value: string) => {
     if (animating) return;
-    void saveOnboardingField('birthday', birthday);
+    collectedRef.current.birthday = value;
+    setBirthday(value);
     goTo('hey');
   };
 
@@ -420,8 +457,8 @@ export default function Onboarding() {
 
   // sidekick named → now ask the USER's name (also in a head bubble).
   const submitSidekickName = (name: string) => {
+    collectedRef.current.sidekickName = name;
     setSidekickName(name);
-    void saveOnboardingField('sidekickName', name);
     goTo('askName');
     speak("now what's YOUR name?", 600000, 'happy');
   };
@@ -464,18 +501,25 @@ export default function Onboarding() {
           reason: summary?.reason ?? 'habits',
           profile: {
             name: (st.userName || userName).trim() || 'friend',
-            birthday: st.birthday || undefined,
+            // fall back to component state on every field, so a dropped/slow
+            // AsyncStorage write can't silently omit a value the user entered.
+            birthday: (st.birthday || birthday) || undefined,
             sidekickName: (st.sidekickName || sidekickName).trim() || undefined,
             sidekickColor: (loadSettings().celBodyColor ?? '') || undefined,
           },
           habit: summary?.habit,
           talk: summary?.talk,
         });
+        // markOnboardingComplete verifies the local write persisted and throws
+        // otherwise — inside the try so a storage failure is handled exactly like
+        // a commit failure (retry) instead of navigating to Home with `complete`
+        // unpersisted, which a cold start would read as not-onboarded and loop.
+        await markOnboardingComplete();
       } catch (err) {
-        // Do NOT mark complete locally on failure — that would permanently skip
-        // onboarding on-device while the server has no profile/goals/memories. Let
-        // the user retry (the flow stays put behind the alert).
-        console.error('[onboarding] commitOnboardingResult failed', err);
+        // Do NOT proceed on failure — that would either strand the server without
+        // a profile/goals/memories, or send the user Home with completion
+        // unpersisted. Let them retry (the flow stays put behind the alert).
+        console.error('[onboarding] finish failed', err);
         Alert.alert(
           'almost there',
           "couldn't finish setting up — check your connection and try again.",
@@ -483,7 +527,6 @@ export default function Onboarding() {
         );
         return;
       }
-      await markOnboardingComplete();
       // Push the completed state into the query cache synchronously so Home's
       // first-run gate sees complete=true immediately. An async invalidate would
       // let Home render the stale (incomplete) state and bounce straight back to

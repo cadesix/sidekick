@@ -49,7 +49,7 @@ import { patchBoxClaim, snapshotSessions, useSnapshot } from '../src/lib/state';
 import { reconcileWardrobe } from '../src/lib/wardrobe-sync';
 import { useCosmeticVersion } from '../src/store/cosmeticVersion';
 import { hydrateSkinFromMirror, saveSkinMirror } from '../src/store/skin';
-import { markHomeIntroDone, refreshOnboarding, useOnboardingState } from '../src/lib/onboarding';
+import { markHomeIntroDone, ONBOARDING_QUERY_KEY, type OnboardingState, useOnboardingState } from '../src/lib/onboarding';
 import { useAuthStore } from '../src/lib/auth-store';
 import { perfFrame, perfMark } from '../src/lib/perf-telemetry';
 
@@ -499,7 +499,15 @@ export default function Home() {
   // star tapped during the guided intro — consume it (never replays)
   const finishIntro = useCallback(() => {
     controllerRef.current?.setLookUp(false); // never leave the head stuck up
-    void markHomeIntroDone().then(() => refreshOnboarding(queryClient));
+    // Consume the intro in-session IMMEDIATELY by patching the query cache — the
+    // authoritative source for `introPending` this session. Then persist durably
+    // in the background. (Don't invalidate/refetch afterward: a failed persist
+    // would re-read homeIntro:true and resurrect the intro mid-dismiss. Worst
+    // case a failed write replays it on a future cold start — acceptable.)
+    queryClient.setQueryData<OnboardingState>(ONBOARDING_QUERY_KEY, (prev) =>
+      prev ? { ...prev, homeIntro: false } : prev,
+    );
+    void markHomeIntroDone().catch(() => {});
   }, [queryClient]);
 
   // Streak + daily box are server state (plan 20 phase 2): the streak count and
