@@ -1,5 +1,6 @@
+import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import {
 	Platform,
 	Pressable,
@@ -12,6 +13,7 @@ import {
 } from "react-native";
 import Animated, { useAnimatedStyle, withSpring, ZoomIn, ZoomOut } from "react-native-reanimated";
 import { colors, font } from "../theme";
+import { FloatingChat } from "../floating-chat";
 import { Glass, liquidGlass } from "./Glass";
 import { Icon } from "./Icon";
 import type { AudioAttachment } from "../types";
@@ -23,6 +25,12 @@ export type AttachmentState = "none" | "settling" | "ready";
 // Composer surface: real iOS-26 liquid glass where available, else a FLAT opaque
 // fill in the field-gray input token (06 §1.1). (The blur fallback lightens whatever fill sits
 // behind it, so we skip the blur entirely and match the message bubbles exactly.)
+//
+// FLOATING ("sky") chat is the exception: adaptive liquid glass reads DARK over
+// the (usually dark) evening/night sky, which — with the dark field text — is
+// dark-on-dark. There we force a LIGHT frosted glass (thick light material +
+// rim) so the bar always contrasts the scene and the dark text stays legible,
+// whatever's behind it.
 function Surface({
 	isInteractive,
 	style,
@@ -32,6 +40,14 @@ function Surface({
 	style?: StyleProp<ViewStyle>;
 	children: ReactNode;
 }) {
+	const floating = useContext(FloatingChat);
+	if (floating) {
+		return (
+			<BlurView intensity={72} tint="systemThickMaterialLight" style={[style, styles.floatingSurface]}>
+				{children}
+			</BlurView>
+		);
+	}
 	if (liquidGlass) {
 		return (
 			<Glass isInteractive={isInteractive} style={style}>
@@ -259,6 +275,15 @@ const styles = StyleSheet.create({
 	// platforms (not the frosted glass) — deliberately NOT the bubble gray.
 	fieldFill: {
 		backgroundColor: colors.field,
+	},
+	// floating ("sky") composer: a LIGHT frosted glass that always contrasts the
+	// scene behind it. overflow:hidden clips the blur to the rounded field; the
+	// hairline rim keeps it delineated even over a light daytime sky.
+	floatingSurface: {
+		overflow: "hidden",
+		backgroundColor: "rgba(255,255,255,0.28)",
+		borderWidth: StyleSheet.hairlineWidth,
+		borderColor: "rgba(255,255,255,0.6)",
 	},
 	trayDivider: {
 		height: StyleSheet.hairlineWidth,

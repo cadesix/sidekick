@@ -402,9 +402,14 @@ function ChatScreenImpl({
 				/>
 			) : null}
 
-			<View style={styles.header} pointerEvents="box-none">
+			<View
+				style={[styles.header, floating ? { paddingTop: insets.top } : null]}
+				pointerEvents="box-none"
+			>
 				{/* the white header fade + grabber both vanish when floating (they'd
-				    read as fog / a non-functional pill over the scene) */}
+				    read as fog / a non-functional pill over the scene). When floating,
+				    the wrapper no longer reserves the safe-area top (so the transcript
+				    can run to the device edge), so inset the close button here. */}
 				{floating ? null : (
 					<>
 						<LinearGradient

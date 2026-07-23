@@ -1195,7 +1195,11 @@ export default function Home() {
           ]}
           pointerEvents={chatOpen ? 'auto' : 'none'}
         >
-          <View style={{ flex: 1, paddingTop: insets.top }}>
+          {/* NO top safe-area pad here: the floating transcript runs to the very
+              top of the device so messages scroll up and overflow past the
+              dynamic island instead of being clipped under it. ChatScreen insets
+              its own close button. */}
+          <View style={{ flex: 1 }}>
             {chatScreen}
           </View>
         </Animated.View>
