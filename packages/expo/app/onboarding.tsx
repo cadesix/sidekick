@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { commitOnboardingResult, setSkinColor } from '../src/lib/api';
 import { hapticNotif, hapticTap, playBuildToBoom } from '../src/lib/haptics';
+import { devArmHomeIntro } from '../src/lib/onboarding';
 import { Pressable } from '../src/components/Pressable';
 import { OnboardingIntroChat, type OnboardingResult } from '../src/components/OnboardingIntroChat';
 import {
@@ -733,6 +734,19 @@ export default function Onboarding() {
           </Pressable>
           <Pressable onPress={() => finish()} style={styles.devBtn}>
             <Text style={styles.devBtnText}>⏭ end</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              void (async () => {
+                await devArmHomeIntro();
+                const st = await loadOnboarding();
+                queryClient.setQueryData(ONBOARDING_QUERY_KEY, st);
+                goHome();
+              })();
+            }}
+            style={styles.devBtn}
+          >
+            <Text style={styles.devBtnText}>✦ home intro</Text>
           </Pressable>
         </View>
       ) : null}
