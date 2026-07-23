@@ -71,7 +71,7 @@ const PHONE_L = { swingX: -1.41, swingZ: -1.56, foreX: -0.6, foreZ: -0.06, twist
 // The hold pose's yaws are part of the authored armature (arms were posed in
 // this yawed frame — zeroing them wrecks the hold). Head pitch is the one
 // intentional delta: clearly looking DOWN at the phone.
-const PHONE_POSE = { headPitch: 0.32, headYaw: -0.13, bodyYaw: 0.55 };
+const PHONE_POSE = { headPitch: 0.32, headYaw: 0, bodyYaw: 0.55 };
 
 export type Framing = {
   pos: [number, number, number];

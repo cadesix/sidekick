@@ -66,6 +66,11 @@ const HERO_FRAMING: Framing = { pos: [0, 0.66, 4.2], target: [0, 0.56, 0], fov: 
 // Naming the sidekick: the keyboard rises and the input sits low, so pull the
 // camera back and aim down — the mascot shrinks into the upper band and stays
 // visible above the input while typing. Tune-by-eye.
+// Notif beat: the phone pose yaws his body 0.55rad (part of the authored hold
+// armature — see renderer's PHONE_POSE). Rather than un-yaw HIM (which wrecks
+// the hands), the camera orbits onto his facing, so he reads dead-straight at
+// the lens, head down at the phone.
+const NOTIF_FRAMING: Framing = { pos: [2.2, 0.66, 3.58], target: [0, 0.56, 0], fov: 41.1 };
 const NAMESIDEKICK_FRAMING: Framing = { pos: [0, 1.0, 7.5], target: [0, -0.9, 0], fov: 42 };
 // Chat: the sheet covers ~80%, so the camera pulls way back and aims low — the
 // whole standing character composes into the top sliver.
@@ -108,7 +113,7 @@ const PHASES: Record<Phase, { framing: Framing; characterVisible: boolean }> = {
   reveal: { framing: HERO_FRAMING, characterVisible: true },
   customize: { framing: HERO_FRAMING, characterVisible: true },
   nameSidekick: { framing: NAMESIDEKICK_FRAMING, characterVisible: true },
-  notif: { framing: HERO_FRAMING, characterVisible: true },
+  notif: { framing: NOTIF_FRAMING, characterVisible: true },
   chat: { framing: SLIVER_FRAMING, characterVisible: true },
 };
 
@@ -885,7 +890,7 @@ function NotificationBanner({
               <Text style={styles.bannerNow}>now</Text>
             </View>
             <Text style={styles.bannerText} numberOfLines={1}>
-              hey let's chat
+              i guess i should formally introduce myself
             </Text>
           </View>
         </Pressable>
