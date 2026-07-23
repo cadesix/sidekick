@@ -845,7 +845,8 @@ function LookDownCopy({ topInset }: { topInset: number }) {
   // just "look down here!" now (the clouds line was removed), held at a fixed
   // spot so it doesn't drift as it streams.
   return (
-    <View style={{ position: 'absolute', top: topInset + 360, left: 0, right: 0, alignItems: 'center' }} pointerEvents="none">
+    {/* ~1/3 up from the bottom of the screen */}
+    <View style={{ position: 'absolute', top: Dimensions.get('window').height * 0.66, left: 0, right: 0, alignItems: 'center' }} pointerEvents="none">
       <SubtleShake intensity={1.8} speed={1.4}>
         <StreamedText text="look down here!" style={styles.lookDownLine} cps={20} reserve />
       </SubtleShake>
