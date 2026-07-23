@@ -106,6 +106,9 @@ export type SidekickController = {
   // daily loot chest: spawn/hide (tier or null) + trigger the open animation
   setDailyBox: (tier: BoxTier | null) => void;
   popDailyBox: () => void;
+  // a celebratory in-scene hop (hands up via the jump envelopes) — onboarding's
+  // color-pick celebration; safe to retrigger mid-hop
+  hop: (durMs?: number) => void;
   // onboarding: play the character's jump-into-frame entrance (from HIDDEN_Y),
   // and shake the camera ("build" ramps, "impact" spikes then decays)
   jumpIn: (opts?: { duration?: number }) => void;
@@ -1418,6 +1421,9 @@ export function createSidekickRenderer(
         // boil-over, but delighted
         if (startHop(0.75, false)) faceCtl?.pulse('excited', 2);
       }
+    },
+    hop: (durMs) => {
+      if (startHop((durMs ?? 750) / 1000, true)) faceCtl?.pulse('excited', 2);
     },
     jumpIn: (o) => {
       jump = { start: clock.getElapsedTime(), dur: (o?.duration ?? 800) / 1000 };

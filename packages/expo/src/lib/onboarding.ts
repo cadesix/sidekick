@@ -16,6 +16,9 @@ const RESUME_TTL_MS = 6 * 60 * 60 * 1000;
 
 export type OnboardingState = {
   complete: boolean;
+  // one guided pass over the home screen right after onboarding (entrypoints
+  // hidden → bond explained → star prompted); consumed by Home, then cleared
+  homeIntro: boolean;
   // the phase the user last reached (for resume); free-form — the screen
   // validates it against its own PHASE_ORDER before honoring it
   phase: string;
@@ -28,6 +31,7 @@ export type OnboardingState = {
 
 const EMPTY: OnboardingState = {
   complete: false,
+  homeIntro: false,
   phase: 'welcome',
   ts: 0,
   userName: '',
@@ -82,7 +86,13 @@ export async function saveOnboardingField(
 /** Mark the flow finished so the gate never re-triggers it. */
 export async function markOnboardingComplete(): Promise<void> {
   const state = await readRaw();
-  await writeRaw({ ...state, complete: true, ts: Date.now() });
+  await writeRaw({ ...state, complete: true, homeIntro: true, ts: Date.now() });
+}
+
+/** Home consumed the guided intro (star tapped) — never replay it. */
+export async function markHomeIntroDone(): Promise<void> {
+  const state = await readRaw();
+  await writeRaw({ ...state, homeIntro: false });
 }
 
 /** DEV: wipe onboarding state so the flow runs again from welcome. */

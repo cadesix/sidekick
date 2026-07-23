@@ -49,7 +49,7 @@ import { patchBoxClaim, snapshotSessions, useSnapshot } from '../src/lib/state';
 import { reconcileWardrobe } from '../src/lib/wardrobe-sync';
 import { useCosmeticVersion } from '../src/store/cosmeticVersion';
 import { hydrateSkinFromMirror, saveSkinMirror } from '../src/store/skin';
-import { useOnboardingState } from '../src/lib/onboarding';
+import { markHomeIntroDone, refreshOnboarding, useOnboardingState } from '../src/lib/onboarding';
 import { useAuthStore } from '../src/lib/auth-store';
 import { perfFrame, perfMark } from '../src/lib/perf-telemetry';
 
@@ -368,6 +368,40 @@ export default function Home() {
       .then(() => hydrateSkinFromMirror())
       .then(() => setSettings(loadSettings()));
   }, []);
+  // ---- post-onboarding guided intro (spec screens 15–19) ----------------
+  // Fresh from onboarding, Home opens BARE (no dock/pin/closet/star). He looks
+  // up and explains the bond score, the score counts 0→N on the star pill, then
+  // the star appears with a prompt. Tapping the star consumes the intro.
+  const introPending = onboarding.data?.homeIntro === true;
+  const [introStep, setIntroStep] = useState<'line' | 'bond' | 'star' | null>(null);
+  const [introBond, setIntroBond] = useState(0);
+  useEffect(() => {
+    if (!introPending || !settings || !snapshot || introStep !== null) return;
+    setIntroStep('line');
+    const timers = [
+      setTimeout(() => {
+        controller?.setLookUp(true); // he glances up while explaining
+        speak('the more i get to know you, the higher our bond score goes, and i become better at guiding you', 7200, 'happy');
+      }, 1200),
+      setTimeout(() => {
+        controller?.setLookUp(false);
+        setIntroStep('bond');
+      }, 8800),
+      setTimeout(() => {
+        setIntroStep('star');
+        speak('tap the star to open our star chat! ✦', 6000, 'excited');
+      }, 11200),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, [introPending, settings, snapshot, introStep, controller]);
+  // the 0→N count-up (screen 17); each tick re-fires the pill's pop
+  useEffect(() => {
+    if (introStep !== 'bond' && introStep !== 'star') return;
+    const target = Math.max(snapshot?.bond ?? 0, 10);
+    if (introBond >= target) return;
+    const t = setTimeout(() => setIntroBond((b) => Math.min(target, b + 1)), 90);
+    return () => clearTimeout(t);
+  }, [introStep, introBond, snapshot]);
   // Profile's astral CTA can't render the star chat (it lives over the 3D
   // scene) — it raises this flag and dismisses; we consume it once the scene
   // is ready and open the chat.
@@ -433,6 +467,10 @@ export default function Home() {
   }, [snapshot, controls, controller]);
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+  // star tapped during the guided intro — consume it (never replays)
+  const finishIntro = useCallback(() => {
+    void markHomeIntroDone().then(() => refreshOnboarding(queryClient));
+  }, [queryClient]);
 
   // Streak + daily box are server state (plan 20 phase 2): the streak count and
   // the box's claimable/tier come from the snapshot; the touch itself fires from
@@ -819,8 +857,12 @@ export default function Home() {
       {settings && snapshot && nextStarChat ? (
         <StarChatButton
           overhead={overhead}
-          hidden={covered}
-          onPress={() => setStarChatOpen(true)}
+          hidden={covered || (introPending && introStep !== 'star')}
+          bondOverride={introPending ? introBond : undefined}
+          onPress={() => {
+            if (introPending) finishIntro(); // star tapped — intro consumed
+            setStarChatOpen(true);
+          }}
           darkBg={darkBackdrop}
         />
       ) : null}
@@ -832,7 +874,7 @@ export default function Home() {
           the Closet itself is open. */}
       <ClosetButton
         overhead={overhead}
-        hidden={covered}
+        hidden={covered || introPending}
         paused={appearanceOpen || covered}
         onPress={openAppearance}
       />
@@ -845,9 +887,9 @@ export default function Home() {
           top: insets.top + 8,
           right: 16,
           zIndex: 25,
-          opacity: covered ? 0 : 1,
+          opacity: covered || introPending ? 0 : 1,
         }}
-        pointerEvents={covered ? 'none' : 'box-none'}
+        pointerEvents={covered || introPending ? 'none' : 'box-none'}
       >
         {/* Frosted glass — no `overflow:'hidden'` (it kills the glass effect); the
             round shape comes from borderRadius, which Glass clips natively. The
@@ -870,10 +912,36 @@ export default function Home() {
         {unseenIsland ? <NewsDot style={{ top: -2, right: -2 }} /> : null}
       </View>
 
+      {/* Persistent star-chat CTA (spec 19): until the FIRST star chat lands a
+          card, a pill above the dock keeps the path visible. Hidden while the
+          guided intro runs (the star prompt owns that moment) and under any
+          full surface. */}
+      {settings && snapshot && !snapshot.astral && nextStarChat && !covered && !introPending && !starChatOpen ? (
+        <Pressable
+          onPress={() => setStarChatOpen(true)}
+          style={{
+            position: 'absolute',
+            bottom: Math.max(insets.bottom, 16) + 104,
+            alignSelf: 'center',
+            zIndex: 29,
+            backgroundColor: 'rgba(22,14,44,0.92)',
+            borderColor: 'rgba(201,188,255,0.35)',
+            borderWidth: 1,
+            borderRadius: 999,
+            paddingHorizontal: 16,
+            paddingVertical: 9,
+          }}
+        >
+          <Text style={{ fontFamily: 'Diatype-Rounded-Medium', fontSize: 13, color: '#E7E0FF' }}>
+            complete a star chat to unlock your personality read ✦
+          </Text>
+        </Pressable>
+      ) : null}
+
       {/* iOS-style home dock — the sheets slide up OVER it; only the
           full-screen map reveal hides it */}
       <HomeDock
-        hidden={mapShown || skyMode || (chatUi !== 'sheet' && chatOpen)}
+        hidden={mapShown || skyMode || introPending || (chatUi !== 'sheet' && chatOpen)}
         unread={unread}
         shopDot={shopDot}
         goalsDot={goalsDot}
@@ -945,7 +1013,7 @@ export default function Home() {
 
 
       {/* Daily-box flow (home only): streak splash → ground chest → rewards */}
-      {settings && !covered ? (
+      {settings && !covered && !introPending ? (
         <>
           {boxStage === 'streak' ? (
             <StreakSplash streak={streakCount} onDone={() => setBoxStage('ground')} />
