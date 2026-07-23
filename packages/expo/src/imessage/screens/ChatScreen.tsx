@@ -3,10 +3,11 @@ import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
-import { Alert, Dimensions, FlatList, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Alert, Dimensions, FlatList, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, {
+	type SharedValue,
 	Easing,
 	interpolate,
 	useAnimatedProps,
@@ -404,6 +405,8 @@ function ChatScreenImpl({
 				/>
 			) : null}
 
+			{Platform.OS === "web" ? <FauxKeyboard progress={emuKbProgress} height={EMU_KB_HEIGHT} /> : null}
+
 			<Animated.View style={[styles.footer, footerStyle]} pointerEvents="box-none">
 				{floating ? null : (
 					<Animated.View style={[styles.inputFade, inputFadeStyle]} pointerEvents="none">
@@ -480,6 +483,91 @@ function ChatScreenImpl({
 		</View>
 	);
 }
+
+// WEB (dev aid): a non-interactive iOS-style keyboard mock that rides the
+// emulated keyboard progress, so the keyboard-up layout can be FELT in the
+// browser, not just measured. Purely visual — typing still goes through the
+// hardware keyboard; touches fall through (pointerEvents none would eat the
+// slide-away tap, so the wrapper ignores events entirely).
+const FAUX_ROWS = [
+	["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+	["A", "S", "D", "F", "G", "H", "J", "K", "L"],
+	["⇧", "Z", "X", "C", "V", "B", "N", "M", "⌫"],
+];
+function FauxKeyboard({ progress, height }: { progress: SharedValue<number>; height: number }) {
+	const style = useAnimatedStyle(() => ({
+		transform: [{ translateY: (1 - progress.value) * height }],
+	}));
+	return (
+		<Animated.View pointerEvents="none" style={[fauxStyles.wrap, { height }, style]}>
+			<View style={fauxStyles.suggestions}>
+				{["“I’m”", "I", "The"].map((w) => (
+					<Text key={w} style={fauxStyles.suggestion}>
+						{w}
+					</Text>
+				))}
+			</View>
+			{FAUX_ROWS.map((row, i) => (
+				<View key={i} style={[fauxStyles.row, i === 1 ? { paddingHorizontal: 22 } : null]}>
+					{row.map((k) => (
+						<View key={k} style={[fauxStyles.key, (k === "⇧" || k === "⌫") ? fauxStyles.keyMod : null]}>
+							<Text style={fauxStyles.keyText}>{k}</Text>
+						</View>
+					))}
+				</View>
+			))}
+			<View style={fauxStyles.row}>
+				<View style={[fauxStyles.key, fauxStyles.keyWide]}>
+					<Text style={fauxStyles.keyText}>123</Text>
+				</View>
+				<View style={[fauxStyles.key, fauxStyles.keySpace]}>
+					<Text style={fauxStyles.keyText}>space</Text>
+				</View>
+				<View style={[fauxStyles.key, fauxStyles.keyWide]}>
+					<Text style={fauxStyles.keyText}>return</Text>
+				</View>
+			</View>
+		</Animated.View>
+	);
+}
+
+const fauxStyles = StyleSheet.create({
+	wrap: {
+		position: "absolute",
+		left: 0,
+		right: 0,
+		bottom: 0,
+		backgroundColor: "#D1D4D9",
+		paddingTop: 8,
+		paddingHorizontal: 4,
+		gap: 10,
+		zIndex: 5,
+	},
+	suggestions: {
+		flexDirection: "row",
+		justifyContent: "space-around",
+		alignItems: "center",
+		paddingVertical: 4,
+	},
+	suggestion: { fontSize: 16, color: "#111" },
+	row: { flexDirection: "row", gap: 6, paddingHorizontal: 4 },
+	key: {
+		flex: 1,
+		height: 42,
+		borderRadius: 5,
+		backgroundColor: "#FFFFFF",
+		alignItems: "center",
+		justifyContent: "center",
+		shadowColor: "#000",
+		shadowOffset: { width: 0, height: 1 },
+		shadowOpacity: 0.3,
+		shadowRadius: 0,
+	},
+	keyMod: { backgroundColor: "#ABB0BA" },
+	keyWide: { flex: 2, backgroundColor: "#ABB0BA" },
+	keySpace: { flex: 6 },
+	keyText: { fontSize: 16, color: "#111" },
+});
 
 const styles = StyleSheet.create({
 	// Clipped to the drawer's rounded top so scrolled bubbles can't paint over
