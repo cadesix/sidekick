@@ -16,7 +16,9 @@ import { GameOverlay } from '../src/components/GameOverlay';
 import { GoalsSheet } from '../src/components/GoalsSheet';
 import { GuidedHabitChat } from '../src/components/GuidedHabitChat';
 import { ClosetButton } from '../src/components/ClosetButton';
-import { SessionChat, STAR_FACE_TUNING } from '../src/components/SessionChat';
+import { NewsDot } from '../src/components/NewsDot';
+import { SessionChat } from '../src/components/SessionChat';
+import { STAR_FACE_TUNING } from '../src/components/StarFaceTuner';
 import { StarChat } from '../src/components/StarChat';
 import { StarChatButton } from '../src/components/StarChatButton';
 import { useStarChat } from '../src/store/star-chat';
@@ -27,7 +29,7 @@ import { HomeDock } from '../src/components/HomeDock';
 import { BIOMES, biomeLookForTime, type BiomeId, type EnvironmentId } from '../src/three/biomes';
 import { speak, useSpeech } from '../src/store/speech';
 import { FACE_EXPRESSIONS, type FaceExpression } from '../src/three/face';
-import { BOND_MAX, nextSession as coreNextSession } from '@sidekick/core';
+import { BOND_MAX, localDay, nextSession as coreNextSession } from '@sidekick/core';
 import { ShopSheet } from '../src/components/ShopSheet';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { WorldMap } from '../src/components/WorldMap';
@@ -35,9 +37,11 @@ import { homeFraming, type Framing, type SidekickController } from '../src/three
 import { DEFAULT_SETTINGS, hydrateSettings, loadSettings, refreshTimeOfDay, saveSettings, type SidekickSettings, type TimeOfDay } from '../src/three/settings';
 import type { CosmeticsControls } from '../src/three/wardrobe';
 import { useDeferredFlag } from '../src/lib/useDeferredFlag';
-import { askGoalCheckin, claimDailyBox, fetchCapoff, fetchGoals, fetchHabitAck, startHabitChat, type BoxContents } from '../src/lib/api';
-import { fetchTranscript, mainConversation } from '../src/imessage/server';
-import { localDay, useDockBadges } from '../src/store/dockBadges';
+import { askGoalCheckin, claimDailyBox, fetchCapoff, fetchGoals, fetchHabitAck, goalDoneToday, startHabitChat, type BoxContents } from '../src/lib/api';
+import { mainConversation } from '../src/imessage/server';
+import { CHAT_MAIN_KEY, chatTranscriptKey, fetchMainTranscript } from '~/imessage/useSidekickChat';
+import { GOALS_QUERY_KEY } from '../src/components/GoalsSheet';
+import { useDockBadges } from '../src/store/dockBadges';
 import { patchBoxClaim, snapshotSessions, useSnapshot } from '../src/lib/state';
 import { reconcileWardrobe } from '../src/lib/wardrobe-sync';
 import { useCosmeticVersion } from '../src/store/cosmeticVersion';
@@ -246,37 +250,45 @@ export default function Home() {
   // an island opened but not yet looked at — dot on the top-right map pin
   const unseenIsland = useSidekickContext((s) => s.unseenIsland);
   // dock notification badges (dockBadges store): each clears when its surface is
-  // looked at. Goals shares GoalsSheet's cached query (the sheet is always
-  // mounted, so this adds no fetch); Messages reads a small head-of-transcript
-  // page so unread arrivals badge without opening the chat. The chat queries are
-  // gated on a signed-in, onboarded session — Home redirects those cases, but
-  // hooks fire before the redirect and shouldn't send tokenless requests (three
-  // consecutive 401s trip api.ts's revoked-session handler).
+  // looked at. Goals shares GoalsSheet's cached query and Messages shares the
+  // always-mounted ChatScreen's transcript query (same keys) — neither adds a
+  // fetch. The chat queries are gated on a signed-in, onboarded session — Home
+  // redirects those cases, but hooks fire before the redirect and shouldn't send
+  // tokenless requests (three consecutive 401s trip api.ts's revoked-session
+  // handler).
   const sessionReady = authStatus === 'signedIn' && onboarding.data?.complete === true;
   const { goalsSeenDate, shopSeenDate, msgsSeenAt, hydrated: badgesHydrated } = useDockBadges();
-  const goalsList = useQuery({ queryKey: ['goals', 'list'], queryFn: fetchGoals, enabled: sessionReady });
+  const goalsList = useQuery({ queryKey: GOALS_QUERY_KEY, queryFn: fetchGoals, enabled: sessionReady });
   const chatMain = useQuery({
-    queryKey: ['chat', 'main'],
+    queryKey: CHAT_MAIN_KEY,
     queryFn: mainConversation,
     staleTime: Number.POSITIVE_INFINITY,
     enabled: sessionReady,
   });
-  const chatHead = useQuery({
-    queryKey: ['chat', 'head', chatMain.data?.id],
-    queryFn: () => fetchTranscript(chatMain.data?.id ?? '', 20),
+  const transcript = useQuery({
+    queryKey: chatTranscriptKey(chatMain.data?.id),
+    queryFn: () => fetchMainTranscript(chatMain.data?.id ?? ''),
     enabled: sessionReady && chatMain.data?.id !== undefined,
   });
-  // dots wait for the store to rehydrate — pre-hydration nulls would flash them
-  const today = localDay();
-  const goalsDot =
-    badgesHydrated &&
-    goalsSeenDate !== today &&
-    (goalsList.data?.goals.some((g) => g.today.outcome !== 'hit' && g.today.outcome !== 'partial') ?? false);
-  const shopDot = badgesHydrated && shopSeenDate !== today; // rotation restocks at local midnight
-  const unread =
-    msgsSeenAt === null
-      ? 0
-      : chatHead.data?.messages.filter((m) => m.role === 'them' && m.createdAt > msgsSeenAt).length ?? 0;
+  // Memoized: these run on every Home re-render otherwise, and the dots wait for
+  // the store to rehydrate — pre-hydration nulls would flash them.
+  const { goalsDot, shopDot, unread } = useMemo(() => {
+    const today = localDay(Date.now());
+    let newMsgs = 0;
+    if (msgsSeenAt !== null) {
+      for (const m of transcript.data?.messages ?? []) {
+        if (m.role === 'them' && m.createdAt > msgsSeenAt) newMsgs++;
+      }
+    }
+    return {
+      goalsDot:
+        badgesHydrated &&
+        goalsSeenDate !== today &&
+        (goalsList.data?.goals.some((g) => !goalDoneToday(g)) ?? false),
+      shopDot: badgesHydrated && shopSeenDate !== today, // restocks at local midnight
+      unread: newMsgs,
+    };
+  }, [badgesHydrated, goalsSeenDate, shopSeenDate, msgsSeenAt, goalsList.data, transcript.data]);
   const nextStarChat = coreNextSession(sessions);
   // guided-session constellation reveal: how many nodes are lit (the night sky
   // draws it as beats complete)
@@ -415,19 +427,17 @@ export default function Home() {
   // (WorldMap/ShopSheet/HomeDock/…) don't re-render when an unrelated surface
   // toggles — a full re-render of those heavy trees on the JS thread was stalling
   // the 3D render loop and stuttering the camera ease.
-  // Stamp "everything currently known is seen" from SERVER timestamps (the head
-  // page + the open transcript cache). Client Date.now() is only the last-ditch
-  // fallback: a device clock ahead of the server would otherwise stamp the
-  // future and swallow real unread arrivals.
+  // Stamp "everything currently known is seen" from SERVER timestamps (the
+  // shared transcript cache). Client Date.now() is only the last-ditch fallback:
+  // a device clock ahead of the server would otherwise stamp the future and
+  // swallow real unread arrivals.
   const stampMsgsSeen = useCallback(() => {
-    const cid = queryClient.getQueryData<{ id: string }>(['chat', 'main'])?.id;
+    const cid = queryClient.getQueryData<{ id: string }>(CHAT_MAIN_KEY)?.id;
+    const msgs = queryClient.getQueryData<{ messages: { createdAt: number }[] }>(
+      chatTranscriptKey(cid),
+    )?.messages;
     let newest = 0;
-    if (cid) {
-      for (const key of [['chat', 'head', cid], ['chat', 'transcript', cid]]) {
-        const msgs = queryClient.getQueryData<{ messages: { createdAt: number }[] }>(key)?.messages;
-        if (msgs) for (const m of msgs) newest = Math.max(newest, m.createdAt);
-      }
-    }
+    if (msgs) for (const m of msgs) newest = Math.max(newest, m.createdAt);
     useDockBadges.getState().markMsgsSeen(newest > 0 ? newest : Date.now());
   }, [queryClient]);
   const openChat = useCallback(() => {
@@ -439,11 +449,10 @@ export default function Home() {
     setChatOpen(false);
     chatProgress.value = withTiming(0, { duration: 340 });
     stampMsgsSeen(); // include everything received while the drawer was up
-    void queryClient.invalidateQueries({ queryKey: ['chat', 'head'] });
     // As the user walks back to the 3D sidekick, have it get the last word: a
     // snarky one-liner capping off the conversation, over its head. The 500ms
     // beat lets the drawer clear and the camera ease back to HERO first.
-    const conversationId = queryClient.getQueryData<{ id: string }>(['chat', 'main'])?.id;
+    const conversationId = queryClient.getQueryData<{ id: string }>(CHAT_MAIN_KEY)?.id;
     if (conversationId) {
       fetchCapoff(conversationId)
         .then(({ quip, expression }) => {
@@ -538,7 +547,7 @@ export default function Home() {
     const cid = habitConvId;
     habitProgress.value = withTiming(0, { duration: 340 });
     setTimeout(() => setHabitConvId(null), 340);
-    void queryClient.invalidateQueries({ queryKey: ['goals', 'list'] });
+    void queryClient.invalidateQueries({ queryKey: GOALS_QUERY_KEY });
     if (cid) {
       fetchHabitAck(cid)
         .then(({ line, expression }) => {
@@ -606,10 +615,11 @@ export default function Home() {
     [skyMode, cosmosPanned, mapOpen, shopOpen, appearanceOpen, chatOpen, habitOpen, hero],
   );
 
-  // Anything covered by a full surface: the top-right map pin and the floating
-  // closet avatar share this. Both stay MOUNTED and hide via opacity — the
-  // closet button owns a GL context (see ClosetButton for the teardown caveat).
-  const clusterHidden = mapShown || shopOpen || chatOpen || skyMode || habitOpen;
+  // Anything covered by a full surface — ONE predicate for every head-tracked /
+  // corner overlay (map pin, closet avatar, speech bubble, star pill, daily box,
+  // the renderer's overhead projection). The pin + closet stay MOUNTED and hide
+  // via opacity — the closet button owns a GL context (see ClosetButton).
+  const covered = mapShown || shopOpen || chatOpen || skyMode || habitOpen;
 
   // DEV: mark when a map open/close toggle actually commits, so the telemetry can
   // measure React commit latency (map:close:call → this) against the frame stalls.
@@ -677,7 +687,7 @@ export default function Home() {
           onController={setController}
           onFrameStats={SHOW_FPS ? emitFps : undefined}
           overhead={overhead}
-          overheadActive={!(mapShown || shopOpen || chatOpen || skyMode || habitOpen)}
+          overheadActive={!covered}
           ground={ground}
           dailyBox={boxStage === 'ground' || boxStage === 'rewards' ? (snapshot?.dailyBox.tier ?? null) : null}
         />
@@ -686,7 +696,7 @@ export default function Home() {
       {/* what the sidekick is saying, over its head (hidden while a full
           surface covers the scene). The bond score lives on the star now. */}
       {settings ? (
-        <OverheadSpeech overhead={overhead} hidden={mapShown || shopOpen || chatOpen || skyMode || habitOpen}>
+        <OverheadSpeech overhead={overhead} hidden={covered}>
           <SpeechBubble />
         </OverheadSpeech>
       ) : null}
@@ -697,7 +707,7 @@ export default function Home() {
       {settings && snapshot && nextStarChat ? (
         <StarChatButton
           overhead={overhead}
-          hidden={mapShown || shopOpen || chatOpen || skyMode || habitOpen}
+          hidden={covered}
           onPress={() => setStarChatOpen(true)}
           darkBg={darkBackdrop}
         />
@@ -710,8 +720,8 @@ export default function Home() {
           the Closet itself is open. */}
       <ClosetButton
         overhead={overhead}
-        hidden={clusterHidden}
-        paused={appearanceOpen || clusterHidden}
+        hidden={covered}
+        paused={appearanceOpen || covered}
         onPress={openAppearance}
       />
 
@@ -723,9 +733,9 @@ export default function Home() {
           top: insets.top + 8,
           right: 16,
           zIndex: 25,
-          opacity: clusterHidden ? 0 : 1,
+          opacity: covered ? 0 : 1,
         }}
-        pointerEvents={clusterHidden ? 'none' : 'box-none'}
+        pointerEvents={covered ? 'none' : 'box-none'}
       >
         {/* Frosted glass — no `overflow:'hidden'` (it kills the glass effect); the
             round shape comes from borderRadius, which Glass clips natively. The
@@ -745,12 +755,7 @@ export default function Home() {
           </Pressable>
         </Glass>
         {/* a new island is open and hasn't been looked at yet */}
-        {unseenIsland ? (
-          <View
-            pointerEvents="none"
-            style={{ position: 'absolute', top: -2, right: -2, width: 15, height: 15, borderRadius: 8, backgroundColor: '#FF3B30', borderWidth: 2, borderColor: 'rgba(255,255,255,0.9)' }}
-          />
-        ) : null}
+        {unseenIsland ? <NewsDot style={{ top: -2, right: -2 }} /> : null}
       </View>
 
       {/* iOS-style home dock — the sheets slide up OVER it; only the
@@ -828,7 +833,7 @@ export default function Home() {
 
 
       {/* Daily-box flow (home only): streak splash → ground chest → rewards */}
-      {settings && !mapShown && !shopOpen && !chatOpen && !skyMode && !habitOpen ? (
+      {settings && !covered ? (
         <>
           {boxStage === 'streak' ? (
             <StreakSplash streak={streakCount} onDone={() => setBoxStage('ground')} />

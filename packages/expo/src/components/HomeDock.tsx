@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import { Glass } from '~/imessage/components/Glass';
+import { NewsDot } from './NewsDot';
 
 // iOS-home-screen-style dock — port of sidekick/src/components/home-dock.tsx.
 // Frosted glass panel with four squircle app tiles (Messages / Shop / Goals /
@@ -113,7 +114,7 @@ function HomeDockImpl({ hidden, unread = 0, shopDot, goalsDot, onMessages, onSho
               />
             </Svg>
           </AppTile>
-          {shopDot ? <View style={styles.dot} pointerEvents="none" /> : null}
+          {shopDot ? <NewsDot style={styles.dotAnchor} /> : null}
         </View>
 
         {/* Goals — bullseye target on a blue gradient; dot = a goal still open today */}
@@ -125,7 +126,7 @@ function HomeDockImpl({ hidden, unread = 0, shopDot, goalsDot, onMessages, onSho
               <Circle cx="12" cy="12" r="1.6" fill="#fff" />
             </Svg>
           </AppTile>
-          {goalsDot ? <View style={styles.dot} pointerEvents="none" /> : null}
+          {goalsDot ? <NewsDot style={styles.dotAnchor} /> : null}
         </View>
 
         {/* Profile — person on the astral purple gradient (name, card, settings) */}
@@ -181,16 +182,6 @@ const styles = StyleSheet.create({
   },
   badgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
   // same anchor as `badge`, but wordless — there's no count to show, just news
-  dot: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    width: 15,
-    height: 15,
-    borderRadius: 8,
-    backgroundColor: '#FF3B30',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.9)',
-  },
+  dotAnchor: { top: -4, right: -4 },
   center: { alignItems: 'center', justifyContent: 'center' },
 });

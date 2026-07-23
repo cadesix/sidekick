@@ -12,9 +12,12 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { useOverheadDrift } from './useOverheadDrift';
+
 import { BOND_MIN } from '@sidekick/core';
 
 import { Glass, glassTint } from '~/imessage/components/Glass';
+import { FONT_BOLD } from '../lib/tokens';
 import { Pressable } from './Pressable';
 import { useSnapshot } from '../lib/state';
 import type { OverheadTarget } from './SidekickCanvas';
@@ -76,24 +79,16 @@ export function StarChatButton({
   // tick two worklets a frame into an invisible view — during the session, on
   // top of the sky's own 550-star draw.
   const t = useSharedValue(0);
-  const drift = useSharedValue(0);
+  const drift = useOverheadDrift(hidden, FLOAT_MS);
   useEffect(() => {
     if (hidden) {
       cancelAnimation(t);
-      cancelAnimation(drift);
       return;
     }
-    // restart from 0: cancelAnimation freezes mid-ramp, and withRepeat would
-    // loop that midpoint→1 forever — reintroducing the drift wrap snap
     t.value = 0;
-    drift.value = 0;
     t.value = withRepeat(withTiming(1, { duration: 2600, easing: Easing.inOut(Easing.quad) }), -1, true);
-    drift.value = withRepeat(withTiming(1, { duration: FLOAT_MS, easing: Easing.linear }), -1, false);
-    return () => {
-      cancelAnimation(t);
-      cancelAnimation(drift);
-    };
-  }, [hidden, t, drift]);
+    return () => cancelAnimation(t);
+  }, [hidden, t]);
 
   // the score still pops when it goes up — the one bit of the old bond badge
   // worth keeping now the bar is gone
@@ -115,9 +110,8 @@ export function StarChatButton({
 
   const boxStyle = useAnimatedStyle(() => {
     const p = drift.value * TAU;
-    // 1 : 2 with a phase offset — a lazy figure-eight. Integer rates so the
-    // withRepeat wrap is seamless (sin(k·2π + φ) = sin(φ)); the old 0.63 rate
-    // snapped ~10px every cycle when the ramp wrapped.
+    // 1 : 2 with a phase offset — a lazy figure-eight (integer rates: see
+    // useOverheadDrift for why the wrap stays seamless)
     const fx = Math.sin(p) * FLOAT_X;
     const fy = Math.sin(p * 2 + 1.1) * FLOAT_Y;
     return {
@@ -234,7 +228,7 @@ const styles = StyleSheet.create({
   // dark ink over light glass; flips to white when the glass goes dark.
   // Brand font — iOS won't faux-bold Diatype, so the Bold family carries weight.
   label: {
-    fontFamily: 'Diatype-Rounded-Bold',
+    fontFamily: FONT_BOLD,
     fontSize: 15,
     color: '#1a1a1a',
   },

@@ -1136,21 +1136,14 @@ export function makeMeadowBackdrop(
   const TARGET = 190;
   let placed = 0;
   for (let i = 0; placed < TARGET && i < TARGET * 4; i++) {
-    // ~3/4 of blades gather in tufts, the rest scatter loose between them
+    // ~3/4 of blades gather in tufts, the rest scatter loose across the cap —
+    // one polar sample; only the disc (centre + radius) differs
     const tuft = rand(i * 2.9 + 1) < 0.75 && tufts.length ? tufts[Math.floor(rand(i * 7.7 + 4) * tufts.length)] : null;
-    let dx: number;
-    let dz: number;
-    if (tuft) {
-      const cr = tuft.r * Math.sqrt(rand(i * 2.1));
-      const ca = rand(i * 1.3) * Math.PI * 2;
-      dx = tuft.x + Math.cos(ca) * cr;
-      dz = tuft.z + Math.sin(ca) * cr;
-    } else {
-      const a = rand(i * 1.3) * Math.PI * 2;
-      const dh = Math.sqrt(rand(i * 2.1)) * p.radius * 0.9;
-      dx = Math.cos(a) * dh;
-      dz = Math.sin(a) * dh;
-    }
+    const disc = tuft ?? { x: 0, z: 0, r: p.radius * 0.9 };
+    const cr = disc.r * Math.sqrt(rand(i * 2.1));
+    const ca = rand(i * 1.3) * Math.PI * 2;
+    const dx = disc.x + Math.cos(ca) * cr;
+    const dz = disc.z + Math.sin(ca) * cr;
     const dh = Math.hypot(dx, dz);
     const y = capY(dh);
     if (y < 0.03) continue; // only where the cap clears the ground

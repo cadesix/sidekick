@@ -1,17 +1,11 @@
-import { useEffect } from 'react';
+import { memo } from 'react';
 import { StyleSheet } from 'react-native';
-import Animated, {
-  Easing,
-  cancelAnimation,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
 import { Pressable } from './Pressable';
 import { SidekickAvatar } from './SidekickAvatar';
 import type { OverheadTarget } from './SidekickCanvas';
+import { useOverheadDrift } from './useOverheadDrift';
 
 // The closet/inventory entry: the live head avatar floating beside the
 // sidekick's head (the star pill hangs above-left; this balances it on the
@@ -32,14 +26,14 @@ const OFFSET_Y = -64;
 
 // same wander recipe as the star, different period/phases so they don't move in
 // lockstep (that would read as one rigid plate). Rates are INTEGER multiples of
-// the repeating 0→1 ramp — sin(k·2π + φ) = sin(φ) — so the withRepeat wrap is
-// seamless instead of a visible snap every cycle.
+// the ramp so the repeat wrap is seamless (see useOverheadDrift).
 const FLOAT_X = 6;
 const FLOAT_Y = 9;
 const FLOAT_MS = 13000;
 const TAU = Math.PI * 2;
 
-export function ClosetButton({
+export const ClosetButton = memo(ClosetButtonImpl);
+function ClosetButtonImpl({
   overhead,
   hidden,
   paused,
@@ -51,18 +45,7 @@ export function ClosetButton({
   paused?: boolean;
   onPress: () => void;
 }) {
-  const drift = useSharedValue(0);
-  useEffect(() => {
-    if (hidden) {
-      cancelAnimation(drift);
-      return;
-    }
-    // restart from 0: cancelAnimation freezes mid-ramp, and withRepeat would
-    // loop that midpoint→1 forever — reintroducing the wrap snap
-    drift.value = 0;
-    drift.value = withRepeat(withTiming(1, { duration: FLOAT_MS, easing: Easing.linear }), -1, false);
-    return () => cancelAnimation(drift);
-  }, [hidden, drift]);
+  const drift = useOverheadDrift(hidden, FLOAT_MS);
 
   const boxStyle = useAnimatedStyle(() => {
     const p = drift.value * TAU;

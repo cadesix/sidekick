@@ -2,6 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
+import { STAR_FACE_BAKED } from '../three/star-face';
+
 // TEMPORARY look-dev knobs for the night sky's star constellation.
 //
 // Not shipped: SessionChat renders these as sliders in place of the chat when
@@ -33,20 +35,7 @@ export type StarFaceConfig = {
 };
 
 // the values currently baked into three/star-face.ts — sliders start here
-export const STAR_FACE_DEFAULTS: StarFaceConfig = {
-  lineAlpha: 0.276,
-  dustWeight: 0.33,
-  starSize: 1.106,
-  shineSpeed: 1.634,
-  shineDepth: 0.544,
-  size: 15.01,
-  height: 28.93,
-  depth: -29,
-  pitch: Math.atan2(7.4, 15),
-  pulseAmt: 0.042,
-  pulseDepth: 1.906,
-  pulseHz: 0.087,
-};
+export const STAR_FACE_DEFAULTS: StarFaceConfig = { ...STAR_FACE_BAKED };
 
 const KEYS = Object.keys(STAR_FACE_DEFAULTS) as (keyof StarFaceConfig)[];
 

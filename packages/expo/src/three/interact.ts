@@ -269,14 +269,14 @@ export function createInteraction(opts: {
     const annoyed = pokeCount >= 3;
     const big = pokeCount >= 5;
 
-    let expr: string | null;
+    // face: delight for a poke, annoyed once he's being jabbed at
+    const expr = annoyed ? 'annoyed' : 'excited';
     if (big) {
       // boiling over: the renderer plays the jump (hands thrown up) off the
       // `big` flag; here just the sharp head-shake — arm kicks would fight the
       // jump's own arms-overhead envelope. Counter resets so the escalation
       // starts from playful again.
       headShake.trigger(0.5, 5.5, now);
-      expr = 'annoyed';
       pokeCount = 0;
     } else if (annoyed) {
       // irritated recoil wherever he's poked: a sharp head-shake, a lean back,
@@ -286,25 +286,20 @@ export function createInteraction(opts: {
       squash.kick(0.7);
       arm.L.swing.kick(-3);
       arm.R.swing.kick(3);
-      expr = 'annoyed';
     } else if (part === 'body') {
       // ticklish: a squish plus a quick squirming twist
       squash.kick(1.1);
       bodyWiggle.trigger(0.16, 3.5, now);
-      expr = 'excited';
     } else if (part === 'head') {
       headPitch.kick(-2.2); // startled head-bob…
       tiltX.kick(0.18); // …plus a tiny recoil back
       squash.kick(0.5);
-      expr = 'excited';
     } else if (part === 'handL') {
       arm.L.swing.kick(5);
       squash.kick(0.4); // little hop
-      expr = 'excited';
     } else {
       arm.R.swing.kick(-5);
       squash.kick(0.4);
-      expr = 'excited';
     }
     opts.onPoke?.(part, lookPoint, expr, big);
   };

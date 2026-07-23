@@ -41,6 +41,24 @@ const STAR_DUST_WEIGHT = 0.33;
 // point-size multiplier for every star in the cloud
 const STAR_SIZE = 1.106;
 
+// The baked tune as one object, keyed like StarFaceConfig — the tuner's slider
+// defaults derive from THIS (store/starFaceConfig.ts), so a new bake is a
+// one-file paste instead of mirroring twelve numbers by hand.
+export const STAR_FACE_BAKED = {
+  lineAlpha: STAR_LINE_ALPHA,
+  dustWeight: STAR_DUST_WEIGHT,
+  starSize: STAR_SIZE,
+  shineSpeed: STAR_SHINE_SPEED,
+  shineDepth: STAR_SHINE_DEPTH,
+  size: STAR_HEAD_SIZE,
+  height: STAR_HEAD_AT.y,
+  depth: STAR_HEAD_AT.z,
+  pitch: STAR_HEAD_PITCH,
+  pulseAmt: STAR_PULSE_AMT,
+  pulseDepth: STAR_PULSE_DEPTH,
+  pulseHz: STAR_PULSE_HZ,
+} as const;
+
 function toStarPositions(list: number[][]): Float32Array {
   const out = new Float32Array(list.length * 3);
   list.forEach((p, i) => {

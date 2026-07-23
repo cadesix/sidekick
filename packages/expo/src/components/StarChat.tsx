@@ -21,7 +21,7 @@ import {
 } from '@sidekick/core';
 
 import { MSG_SHADOW, STREAM_GAP_MS, StreamedText, TypingDots, streamDurationMs } from './chat-stream';
-import { STAR_FACE_TUNING, StarFaceTuner } from './SessionChat';
+import { STAR_FACE_TUNING, StarFaceTuner } from './StarFaceTuner';
 import { completeSession, starChatArtifact, starChatCard, starChatController } from '../lib/api';
 import { patchSessionComplete, snapshotSessions, SNAPSHOT_QUERY_KEY, type Snapshot } from '../lib/state';
 import { useSidekickContext } from '../store/context';

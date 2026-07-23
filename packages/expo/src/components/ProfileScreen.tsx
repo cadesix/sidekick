@@ -16,11 +16,11 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BOND_MIN } from "@sidekick/core";
-import { StreakModal } from "~/components/StreakModal";
+import { StreakModal } from "./StreakModal";
 import { locationStatus, trpc } from "~/lib/api";
 import { useSignOut } from "~/lib/auth";
 import { useSnapshot } from "~/lib/state";
-import { INK } from "~/lib/tokens";
+import { FONT, FONT_BOLD, FONT_MEDIUM, INK } from "~/lib/tokens";
 import { getLocalFocusSettings } from "~/lib/focus";
 import { HEALTH_CONNECTION_QUERY_KEY, loadHealthConnection } from "~/lib/health-connection";
 import { sidekickDisplayName } from "~/lib/sidekick-name";
@@ -29,16 +29,11 @@ import {
 	enableLocationAccess,
 	locationAccess,
 } from "~/lib/location";
-import { colors } from "../theme";
-import { Glass } from "../components/Glass";
-import { Icon, type IconName } from "../components/Icon";
-const STREAK_ICON = require("../../../assets/icons/streak.png");
+import { colors } from "~/imessage/theme";
+import { Glass } from "~/imessage/components/Glass";
+import { Icon, type IconName } from "~/imessage/components/Icon";
+const STREAK_ICON = require("../../assets/icons/streak.png");
 
-// design-system type (06 §1.2): one family, ABC Diatype Rounded — iOS won't
-// faux-bold it, so weights are separate families
-const FONT = "Diatype-Rounded";
-const FONT_MEDIUM = "Diatype-Rounded-Medium";
-const FONT_BOLD = "Diatype-Rounded-Bold";
 const INK_55 = "rgba(17,17,17,0.55)";
 const INK_45 = "rgba(17,17,17,0.45)";
 const INK_12 = "rgba(17,17,17,0.12)";

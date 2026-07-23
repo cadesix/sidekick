@@ -32,12 +32,11 @@ export function NotificationObserver(): null {
       if (!payload) {
         return;
       }
+      // one key serves both the chat AND the home dock's unread badge (the
+      // badge derives from this same transcript cache)
       void queryClient.invalidateQueries({
         queryKey: ["chat", "transcript", payload.conversationId],
       });
-      // the home dock's unread badge reads a head-of-transcript page — refresh
-      // it so a proactive message badges while the user sits on home
-      void queryClient.invalidateQueries({ queryKey: ["chat", "head"] });
     }
 
     async function responded(response: Notifications.NotificationResponse): Promise<void> {

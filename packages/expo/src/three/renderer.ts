@@ -629,9 +629,16 @@ export function createSidekickRenderer(
   // build-up + touchdown. Ported from the web sidekick-canvas.
   const HIDDEN_Y = -3;
   let entranceY = opts.entrance ? HIDDEN_Y : 0;
-  // hop: an in-scene jump from the ground (poke boil-over) — same arms-up/tuck
-  // envelopes as the entrance, but the arc starts at 0 instead of HIDDEN_Y
+  // hop: an in-scene jump from the ground (poke boil-over, chest pop) — same
+  // arms-up/tuck envelopes as the entrance, but the arc starts at 0 instead of
+  // HIDDEN_Y. startHop owns the one guard rule: never clobber a mid-flight
+  // ENTRANCE; retriggering an in-flight hop is the caller's choice.
   let jump: { start: number; dur: number; hop?: boolean } | null = null;
+  const startHop = (dur: number, retrigger: boolean): boolean => {
+    if (jump !== null && !(retrigger && jump.hop)) return false;
+    jump = { start: clock.getElapsedTime(), dur, hop: true };
+    return true;
+  };
   let landed = false;
   let shake: { start: number; dur: number; amp: number; mode: 'impact' | 'build' } | null = null;
   let cos: CosmeticsHandle | null = null;
@@ -839,12 +846,9 @@ export function createSidekickRenderer(
       if (expr) faceCtl?.pulse(expr as FaceExpression, 1.6);
       if (big) {
         // boil-over: jump off the ground, hands thrown up (the jump envelopes
-        // raise the arms); the host layer layers haptics + the "hey!" bubble.
-        // Guarded like popDailyBox so it can't clobber a mid-flight entrance —
-        // but a hop CAN retrigger a hop (keep-mashing = he keeps re-jumping).
-        if (jump === null || jump.hop) {
-          jump = { start: clock.getElapsedTime(), dur: 0.7, hop: true };
-        }
+        // raise the arms); the host layer layers haptics + the "hey!!" bubble.
+        // retrigger: keep-mashing = he keeps re-jumping.
+        startHop(0.7, true);
         opts.onAngryPoke?.();
       }
     },
@@ -1405,11 +1409,8 @@ export function createSidekickRenderer(
       if (boxPop < 0) {
         boxPop = clock.getElapsedTime();
         // celebrate with the chest: the same hands-up hop as the poke
-        // boil-over, but delighted (guarded so it can't clobber an entrance)
-        if (jump === null) {
-          jump = { start: boxPop, dur: 0.75, hop: true };
-          faceCtl?.pulse('excited', 2);
-        }
+        // boil-over, but delighted
+        if (startHop(0.75, false)) faceCtl?.pulse('excited', 2);
       }
     },
     jumpIn: (o) => {

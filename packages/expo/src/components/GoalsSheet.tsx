@@ -9,7 +9,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { fetchGoals, type GoalsList } from '../lib/api';
+import { fetchGoals, goalDoneToday, type GoalsList } from '../lib/api';
 
 // Bottom-sheet "Goals": the user's adopted goals (goals.list), each simply done
 // or not done today. Tapping a card opens the main chat, where the sidekick asks
@@ -21,7 +21,7 @@ import { fetchGoals, type GoalsList } from '../lib/api';
 // from web aren't bundled into the Expo app. So instead of an <Image>, we
 // render an Ionicon placeholder (mapped per slug) inside a per-goal colored dot.
 
-const GOALS_QUERY_KEY = ['goals', 'list'] as const;
+export const GOALS_QUERY_KEY = ['goals', 'list'] as const;
 
 const SHEET_H = Math.round(Dimensions.get('window').height * 0.55);
 
@@ -162,7 +162,7 @@ function GoalCard({
   goal: GoalsList['goals'][number];
   onTap: (goalId: string) => void;
 }) {
-  const done = goal.today.outcome === 'hit' || goal.today.outcome === 'partial';
+  const done = goalDoneToday(goal);
   const ico = ICONS[goal.slug] ?? FALLBACK;
   const streak = goal.streak ?? 0;
 

@@ -16,6 +16,15 @@ import { useGameReveal } from "~/store/game-reveal";
 
 const PAGE_LIMIT = 100;
 
+// Query-key vocabulary for the main chat, shared with surfaces outside the chat
+// (Home's unread badge, the push observer, foreground sync) so nobody re-types
+// a literal and silently splits the cache.
+export const CHAT_MAIN_KEY = ["chat", "main"] as const;
+export const chatTranscriptKey = (conversationId: string | undefined) =>
+  ["chat", "transcript", conversationId] as const;
+export const fetchMainTranscript = (conversationId: string) =>
+  fetchTranscript(conversationId, PAGE_LIMIT);
+
 let localId = 0;
 function nextLocalId(): string {
   localId += 1;
@@ -138,16 +147,16 @@ export function useSidekickChat(): SidekickChat {
   useEffect(() => clearTimers, []);
 
   const conversation = useQuery({
-    queryKey: ["chat", "main"],
+    queryKey: CHAT_MAIN_KEY,
     queryFn: mainConversation,
     staleTime: Number.POSITIVE_INFINITY,
   });
   const conversationId = conversation.data?.id;
-  const transcriptKey = ["chat", "transcript", conversationId];
+  const transcriptKey = chatTranscriptKey(conversationId);
 
   const transcript = useQuery({
     queryKey: transcriptKey,
-    queryFn: () => fetchTranscript(conversationId ?? "", PAGE_LIMIT),
+    queryFn: () => fetchMainTranscript(conversationId ?? ""),
     enabled: conversationId !== undefined,
   });
 
