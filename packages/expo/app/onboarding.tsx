@@ -83,7 +83,7 @@ const HERO_FRAMING: Framing = { pos: [0, 0.66, 4.2], target: [0, 0.56, 0], fov: 
 // Naming the sidekick: the keyboard rises and the input sits low, so pull the
 // camera back and aim down — the mascot shrinks into the upper band and stays
 // visible above the input while typing. Tune-by-eye.
-const NAMESIDEKICK_FRAMING: Framing = { pos: [0, 1.0, 7.5], target: [0, -0.9, 0], fov: 42 };
+const NAMESIDEKICK_FRAMING: Framing = { pos: [0, 1.15, 7.5], target: [0, -0.2, 0], fov: 42 };
 // Notif beat: the phone pose yaws his body (part of the authored hold armature
 // — see renderer's PHONE_POSE). Rather than un-yaw HIM (which wrecks the
 // hands), the camera orbits onto his facing, so he reads dead-straight at the
@@ -647,8 +647,8 @@ export default function Onboarding() {
       {phase === 'nameSidekick' && !animating ? (
         <NameEntry
           key="nameSidekick"
-          title="what should you call me?"
-          header={<Text style={styles.h1small}>what should you call me?</Text>}
+          title="what's my name?"
+          header={<Text style={styles.h1small}>what's my name?</Text>}
           placeholder="Name your sidekick"
           cta="continue"
           onSubmit={submitSidekickName}
@@ -943,7 +943,7 @@ function NameEntry({
         style={StyleSheet.absoluteFill}
         pointerEvents="box-none"
       >
-        <View style={[styles.topCopy, { top: insets.top + 96 }]}>
+        <View style={[styles.topCopy, { top: insets.top + 56 }]}>
           {header ?? <Text style={styles.h1small}>{title}</Text>}
         </View>
         <KeyboardAvoidingView
@@ -1331,7 +1331,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     flexGrow: 0,
     marginHorizontal: -32,
-    marginBottom: 14,
+    marginBottom: 2,
     overflow: 'visible',
   },
   chipRailContent: {
