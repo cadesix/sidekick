@@ -597,9 +597,7 @@ export default function Onboarding() {
       {/* 4. lookDown — still in the sky */}
       {phase === 'lookDown' && !animating ? (
         <>
-          <View style={styles.centerCopy} pointerEvents="none">
-            <LookDownCopy />
-          </View>
+          <LookDownCopy topInset={insets.top} />
           <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
             <PrimaryButton label="look down" onPress={lookDown} />
           </View>
@@ -700,7 +698,7 @@ export default function Onboarding() {
       {/* 6. Notification banner (drops down from the top) */}
       {phase === 'notif' ? (
         <>
-          <NotificationBanner show={notifIn} sender={sender} topInset={insets.top} onTap={openChat} />
+          <NotificationBanner show={notifIn} sender={sender} message={`hey ${userName || 'there'}, check your msgs so we can text!`} topInset={insets.top} onTap={openChat} />
           {/* after the notice drops, a big "open chat" CTA rises from the bottom
               and gently shakes to invite the tap (the Messages icon now lives in
               the notice itself). */}
@@ -815,25 +813,31 @@ function HeyTitle() {
 // Screen 3's stacked copy: the clouds line HUGE and slightly tilted, riding
 // high; "look down here!" smaller, a beat later, a bit lower. Both carry a
 // hard (zero-blur) drop shadow nudged down the y-axis.
-function LookDownCopy() {
+function LookDownCopy({ topInset }: { topInset: number }) {
   const [second, setSecond] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setSecond(true), streamDurationMs('your head is in the clouds…', 20) + 900);
     return () => clearTimeout(t);
   }, []);
+  // Both lines are TOP-anchored at fixed positions — nothing vertically
+  // centers, so the clouds line stays put as it streams (a centered group
+  // would drift when the second line mounts) and "look down here!" sits lower.
   return (
-    <View style={{ alignItems: 'center' }}>
-      <View style={{ marginTop: -70, transform: [{ rotate: '-2.5deg' }] }}>
+    <>
+      <View
+        style={{ position: 'absolute', top: topInset + 130, left: 0, right: 0, alignItems: 'center', paddingHorizontal: 24, transform: [{ rotate: '-2.5deg' }] }}
+        pointerEvents="none"
+      >
         <StreamedText text="your head is in the clouds…" style={styles.cloudsBig} cps={20} reserve />
       </View>
       {second ? (
-        <View style={{ marginTop: 34 }}>
+        <View style={{ position: 'absolute', top: topInset + 360, left: 0, right: 0, alignItems: 'center' }} pointerEvents="none">
           <SubtleShake intensity={1.8} speed={1.4}>
             <StreamedText text="look down here!" style={styles.lookDownLine} cps={20} reserve />
           </SubtleShake>
         </View>
       ) : null}
-    </View>
+    </>
   );
 }
 
@@ -1089,11 +1093,13 @@ function BirthdayStep({ title, onSubmit }: { title?: string; onSubmit: (birthday
 function NotificationBanner({
   show,
   sender,
+  message,
   topInset,
   onTap,
 }: {
   show: boolean;
   sender: string;
+  message: string;
   topInset: number;
   onTap: () => void;
 }) {
@@ -1124,7 +1130,7 @@ function NotificationBanner({
               <Text style={styles.bannerNow}>now</Text>
             </View>
             <Text style={styles.bannerText} numberOfLines={1}>
-              hey, open your messages so we can text!
+              {message}
             </Text>
           </View>
         </Pressable>

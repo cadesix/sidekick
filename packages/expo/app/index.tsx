@@ -381,6 +381,7 @@ export default function Home() {
   const wasPending = useRef(false);
   const [armed, setArmed] = useState(false);
   useEffect(() => {
+    if (__DEV__) console.log('[home-intro] introPending=', introPending, 'settings=', !!settings, 'controller=', !!controller);
     if (introPending && !wasPending.current) {
       setIntroStep(null);
       setIntroBond(0);
@@ -391,8 +392,11 @@ export default function Home() {
   }, [introPending]);
   useEffect(() => {
     // wait for the scene controller too, so the look-up gesture actually fires
-    // (the timers below capture it) rather than no-opping on a null ref
-    if (!armed || !settings || !snapshot || !controller || introStep !== null) return;
+    // (the timers below capture it) rather than no-opping on a null ref. NOTE:
+    // we do NOT gate on `snapshot` — a fresh account's snapshot can lag, and
+    // the line/look-up don't need it (the count-up defaults the target to 10).
+    if (!armed || !settings || !controller || introStep !== null) return;
+    if (__DEV__) console.log('[home-intro] driver firing');
     setIntroStep('line');
     const timers = [
       setTimeout(() => {
@@ -409,11 +413,11 @@ export default function Home() {
       }, 11200),
     ];
     return () => timers.forEach(clearTimeout);
-  }, [armed, settings, snapshot, controller, introStep]);
+  }, [armed, settings, controller, introStep]);
   // the 0→N count-up (screen 17); each tick re-fires the pill's pop
   useEffect(() => {
     if (introStep !== 'bond' && introStep !== 'star') return;
-    const target = Math.max(snapshot?.bond ?? 0, 10);
+    const target = Math.max(snapshot?.bond ?? 10, 10);
     if (introBond >= target) return;
     const t = setTimeout(() => setIntroBond((b) => Math.min(target, b + 1)), 90);
     return () => clearTimeout(t);
