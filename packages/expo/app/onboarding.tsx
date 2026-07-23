@@ -41,7 +41,7 @@ import { FAUX_KB_HEIGHT, FAUX_KB_VISIBLE, FauxKeyboard } from '../src/components
 
 // bottom inset for a keyboard-input step: real keyboards are handled by
 // KeyboardAvoidingView; the dev-web faux deck needs its space reserved manually
-const kbBottomInset = (insetBottom: number) => (FAUX_KB_VISIBLE ? FAUX_KB_HEIGHT : insetBottom) + 20;
+const kbBottomInset = (insetBottom: number) => (FAUX_KB_VISIBLE ? FAUX_KB_HEIGHT : insetBottom) + 6;
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { useAuthStore } from '../src/lib/auth-store';
 import { useDevLogin } from '../src/lib/auth-providers';
@@ -604,7 +604,7 @@ export default function Onboarding() {
         <NameEntry
           key="askName"
           title="now what's YOUR name?"
-          header={<Text style={styles.h1small}>now what's <Text style={styles.emph}>YOUR</Text> name?</Text>}
+          header={<Text style={styles.nameTitle}>now what's <Text style={styles.emph}>YOUR</Text> name?</Text>}
           placeholder="Your name"
           cta="continue"
           onSubmit={submitUserName}
@@ -676,7 +676,7 @@ export default function Onboarding() {
         <NameEntry
           key="nameSidekick"
           title="what's my name?"
-          header={<Text style={styles.h1small}>what's my name?</Text>}
+          header={<Text style={styles.nameTitle}>what's my name?</Text>}
           placeholder="Name your sidekick"
           cta="continue"
           onSubmit={submitSidekickName}
@@ -980,8 +980,8 @@ function NameEntry({
         style={StyleSheet.absoluteFill}
         pointerEvents="box-none"
       >
-        <View style={[styles.topCopy, { top: insets.top + 56 }]}>
-          {header ?? <Text style={styles.h1small}>{title}</Text>}
+        <View style={[styles.topCopy, { top: insets.top + 118 }]}>
+          {header ?? <Text style={styles.nameTitle}>{title}</Text>}
         </View>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -990,7 +990,7 @@ function NameEntry({
           <View style={[styles.nameCol, { paddingBottom: kbBottomInset(insets.bottom) }]}>
             {chipRow}
             {field}
-            <View style={{ height: 12 }} />
+            <View style={{ height: 8 }} />
             <PrimaryButton label={cta} onPress={submit} disabled={!can} />
           </View>
         </KeyboardAvoidingView>
@@ -1342,6 +1342,14 @@ const styles = StyleSheet.create({
   },
   emph: { color: '#F2C94C' },
   overHere: { fontFamily: FONT_BOLD, fontSize: 30, letterSpacing: -0.6, color: '#fff' },
+  nameTitle: {
+    fontFamily: FONT_BOLD,
+    fontSize: 40,
+    letterSpacing: -1.3,
+    lineHeight: 44,
+    textAlign: 'center',
+    color: '#fff',
+  },
   h1small: {
     fontFamily: FONT_BOLD,
     fontSize: 34,
@@ -1372,7 +1380,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     flexGrow: 0,
     marginHorizontal: -32,
-    marginBottom: -6,
+    marginBottom: 8, // = the field→Continue gap below
     overflow: 'visible',
   },
   chipRailContent: {
