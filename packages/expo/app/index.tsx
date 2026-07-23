@@ -883,8 +883,13 @@ export default function Home() {
 
       {/* the way into a star chat: a star beside the sidekick's head. Hidden
           once every session is done — nothing left to open — and until the
-          snapshot lands (we don't know the ladder's position before then). */}
-      {settings && snapshot && nextStarChat ? (
+          snapshot lands (we don't know the ladder's position before then).
+          EXCEPTION: during the guided intro the pill drives itself off
+          `introBond` (the 0→N count-up), NOT the snapshot — so it must render
+          even before server data arrives, else the intro has no star to show
+          and, since tapping it is the only way to consume the intro, it'd be
+          stuck forever on a device whose API is slow/unreachable. */}
+      {(introPending ? !!settings : settings && snapshot && nextStarChat) ? (
         <StarChatButton
           overhead={overhead}
           hidden={covered || (introPending && introStep !== 'bond' && introStep !== 'star')}
