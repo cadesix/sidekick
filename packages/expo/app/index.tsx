@@ -337,6 +337,16 @@ export default function Home() {
       .then(() => hydrateSkinFromMirror())
       .then(() => setSettings(loadSettings()));
   }, []);
+  // Profile's astral CTA can't render the star chat (it lives over the 3D
+  // scene) — it raises this flag and dismisses; we consume it once the scene
+  // is ready and open the chat.
+  const starChatRequested = useStarChat((s) => s.openRequested);
+  useEffect(() => {
+    if (starChatRequested && settings) {
+      useStarChat.getState().clearOpenRequest();
+      setStarChatOpen(true);
+    }
+  }, [starChatRequested, settings]);
   // The scene time-of-day tracks the real clock. hydrate sets it at launch; this
   // catches a session left open across a boundary (dusk → night) when the app
   // comes back to the foreground, and re-applies the matching preset live.
