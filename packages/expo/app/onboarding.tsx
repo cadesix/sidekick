@@ -19,7 +19,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { commitOnboardingResult, setSkinColor } from '../src/lib/api';
-import { hapticNotif, hapticTap, playBuildToBoom } from '../src/lib/haptics';
+import { hapticButton, hapticNotif, hapticTap, playBuildToBoom } from '../src/lib/haptics';
 import { devArmHomeIntro } from '../src/lib/onboarding';
 import { Pressable } from '../src/components/Pressable';
 import { OnboardingIntroChat, type OnboardingResult } from '../src/components/OnboardingIntroChat';
@@ -42,6 +42,10 @@ import { FAUX_KB_HEIGHT, FAUX_KB_VISIBLE, FauxKeyboard } from '../src/components
 // bottom inset for a keyboard-input step: real keyboards are handled by
 // KeyboardAvoidingView; the dev-web faux deck needs its space reserved manually
 const kbBottomInset = (insetBottom: number) => (FAUX_KB_VISIBLE ? FAUX_KB_HEIGHT : insetBottom) + 6;
+
+// lowercase the first letter (keep the rest) — the notif copy reads as casual
+// lowercase texting even if the user capitalized their name.
+const lowerFirst = (s: string) => (s ? s.charAt(0).toLowerCase() + s.slice(1) : s);
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { useAuthStore } from '../src/lib/auth-store';
 import { useDevLogin } from '../src/lib/auth-providers';
@@ -55,15 +59,16 @@ import { applySkin, hydrateSkinFromMirror, saveSkinMirror, SKIN_COLORS, type Ski
 // the SidekickController. Faithful RN port of the deleted web onboarding.tsx.
 //
 //  0. auth      — sign in, camera up at the evening sky; skipped if signed in
-//  1. hey       — shaking "Hey!" dead-centre over the sky, "Get Started"
-//  2. birthday  — "before we get started, what's your birthday?" (in the sky)
+//  1. birthday  — "before we get started, what's your birthday?" (in the sky)
+//  2. hey       — shaking "Hey!" dead-centre over the sky, "Get Started"
 //  … (customize / celebrate / nameSidekick as below)
-//  4. lookDown  — streamed "your head is in the clouds… look down here!" + CTA
-//  5. hereLeft  — camera panned down-then-LEFT; "I'M OVER HERE!" on the right
-//  6. hereRight — camera whips RIGHT; "NO OVER HERE!" on the left
-//  7. meetTitle — camera trembles + haptics grow to a boom (no text card)
-//  8. reveal    — he JUMPS in, bubble: "THERE YOU ARE!"
-//  9. customize — bubble "hm, how should i look?" + color swatches
+//  4. lookDown  — streamed "look down here!" + CTA (still up in the sky)
+//  5. hereLeft  — camera panned down, centred; "i'm over here" on the left edge
+//  6. hereRight — camera turns LEFT; "no, over here!" on the right edge,
+//                 then pans back to CENTRE for the meet
+//  7. meetTitle — camera trembles harder + haptics rumble to a boom (no card)
+//  8. reveal    — he JUMPS in, bubble: "There we go!!"
+//  9. customize — bubble "hey, what color looks best on me?" + color swatches
 // 10. celebrate — hands-up hops in the shiny new color
 // 11. textIntro — bubble "let me text u so we can talk!"
 // 12. notif     — he studies his phone, an iMessage-style banner drops in
@@ -76,10 +81,9 @@ const SKY_FRAMING: Framing = { pos: [0, 1.4, 8], target: [0, 8.5, -10], fov: 48 
 const SKY_NAME_FRAMING: Framing = { pos: [0, 1.5, 7.4], target: [0, 8.2, -9], fov: 44 };
 // Post pan-down: zoomed in toward where the sidekick will land (still empty).
 const NAME_FRAMING: Framing = { pos: [0, 1.2, 7.2], target: [0, 0.5, 0], fov: 39 };
-// The over-here gag: the camera looks the WRONG way twice — hard pans left then
-// right across the empty meadow. Tune-by-eye.
+// The over-here gag: centred, the camera then looks the WRONG way (hard pan
+// LEFT across the empty meadow) before panning back to centre. Tune-by-eye.
 const LOOK_LEFT_FRAMING: Framing = { pos: [0, 1.2, 7.2], target: [-4.5, 0.7, -1], fov: 42 };
-const LOOK_RIGHT_FRAMING: Framing = { pos: [0, 1.2, 7.2], target: [4.5, 0.7, -1], fov: 42 };
 // Hero: full-body, centered (matches home's hero shot).
 const HERO_FRAMING: Framing = { pos: [0, 0.66, 4.2], target: [0, 0.56, 0], fov: 41.1 };
 // Naming the sidekick: the keyboard rises and the input sits low, so pull the
@@ -346,12 +350,12 @@ export default function Onboarding() {
     goTo('hereRight'); // framing = LOOK_LEFT
     setTimeout(() => setAnimating(false), 700);
   };
-  // 2nd tap (voice is now on the right) → the camera PANS RIGHT, then settles
-  // center and the anticipation build begins.
-  const panRightThenMeet = () => {
+  // 2nd tap (voice is now on the right) → the camera PANS BACK TO CENTER, and
+  // the anticipation build begins there. (middle → left → middle)
+  const panCenterThenMeet = () => {
     if (animating) return;
     setAnimating(true);
-    setFraming(LOOK_RIGHT_FRAMING); // whip right
+    setFraming(NAME_FRAMING); // pan back to centre
     setTimeout(() => {
       setAnimating(false);
       startMeet();
@@ -362,34 +366,26 @@ export default function Onboarding() {
   // rumble under the title, then he JUMPS in with a bubble.
   const startMeet = () => {
     if (animating) return;
-    goTo('meetTitle'); // camera settles to the middle (HERO framing)
-    // ANTICIPATION: a burst of shaking, then a BEAT of stillness, then a
-    // STRONGER burst, another beat — escalating with every burst, a haptic per
-    // burst — building tension. Then the sidekick POPS out: a massive shake +
-    // the jumpIn stomp, and he settles.
-    const bursts = [
-      { at: 300, amp: 0.08 },
-      { at: 1100, amp: 0.14 },
-      { at: 1900, amp: 0.22 },
-      { at: 2650, amp: 0.32 },
-    ];
-    for (const b of bursts) {
-      setTimeout(() => {
-        controllerRef.current?.shake({ amp: b.amp, duration: 0.45, mode: 'impact' });
-        hapticNotif(); // a firm hit per burst
-      }, b.at);
-    }
-    const POP = 3450; // right after the last, strongest anticipation burst
+    goTo('meetTitle'); // camera pans back to the middle (HERO framing)
+    const POP = 3450; // the pop, right as the tremble peaks
+    // ANTICIPATION: ONE continuous camera tremble that RAMPS the whole way in —
+    // the 'build' envelope (∝ t²) grows it from a faint quiver to a hard shake
+    // right before he bursts out — under a continuous haptic rumble that
+    // densifies to the boom. No discrete bursts: it reads as rising tension,
+    // not taps. Then the sidekick POPS: a massive impact shake + jumpIn stomp.
+    setTimeout(() => {
+      controllerRef.current?.shake({ amp: 0.44, duration: (POP - 250) / 1000, mode: 'build' });
+    }, 250);
     playBuildToBoom(POP, POP);
     setTimeout(() => {
       setAnimating(true);
       goTo('reveal');
-      controllerRef.current?.shake({ amp: 0.55, duration: 0.7, mode: 'impact' }); // MASSIVE
+      controllerRef.current?.shake({ amp: 0.6, duration: 0.7, mode: 'impact' }); // MASSIVE
       controllerRef.current?.jumpIn({ duration: 800 }); // he pops out + stomps
     }, POP);
     setTimeout(() => {
       setAnimating(false);
-      speak('THERE YOU ARE!', 3200, 'excited');
+      speak('There we go!!', 3200, 'excited');
     }, POP + 1000);
   };
 
@@ -397,7 +393,7 @@ export default function Onboarding() {
   const toCustomize = () => {
     goTo('customize');
     controllerRef.current?.setInspect(true); // head down, sweeping his own body
-    setTimeout(() => speak('hm, how should i look?', 4200, 'surprised'), 400);
+    setTimeout(() => speak('hey, what color looks best on me?', 4200, 'neutral'), 400);
   };
   const pickColor = (c: SkinColor) => {
     setColorId(c.id);
@@ -515,7 +511,7 @@ export default function Onboarding() {
         overHere();
         break;
       case 'hereRight':
-        panRightThenMeet();
+        panCenterThenMeet();
         break;
       case 'meetTitle':
         break; // auto-advances into reveal
@@ -646,11 +642,11 @@ export default function Onboarding() {
         </Pressable>
       ) : null}
       {phase === 'hereRight' && !animating ? (
-        <Pressable style={StyleSheet.absoluteFill} onPress={panRightThenMeet}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={panCenterThenMeet}>
           {/* camera turned left; the voice is now off to the RIGHT — a beat, then it pops */}
           <Animated.View entering={FadeInUp.duration(350).delay(550)} style={[styles.sideCopy, styles.sideRight]} pointerEvents="none">
             <SubtleShake intensity={2.2} speed={1.5}>
-              <Text style={styles.overHere}>no over here</Text>
+              <Text style={styles.overHere}>no, over here!</Text>
             </SubtleShake>
           </Animated.View>
           <Text style={[styles.tapHint, { bottom: insets.bottom + 28 }]}>tap to continue</Text>
@@ -714,7 +710,7 @@ export default function Onboarding() {
       {/* 6. Notification banner (drops down from the top) */}
       {phase === 'notif' ? (
         <>
-          <NotificationBanner show={notifIn} sender={sender} message={`hey ${userName || 'there'}, check your msgs so we can text!`} topInset={insets.top} onTap={openChat} />
+          <NotificationBanner show={notifIn} sender={sender} message={`hey ${lowerFirst(userName) || 'there'}, check your msgs so we can text!`} topInset={insets.top} onTap={openChat} />
           {/* after the notice drops, a big "open chat" CTA rises from the bottom
               and gently shakes to invite the tap (the Messages icon now lives in
               the notice itself). */}
@@ -1031,7 +1027,7 @@ function BirthdayStep({ title, onSubmit }: { title?: string; onSubmit: (birthday
         </View>
         <View style={styles.centerFill} pointerEvents="box-none">
           <View style={styles.nameCol}>
-            <Glass glassStyle="clear" tint="systemThinMaterialDark" style={styles.dobPickerGlass}>
+            <Glass glassStyle="clear" style={styles.dobPickerGlass}>
               <DateTimePicker
                 value={date}
                 mode="date"
@@ -1040,7 +1036,7 @@ function BirthdayStep({ title, onSubmit }: { title?: string; onSubmit: (birthday
                 onChange={(_: unknown, d?: Date) => {
                   if (d) setDate(d);
                 }}
-                textColor="#fff"
+                textColor="#111"
               />
             </Glass>
             <View style={{ height: 16 }} />
@@ -1189,7 +1185,7 @@ function PrimaryButton({
   return (
     <Pressable
       onPress={() => {
-        hapticTap();
+        hapticButton();
         onPress();
       }}
       onPressIn={() => setPressed(true)}

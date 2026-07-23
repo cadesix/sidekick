@@ -5,10 +5,16 @@ import * as Haptics from 'expo-haptics';
 // on the simulator (no taptic engine). Everything here is fire-and-forget.
 const ENABLED = Platform.OS === 'ios' || Platform.OS === 'android';
 
-/** A light tap for button/chip presses. */
+/** A light tap for chip/selection presses. */
 export function hapticTap(): void {
   if (!ENABLED) return;
   void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+}
+
+/** A firmer short hit for primary CTA button presses. */
+export function hapticButton(): void {
+  if (!ENABLED) return;
+  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
 }
 
 /** A soft, subtle pop — for each incoming chat message as it lands. */
@@ -56,9 +62,10 @@ export function playRevealHaptics(): void {
 
 /**
  * "Meet your sidekick" build-to-boom, tuned to onboarding's `startMeet`: a
- * rumble that GROWS denser and stronger over `riseMs`, a massive burst at the
- * pop (`boomMs`), then a couple of stomp thuds as he lands. Every hit is
- * fire-and-forget; the sequence self-terminates (no cleanup needed).
+ * DENSE, continuous rumble that grows stronger over `riseMs` (a tight train of
+ * impacts — the closest expo-haptics gets to a sustained continuous haptic,
+ * which the SDK doesn't expose), a massive burst at the pop (`boomMs`), then a
+ * couple of stomp thuds as he lands. Fire-and-forget; self-terminating.
  */
 export function playBuildToBoom(riseMs: number, boomMs: number): void {
   if (!ENABLED) return;
@@ -66,13 +73,14 @@ export function playBuildToBoom(riseMs: number, boomMs: number): void {
   const fire = (style: Haptics.ImpactFeedbackStyle, at: number) =>
     setTimeout(() => void Haptics.impactAsync(style).catch(() => {}), Math.max(0, at));
 
-  // grow, grow, grow: intervals tighten and weight climbs as boom approaches
+  // a continuous buzz from the start: tightly-spaced hits whose weight climbs as
+  // the boom approaches (gaps stay small so it reads as one sustained rumble)
   let t = 0;
-  let gap = 320;
-  while (t < riseMs - 120) {
+  let gap = 150;
+  while (t < riseMs - 90) {
     const frac = t / riseMs;
-    fire(frac < 0.4 ? I.Light : frac < 0.75 ? I.Medium : I.Heavy, t);
-    gap = Math.max(70, gap * 0.82);
+    fire(frac < 0.35 ? I.Light : frac < 0.7 ? I.Medium : I.Heavy, t);
+    gap = Math.max(45, gap * 0.9);
     t += gap;
   }
   // BOOM at the pop, then landing stomps
