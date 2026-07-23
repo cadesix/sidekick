@@ -3,7 +3,7 @@ import { Profiler, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { Redirect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Alert, AppState, Dimensions, Pressable, Text, View, type AppStateStatus } from 'react-native';
-import Animated, { Easing, interpolate, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, interpolate, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CHAT_SHEET_DETENT, ChatScreen } from '~/imessage';
@@ -468,7 +468,9 @@ export default function Home() {
     chatOrigin.w.value = origin?.width ?? 60;
     chatOrigin.h.value = origin?.height ?? 60;
     setChatOpen(true);
-    chatProgress.value = withTiming(1, { duration: 520, easing: Easing.linear });
+    // a spring drives the whole flight: quick, lively through the middle,
+    // decelerating into a settle at the end (curves below shape the geometry)
+    chatProgress.value = withSpring(1, { damping: 16, stiffness: 170, mass: 0.75 });
     stampMsgsSeen(); // they're looking at the chat — what exists now is seen
   }, [chatProgress, chatOrigin, stampMsgsSeen]);
   const closeChat = useCallback(() => {
@@ -686,14 +688,15 @@ export default function Home() {
   // The driver is LINEAR; all shaping lives in these curves.
   const chatZoomStyle = useAnimatedStyle(() => {
     const p = chatProgress.value;
-    // top: compressed into the first ~55% of the flight with a hard back-out —
+    // top: compressed into the first ~60% of the flight with a hard back-out —
     // it FLIES up and fills its corners early, overshooting ~10% then settling
-    const tT = Math.min(1, p / 0.55);
+    const tT = Math.min(1, p / 0.6);
     const bT = tT - 1;
     const pTop = 1 + 2.7 * bT * bT * bT + 1.7 * bT * bT;
-    // bottom: gravity-pinned near the tile for most of the flight, then a late
-    // whip — p^4 keeps it at ~13% travel when the top has already landed
-    const pBot = p * p * p * p;
+    // bottom: gravity-pinned early, then arrives by ~92% — close enough behind
+    // the top that the landing reads as one settle, not two separate hits
+    const tB = Math.min(1, p / 0.92);
+    const pBot = tB * tB * tB;
     // sides: quick ease-out, resolved by ~70% so the width leads the bottom
     const tX = Math.min(1, p / 0.7);
     const pX = 1 - (1 - tX) * (1 - tX);
@@ -706,10 +709,12 @@ export default function Home() {
         { perspective: 650 },
         { translateX: (left + right) / 2 - SCREEN_W / 2 },
         { translateY: (top + bottom) / 2 - SCREEN_H / 2 },
-        // NEGATIVE rotateX tips the BOTTOM away from the viewer: with the
-        // perspective above, the bottom edge renders visibly NARROWER than the
-        // top — the reverse-pyramid / cone silhouette — flattening as it fills
-        { rotateX: `${-22 * Math.sin(Math.PI * Math.min(1, Math.max(0, p / 0.8)))}deg` },
+        // NEGATIVE rotateX tips the BOTTOM away: the bottom edge renders
+        // narrower than the top (reverse pyramid). The tilt snaps in over the
+        // first quarter, then the flatten TRACKS the bottom's arrival — so the
+        // final motion reads as the bottom corners rotating FORWARD in depth
+        // to touch the screen edges, not sliding down to them
+        { rotateX: `${-20 * Math.min(1, Math.max(0, p) / 0.25) * (1 - pBot)}deg` },
         { scaleX: Math.max(0.001, (right - left) / SCREEN_W) },
         { scaleY: Math.max(0.001, (bottom - top) / SCREEN_H) },
       ],
