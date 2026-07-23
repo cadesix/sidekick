@@ -44,6 +44,7 @@ import { FAUX_KB_HEIGHT, FAUX_KB_VISIBLE, FauxKeyboard } from '../src/components
 const kbBottomInset = (insetBottom: number) => (FAUX_KB_VISIBLE ? FAUX_KB_HEIGHT : insetBottom) + 20;
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { useAuthStore } from '../src/lib/auth-store';
+import { useDevLogin } from '../src/lib/auth-providers';
 import { PHONE_BODY_YAW, type Framing, type SidekickController } from '../src/three/renderer';
 import { hydrateSettings, loadSettings } from '../src/three/settings';
 import { applySkin, hydrateSkinFromMirror, saveSkinMirror, SKIN_COLORS, type SkinColor } from '../src/store/skin';
@@ -181,6 +182,7 @@ export default function Onboarding() {
   // drives the phase-0 auth step: signedOut → start at 'auth'; the advance
   // effect below moves to 'hey' once sign-in flips this to 'signedIn'.
   const authStatus = useAuthStore((s) => s.status);
+  const { signInAsDev } = useDevLogin();
 
   // resolved once hydrate + resume complete; the scene mounts only after, so the
   // renderer reads the account skin and the resumed phase's entrance state.
