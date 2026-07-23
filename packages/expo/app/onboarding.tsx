@@ -1031,7 +1031,7 @@ function BirthdayStep({ title, onSubmit }: { title?: string; onSubmit: (birthday
         </View>
         <View style={styles.centerFill} pointerEvents="box-none">
           <View style={styles.nameCol}>
-            <Glass style={styles.dobPickerGlass}>
+            <Glass glassStyle="clear" tint="systemThinMaterialDark" style={styles.dobPickerGlass}>
               <DateTimePicker
                 value={date}
                 mode="date"
@@ -1040,7 +1040,7 @@ function BirthdayStep({ title, onSubmit }: { title?: string; onSubmit: (birthday
                 onChange={(_: unknown, d?: Date) => {
                   if (d) setDate(d);
                 }}
-                textColor="#111"
+                textColor="#fff"
               />
             </Glass>
             <View style={{ height: 16 }} />
