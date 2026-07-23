@@ -348,6 +348,12 @@ export async function hydrateSettings(): Promise<void> {
         evening: { ...SCENE_DEFAULTS.evening, ...savedScenes?.evening },
         night: { ...SCENE_DEFAULTS.night, ...savedScenes?.night },
       };
+      // Face size/height are fixed art-direction, not per-device tuning: always
+      // take the current default so a stale persisted value (e.g. an older
+      // build's faceZoom saved into a device's AsyncStorage) can't shrink/shift
+      // the face. Keeps every device identical to the tuned desktop look.
+      merged.faceZoom = DEFAULT_SETTINGS.faceZoom;
+      merged.faceHeight = DEFAULT_SETTINGS.faceHeight;
       current = merged;
     }
   } catch {
