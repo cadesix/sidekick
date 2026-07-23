@@ -12,8 +12,8 @@ import { create } from 'zustand';
 export type Astral = { archetype: string; reading: string; traits: string[] };
 
 export type SidekickContext = {
-  // An island unlocked but not yet seen on the map. Drives the dot on the dock's
-  // map icon and the "new" bubble beside the island itself; cleared when the map
+  // An island unlocked but not yet seen on the map. Drives the dot on the
+  // top-right map pin and the "new" bubble beside the island itself; cleared when the map
   // closes, i.e. once they've actually had a chance to look at it.
   unseenIsland: string | null;
   // a session completion just opened this island — flag it until the map is seen

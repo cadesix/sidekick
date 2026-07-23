@@ -11,7 +11,7 @@ import {
 	type ViewStyle,
 } from "react-native";
 import Animated, { useAnimatedStyle, withSpring, ZoomIn, ZoomOut } from "react-native-reanimated";
-import { colors } from "../theme";
+import { colors, font } from "../theme";
 import { Glass, liquidGlass } from "./Glass";
 import { Icon } from "./Icon";
 import type { AudioAttachment } from "../types";
@@ -21,7 +21,7 @@ import { VoiceRecorder } from "./VoiceRecorder";
 export type AttachmentState = "none" | "settling" | "ready";
 
 // Composer surface: real iOS-26 liquid glass where available, else a FLAT opaque
-// fill in the received-bubble gray. (The blur fallback lightens whatever fill sits
+// fill in the field-gray input token (06 §1.1). (The blur fallback lightens whatever fill sits
 // behind it, so we skip the blur entirely and match the message bubbles exactly.)
 function Surface({
 	isInteractive,
@@ -39,7 +39,7 @@ function Surface({
 			</Glass>
 		);
 	}
-	return <View style={[style, styles.receivedFill]}>{children}</View>;
+	return <View style={[style, styles.fieldFill]}>{children}</View>;
 }
 
 // Single-line resting height (matches the 40pt plus button) and the max before the
@@ -58,6 +58,9 @@ interface ChatInputBarProps {
 	tray: ReactNode;
 	onSendText: (text: string) => void;
 	onSendAudio: (audio: AudioAttachment) => void;
+	// composer focus/blur — the sky chat uses these to emulate a keyboard on web
+	onInputFocus?: () => void;
+	onInputBlur?: () => void;
 	onTogglePlusMenu: () => void;
 	plusMenuOpen: boolean;
 	recording: boolean;
@@ -70,6 +73,8 @@ export function ChatInputBar({
 	tray,
 	onSendText,
 	onSendAudio,
+	onInputFocus,
+	onInputBlur,
 	onTogglePlusMenu,
 	plusMenuOpen,
 	recording,
@@ -157,6 +162,8 @@ export function ChatInputBar({
 								ref={inputRef}
 								value={text}
 								onChangeText={setText}
+								onFocus={onInputFocus}
+								onBlur={onInputBlur}
 								placeholder={replyActive ? "Reply" : "Message"}
 								placeholderTextColor={colors.tertiaryLabel}
 								multiline
@@ -248,10 +255,10 @@ const styles = StyleSheet.create({
 	fieldWithTray: {
 		borderRadius: 26,
 	},
-	// The plus button + input field are filled with the received-bubble gray on all
-	// platforms (not the frosted glass), so the composer matches the message bubbles.
-	receivedFill: {
-		backgroundColor: colors.receivedBubble,
+	// The plus button + input field are filled with the field input token on all
+	// platforms (not the frosted glass) — deliberately NOT the bubble gray.
+	fieldFill: {
+		backgroundColor: colors.field,
 	},
 	trayDivider: {
 		height: StyleSheet.hairlineWidth,
@@ -267,6 +274,7 @@ const styles = StyleSheet.create({
 		flex: 1,
 		fontSize: 17,
 		lineHeight: 21,
+		fontFamily: font.regular,
 		paddingLeft: 14,
 		paddingRight: 4,
 		paddingTop: 9,

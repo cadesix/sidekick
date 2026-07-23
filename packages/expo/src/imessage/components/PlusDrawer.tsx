@@ -7,7 +7,7 @@ import Animated, {
 	withSpring,
 	withTiming,
 } from "react-native-reanimated";
-import { colors } from "../theme";
+import { colors, font } from "../theme";
 import { Glass } from "./Glass";
 import { Icon, type IconName } from "./Icon";
 
@@ -140,6 +140,7 @@ const styles = StyleSheet.create({
 	},
 	label: {
 		fontSize: 17,
+		fontFamily: font.regular,
 		color: colors.label,
 	},
 });

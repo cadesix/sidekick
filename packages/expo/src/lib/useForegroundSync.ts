@@ -79,6 +79,9 @@ export function useForegroundSync(): void {
         syncLocation(queryClient),
         syncFocus(queryClient),
         syncProgression(queryClient),
+        // messages that arrived while backgrounded — refreshes the chat AND the
+        // dock's unread badge (the badge derives from this transcript cache)
+        queryClient.invalidateQueries({ queryKey: ['chat', 'transcript'] }),
       ]);
     }
     function onChange(next: AppStateStatus): void {

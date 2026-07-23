@@ -1,9 +1,9 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Profiler, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Redirect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Alert, AppState, Dimensions, Pressable, Text, View, type AppStateStatus } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, interpolate, useAnimatedStyle, useSharedValue, withSpring, withTiming, type SharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CHAT_SHEET_DETENT, ChatScreen } from '~/imessage';
@@ -15,22 +15,23 @@ import { DevPanel } from '../src/components/DevPanel';
 import { GameOverlay } from '../src/components/GameOverlay';
 import { GoalsSheet } from '../src/components/GoalsSheet';
 import { GuidedHabitChat } from '../src/components/GuidedHabitChat';
-import { StreakModal } from '../src/components/StreakModal';
-import { SessionChat, STAR_FACE_TUNING } from '../src/components/SessionChat';
+import { ClosetButton } from '../src/components/ClosetButton';
+import { NewsDot } from '../src/components/NewsDot';
+import { SessionChat } from '../src/components/SessionChat';
+import { STAR_FACE_TUNING } from '../src/components/StarFaceTuner';
 import { StarChat } from '../src/components/StarChat';
 import { StarChatButton } from '../src/components/StarChatButton';
 import { useStarChat } from '../src/store/star-chat';
 import { useStarFaceConfig } from '../src/store/starFaceConfig';
 import { useSidekickContext, type Astral } from '../src/store/context';
-import { SidekickAvatar } from '../src/components/SidekickAvatar';
 import { SpeechBubble } from '../src/components/SpeechBubble';
-import { StreakPill } from '../src/components/StreakPill';
-import { HomeDock } from '../src/components/HomeDock';
+import { HomeDock, MESSAGES_BUBBLE_PATH, MESSAGES_GRADIENT, type TileOrigin } from '../src/components/HomeDock';
+import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Path } from 'react-native-svg';
 import { BIOMES, biomeLookForTime, type BiomeId, type EnvironmentId } from '../src/three/biomes';
 import { speak, useSpeech } from '../src/store/speech';
 import { FACE_EXPRESSIONS, type FaceExpression } from '../src/three/face';
-import { BOND_MAX, nextSession as coreNextSession } from '@sidekick/core';
-import { SettingsSheet } from '../src/components/SettingsSheet';
+import { BOND_MAX, localDay, nextSession as coreNextSession } from '@sidekick/core';
 import { ShopSheet } from '../src/components/ShopSheet';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { WorldMap } from '../src/components/WorldMap';
@@ -38,7 +39,12 @@ import { homeFraming, type Framing, type SidekickController } from '../src/three
 import { DEFAULT_SETTINGS, hydrateSettings, loadSettings, refreshTimeOfDay, saveSettings, type SidekickSettings, type TimeOfDay } from '../src/three/settings';
 import type { CosmeticsControls } from '../src/three/wardrobe';
 import { useDeferredFlag } from '../src/lib/useDeferredFlag';
-import { askGoalCheckin, claimDailyBox, fetchCapoff, fetchHabitAck, startHabitChat, type BoxContents } from '../src/lib/api';
+import { askGoalCheckin, claimDailyBox, fetchCapoff, fetchGoals, fetchHabitAck, goalDoneToday, startHabitChat, type BoxContents } from '../src/lib/api';
+import { mainConversation } from '../src/imessage/server';
+import { CHAT_MAIN_KEY, chatTranscriptKey, fetchMainTranscript } from '~/imessage/useSidekickChat';
+import { GOALS_QUERY_KEY } from '../src/components/GoalsSheet';
+import { useDockBadges } from '../src/store/dockBadges';
+import { useChatUiMode } from '../src/store/devPrefs';
 import { patchBoxClaim, snapshotSessions, useSnapshot } from '../src/lib/state';
 import { reconcileWardrobe } from '../src/lib/wardrobe-sync';
 import { useCosmeticVersion } from '../src/store/cosmeticVersion';
@@ -48,8 +54,7 @@ import { useAuthStore } from '../src/lib/auth-store';
 import { perfFrame, perfMark } from '../src/lib/perf-telemetry';
 
 // RN port of sidekick/src/home4.tsx: full-viewport 3D mascot with an iOS-style
-// dock. Messages presents the chat as a native sheet over the lower ~75%
-// (camera eases to CHAT_FRAMING, the mascot holds its phone in the band above),
+// dock. Messages is a full-screen takeover that zooms out of its dock tile,
 // Shop swaps the meadow for a studio and opens the wardrobe sheet, Map rockets
 // the camera up while the world map circle-reveals over it.
 
@@ -66,6 +71,15 @@ const CHAT_FRAMING: Framing = {
   pos: [0, 1.8, 7.6],
   target: [0, -2.25, 0],
   fov: 46,
+};
+
+// Chat UI v3 ("sky"): the camera pans UP so the character sits at the BOTTOM
+// of the frame on his phone, and the chat floats in the sky above him.
+// Tune-by-eye values.
+const SKY_CHAT_FRAMING: Framing = {
+  pos: [0, 1.3, 6.9],
+  target: [0, 3.3, -3.5],
+  fov: 50,
 };
 
 // Opening the map: the camera rapidly rockets up + back (pull away from the
@@ -119,7 +133,22 @@ const TRAVEL_LINES: Record<EnvironmentId, string> = {
   volcano: 'uhh is that lava?? 🌋 this is fine. we’re fine.',
 };
 
-const { height: SCREEN_H } = Dimensions.get('window');
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+
+// The fullscreen launch morph's per-edge curves, as NAMED standard easings
+// (hoisted: building them inside the worklet would allocate per frame).
+// back(1.7) ≈ the old 1 + 2.7b³ + 1.7b² overshoot polynomial.
+const EASE_TOP = Easing.out(Easing.back(1.7));
+const EASE_BOTTOM = Easing.in(Easing.cubic);
+const EASE_SIDES = Easing.out(Easing.quad);
+
+// slide-up-from-below used by every drawer-ish chat surface (0 = off-screen
+// by `distance`, 1 = in place)
+function useSlideUp(progress: SharedValue<number>, distance: number) {
+  return useAnimatedStyle(() => ({
+    transform: [{ translateY: (1 - progress.value) * distance }],
+  }));
+}
 // The chat drawer covers the lower 75%; the mascot lives in the band above.
 const DRAWER_TOP = SCREEN_H * (1 - CHAT_SHEET_DETENT);
 
@@ -210,18 +239,22 @@ export default function Home() {
   // redirect itself lives just before the return so every hook still runs.
   const onboarding = useOnboardingState();
   const authStatus = useAuthStore((s) => s.status);
-  // chatOpen drives the camera/holdingPhone; chatProgress slides the drawer
+  // which Messages presentation is live (devPrefs owns the prod pin — see
+  // useChatUiMode: DEV builds follow the DevPanel switch, prod ships one mode)
+  const chatUi = useChatUiMode();
+  // chatOpen drives the camera/holdingPhone; chatProgress runs the open animation
   const [chatOpen, setChatOpen] = useState(false);
   const chatProgress = useSharedValue(0);
-  // guided habit-add ("+" from Goals) presents in an IDENTICAL drawer to the main
-  // chat — same camera/pose/slide — driven by this progress value.
+  // the dock tile the chat grows out of (window coords; see openChat)
+  const chatOrigin = useSharedValue({ x: SCREEN_W / 2 - 30, y: SCREEN_H - 140, w: 60, h: 60 });
+  // guided habit-add ("+" from Goals) presents in the classic chat drawer
+  // (same camera/pose/slide as the 'sheet' presentation), driven by this value.
   const habitProgress = useSharedValue(0);
   // mapOpen drives the camera pull-back; mapShown drives the map's circle
   // reveal, a beat later, so the camera starts flying out before the map grows.
   const [mapOpen, setMapOpen] = useState(false);
   const [mapShown, setMapShown] = useState(false);
   const [shopOpen, setShopOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   // world environment (map travel) + the active guided session (if any)
   const [environment, setEnvironment] = useState<EnvironmentId>('meadow');
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -234,7 +267,7 @@ export default function Home() {
   const skyMode = !!sessionId || starChatOpen;
   // TEMPORARY: live star-face look-dev, driven by the sliders in SessionChat.
   // Only pushed while tuning — otherwise the persisted config would override the
-  // constants baked into renderer.ts, and a stale device config would silently
+  // constants baked into three/star-face.ts, and a stale device config would silently
   // win over the code.
   const starFaceCfg = useStarFaceConfig();
   const starFace = STAR_FACE_TUNING ? starFaceCfg : undefined;
@@ -245,8 +278,48 @@ export default function Home() {
   // from the snapshot's sessions slice, so it re-evaluates the moment one
   // completes (the completion response patches the cache).
   const sessions = snapshotSessions(snapshot);
-  // an island opened but not yet looked at — dot on the dock's map icon
+  // an island opened but not yet looked at — dot on the top-right map pin
   const unseenIsland = useSidekickContext((s) => s.unseenIsland);
+  // dock notification badges (dockBadges store): each clears when its surface is
+  // looked at. Goals shares GoalsSheet's cached query and Messages shares the
+  // always-mounted ChatScreen's transcript query (same keys) — neither adds a
+  // fetch. The chat queries are gated on a signed-in, onboarded session — Home
+  // redirects those cases, but hooks fire before the redirect and shouldn't send
+  // tokenless requests (three consecutive 401s trip api.ts's revoked-session
+  // handler).
+  const sessionReady = authStatus === 'signedIn' && onboarding.data?.complete === true;
+  const { goalsSeenDate, shopSeenDate, msgsSeenAt, hydrated: badgesHydrated } = useDockBadges();
+  const goalsList = useQuery({ queryKey: GOALS_QUERY_KEY, queryFn: fetchGoals, enabled: sessionReady });
+  const chatMain = useQuery({
+    queryKey: CHAT_MAIN_KEY,
+    queryFn: mainConversation,
+    staleTime: Number.POSITIVE_INFINITY,
+    enabled: sessionReady,
+  });
+  const transcript = useQuery({
+    queryKey: chatTranscriptKey(chatMain.data?.id),
+    queryFn: () => fetchMainTranscript(chatMain.data?.id ?? ''),
+    enabled: sessionReady && chatMain.data?.id !== undefined,
+  });
+  // Memoized: these run on every Home re-render otherwise, and the dots wait for
+  // the store to rehydrate — pre-hydration nulls would flash them.
+  const { goalsDot, shopDot, unread } = useMemo(() => {
+    const today = localDay(Date.now());
+    let newMsgs = 0;
+    if (msgsSeenAt !== null) {
+      for (const m of transcript.data?.messages ?? []) {
+        if (m.role === 'them' && m.createdAt > msgsSeenAt) newMsgs++;
+      }
+    }
+    return {
+      goalsDot:
+        badgesHydrated &&
+        goalsSeenDate !== today &&
+        (goalsList.data?.goals.some((g) => !goalDoneToday(g)) ?? false),
+      shopDot: badgesHydrated && shopSeenDate !== today, // restocks at local midnight
+      unread: newMsgs,
+    };
+  }, [badgesHydrated, goalsSeenDate, shopSeenDate, msgsSeenAt, goalsList.data, transcript.data]);
   const nextStarChat = coreNextSession(sessions);
   // guided-session constellation reveal: how many nodes are lit (the night sky
   // draws it as beats complete)
@@ -265,12 +338,11 @@ export default function Home() {
   // Messages sheet is open, else null.
   const [habitConvId, setHabitConvId] = useState<string | null>(null);
   const habitOpen = habitConvId !== null;
-  const [streakModalOpen, setStreakModalOpen] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   // imperative handle the canvas publishes once cosmetics are ready; the Shop
   // uses it to dress the live character
   const [controls, setControls] = useState<CosmeticsControls | null>(null);
-  // raw scene controller for the Settings sheet's live look-dev
+  // raw scene controller (applySettings, face pulses, daily-box pop)
   const [controller, setController] = useState<SidekickController | null>(null);
 
   // Overhead bubble → face. When a line pops over his head, pulse the matching
@@ -296,6 +368,18 @@ export default function Home() {
       .then(() => hydrateSkinFromMirror())
       .then(() => setSettings(loadSettings()));
   }, []);
+  // Profile's astral CTA can't render the star chat (it lives over the 3D
+  // scene) — it raises this flag and dismisses; we consume it once the scene
+  // is ready and open the chat.
+  const starChatRequested = useStarChat((s) => s.openRequested);
+  useEffect(() => {
+    if (starChatRequested && settings) {
+      useStarChat.getState().clearOpenRequest();
+      // same gate as the star button: only open when a session remains — the
+      // raiser (Profile) checks too, but the consumer must not trust it
+      if (coreNextSession(snapshotSessions(snapshot))) setStarChatOpen(true);
+    }
+  }, [starChatRequested, settings, snapshot]);
   // The scene time-of-day tracks the real clock. hydrate sets it at launch; this
   // catches a session left open across a boundary (dusk → night) when the app
   // comes back to the foreground, and re-applies the matching preset live.
@@ -386,17 +470,46 @@ export default function Home() {
   // (WorldMap/ShopSheet/HomeDock/…) don't re-render when an unrelated surface
   // toggles — a full re-render of those heavy trees on the JS thread was stalling
   // the 3D render loop and stuttering the camera ease.
-  const openChat = useCallback(() => {
-    setChatOpen(true); // camera starts easing while the drawer slides up
-    chatProgress.value = withTiming(1, { duration: 380 });
-  }, [chatProgress]);
+  // Stamp "everything currently known is seen" from SERVER timestamps (the
+  // shared transcript cache). Client Date.now() is only the last-ditch fallback:
+  // a device clock ahead of the server would otherwise stamp the future and
+  // swallow real unread arrivals.
+  const stampMsgsSeen = useCallback(() => {
+    const cid = queryClient.getQueryData<{ id: string }>(CHAT_MAIN_KEY)?.id;
+    const msgs = queryClient.getQueryData<{ messages: { createdAt: number }[] }>(
+      chatTranscriptKey(cid),
+    )?.messages;
+    let newest = 0;
+    if (msgs) for (const m of msgs) newest = Math.max(newest, m.createdAt);
+    useDockBadges.getState().markMsgsSeen(newest > 0 ? newest : Date.now());
+  }, [queryClient]);
+  const openChat = useCallback((origin?: TileOrigin) => {
+    setChatOpen(true);
+    if (chatUi === 'fullscreen') {
+      // zoom out of the pressed dock tile, iOS-app-launch style; entries without
+      // a tile (goal check-ins, the map) grow from the dock's neighborhood
+      chatOrigin.value = {
+        x: origin?.x ?? SCREEN_W / 2 - 30,
+        y: origin?.y ?? SCREEN_H - 140,
+        w: origin?.width ?? 60,
+        h: origin?.height ?? 60,
+      };
+      // a spring drives the whole flight: quick, lively through the middle,
+      // decelerating into a settle at the end (curves below shape the geometry)
+      chatProgress.value = withSpring(1, { damping: 16, stiffness: 170, mass: 0.75 });
+    } else {
+      chatProgress.value = withTiming(1, { duration: 400, easing: Easing.out(Easing.cubic) });
+    }
+    stampMsgsSeen(); // they're looking at the chat — what exists now is seen
+  }, [chatProgress, chatOrigin, chatUi, stampMsgsSeen]);
   const closeChat = useCallback(() => {
     setChatOpen(false);
-    chatProgress.value = withTiming(0, { duration: 340 });
+    chatProgress.value = withTiming(0, { duration: 340, easing: Easing.linear });
+    stampMsgsSeen(); // include everything received while the chat was up
     // As the user walks back to the 3D sidekick, have it get the last word: a
     // snarky one-liner capping off the conversation, over its head. The 500ms
     // beat lets the drawer clear and the camera ease back to HERO first.
-    const conversationId = queryClient.getQueryData<{ id: string }>(['chat', 'main'])?.id;
+    const conversationId = queryClient.getQueryData<{ id: string }>(CHAT_MAIN_KEY)?.id;
     if (conversationId) {
       fetchCapoff(conversationId)
         .then(({ quip, expression }) => {
@@ -406,7 +519,7 @@ export default function Home() {
         })
         .catch(() => {}); // silent — no bubble on failure
     }
-  }, [chatProgress, queryClient]);
+  }, [chatProgress, queryClient, stampMsgsSeen]);
 
   const openMap = useCallback(() => {
     perfMark('map:open:call');
@@ -438,15 +551,19 @@ export default function Home() {
   );
 
   // Named, stable versions of the small inline arrows the memoized surfaces get.
-  const openShop = useCallback(() => setShopOpen(true), []);
+  const openProfile = useCallback(() => router.push('/profile'), []);
+  const openShop = useCallback(() => {
+    setShopOpen(true);
+    useDockBadges.getState().markShopSeen(); // today's restock: looked at
+  }, []);
   const closeShop = useCallback(() => setShopOpen(false), []);
-  const openGoals = useCallback(() => setGoalsOpen(true), []);
+  const openGoals = useCallback(() => {
+    setGoalsOpen(true);
+    useDockBadges.getState().markGoalsSeen(); // today's goals: looked at
+  }, []);
   const closeGoals = useCallback(() => setGoalsOpen(false), []);
   const openAppearance = useCallback(() => setAppearanceOpen(true), []);
   const closeAppearance = useCallback(() => setAppearanceOpen(false), []);
-  const closeStreakModal = useCallback(() => setStreakModalOpen(false), []);
-  const openStreakModal = useCallback(() => setStreakModalOpen(true), []);
-  const closeSettings = useCallback(() => setSettingsOpen(false), []);
   // Tap a goal → open the main chat onto a "did you [action] today?" question the
   // sidekick just dropped in; the user's reply is logged by the chat's always-on
   // log_checkin tool. Open the drawer right away (snappy); revalidate the
@@ -487,7 +604,7 @@ export default function Home() {
     const cid = habitConvId;
     habitProgress.value = withTiming(0, { duration: 340 });
     setTimeout(() => setHabitConvId(null), 340);
-    void queryClient.invalidateQueries({ queryKey: ['goals', 'list'] });
+    void queryClient.invalidateQueries({ queryKey: GOALS_QUERY_KEY });
     if (cid) {
       fetchHabitAck(cid)
         .then(({ line, expression }) => {
@@ -549,16 +666,21 @@ export default function Home() {
           ? MAP_FRAMING
           : shopOpen || appearanceOpen
             ? SHOP_FRAMING
-            : chatOpen || settingsOpen || habitOpen
-              ? CHAT_FRAMING
-              : hero,
-    [skyMode, cosmosPanned, mapOpen, shopOpen, appearanceOpen, chatOpen, settingsOpen, habitOpen, hero],
+            : chatOpen
+              ? chatUi === 'sky'
+                ? SKY_CHAT_FRAMING
+                : CHAT_FRAMING
+              : habitOpen
+                ? CHAT_FRAMING
+                : hero,
+    [skyMode, cosmosPanned, mapOpen, shopOpen, appearanceOpen, chatOpen, chatUi, habitOpen, hero],
   );
 
-  // The top-right cluster (closet avatar / streak / settings) is hidden under any
-  // full surface. We keep it mounted and toggle `display` instead of unmounting,
-  // so the avatar's GL context survives (see the cluster JSX for why).
-  const clusterHidden = mapShown || shopOpen || chatOpen || skyMode || habitOpen;
+  // Anything covered by a full surface — ONE predicate for every head-tracked /
+  // corner overlay (map pin, closet avatar, speech bubble, star pill, daily box,
+  // the renderer's overhead projection). The pin + closet stay MOUNTED and hide
+  // via opacity — the closet button owns a GL context (see ClosetButton).
+  const covered = mapShown || shopOpen || chatOpen || skyMode || habitOpen;
 
   // DEV: mark when a map open/close toggle actually commits, so the telemetry can
   // measure React commit latency (map:close:call → this) against the frame stalls.
@@ -589,16 +711,67 @@ export default function Home() {
   );
   const darkBackdrop = hexLuminance(topSky) < 0.4;
 
-  // No opacity here: animating a parent's opacity permanently breaks descendant
-  // UIGlassEffect views (expo/expo#41024) — the closed drawer is already fully
-  // off-screen via the translate.
-  const drawerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: (1 - chatProgress.value) * (SCREEN_H - DRAWER_TOP) }],
+  // (hoisted so the worklet doesn't rebuild the easing closures per frame)
+  // iOS-app-launch morph. The container starts as the EXACT tile rect (per-axis
+  // scale, so at p=0 it IS the square icon) and each edge runs its own curve:
+  //  - the top edge races ahead with a back-out overshoot — the rect visibly
+  //    STRETCHES upward out of the dock, top corners reaching the screen first
+  //  - the bottom edge trails on an ease-in, leaving the dock last
+  //  - a perspective rotateX tips the bottom AWAY mid-flight so the rect reads
+  //    as a reverse pyramid — wide top edge, narrow bottom edge — settling flat
+  // Open is driven by a spring (see openChat), close by a linear timing;
+  // the geometric character lives in these per-edge curves either way.
+  const chatZoomStyle = useAnimatedStyle(() => {
+    const p = chatProgress.value;
+    const o = chatOrigin.value;
+    // top: compressed into the first ~60% of the flight with a hard back-out —
+    // it FLIES up and fills its corners early, overshooting ~10% then settling
+    const pTop = EASE_TOP(Math.min(1, p / 0.6));
+    // bottom: gravity-pinned early, then arrives by ~92% — close enough behind
+    // the top that the landing reads as one settle, not two separate hits
+    const pBot = EASE_BOTTOM(Math.min(1, p / 0.92));
+    // sides: quick ease-out, resolved by ~70% so the width leads the bottom
+    const pX = EASE_SIDES(Math.min(1, p / 0.7));
+    const top = o.y * (1 - pTop);
+    const bottom = (o.y + o.h) * (1 - pBot) + SCREEN_H * pBot;
+    const left = o.x * (1 - pX);
+    const right = (o.x + o.w) * (1 - pX) + SCREEN_W * pX;
+    return {
+      transform: [
+        { perspective: 650 },
+        { translateX: (left + right) / 2 - SCREEN_W / 2 },
+        // fully closed = parked OFF-SCREEN inside the transform (transform-only:
+        // a layout prop like marginTop would re-run Yoga on the whole chat tree
+        // every frame; and never an opacity write — Glass descendants die if an
+        // ancestor's opacity animates, expo/expo#41024)
+        { translateY: (top + bottom) / 2 - SCREEN_H / 2 + (p > 0.005 ? 0 : SCREEN_H * 4) },
+        // NEGATIVE rotateX tips the BOTTOM away: the bottom edge renders
+        // narrower than the top (reverse pyramid). The tilt snaps in over the
+        // first quarter, then the flatten TRACKS the bottom's arrival — so the
+        // final motion reads as the bottom corners rotating FORWARD in depth
+        // to touch the screen edges, not sliding down to them
+        { rotateX: `${-20 * Math.min(1, Math.max(0, p) / 0.25) * (1 - pBot)}deg` },
+        { scaleX: Math.max(0.001, (right - left) / SCREEN_W) },
+        { scaleY: Math.max(0.001, (bottom - top) / SCREEN_H) },
+      ],
+      // tile corners while small, square once full screen
+      borderRadius: 44 * Math.max(0, 1 - p),
+    };
+  });
+  // v1 sheet slides over the lower ~82%; v3 sky slides the full height over the
+  // scene. Slides, never fades: the wrappers hold Glass descendants, and
+  // animating an ancestor's opacity permanently kills UIGlassEffect views
+  // (expo/expo#41024 — same reason HomeDock slides instead of fading).
+  const chatSheetStyle = useSlideUp(chatProgress, SCREEN_H - DRAWER_TOP);
+  const chatSkyStyle = useSlideUp(chatProgress, SCREEN_H);
+  // The icon clone rides ON TOP of the chat inside the morphing rect and fades
+  // away in a BLINK (~2 frames) — one stretched half-icon/half-app frame, then
+  // it's the screen. (Fading the OVERLAY, never the chat content, keeps
+  // UIGlassEffect descendants alive — expo/expo#41024.)
+  const chatIconFadeStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(chatProgress.value, [0, 0.3, 0.38, 1], [1, 1, 0, 0]),
   }));
-  // identical to drawerStyle, for the guided habit-add drawer
-  const habitDrawerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: (1 - habitProgress.value) * (SCREEN_H - DRAWER_TOP) }],
-  }));
+  const habitDrawerStyle = useSlideUp(habitProgress, SCREEN_H - DRAWER_TOP);
 
   // Front-door gate (see the query at the top). Placed after every hook so the
   // hook order is stable across renders; a one-frame blank while it resolves.
@@ -612,9 +785,7 @@ export default function Home() {
   return (
     <Profiler id="home" onRender={onHomeRender}>
     <View className="flex-1 bg-white">
-      {/* Full-viewport 3D scene (mounted once saved look-dev state hydrates).
-          Settings reuses the pulled-back chat framing so the meadow, sky and
-          character stay visible above the panel while tuning. */}
+      {/* Full-viewport 3D scene (mounted once saved look-dev state hydrates) */}
       {settings ? (
         <SidekickCanvas
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
@@ -628,7 +799,7 @@ export default function Home() {
           onController={setController}
           onFrameStats={SHOW_FPS ? emitFps : undefined}
           overhead={overhead}
-          overheadActive={!(mapShown || shopOpen || chatOpen || settingsOpen || skyMode || habitOpen)}
+          overheadActive={!covered}
           ground={ground}
           dailyBox={boxStage === 'ground' || boxStage === 'rewards' ? (snapshot?.dailyBox.tier ?? null) : null}
         />
@@ -637,7 +808,7 @@ export default function Home() {
       {/* what the sidekick is saying, over its head (hidden while a full
           surface covers the scene). The bond score lives on the star now. */}
       {settings ? (
-        <OverheadSpeech overhead={overhead} hidden={mapShown || shopOpen || chatOpen || settingsOpen || skyMode || habitOpen}>
+        <OverheadSpeech overhead={overhead} hidden={covered}>
           <SpeechBubble />
         </OverheadSpeech>
       ) : null}
@@ -648,76 +819,68 @@ export default function Home() {
       {settings && snapshot && nextStarChat ? (
         <StarChatButton
           overhead={overhead}
-          hidden={mapShown || shopOpen || chatOpen || settingsOpen || skyMode || habitOpen}
+          hidden={covered}
           onPress={() => setStarChatOpen(true)}
           darkBg={darkBackdrop}
         />
       ) : null}
 
-      {/* top-right cluster: appearance + goals + streak. Kept MOUNTED and only
-          made transparent (opacity 0) while hidden — NOT display:none and NOT
-          unmounted — because either of those lets iOS tear down the offscreen
-          GLView, so showing it again rebuilds the closet-button avatar's GL
-          context (new context + GLB + wardrobe load), a ~hundreds-of-ms hitch
-          on the JS thread right as the camera eases back. opacity:0 keeps the
-          GLView laid out and its context alive; its render loop is paused while
-          hidden so it costs nothing per frame. */}
+      {/* the closet/inventory entry: the live head avatar floating beside the
+          sidekick's head (the star pill hangs above-left, this balances right).
+          Always mounted — it owns a GL context (see ClosetButton for the iOS
+          teardown caveat); hidden via opacity, frozen while covered or while
+          the Closet itself is open. */}
+      <ClosetButton
+        overhead={overhead}
+        hidden={covered}
+        paused={appearanceOpen || covered}
+        onPress={openAppearance}
+      />
+
+      {/* top-right: the map pin, alone now (streak lives in Profile, the closet
+          floats by the head). Hidden under any full surface. */}
       <View
         style={{
           position: 'absolute',
           top: insets.top + 8,
           right: 16,
           zIndex: 25,
-          flexDirection: 'row',
-          gap: 8,
-          alignItems: 'center',
-          opacity: clusterHidden ? 0 : 1,
+          opacity: covered ? 0 : 1,
         }}
-        pointerEvents={clusterHidden ? 'none' : 'box-none'}
+        pointerEvents={covered ? 'none' : 'box-none'}
       >
-        <Pressable
-          onPress={openAppearance}
-          accessibilityLabel="Appearance"
-          style={{ height: 52, width: 52, borderRadius: 26, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
-        >
-          {/* the live head avatar IS the closet button (mirrors web home5).
-              Freeze it while the Closet is open OR while the cluster is hidden
-              under a surface — a paused loop frees the GPU and keeps the context
-              alive for an instant, hitch-free reveal on close. */}
-          <SidekickAvatar
-            size={52}
-            style={{ transform: [{ scale: 1.1 }] }}
-            paused={appearanceOpen || clusterHidden}
-          />
-        </Pressable>
-        <StreakPill onPress={openStreakModal} darkBg={darkBackdrop} />
         {/* Frosted glass — no `overflow:'hidden'` (it kills the glass effect); the
             round shape comes from borderRadius, which Glass clips natively. The
-            material tint tracks the backdrop so the fill isn't a fixed white panel. */}
+            material tint tracks the backdrop so the fill isn't a fixed white panel.
+            The map's entry point: a small pin. Carries the unseen-island dot. */}
         <Glass
           isInteractive
           tint={glassTint(darkBackdrop)}
           style={{ height: 52, width: 52, borderRadius: 26 }}
         >
           <Pressable
-            onPress={() => router.push('/settings')}
-            accessibilityLabel="Settings"
+            onPress={openMap}
+            accessibilityLabel="Map"
             style={{ height: 52, width: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' }}
           >
-            <Ionicons name="settings-outline" size={26} color={darkBackdrop ? '#fff' : '#404040'} />
+            <Ionicons name="location-outline" size={26} color={darkBackdrop ? '#fff' : '#404040'} />
           </Pressable>
         </Glass>
+        {/* a new island is open and hasn't been looked at yet */}
+        {unseenIsland ? <NewsDot style={{ top: -2, right: -2 }} /> : null}
       </View>
 
       {/* iOS-style home dock — the sheets slide up OVER it; only the
           full-screen map reveal hides it */}
       <HomeDock
-        hidden={mapShown || skyMode}
-        mapDot={!!unseenIsland}
+        hidden={mapShown || skyMode || (chatUi !== 'sheet' && chatOpen)}
+        unread={unread}
+        shopDot={shopDot}
+        goalsDot={goalsDot}
         onMessages={openChat}
         onShop={openShop}
-        onMap={openMap}
         onGoals={openGoals}
+        onProfile={openProfile}
       />
 
       {/* Full-screen world map — scales in from centre while the camera pulls
@@ -782,7 +945,7 @@ export default function Home() {
 
 
       {/* Daily-box flow (home only): streak splash → ground chest → rewards */}
-      {settings && !mapShown && !shopOpen && !chatOpen && !settingsOpen && !skyMode && !habitOpen ? (
+      {settings && !covered ? (
         <>
           {boxStage === 'streak' ? (
             <StreakSplash streak={streakCount} onDone={() => setBoxStage('ground')} />
@@ -871,7 +1034,6 @@ export default function Home() {
           </View>
         </Animated.View>
       ) : null}
-      <StreakModal open={streakModalOpen} onClose={closeStreakModal} />
       {settings ? (
         <AppearanceSheet
           open={appearanceOpen}
@@ -881,62 +1043,93 @@ export default function Home() {
         />
       ) : null}
 
-      {/* Look-dev settings sheet — compact so the scene stays visible above it;
-          every control tick applies to the live scene */}
-      {settingsOpen ? (
-        <Pressable
-          onPress={() => setSettingsOpen(false)}
-          accessibilityLabel="Close settings"
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: SCREEN_H * 0.5, zIndex: 20 }}
-        />
-      ) : null}
-      {settings ? (
-        <SettingsSheet
-          open={settingsOpen}
-          onClose={closeSettings}
-          controller={controller}
-          settings={settings}
-          onSettingsChange={setSettings}
-        />
-      ) : null}
-
-      {/* Chat drawer — slides over the lower ~75%, undimmed so the mascot
-          (holding its phone) stays visible in the band above; tap that band
-          to close */}
-      {chatOpen ? (
-        <Pressable
-          onPress={closeChat}
-          accessibilityLabel="Close chat"
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: DRAWER_TOP,
-            zIndex: 30,
-          }}
-        />
-      ) : null}
-      <Animated.View
-        style={[
-          drawerStyle,
-          {
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            top: DRAWER_TOP,
-            height: SCREEN_H - DRAWER_TOP,
-            zIndex: 40,
-            shadowColor: '#000',
-            shadowOpacity: 0.12,
-            shadowRadius: 24,
-            shadowOffset: { width: 0, height: -8 },
-          },
-        ]}
-        pointerEvents={chatOpen ? 'auto' : 'none'}
-      >
-        <ChatScreen onClose={closeChat} onOpenGame={setActiveMatchId} />
-      </Animated.View>
+      {/* Messages — three DEV-selectable presentations (DevPanel → Chat UI):
+          v1 'sheet': the original slide-up drawer, character peeking above it
+          v2 'fullscreen': takeover zooming out of the dock tile (icon morph)
+          v3 'sky': camera pans up (SKY_CHAT_FRAMING), the chat floats above
+          the character; the header's X closes it */}
+      {(() => {
+        // one ChatScreen instance shared by whichever wrapper is live
+        const chatScreen = <ChatScreen floating={chatUi === 'sky'} onClose={closeChat} onOpenGame={setActiveMatchId} />;
+        return chatUi === 'sheet' ? (
+        <>
+          {chatOpen ? (
+            <Pressable
+              onPress={closeChat}
+              accessibilityLabel="Close chat"
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, height: DRAWER_TOP, zIndex: 30 }}
+            />
+          ) : null}
+          <Animated.View
+            style={[
+              chatSheetStyle,
+              {
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                top: DRAWER_TOP,
+                height: SCREEN_H - DRAWER_TOP,
+                zIndex: 40,
+                shadowColor: '#000',
+                shadowOpacity: 0.12,
+                shadowRadius: 24,
+                shadowOffset: { width: 0, height: -8 },
+              },
+            ]}
+            pointerEvents={chatOpen ? 'auto' : 'none'}
+          >
+            {chatScreen}
+          </Animated.View>
+        </>
+      ) : chatUi === 'sky' ? (
+        /* no panel at all: the transcript + input bar float straight over the
+           environment (ChatScreen `floating`); the dock fades out beneath and
+           the input bar takes its place at the bottom */
+        <Animated.View
+          style={[
+            chatSkyStyle,
+            { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 },
+          ]}
+          pointerEvents={chatOpen ? 'auto' : 'none'}
+        >
+          <View style={{ flex: 1, paddingTop: insets.top }}>
+            {chatScreen}
+          </View>
+        </Animated.View>
+      ) : (
+        <Animated.View
+          style={[
+            chatZoomStyle,
+            {
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 40,
+              overflow: 'hidden',
+              backgroundColor: '#fff',
+            },
+          ]}
+          pointerEvents={chatOpen ? 'auto' : 'none'}
+        >
+          <View style={{ flex: 1, paddingTop: insets.top }}>
+            {chatScreen}
+          </View>
+          {/* the launching app icon: stretches with the rect, fades into the app */}
+          <Animated.View
+            pointerEvents="none"
+            style={[chatIconFadeStyle, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]}
+          >
+            <LinearGradient colors={MESSAGES_GRADIENT} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+              <Svg viewBox="0 0 24 24" width="62%" height="62%" preserveAspectRatio="none">
+                <Path fill="#fff" d={MESSAGES_BUBBLE_PATH} />
+              </Svg>
+            </LinearGradient>
+          </Animated.View>
+        </Animated.View>
+      );
+      })()}
 
       {/* Game overlay (plan 21) — the full-screen turn player, over the chat
           drawer; a turn card tap or the picker sheet opens it */}

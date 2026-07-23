@@ -2,12 +2,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
+import { STAR_FACE_BAKED } from '../three/star-face';
+
 // TEMPORARY look-dev knobs for the night sky's star constellation.
 //
 // Not shipped: SessionChat renders these as sliders in place of the chat when
 // STAR_FACE_TUNING is on, so the sky can be dialled in live instead of edit →
 // reload → wait out a camera pan. Once the numbers are agreed they get baked
-// back into the constants in three/renderer.ts (and the counts in
+// back into the constants in three/star-face.ts (and the counts in
 // scripts/build-star-face.mjs) and this whole file goes away.
 //
 // Every change persists immediately, so a reload never loses a tuning session.
@@ -32,21 +34,8 @@ export type StarFaceConfig = {
   pulseHz: number; // breaths per second — very slow by design
 };
 
-// the values currently baked into renderer.ts — sliders start here
-export const STAR_FACE_DEFAULTS: StarFaceConfig = {
-  lineAlpha: 0.323,
-  dustWeight: 0.571,
-  starSize: 1.251,
-  shineSpeed: 1.379,
-  shineDepth: 0.45,
-  size: 14.08,
-  height: 29.82,
-  depth: -29,
-  pitch: Math.atan2(7.4, 15),
-  pulseAmt: 0.035,
-  pulseDepth: 0.9,
-  pulseHz: 0.05,
-};
+// the values currently baked into three/star-face.ts — sliders start here
+export const STAR_FACE_DEFAULTS: StarFaceConfig = { ...STAR_FACE_BAKED };
 
 const KEYS = Object.keys(STAR_FACE_DEFAULTS) as (keyof StarFaceConfig)[];
 
@@ -71,7 +60,7 @@ export const useStarFaceConfig = create<Store>()(
   ),
 );
 
-// A paste-ready block for three/renderer.ts, so a tuning session can actually
+// A paste-ready block for three/star-face.ts, so a tuning session can actually
 // land in the code rather than living in device storage forever.
 export function starFaceSnippet(c: StarFaceConfig): string {
   const n = (v: number, d = 3) => Number(v.toFixed(d));

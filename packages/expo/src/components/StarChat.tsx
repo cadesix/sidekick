@@ -21,6 +21,7 @@ import {
 } from '@sidekick/core';
 
 import { MSG_SHADOW, STREAM_GAP_MS, StreamedText, TypingDots, streamDurationMs } from './chat-stream';
+import { STAR_FACE_TUNING, StarFaceTuner } from './StarFaceTuner';
 import { completeSession, starChatArtifact, starChatCard, starChatController } from '../lib/api';
 import { patchSessionComplete, snapshotSessions, SNAPSHOT_QUERY_KEY, type Snapshot } from '../lib/state';
 import { useSidekickContext } from '../store/context';
@@ -407,6 +408,10 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
       </View>
 
       <Animated.View style={[{ flex: 1, overflow: 'hidden' }, kbPad]}>
+        {/* TEMP look-dev: the sliders replace the transcript (mirrors SessionChat) */}
+        {STAR_FACE_TUNING ? (
+          <StarFaceTuner />
+        ) : (
         <ScrollView
           ref={scrollRef}
           style={[{ flex: 1 }, FADE_TOP]}
@@ -444,6 +449,7 @@ export function StarChat({ onDone }: { onDone: (updated?: boolean) => void }) {
             </View>
           ) : null}
         </ScrollView>
+        )}
 
         <View className="px-3 pt-2 border-t border-white/10" style={{ paddingBottom: Math.max(insets.bottom, 12) + 8 }}>
           {stage === 'artifact' ? (

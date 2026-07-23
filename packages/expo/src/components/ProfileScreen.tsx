@@ -1,21 +1,26 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import {
 	Alert,
+	Image,
 	Linking,
 	Pressable,
 	ScrollView,
 	StyleSheet,
 	Switch,
 	Text,
-	TextInput,
 	View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BOND_MAX, BOND_MIN, nextSession as coreNextSession } from "@sidekick/core";
+import { StreakModal } from "./StreakModal";
+import { useStarChat } from "../store/star-chat";
 import { locationStatus, trpc } from "~/lib/api";
 import { useSignOut } from "~/lib/auth";
+import { snapshotSessions, useSnapshot } from "~/lib/state";
+import { FONT, FONT_BOLD, FONT_MEDIUM, INK } from "~/lib/tokens";
 import { getLocalFocusSettings } from "~/lib/focus";
 import { HEALTH_CONNECTION_QUERY_KEY, loadHealthConnection } from "~/lib/health-connection";
 import { sidekickDisplayName } from "~/lib/sidekick-name";
@@ -24,49 +29,13 @@ import {
 	enableLocationAccess,
 	locationAccess,
 } from "~/lib/location";
-import { colors } from "../theme";
-import { Glass } from "../components/Glass";
-import { Icon, type IconName } from "../components/Icon";
-import { enablePushNotifications } from "~/lib/notifications/registration";
+import { colors } from "~/imessage/theme";
+import { Icon, type IconName } from "~/imessage/components/Icon";
+const STREAK_ICON = require("../../assets/icons/streak.png");
 
-/** An iOS-style grouped field: label on the left, editable value on the right. */
-function Field({
-	label,
-	value,
-	placeholder,
-	onCommit,
-}: {
-	label: string;
-	value: string;
-	placeholder: string;
-	onCommit: (next: string) => void;
-}) {
-	const [draft, setDraft] = useState(value);
-	const commit = () => {
-		const next = draft.trim();
-		if (next === "" || next === value) {
-			setDraft(value);
-			return;
-		}
-		onCommit(next);
-	};
-
-	return (
-		<View style={styles.row}>
-			<Text style={styles.rowLabel}>{label}</Text>
-			<TextInput
-				style={styles.rowInput}
-				value={draft}
-				placeholder={placeholder}
-				placeholderTextColor={colors.gray2}
-				returnKeyType="done"
-				onChangeText={setDraft}
-				onBlur={commit}
-				onSubmitEditing={commit}
-			/>
-		</View>
-	);
-}
+const INK_55 = "rgba(17,17,17,0.55)";
+const INK_45 = "rgba(17,17,17,0.45)";
+const INK_12 = "rgba(17,17,17,0.12)";
 
 /** An iOS-style disclosure row that pushes another screen. */
 function LinkRow({ label, onPress }: { label: string; onPress: () => void }) {
@@ -98,13 +67,14 @@ function Group({
 	children,
 	footer,
 }: {
-	title: string;
+	title?: string;
 	children: ReactNode;
 	footer?: string;
 }) {
 	return (
 		<View style={styles.group}>
-			<Text style={styles.groupTitle}>{title}</Text>
+			{title ? <Text style={styles.groupTitle}>{title}</Text> : null}
+			{/* the shared card surface: a friendly grey stroke, no shadow */}
 			<View style={styles.card}>{children}</View>
 			{footer ? <Text style={styles.groupFooter}>{footer}</Text> : null}
 		</View>
@@ -181,30 +151,33 @@ function IntegrationLinkRow({
 	);
 }
 
-export function SettingsScreen() {
+export function ProfileScreen() {
 	const insets = useSafeAreaInsets();
 	const router = useRouter();
 	const queryClient = useQueryClient();
 	const me = useQuery({ queryKey: ["me"], queryFn: () => trpc.users.me.query() });
+	// the latest astral card, bond and streak — all server-owned snapshot slices
+	const snapshot = useSnapshot().data;
+	const astral = snapshot?.astral ?? null;
+	const bond = snapshot?.bond ?? BOND_MIN;
+	// gate the star-chat CTA the same way Home gates its star button: no
+	// unfinished session → nothing to open (a completed reading would resume
+	// into stale local phase state). Memoized — this scans the session ladder.
+	const nextStarChat = useMemo(
+		() => (snapshot ? coreNextSession(snapshotSessions(snapshot)) : null),
+		[snapshot],
+	);
+	const streakCount = snapshot?.streak.count ?? 0;
+	const [streakOpen, setStreakOpen] = useState(false);
 	const location = useQuery({ queryKey: ["location", "setting"], queryFn: loadLocationSetting });
 	const focus = useQuery({ queryKey: ["focus-local"], queryFn: getLocalFocusSettings });
 	const health = useQuery({
 		queryKey: HEALTH_CONNECTION_QUERY_KEY,
 		queryFn: loadHealthConnection,
 	});
-	const notifications = useQuery({
-		queryKey: ["notifications", "preferences"],
-		queryFn: () => trpc.notifications.preferences.query(),
-	});
 	// the character's name (bracketed diagnostic) — used in persona copy below;
 	// the iOS-Settings app-name reference stays the literal "Sidekick" brand
 	const sidekickName = sidekickDisplayName(me.data?.sidekickName);
-
-	const save = useMutation({
-		mutationFn: (patch: { name?: string; sidekickName?: string }) =>
-			trpc.users.updateProfile.mutate(patch),
-		onSuccess: () => queryClient.invalidateQueries({ queryKey: ["me"] }),
-	});
 
 	const setLocationEnabled = useMutation({
 		mutationFn: async (enabled: boolean) => {
@@ -230,40 +203,6 @@ export function SettingsScreen() {
 		},
 	});
 
-	const updateNotifications = useMutation({
-		mutationFn: async (patch: {
-			proactiveEnabled?: boolean;
-			checkinsEnabled?: boolean;
-			remindersEnabled?: boolean;
-			awakeStart?: string;
-			awakeEnd?: string;
-		}) => {
-			await trpc.notifications.updatePreferences.mutate(patch);
-			if (patch.proactiveEnabled) {
-				try {
-					const enabled = await enablePushNotifications();
-					if (!enabled) {
-						Alert.alert(
-							"Notifications are off",
-							`${sidekickName} can still leave messages in chat. You can turn alerts on in iOS Settings.`,
-							[
-								{ text: "Not now", style: "cancel" },
-								{ text: "Open Settings", onPress: () => void Linking.openSettings() },
-							],
-						);
-					}
-				} catch {
-					Alert.alert(
-						"Couldn’t register this device",
-						`Your preference was saved. ${sidekickName} will try notifications again when the app reconnects.`,
-					);
-				}
-			}
-		},
-		onSuccess: () =>
-			queryClient.invalidateQueries({ queryKey: ["notifications", "preferences"] }),
-	});
-
 	const signOut = useSignOut();
 	const signOutMutation = useMutation({ mutationFn: signOut });
 
@@ -273,13 +212,13 @@ export function SettingsScreen() {
 		<View style={styles.screen}>
 			<StatusBar style="dark" />
 			<View style={styles.header}>
-				<Glass isInteractive style={styles.glassButton}>
-					<Pressable hitSlop={12} onPress={() => router.back()} style={styles.glassPressable}>
-						<Icon name="chevronLeft" size={20} color={colors.blue} strokeWidth={2.5} />
-					</Pressable>
-				</Glass>
-				<Text style={styles.title}>Settings</Text>
-				<View style={styles.glassButton} />
+				{/* bare ink chevron — the Glass wrapper both fought the brand look and
+				    swallowed the tap on web */}
+				<Pressable hitSlop={12} onPress={() => router.back()} style={styles.backButton} accessibilityLabel="Back">
+					<Icon name="chevronLeft" size={24} color={INK} strokeWidth={2.5} />
+				</Pressable>
+				<Text style={styles.title}>Profile</Text>
+				<View style={styles.backButton} />
 			</View>
 
 			{me.data ? (
@@ -287,88 +226,75 @@ export function SettingsScreen() {
 					contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
 					keyboardDismissMode="on-drag"
 				>
-					<Group title="You">
-						<Field
-							label="Name"
-							value={me.data.name ?? ""}
-							placeholder="Your name"
-							onCommit={(name) => save.mutate({ name })}
-						/>
-					</Group>
-					<Group title={sidekickName}>
-						<Field
-							label="Name"
-							value={me.data.sidekickName ?? ""}
-							placeholder="Sidekick"
-							onCommit={(sidekickName) => save.mutate({ sidekickName })}
-						/>
-						<View style={styles.divider} />
-						<View style={styles.row}>
-							<Text style={styles.rowLabel}>Time zone</Text>
-							<Text style={styles.rowValue}>{me.data.timezone ?? "—"}</Text>
+					{/* your name, big — the streak rides the same line as a wordless
+					    flame + count chip (taps open the milestone ladder) */}
+					<View style={styles.nameRow}>
+						<Text style={styles.profileName}>{me.data.name ?? "You"}</Text>
+						<Pressable style={styles.streakChip} onPress={() => setStreakOpen(true)} accessibilityLabel={`${streakCount} day streak`}>
+							<Image source={STREAK_ICON} style={styles.streakIcon} />
+							<Text style={styles.streakCount}>{streakCount}</Text>
+						</Pressable>
+					</View>
+
+					{/* bond as a progress bar (sky fill on the field track, 06 §1.1) */}
+					<View style={[styles.card, styles.bondCard]}>
+						<View style={styles.bondLabelRow}>
+							<Text style={styles.statCaption}>
+								<Text style={styles.statStar}>✦ </Text>
+								bond
+							</Text>
+							<Text style={styles.bondPct}>{bond}%</Text>
 						</View>
-					</Group>
-					{notifications.data ? (
-						<Group
-							title="Notifications"
-							footer="Proactive messages wait until you’ve been away for 12 hours and arrive at a varied time inside your awake window."
-						>
-							<View style={styles.row}>
-								<Text style={styles.rowLabel}>Messages from {sidekickName}</Text>
-								<Switch
-									style={styles.switch}
-									value={notifications.data.proactiveEnabled}
-									disabled={updateNotifications.isPending}
-									onValueChange={(proactiveEnabled) =>
-										updateNotifications.mutate({ proactiveEnabled })
-									}
-									trackColor={{ false: colors.gray4, true: colors.green }}
-								/>
-							</View>
-							<View style={styles.divider} />
-							<View style={styles.row}>
-								<Text style={styles.rowLabel}>Goal check-ins</Text>
-								<Switch
-									style={styles.switch}
-									value={notifications.data.checkinsEnabled}
-									disabled={updateNotifications.isPending}
-									onValueChange={(checkinsEnabled) =>
-										updateNotifications.mutate({ checkinsEnabled })
-									}
-									trackColor={{ false: colors.gray4, true: colors.green }}
-								/>
-							</View>
-							<View style={styles.divider} />
-							<View style={styles.row}>
-								<Text style={styles.rowLabel}>Reminders</Text>
-								<Switch
-									style={styles.switch}
-									value={notifications.data.remindersEnabled}
-									disabled={updateNotifications.isPending}
-									onValueChange={(remindersEnabled) =>
-										updateNotifications.mutate({ remindersEnabled })
-									}
-									trackColor={{ false: colors.gray4, true: colors.green }}
-								/>
-							</View>
-							<View style={styles.divider} />
-							<Field
-								label="Awake from"
-								value={notifications.data.awakeStart}
-								placeholder="09:00"
-								onCommit={(awakeStart) => updateNotifications.mutate({ awakeStart })}
-							/>
-							<View style={styles.divider} />
-							<Field
-								label="Until"
-								value={notifications.data.awakeEnd}
-								placeholder="21:30"
-								onCommit={(awakeEnd) => updateNotifications.mutate({ awakeEnd })}
-							/>
-						</Group>
-					) : null}
+						<View style={styles.bondTrack}>
+							<View style={[styles.bondFill, { width: `${Math.min(100, Math.max(0, (bond / BOND_MAX) * 100))}%` }]} />
+						</View>
+					</View>
+
+					{/* the latest astral card — same dark-purple treatment as the
+					    star-chat reveal, compact; a nudge toward a first star chat
+					    until a card exists */}
+					<View style={[styles.card, styles.astralCard]}>
+						<View style={styles.astralLabelRow}>
+							<Text style={styles.astralStar}>✦</Text>
+							<Text style={styles.astralLabel}>your astral card</Text>
+						</View>
+						{astral ? (
+							<>
+								<Text style={styles.astralArchetype}>{astral.archetype}</Text>
+								{astral.traits.length ? (
+									<View style={styles.astralTraits}>
+										{astral.traits.map((tr, i) => (
+											<View key={i} style={styles.astralChip}>
+												<Text style={styles.astralChipText}>{tr}</Text>
+											</View>
+										))}
+									</View>
+								) : null}
+								<Text style={styles.astralReading}>{astral.reading}</Text>
+							</>
+						) : (
+							<Text style={styles.astralReading}>
+								Do an astral chat with {sidekickName} to reveal your card.
+							</Text>
+						)}
+						{/* the way in: dismiss Profile and ask Home to open the star chat —
+						    only while a session remains to be played */}
+						{nextStarChat ? (
+							<Pressable
+								style={styles.astralCta}
+								onPress={() => {
+									useStarChat.getState().requestOpen();
+									router.back();
+								}}
+							>
+								<Text style={styles.astralCtaText}>{astral ? "Continue your star chat ✦" : "Start your star chat ✦"}</Text>
+							</Pressable>
+						) : null}
+					</View>
+
+					{/* Connections — a proper section title, not a settings caption */}
+					<Text style={styles.sectionTitle}>Connections</Text>
 					<Group
-						title="Connected"
 						footer={`Each connection explains what stays on your iPhone and what ${sidekickName} can use. You can review or disconnect it anytime.`}
 					>
 						<View style={styles.integrationRow}>
@@ -427,6 +353,9 @@ export function SettingsScreen() {
 					) : null}
 				</ScrollView>
 			) : null}
+
+			{/* streak milestone ladder — opened from the streak stat card */}
+			<StreakModal open={streakOpen} onClose={() => setStreakOpen(false)} />
 		</View>
 	);
 }
@@ -434,7 +363,7 @@ export function SettingsScreen() {
 const styles = StyleSheet.create({
 	screen: {
 		flex: 1,
-		backgroundColor: colors.gray6,
+		backgroundColor: "#FFFFFF", // design system: the app background is always white
 	},
 	header: {
 		flexDirection: "row",
@@ -447,47 +376,191 @@ const styles = StyleSheet.create({
 		paddingTop: 12,
 		paddingBottom: 10,
 	},
-	glassButton: {
+	backButton: {
 		width: 42,
 		height: 42,
-		borderRadius: 21,
-		borderCurve: "continuous",
-	},
-	glassPressable: {
-		flex: 1,
-		alignItems: "center",
+		alignItems: "flex-start",
 		justifyContent: "center",
 	},
 	title: {
+		fontFamily: FONT_BOLD,
 		fontSize: 17,
-		fontWeight: "700",
-		color: colors.label,
+		color: INK,
 	},
 	content: {
-		paddingHorizontal: 16,
+		paddingHorizontal: 20, // screen gutter (06 §1.3)
+	},
+	// heading role: 27/800, −0.02em tracking — left-aligned like the rest
+	profileName: {
+		flexShrink: 1,
+		fontFamily: FONT_BOLD,
+		fontSize: 27,
+		letterSpacing: -0.54,
+		color: INK,
+	},
+	// the card surface: no shadow, just a friendly slightly-thick grey stroke
+	card: {
+		backgroundColor: "#FFFFFF",
+		borderRadius: 16,
+		borderCurve: "continuous",
+		borderWidth: 1.5,
+		borderColor: "#E4E4E7",
+	},
+	nameRow: {
+		marginTop: 18,
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		gap: 12,
+	},
+	streakChip: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 4,
+	},
+	streakIcon: {
+		width: 26,
+		height: 26,
+		resizeMode: "contain",
+	},
+	streakCount: {
+		fontFamily: FONT_BOLD,
+		fontSize: 18,
+		color: INK,
+	},
+	bondCard: {
+		marginTop: 16,
+		padding: 16,
+		gap: 10,
+	},
+	bondLabelRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+	},
+	bondPct: {
+		fontFamily: FONT_BOLD,
+		fontSize: 15,
+		color: INK,
+	},
+	// sky fill on the field track (06 §1.1 progress bar)
+	bondTrack: {
+		height: 10,
+		borderRadius: 999,
+		backgroundColor: colors.field, // 06 §1.1 input/track token
+		overflow: "hidden",
+	},
+	bondFill: {
+		height: "100%",
+		borderRadius: 999,
+		backgroundColor: "#9DC4F2",
+	},
+	statStar: {
+		fontSize: 12,
+		color: "#7A5AF8",
+	},
+	statCaption: {
+		fontFamily: FONT_MEDIUM,
+		fontSize: 12,
+		textTransform: "uppercase",
+		letterSpacing: 0.6,
+		color: INK_45,
+	},
+	sectionTitle: {
+		marginTop: 28,
+		fontFamily: FONT_BOLD,
+		fontSize: 22,
+		letterSpacing: -0.3,
+		color: INK,
+	},
+	// compact take on the star-chat reveal card (same palette), on the shared
+	// card stroke; its dark fill overrides the card's white
+	astralCard: {
+		marginTop: 16,
+		backgroundColor: "#160e2c",
+		padding: 20,
+	},
+	astralLabelRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+	},
+	astralStar: {
+		fontSize: 12,
+		color: "#C9BCFF",
+	},
+	astralLabel: {
+		fontFamily: FONT_BOLD,
+		fontSize: 11,
+		textTransform: "uppercase",
+		letterSpacing: 2,
+		color: "#C9BCFF",
+	},
+	astralArchetype: {
+		marginTop: 8,
+		fontFamily: FONT_BOLD,
+		fontSize: 24,
+		lineHeight: 28,
+		color: "#FFFFFF",
+	},
+	astralTraits: {
+		marginTop: 10,
+		flexDirection: "row",
+		flexWrap: "wrap",
+		gap: 6,
+	},
+	astralChip: {
+		borderRadius: 999,
+		borderWidth: 1,
+		borderColor: "rgba(255,255,255,0.1)",
+		backgroundColor: "rgba(255,255,255,0.1)",
+		paddingHorizontal: 10,
+		paddingVertical: 4,
+	},
+	astralChipText: {
+		fontFamily: FONT_MEDIUM,
+		fontSize: 12,
+		color: "#E7E0FF",
+	},
+	astralReading: {
+		marginTop: 12,
+		fontFamily: FONT,
+		fontSize: 14,
+		lineHeight: 21,
+		color: "rgba(231,224,255,0.9)",
+	},
+	// the reveal modal's purple pill, compact
+	astralCta: {
+		marginTop: 16,
+		borderRadius: 999,
+		backgroundColor: "#7A5AF8",
+		paddingVertical: 12,
+		alignItems: "center",
+	},
+	astralCtaText: {
+		fontFamily: FONT_BOLD,
+		fontSize: 15,
+		color: "#FFFFFF",
 	},
 	group: {
 		marginTop: 22,
 	},
 	groupTitle: {
-		fontSize: 13,
+		fontFamily: FONT_MEDIUM,
+		fontSize: 12,
 		textTransform: "uppercase",
-		letterSpacing: 0.4,
-		color: colors.secondaryLabel,
+		letterSpacing: 0.6,
+		color: INK_45,
 		marginBottom: 8,
 		marginLeft: 4,
 	},
 	groupFooter: {
+		fontFamily: FONT,
 		fontSize: 13,
 		lineHeight: 18,
-		color: colors.secondaryLabel,
-		marginTop: 8,
+		color: INK_45,
+		marginTop: 10,
 		marginHorizontal: 4,
-	},
-	card: {
-		backgroundColor: "#FFFFFF",
-		borderRadius: 14,
-		borderCurve: "continuous",
 	},
 	row: {
 		flexDirection: "row",
@@ -499,19 +572,15 @@ const styles = StyleSheet.create({
 		height: 52,
 	},
 	rowLabel: {
+		fontFamily: FONT,
 		fontSize: 17,
-		color: colors.label,
-	},
-	rowInput: {
-		flex: 1,
-		fontSize: 17,
-		color: colors.secondaryLabel,
-		textAlign: "right",
+		color: INK,
 	},
 	rowValue: {
 		flex: 1,
+		fontFamily: FONT,
 		fontSize: 17,
-		color: colors.secondaryLabel,
+		color: INK_55,
 		textAlign: "right",
 	},
 	rowChevron: {
@@ -519,6 +588,7 @@ const styles = StyleSheet.create({
 		alignItems: "flex-end",
 	},
 	signOutLabel: {
+		fontFamily: FONT_MEDIUM,
 		fontSize: 17,
 		color: colors.red,
 	},
@@ -529,7 +599,7 @@ const styles = StyleSheet.create({
 	},
 	divider: {
 		height: StyleSheet.hairlineWidth,
-		backgroundColor: colors.gray3,
+		backgroundColor: INK_12,
 		marginLeft: 16,
 	},
 	integrationRow: {
@@ -554,13 +624,17 @@ const styles = StyleSheet.create({
 		gap: 2,
 	},
 	integrationDescription: {
+		fontFamily: FONT,
 		fontSize: 13,
 		lineHeight: 17,
-		color: colors.secondaryLabel,
+		color: INK_55,
 	},
+	// spans the row like every other divider — stopping at the icon column made
+	// the list read as two columns
 	integrationDivider: {
 		height: StyleSheet.hairlineWidth,
-		backgroundColor: colors.gray3,
-		marginLeft: 66,
+		backgroundColor: INK_12,
+		marginLeft: 16,
+		marginRight: 16,
 	},
 });

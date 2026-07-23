@@ -17,28 +17,47 @@ import STAR_FACE from './star-face.json';
 // star-face.json is in constellation space: centred on the head, 1 unit across,
 // +z toward the viewer.
 
-const STAR_HEAD_AT = new THREE.Vector3(0, 29.82, -29);
-const STAR_HEAD_SIZE = 14.08; // world units across
+// star face — tuned values 2026-07-22 (scripts/build-star-face.mjs owns star COUNTS)
+const STAR_HEAD_AT = new THREE.Vector3(0, 28.93, -29);
+const STAR_HEAD_SIZE = 15.01; // world units across
 // pan-up view axis is ~26° above horizontal, so pitch the head by the same to
 // face back down it (atan2 of COSMOS_FRAMING's target-minus-pos)
 const STAR_HEAD_PITCH = Math.atan2(7.4, 15);
 // The cloud doesn't move — a travelling shine does the work instead, brightening
 // it in slow bands so it feels alive without spinning. SPEED is radians/sec of
 // the sweep; DEPTH is how much of a star's brightness it swings (0 = steady).
-const STAR_SHINE_SPEED = 1.379;
-const STAR_SHINE_DEPTH = 0.45;
+const STAR_SHINE_SPEED = 1.634;
+const STAR_SHINE_DEPTH = 0.544;
 // how loud the joins are. Low: they hint at the contour, the stars carry it.
-const STAR_LINE_ALPHA = 0.323;
+const STAR_LINE_ALPHA = 0.276;
 // A very slow breath — it rocks a couple of degrees on pitch and drifts in and
 // out a little. Not the yaw drift this used to have (that read as a turning
 // head); this is small enough to feel like the sky itself moving.
-const STAR_PULSE_AMT = 0.035; // radians of pitch
-const STAR_PULSE_DEPTH = 0.9; // world units in/out
-const STAR_PULSE_HZ = 0.05; // ~20s a breath
+const STAR_PULSE_AMT = 0.042; // radians of pitch
+const STAR_PULSE_DEPTH = 1.906; // world units in/out
+const STAR_PULSE_HZ = 0.087; // ~11s a breath
 // dust brightness relative to a contour star — atmosphere, not structure
-const STAR_DUST_WEIGHT = 0.571;
+const STAR_DUST_WEIGHT = 0.33;
 // point-size multiplier for every star in the cloud
-const STAR_SIZE = 1.251;
+const STAR_SIZE = 1.106;
+
+// The baked tune as one object, keyed like StarFaceConfig — the tuner's slider
+// defaults derive from THIS (store/starFaceConfig.ts), so a new bake is a
+// one-file paste instead of mirroring twelve numbers by hand.
+export const STAR_FACE_BAKED = {
+  lineAlpha: STAR_LINE_ALPHA,
+  dustWeight: STAR_DUST_WEIGHT,
+  starSize: STAR_SIZE,
+  shineSpeed: STAR_SHINE_SPEED,
+  shineDepth: STAR_SHINE_DEPTH,
+  size: STAR_HEAD_SIZE,
+  height: STAR_HEAD_AT.y,
+  depth: STAR_HEAD_AT.z,
+  pitch: STAR_HEAD_PITCH,
+  pulseAmt: STAR_PULSE_AMT,
+  pulseDepth: STAR_PULSE_DEPTH,
+  pulseHz: STAR_PULSE_HZ,
+} as const;
 
 function toStarPositions(list: number[][]): Float32Array {
   const out = new Float32Array(list.length * 3);

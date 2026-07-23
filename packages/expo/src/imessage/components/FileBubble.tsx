@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
 import { fileTypeLabel, formatBytes, truncateFilename } from "../lib/attachments";
-import { colors } from "../theme";
+import { colors, font } from "../theme";
 import type { FileAttachment } from "../types";
 import { Icon } from "./Icon";
 
@@ -48,10 +48,11 @@ const styles = StyleSheet.create({
 	},
 	name: {
 		fontSize: 15,
-		fontWeight: "600",
+		fontFamily: font.medium,
 	},
 	caption: {
 		fontSize: 12,
+		fontFamily: font.regular,
 		marginTop: 1,
 	},
 });

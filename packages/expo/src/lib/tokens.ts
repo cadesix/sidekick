@@ -6,6 +6,15 @@
 export const INK = "#111111";
 
 /**
+ * The one type family (06 §1.2), ABC Diatype Rounded. iOS won't faux-bold a
+ * custom font, so weights are separate families — always set the family, never
+ * fontWeight, for the bold/medium looks. Registered in app/_layout.tsx.
+ */
+export const FONT = "Diatype-Rounded";
+export const FONT_MEDIUM = "Diatype-Rounded-Medium";
+export const FONT_BOLD = "Diatype-Rounded-Bold";
+
+/**
  * Rotating pastel fills for option cards / goal rows (06 §1.1). Lists index into
  * this in order by row index.
  */

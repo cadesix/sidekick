@@ -7,7 +7,7 @@ import {
 	type PendingAttachment,
 	truncateFilename,
 } from "../lib/attachments";
-import { colors } from "../theme";
+import { colors, font } from "../theme";
 import { Icon } from "./Icon";
 
 const PREVIEW_HEIGHT = 148;
@@ -169,11 +169,12 @@ const styles = StyleSheet.create({
 	},
 	fileName: {
 		fontSize: 14,
-		fontWeight: "600",
+		fontFamily: font.medium,
 		color: colors.label,
 	},
 	fileMeta: {
 		fontSize: 12,
+		fontFamily: font.regular,
 		color: colors.secondaryLabel,
 	},
 	dimmed: {
@@ -197,7 +198,7 @@ const styles = StyleSheet.create({
 	},
 	errorText: {
 		fontSize: 12,
-		fontWeight: "500",
+		fontFamily: font.medium,
 		color: colors.red,
 		paddingHorizontal: 14,
 		paddingBottom: 6,

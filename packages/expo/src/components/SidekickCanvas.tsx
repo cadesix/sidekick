@@ -1,4 +1,5 @@
 import * as Device from 'expo-device';
+import * as Haptics from 'expo-haptics';
 import { GLView, type ExpoWebGLRenderingContext } from 'expo-gl';
 import { useEffect, useRef } from 'react';
 import { PixelRatio, StyleSheet, View, type GestureResponderEvent, type ViewStyle } from 'react-native';
@@ -7,6 +8,7 @@ import type { SharedValue } from 'react-native-reanimated';
 import type { BoxTier } from '@sidekick/core';
 
 import { NO_BROWSER_PAN } from '../lib/web-style';
+import { speak } from '../store/speech';
 import type { EnvironmentId } from '../three/biomes';
 import { createSidekickRenderer, type Framing, type SidekickController } from '../three/renderer';
 import type { CosmeticsControls } from '../three/wardrobe';
@@ -75,7 +77,7 @@ export function SidekickCanvas({
   // world environment (map travel): 'meadow' | biome id
   environment?: EnvironmentId;
   onControls?: (c: CosmeticsControls | null) => void;
-  // the raw scene controller (Settings sheet uses applySettings for live look-dev)
+  // the raw scene controller (applySettings, face pulses, daily-box pop)
   onController?: (c: SidekickController | null) => void;
   // head-tracked overlay position sink (bond badge / speech bubble)
   overhead?: OverheadTarget;
@@ -132,6 +134,13 @@ export function SidekickCanvas({
       environment,
       dailyBox,
       onControls: (c) => onControlsRef.current?.(c),
+      // poke boil-over: the scene is already jumping/annoyed — layer on a buzz
+      // and the "hey!" bubble over his head (the speech store drives it;
+      // lowercase — the sidekick's voice, per the design system)
+      onAngryPoke: () => {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        speak('hey!!', 2200);
+      },
       onOverhead: (nx, ny, visible) => project(overheadRef.current, nx, ny, visible),
       onGround: (nx, ny, visible) => project(groundRef.current, nx, ny, visible),
       onFrameStats: (s) => onFrameStatsRef.current?.(s),

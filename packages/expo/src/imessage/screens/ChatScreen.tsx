@@ -2,11 +2,12 @@ import { BlurView } from "expo-blur";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { memo, useCallback, useMemo, useRef, useState } from "react";
-import { Alert, FlatList, Pressable, StyleSheet, View } from "react-native";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Dimensions, FlatList, Pressable, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, {
+	type SharedValue,
 	Easing,
 	interpolate,
 	useAnimatedProps,
@@ -33,6 +34,8 @@ import {
 	TIME_REVEAL_WIDTH,
 	type BubbleLayout,
 } from "../components/MessageRow";
+import { FloatingChat } from "../floating-chat";
+import { FAUX_KB_HEIGHT, FAUX_KB_VISIBLE, FauxKeyboard } from "~/components/FauxKeyboard";
 import { GamePickerSheet } from "../components/GamePickerSheet";
 import { type DrawerAction, PlusDrawer } from "../components/PlusDrawer";
 import { ReplyChain } from "../components/ReplyChain";
@@ -41,6 +44,48 @@ import { TimestampSeparator } from "../components/TimestampSeparator";
 import { TypingIndicator } from "../components/TypingIndicator";
 
 const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
+
+// Floating ("sky") presentation: reserve the bottom of the screen for the
+// character — the newest message rests ABOVE his head, the band between input
+// bar and transcript shows only the environment. Fraction of screen height,
+// tuned to SKY_CHAT_FRAMING's standing-body framing (app/index.tsx). The
+// reserve COLLAPSES as the keyboard rises (the keyboard covers the character
+// anyway, and the transcript shouldn't ride 22% above the composer).
+const CHARACTER_ZONE = Math.round(Dimensions.get("window").height * 0.22);
+
+// The reply-mode blur, as its own memoized LEAF: mounting it inline made every
+// reply open/close commit the whole transcript twice (the delayed-unmount state
+// lived on ChatScreen). It must UNMOUNT at idle — expo-blur's web shim applies
+// backdrop-filter saturate(180%) even at intensity 0, washing the scene behind
+// the floating chat — but must survive the 220ms exit or dismissal pops the
+// blur off in one frame.
+const ReplyScrim = memo(function ReplyScrim({
+	replyActive,
+	replyProgress,
+}: {
+	replyActive: boolean;
+	replyProgress: SharedValue<number>;
+}) {
+	const [mounted, setMounted] = useState(false);
+	useEffect(() => {
+		if (replyActive) {
+			setMounted(true);
+			return;
+		}
+		const t = setTimeout(() => setMounted(false), 260);
+		return () => clearTimeout(t);
+	}, [replyActive]);
+	const blurProps = useAnimatedProps(() => ({ intensity: replyProgress.value * 28 }));
+	if (!mounted) return null;
+	return (
+		<AnimatedBlurView
+			tint="light"
+			pointerEvents="none"
+			animatedProps={blurProps}
+			style={StyleSheet.absoluteFill}
+		/>
+	);
+});
 
 const TYPING_ITEM = "typing";
 const ENTRY_ANIMATION_WINDOW = 1200;
@@ -67,9 +112,13 @@ export const ChatScreen = memo(ChatScreenImpl);
 function ChatScreenImpl({
 	onClose,
 	onOpenGame,
+	floating,
 }: {
 	onClose: () => void;
 	onOpenGame: (matchId: string) => void;
+	// "sky" presentation: transparent over the 3D scene — no white fill, no
+	// sheet corners/grabber, no white header/input fades; bubbles float free
+	floating?: boolean;
 }) {
 	const insets = useSafeAreaInsets();
 	const { thread, messages, composerAd, typing, send, addReaction, removeMessage } =
@@ -115,7 +164,24 @@ function ChatScreenImpl({
 		[typing, transcript],
 	);
 
-	const keyboard = useReanimatedKeyboardAnimation();
+	const realKeyboard = useReanimatedKeyboardAnimation();
+	// WEB (dev aid): the browser has no virtual keyboard, so composer focus
+	// emulates one — the same shared-value shapes the real hook drives (height
+	// runs 0 → -kb, progress 0 → 1), letting the keyboard layout be exercised
+	// in the browser. Native uses the real thing untouched.
+	const emuKbHeight = useSharedValue(0);
+	const emuKbProgress = useSharedValue(0);
+	// The emulation only exists where the faux deck renders (dev web) — a prod
+	// web build must use the real (no-op) hook or focusing the composer would
+	// fly the transcript up 320px over nothing. Memoized: a fresh object per
+	// render would rebuild every worklet that closes over `keyboard`.
+	const emuKeyboard = useMemo(() => ({ height: emuKbHeight, progress: emuKbProgress }), [emuKbHeight, emuKbProgress]);
+	const keyboard = FAUX_KB_VISIBLE ? emuKeyboard : realKeyboard;
+	const emulateKeyboard = (open: boolean) => {
+		if (!FAUX_KB_VISIBLE) return;
+		emuKbHeight.value = withTiming(open ? -FAUX_KB_HEIGHT : 0, { duration: 260 });
+		emuKbProgress.value = withTiming(open ? 1 : 0, { duration: 260 });
+	};
 	const inputBarHeight = useSharedValue(56);
 	const revealX = useSharedValue(0);
 	const replyProgress = useSharedValue(0);
@@ -130,9 +196,6 @@ function ChatScreenImpl({
 		});
 	}, [replyActive]);
 
-	const scrimBlurProps = useAnimatedProps(() => ({
-		intensity: replyProgress.value * 28,
-	}));
 	const scrimTintStyle = useAnimatedStyle(() => ({
 		opacity: replyProgress.value,
 	}));
@@ -157,7 +220,11 @@ function ChatScreenImpl({
 	// room for the input bar (plus the fade feather) and however far the keyboard
 	// lifted it — so the newest message rests ABOVE the fade, not under it.
 	const bottomSpacerStyle = useAnimatedStyle(() => ({
-		height: inputBarHeight.value - keyboard.height.value + FADE_FEATHER,
+		height:
+			inputBarHeight.value -
+			keyboard.height.value +
+			FADE_FEATHER +
+			(floating ? CHARACTER_ZONE * (1 - keyboard.progress.value) : 0),
 	}));
 	// The bottom fade tracks the live composer height (which now grows with
 	// multi-line text) plus that feather, so it hugs the composer instead of the
@@ -304,7 +371,8 @@ function ChatScreenImpl({
 	}
 
 	return (
-		<View ref={containerRef} style={styles.container}>
+		<FloatingChat.Provider value={!!floating}>
+		<View ref={containerRef} style={[styles.container, floating ? styles.containerFloating : null]}>
 			<GestureDetector gesture={timeRevealPan}>
 				<FlatList
 					inverted
@@ -322,12 +390,7 @@ function ChatScreenImpl({
 				/>
 			</GestureDetector>
 
-			<AnimatedBlurView
-				tint="light"
-				pointerEvents="none"
-				animatedProps={scrimBlurProps}
-				style={StyleSheet.absoluteFill}
-			/>
+			<ReplyScrim replyActive={replyTo !== undefined} replyProgress={replyProgress} />
 			<Animated.View
 				pointerEvents="none"
 				style={[StyleSheet.absoluteFill, styles.replyScrim, scrimTintStyle]}
@@ -340,17 +403,22 @@ function ChatScreenImpl({
 			) : null}
 
 			<View style={styles.header} pointerEvents="box-none">
-				<LinearGradient
-					colors={["rgba(255,255,255,0.96)", "rgba(255,255,255,0.82)", "rgba(255,255,255,0)"]}
-					locations={[0, 0.55, 1]}
-					style={styles.headerFade}
-					pointerEvents="none"
-				/>
-				{/* grabber: signals the sheet slides down to dismiss */}
-				<View style={styles.grabberWrap} pointerEvents="none">
-					<View style={styles.grabber} />
-				</View>
-				{/* close on the RIGHT now; settings moved to the home screen's gear */}
+				{/* the white header fade + grabber both vanish when floating (they'd
+				    read as fog / a non-functional pill over the scene) */}
+				{floating ? null : (
+					<>
+						<LinearGradient
+							colors={["rgba(255,255,255,0.96)", "rgba(255,255,255,0.82)", "rgba(255,255,255,0)"]}
+							locations={[0, 0.55, 1]}
+							style={styles.headerFade}
+							pointerEvents="none"
+						/>
+						<View style={styles.grabberWrap} pointerEvents="none">
+							<View style={styles.grabber} />
+						</View>
+					</>
+				)}
+				{/* close on the RIGHT now; settings live under Profile (dock tile) */}
 				<View style={styles.headerRow} pointerEvents="box-none">
 					<Glass isInteractive style={styles.glassButton}>
 						<Pressable
@@ -372,14 +440,18 @@ function ChatScreenImpl({
 				/>
 			) : null}
 
+			<FauxKeyboard progress={emuKbProgress} />
+
 			<Animated.View style={[styles.footer, footerStyle]} pointerEvents="box-none">
-				<Animated.View style={[styles.inputFade, inputFadeStyle]} pointerEvents="none">
-					<LinearGradient
-						colors={["rgba(255,255,255,0)", colors.background]}
-						locations={[0, 1]}
-						style={StyleSheet.absoluteFill}
-					/>
-				</Animated.View>
+				{floating ? null : (
+					<Animated.View style={[styles.inputFade, inputFadeStyle]} pointerEvents="none">
+						<LinearGradient
+							colors={["rgba(255,255,255,0)", colors.background]}
+							locations={[0, 1]}
+							style={StyleSheet.absoluteFill}
+						/>
+					</Animated.View>
+				)}
 				<Animated.View
 					style={inputBarPaddingStyle}
 					onLayout={(event) => {
@@ -396,6 +468,8 @@ function ChatScreenImpl({
 					<View>
 						{plusOpen ? <PlusDrawer onSelect={handleDrawerAction} /> : null}
 						<ChatInputBar
+							onInputFocus={() => emulateKeyboard(true)}
+							onInputBlur={() => emulateKeyboard(false)}
 							replyActive={replyTo !== undefined}
 							attachmentState={attachmentState}
 							tray={
@@ -442,6 +516,7 @@ function ChatScreenImpl({
 				/>
 			) : null}
 		</View>
+		</FloatingChat.Provider>
 	);
 }
 
@@ -454,6 +529,12 @@ const styles = StyleSheet.create({
 		borderTopLeftRadius: 28,
 		borderTopRightRadius: 28,
 		overflow: "hidden",
+	},
+	// floating ("sky") presentation: the environment IS the background
+	containerFloating: {
+		backgroundColor: "transparent",
+		borderTopLeftRadius: 0,
+		borderTopRightRadius: 0,
 	},
 	list: {
 		flex: 1,

@@ -37,9 +37,9 @@ function ConnectedApp() {
             evening stage cross-dissolves with Home rather than sliding. */}
         <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />
         <Stack.Screen name="sidekick-3d" options={{ presentation: 'modal' }} />
-        {/* Settings opens from inside the natively-presented chat
-            sheet — only modal presentations appear above it */}
-        <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
+        {/* Profile (settings live inside it) can open over the natively-presented
+            chat sheet — only modal presentations appear above it */}
+        <Stack.Screen name="profile" options={{ presentation: 'modal' }} />
         <Stack.Screen name="focus-setup" options={{ presentation: 'modal' }} />
         <Stack.Screen name="health-setup" options={{ presentation: 'modal' }} />
         <Stack.Screen name="dev/index" options={{ presentation: 'modal' }} />

@@ -3,7 +3,7 @@ import { dayString } from '@sidekick/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Dimensions, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Dimensions, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Animated, {
   Easing,
@@ -30,9 +30,14 @@ import {
 } from '../src/lib/onboarding';
 import { Glass } from '../src/imessage/components/Glass';
 import { OnboardingAuth } from '../src/components/OnboardingAuth';
+import { FAUX_KB_HEIGHT, FAUX_KB_VISIBLE, FauxKeyboard } from '../src/components/FauxKeyboard';
+
+// bottom inset for a keyboard-input step: real keyboards are handled by
+// KeyboardAvoidingView; the dev-web faux deck needs its space reserved manually
+const kbBottomInset = (insetBottom: number) => (FAUX_KB_VISIBLE ? FAUX_KB_HEIGHT : insetBottom) + 20;
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { useAuthStore } from '../src/lib/auth-store';
-import type { Framing, SidekickController } from '../src/three/renderer';
+import { PHONE_BODY_YAW, type Framing, type SidekickController } from '../src/three/renderer';
 import { hydrateSettings, loadSettings } from '../src/three/settings';
 import { applySkin, hydrateSkinFromMirror, saveSkinMirror, SKIN_COLORS, type SkinColor } from '../src/store/skin';
 
@@ -41,19 +46,24 @@ import { applySkin, hydrateSkinFromMirror, saveSkinMirror, SKIN_COLORS, type Ski
 // character's jump-in entrance, camera shakes, and live recolor come through
 // the SidekickController. Faithful RN port of the deleted web onboarding.tsx.
 //
-// 0. auth         — sign in over the empty lawn (OnboardingAuth); skipped if
-//                   already signed in. Advances to welcome once signedIn.
-// 1. welcome      — wide empty evening lawn, "Ready to meet your sidekick?"
-// 2. askName      — camera zooms in, centered "what's your name?" input
-// 3. reveal       — camera to hero, sidekick JUMPS in, "Hey {name}, meet your sidekick!"
-// 4. customize    — pick the sidekick's color (live recolor)
-// 5. nameSidekick — centered "what's his name?" input
-// 6. notif        — an iMessage-style banner drops in (push-prompt slot)
-// 7. chat         — STUB: sheet slides up, he holds the phone → finish → home
+// 0. auth         — sign in, camera up at the evening sky (OnboardingAuth);
+//                   skipped if already signed in. Advances to welcome once signedIn.
+// 1. welcome      — centered "Welcome" over the sky, "Get started"
+// 2. askName      — still in the sky, centered "what's your name?" input
+// 3. birthday     — sky, date entry
+// 4. meet         — camera PANS DOWN to the empty lawn, shaky "Yes!" CTA
+// 5. reveal       — build shake, sidekick JUMPS in, "Hey {name}, meet your sidekick!"
+// 6. customize    — pick the sidekick's color (live recolor)
+// 7. nameSidekick — "what's your sidekick's name?" + idea chip rail
+// 8. notif        — he studies his phone, an iMessage-style banner drops in
+// 9. chat         — sheet slides up, he holds the phone → finish → home
 
-// Establishing shot: pulled back on the empty lawn (character parked below).
-const WIDE_FRAMING: Framing = { pos: [0, 1.9, 9.5], target: [0, 0.5, 0], fov: 43 };
-// Name step: zoomed in toward where the sidekick will land (still empty).
+// Auth/welcome: pointed UP at the evening sky — cloud band composed across the
+// frame, horizon out of shot. Tune-by-eye.
+const SKY_FRAMING: Framing = { pos: [0, 1.4, 8], target: [0, 8.5, -10], fov: 48 };
+// Name/birthday: same sky, a subtle push-in so the steps feel like progress.
+const SKY_NAME_FRAMING: Framing = { pos: [0, 1.5, 7.4], target: [0, 8.2, -9], fov: 44 };
+// Meet step (post pan-down): zoomed in toward where the sidekick will land (still empty).
 const NAME_FRAMING: Framing = { pos: [0, 1.2, 7.2], target: [0, 0.5, 0], fov: 39 };
 // Hero: full-body, centered (matches home's hero shot).
 const HERO_FRAMING: Framing = { pos: [0, 0.66, 4.2], target: [0, 0.56, 0], fov: 41.1 };
@@ -61,6 +71,16 @@ const HERO_FRAMING: Framing = { pos: [0, 0.66, 4.2], target: [0, 0.56, 0], fov: 
 // camera back and aim down — the mascot shrinks into the upper band and stays
 // visible above the input while typing. Tune-by-eye.
 const NAMESIDEKICK_FRAMING: Framing = { pos: [0, 1.0, 7.5], target: [0, -0.9, 0], fov: 42 };
+// Notif beat: the phone pose yaws his body (part of the authored hold armature
+// — see renderer's PHONE_POSE). Rather than un-yaw HIM (which wrecks the
+// hands), the camera orbits onto his facing, so he reads dead-straight at the
+// lens, head down at the phone. DERIVED from the exported yaw + the hero
+// distance, so retuning either can't silently desync this shot.
+const NOTIF_FRAMING: Framing = {
+  pos: [4.2 * Math.sin(PHONE_BODY_YAW), 0.66, 4.2 * Math.cos(PHONE_BODY_YAW)],
+  target: [0, 0.56, 0],
+  fov: 41.1,
+};
 // Chat: the sheet covers ~80%, so the camera pulls way back and aims low — the
 // whole standing character composes into the top sliver.
 const SLIVER_FRAMING: Framing = { pos: [0, 1.6, 13], target: [0, -2.0, 0], fov: 30 };
@@ -69,8 +89,8 @@ type Phase =
   | 'auth'
   | 'welcome'
   | 'askName'
-  | 'gender'
   | 'birthday'
+  | 'meet'
   | 'reveal'
   | 'customize'
   | 'nameSidekick'
@@ -81,8 +101,8 @@ const PHASE_ORDER: Phase[] = [
   'auth',
   'welcome',
   'askName',
-  'gender',
   'birthday',
+  'meet',
   'reveal',
   'customize',
   'nameSidekick',
@@ -94,21 +114,28 @@ const PHASE_ORDER: Phase[] = [
 // on a phase COLD (deep link / reload-resume), independent of whatever cinematic
 // normally plays on the way in.
 const PHASES: Record<Phase, { framing: Framing; characterVisible: boolean }> = {
-  auth: { framing: WIDE_FRAMING, characterVisible: false },
-  welcome: { framing: WIDE_FRAMING, characterVisible: false },
-  askName: { framing: NAME_FRAMING, characterVisible: false },
-  gender: { framing: NAME_FRAMING, characterVisible: false },
-  birthday: { framing: NAME_FRAMING, characterVisible: false },
+  auth: { framing: SKY_FRAMING, characterVisible: false },
+  welcome: { framing: SKY_FRAMING, characterVisible: false },
+  askName: { framing: SKY_NAME_FRAMING, characterVisible: false },
+  birthday: { framing: SKY_NAME_FRAMING, characterVisible: false },
+  meet: { framing: NAME_FRAMING, characterVisible: false },
   reveal: { framing: HERO_FRAMING, characterVisible: true },
   customize: { framing: HERO_FRAMING, characterVisible: true },
   nameSidekick: { framing: NAMESIDEKICK_FRAMING, characterVisible: true },
-  notif: { framing: HERO_FRAMING, characterVisible: true },
+  notif: { framing: NOTIF_FRAMING, characterVisible: true },
   chat: { framing: SLIVER_FRAMING, characterVisible: true },
 };
 
 // DEV-only onboarding skip controls — same gate as OnboardingAuth's dev login,
 // so they're stripped from production builds.
 const SHOW_DEV = process.env.NODE_ENV !== 'production';
+
+// A LOT of name ideas — the entry UI renders them as a horizontally scrolling
+// chip rail (a wrap row would eat the whole screen).
+const SIDEKICK_NAME_IDEAS = [
+  'lulu', 'pebble', 'sprout', 'gloop', 'wisp', 'arnold',
+  'gummy', 'sage', 'linda', 'wiggle', 'glitch', 'obama',
+];
 
 // Force the evening look live (in-memory, never persisted) so onboarding always
 // plays at dusk regardless of the real time-of-day — and Home is untouched.
@@ -130,7 +157,7 @@ export default function Onboarding() {
   const initialPhaseRef = useRef<Phase>('welcome');
 
   const [phase, setPhase] = useState<Phase>('welcome');
-  const [framing, setFraming] = useState<Framing>(WIDE_FRAMING);
+  const [framing, setFraming] = useState<Framing>(SKY_FRAMING);
   // Locks CTAs / hides overlays while a camera move / jump cinematic is playing.
   const [animating, setAnimating] = useState(false);
   const [userName, setUserName] = useState('');
@@ -244,34 +271,27 @@ export default function Onboarding() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, authStatus]);
 
-  // 1 → 2: zoom the empty shot in toward where the sidekick will appear.
-  const startNaming = () => {
-    if (animating) return;
-    setAnimating(true);
-    setFraming(NAME_FRAMING);
-    setTimeout(() => {
-      goTo('askName');
-      setAnimating(false);
-    }, 700);
-  };
 
-  // 2 → gender: just capture the name (the reveal cinematic now fires after birthday).
+  // 2 → birthday: just capture the name (still in the sky).
   const submitUserName = (name: string) => {
     setUserName(name);
     void saveOnboardingField('userName', name);
-    goTo('gender');
-  };
-
-  // gender → birthday
-  const submitGender = (gender: string) => {
-    void saveOnboardingField('gender', gender);
     goTo('birthday');
   };
 
-  // birthday → reveal: ease to the hero framing, build suspense, then he jumps in.
+  // birthday → meet: the big PAN DOWN — sky to the empty patch of ground where
+  // the sidekick is about to land. UI is hidden while the camera sweeps.
   const submitBirthday = (birthday: string) => {
     if (animating) return;
     void saveOnboardingField('birthday', birthday);
+    setAnimating(true);
+    goTo('meet');
+    setTimeout(() => setAnimating(false), 1300);
+  };
+
+  // meet → reveal: the button IS the trigger — build shake, then he jumps in.
+  const meetSidekick = () => {
+    if (animating) return;
     setAnimating(true);
     goTo('reveal');
     controllerRef.current?.shake({ amp: 0.06, duration: 1.4, mode: 'build' });
@@ -296,18 +316,20 @@ export default function Onboarding() {
 
   // 5 → 6: the notif beat, choreographed in three: (1) he pulls out his phone
   // (holdingPhone turns on with the 'notif' phase, same pose as opening Messages),
-  // (2) ~0.8s later the notification drops in with a firm haptic hit, (3) a beat
+  // (2) ~2.2s later the notification drops in with a firm haptic hit, (3) a beat
   // after that he glances up at it — phone still in hand.
   const submitSidekickName = (name: string) => {
     setSidekickName(name);
     void saveOnboardingField('sidekickName', name);
     goTo('notif'); // phone comes out here (see holdingPhone on the canvas)
     // NOTE: slot for the real push-notification permission prompt.
+    // He faces you square, studies the phone for a couple of seconds (hands
+    // fidgeting — renderer's phone-hold wobble), THEN the message drops in.
     setTimeout(() => {
       setNotifIn(true);
       hapticNotif(); // the message lands
-    }, 850);
-    setTimeout(() => setNotifLookUp(true), 1200); // then he looks up at it
+    }, 2200);
+    setTimeout(() => setNotifLookUp(true), 2600); // then he looks up at it
   };
 
   // 6 → 7: tap the banner → he lifts the phone (holdingPhone) + chat opens.
@@ -334,7 +356,6 @@ export default function Onboarding() {
           reason: summary?.reason ?? 'habits',
           profile: {
             name: (st.userName || userName).trim() || 'friend',
-            gender: st.gender || undefined,
             birthday: st.birthday || undefined,
             sidekickName: (st.sidekickName || sidekickName).trim() || undefined,
             sidekickColor: (loadSettings().celBodyColor ?? '') || undefined,
@@ -376,16 +397,16 @@ export default function Onboarding() {
         goTo('welcome');
         break;
       case 'welcome':
-        startNaming();
+        goTo('askName');
         break;
       case 'askName':
         submitUserName(userName || 'Dev');
         break;
-      case 'gender':
-        submitGender('other');
-        break;
       case 'birthday':
         submitBirthday('2000-01-01');
+        break;
+      case 'meet':
+        meetSidekick();
         break;
       case 'reveal':
         toCustomize();
@@ -444,16 +465,11 @@ export default function Onboarding() {
       {/* 1. Welcome */}
       {phase === 'welcome' && !animating ? (
         <>
-          <Animated.View
-            entering={FadeInUp.duration(500)}
-            style={[styles.topCopy, { top: insets.top + 48 }]}
-            pointerEvents="none"
-          >
-            <Text style={styles.h1}>Welcome!</Text>
-            <Text style={styles.sub}>Ready to meet your sidekick?</Text>
+          <Animated.View entering={FadeInUp.duration(500)} style={styles.centerCopy} pointerEvents="none">
+            <Text style={styles.h1Hero}>Welcome</Text>
           </Animated.View>
           <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
-            <PrimaryButton label="Let's go" onPress={startNaming} disabled={animating} />
+            <PrimaryButton label="Get started" onPress={() => goTo('askName')} disabled={animating} />
           </View>
         </>
       ) : null}
@@ -469,11 +485,32 @@ export default function Onboarding() {
         />
       ) : null}
 
-      {/* 2b. Gender */}
-      {phase === 'gender' && !animating ? <GenderStep onSubmit={submitGender} /> : null}
+      {/* DEV (web): dummy keyboard under every keyboard-input step, so layouts
+          are judged with the space the real keyboard will take on device */}
+      {(phase === 'askName' || phase === 'birthday' || phase === 'nameSidekick') && !animating ? (
+        <FauxKeyboard />
+      ) : null}
 
-      {/* 2c. Birthday */}
+      {/* 2b. Birthday */}
       {phase === 'birthday' && !animating ? <BirthdayStep onSubmit={submitBirthday} /> : null}
+
+      {/* 2c. Meet — the camera has panned down to the empty ground */}
+      {phase === 'meet' && !animating ? (
+        <>
+          <Animated.View
+            entering={FadeInUp.duration(500)}
+            style={[styles.topCopy, { top: insets.top + 96 }]}
+            pointerEvents="none"
+          >
+            <Text style={styles.h1}>Ready to meet your sidekick?</Text>
+          </Animated.View>
+          <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
+            <SubtleShake>
+              <PrimaryButton label="Yes!" onPress={meetSidekick} />
+            </SubtleShake>
+          </View>
+        </>
+      ) : null}
 
       {/* 3. Sidekick jumped in — "Hey {name}, meet your sidekick!" */}
       {phase === 'reveal' && !animating ? (
@@ -537,7 +574,7 @@ export default function Onboarding() {
           cta="continue"
           onSubmit={submitSidekickName}
           layout="top"
-          suggestions={['Mochi', 'Luna', 'Coco', 'Peaches', 'Boba']}
+          suggestions={SIDEKICK_NAME_IDEAS}
         />
       ) : null}
 
@@ -600,6 +637,24 @@ function currentColorId(): string {
 //   the bottom — so the mascot (framed in the band between them) stays visible
 //   while typing and the keyboard doesn't cover the input (the "what's his
 //   name?" step).
+// (Sits above NameEntry only for proximity to its use sites — unrelated to
+// the input component below.)
+// A barely-there idle wiggle for a CTA that wants to be pressed — ±1.2° of
+// rotation with a touch of sway, slow loop, never big enough to read as broken.
+function SubtleShake({ children }: { children: React.ReactNode }) {
+  const t = useSharedValue(0);
+  useEffect(() => {
+    t.value = withRepeat(withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.quad) }), -1, true);
+  }, [t]);
+  const style = useAnimatedStyle(() => ({
+    transform: [
+      { rotate: `${Math.sin(t.value * Math.PI * 2) * 1.2}deg` },
+      { translateX: Math.sin(t.value * Math.PI * 4) * 1 },
+    ],
+  }));
+  return <Animated.View style={style}>{children}</Animated.View>;
+}
+
 function NameEntry({
   title,
   placeholder,
@@ -624,7 +679,12 @@ function NameEntry({
   };
   const chipRow =
     suggestions && suggestions.length > 0 ? (
-      <View style={styles.chipRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.chipRail}
+        contentContainerStyle={styles.chipRailContent}
+      >
         {suggestions.map((s) => (
           <Pressable
             key={s}
@@ -637,7 +697,7 @@ function NameEntry({
             <Text style={styles.nameChipText}>{s}</Text>
           </Pressable>
         ))}
-      </View>
+      </ScrollView>
     ) : null;
   const field = (
     <TextInput
@@ -667,7 +727,7 @@ function NameEntry({
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.nameBottomWrap}
         >
-          <View style={[styles.nameCol, { paddingBottom: insets.bottom + 20 }]}>
+          <View style={[styles.nameCol, { paddingBottom: kbBottomInset(insets.bottom) }]}>
             {chipRow}
             {field}
             <View style={{ height: 12 }} />
@@ -682,7 +742,7 @@ function NameEntry({
     <Animated.View entering={FadeInUp.duration(450)} style={StyleSheet.absoluteFill}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.centerFill}
+        style={[styles.centerFill, FAUX_KB_VISIBLE ? { paddingBottom: FAUX_KB_HEIGHT } : null]}
       >
         <View style={styles.nameCol}>
           <Text style={styles.h1}>{title}</Text>
@@ -691,34 +751,6 @@ function NameEntry({
           <PrimaryButton label={cta} onPress={submit} disabled={!can} />
         </View>
       </KeyboardAvoidingView>
-    </Animated.View>
-  );
-}
-
-// Gender step — tappable options, auto-advances on tap (low friction, no keyboard).
-function GenderStep({ onSubmit }: { onSubmit: (gender: string) => void }) {
-  return (
-    <Animated.View entering={FadeInUp.duration(450)} style={styles.centerFill}>
-      <View style={styles.nameCol}>
-        <Text style={styles.h1small}>How would you describe yourself?</Text>
-        <View style={{ height: 20 }} />
-        {[
-          { label: 'Female', value: 'female' },
-          { label: 'Male', value: 'male' },
-          { label: 'Other', value: 'other' },
-        ].map((o) => (
-          <Pressable
-            key={o.value}
-            onPress={() => {
-              hapticTap();
-              onSubmit(o.value);
-            }}
-            style={styles.optionCard}
-          >
-            <Text style={styles.optionText}>{o.label}</Text>
-          </Pressable>
-        ))}
-      </View>
     </Animated.View>
   );
 }
@@ -769,14 +801,16 @@ function BirthdayStep({ onSubmit }: { onSubmit: (birthday: string) => void }) {
     );
   }
 
+  // Real-calendar validation: construct the date and require a round-trip
+  // (rejects 02/31 etc., which Date silently rolls over) and no future dates.
+  const asDate = new Date(+year, +month - 1, +day);
   const can =
-    +month >= 1 &&
-    +month <= 12 &&
-    +day >= 1 &&
-    +day <= 31 &&
     /^\d{4}$/.test(year) &&
     +year >= 1900 &&
-    +year <= new Date().getFullYear();
+    asDate.getFullYear() === +year &&
+    asDate.getMonth() === +month - 1 &&
+    asDate.getDate() === +day &&
+    asDate.getTime() <= Date.now();
   const submitWeb = () => {
     if (can) onSubmit(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
   };
@@ -785,7 +819,7 @@ function BirthdayStep({ onSubmit }: { onSubmit: (birthday: string) => void }) {
       <View style={[styles.topCopy, { top: insets.top + 96 }]}>
         <Text style={styles.h1small}>When's your birthday?</Text>
       </View>
-      <View style={[styles.nameBottomWrap, { paddingBottom: insets.bottom + 20 }]}>
+      <View style={[styles.nameBottomWrap, { paddingBottom: kbBottomInset(insets.bottom) }]}>
         <View style={styles.nameCol}>
           <View style={styles.dobRow}>
             <TextInput
@@ -863,7 +897,7 @@ function NotificationBanner({
               <Text style={styles.bannerNow}>now</Text>
             </View>
             <Text style={styles.bannerText} numberOfLines={1}>
-              hey let's chat
+              i guess i should formally introduce myself
             </Text>
           </View>
         </Pressable>
@@ -973,6 +1007,16 @@ const styles = StyleSheet.create({
   },
   devBtnText: { fontFamily: 'monospace', fontSize: 11, fontWeight: '700', color: '#bef264' },
   topCopy: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 32, alignItems: 'center' },
+  // the one-word hero title: bigger and heavier than h1, dead-centre of screen
+  h1Hero: {
+    fontFamily: FONT_BOLD,
+    fontSize: 58,
+    letterSpacing: -2,
+    lineHeight: 60,
+    textAlign: 'center',
+    color: '#fff',
+  },
+  centerCopy: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   h1: {
     fontFamily: FONT_BOLD,
     fontSize: 44,
@@ -981,9 +1025,6 @@ const styles = StyleSheet.create({
     lineHeight: 46,
     textAlign: 'center',
     color: '#fff',
-    textShadowColor: 'rgba(0,0,0,0.4)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 10,
   },
   h1small: {
     fontFamily: FONT_BOLD,
@@ -993,9 +1034,6 @@ const styles = StyleSheet.create({
     lineHeight: 36,
     textAlign: 'center',
     color: '#fff',
-    textShadowColor: 'rgba(0,0,0,0.4)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 10,
   },
   sub: {
     fontFamily: FONT,
@@ -1012,41 +1050,15 @@ const styles = StyleSheet.create({
   centerFill: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   nameBottomWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 32, alignItems: 'center' },
   nameCol: { width: '100%', maxWidth: 420, alignItems: 'stretch' },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
+  chipRail: {
+    alignSelf: 'stretch',
+    flexGrow: 0,
+    marginBottom: 14,
+  },
+  chipRailContent: {
     gap: 8,
-    marginBottom: 4,
+    paddingHorizontal: 24,
   },
-  // Flat white cards/inputs with a hard (zero-blur) grey drop shadow — a raised,
-  // solid look. Reused across the onboarding inputs + option cards + chips.
-  nameChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 999,
-    backgroundColor: '#fff',
-    shadowColor: '#c4c4c4',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
-  },
-  nameChipText: { fontFamily: FONT_MEDIUM, fontSize: 15, fontWeight: '600', color: '#111' },
-  optionCard: {
-    width: '100%',
-    paddingVertical: 16,
-    borderRadius: 18,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    marginBottom: 12,
-    shadowColor: '#c4c4c4',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 3,
-  },
-  optionText: { fontFamily: FONT_MEDIUM, fontSize: 17, fontWeight: '600', color: '#111' },
   dobRow: { flexDirection: 'row', gap: 10, marginTop: 24 },
   dobField: {
     flex: 1,
@@ -1062,6 +1074,20 @@ const styles = StyleSheet.create({
     color: '#111',
     textAlign: 'center',
   },
+  // Flat white cards/inputs with a hard (zero-blur) grey drop shadow — a raised,
+  // solid look. Reused across the onboarding inputs + chips.
+  nameChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: '#fff',
+    shadowColor: '#c4c4c4',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
+  },
+  nameChipText: { fontFamily: FONT_MEDIUM, fontSize: 15, fontWeight: '600', color: '#111' },
   dobYear: { flex: 1.5 },
   dobPickerCard: {
     marginTop: 24,

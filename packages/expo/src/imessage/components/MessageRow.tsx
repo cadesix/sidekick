@@ -1,5 +1,5 @@
 import * as Haptics from "expo-haptics";
-import { useRef } from "react";
+import { useContext, useRef } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -12,9 +12,10 @@ import Animated, {
 	withSpring,
 	withTiming,
 } from "react-native-reanimated";
+import { FLOATING_META_COLOR, FloatingChat } from "../floating-chat";
 import { formatClockTime } from "../lib/time";
 import type { MessageItem } from "../lib/transcript";
-import { bubble, colors, type } from "../theme";
+import { bubble, colors, font, type } from "../theme";
 import type { Message } from "../types";
 import { Icon } from "./Icon";
 import { MessageContent, messageSummary } from "./MessageContent";
@@ -93,6 +94,7 @@ export function MessageRow({
 	hidden,
 	animateEntry,
 }: MessageRowProps) {
+	const floating = useContext(FloatingChat);
 	const { message } = item;
 	const sent = message.role === "me";
 	const bubbleRef = useRef<View>(null);
@@ -178,10 +180,10 @@ export function MessageRow({
 				</Animated.View>
 			</GestureDetector>
 			<Animated.View pointerEvents="none" style={[styles.timeReveal, timeStyle]}>
-				<Text style={styles.timeText}>{formatClockTime(message.createdAt)}</Text>
+				<Text style={[styles.timeText, floating ? styles.metaLight : null]}>{formatClockTime(message.createdAt)}</Text>
 			</Animated.View>
 			{item.statusLabel ? (
-				<Text style={styles.status}>{item.statusLabel}</Text>
+				<Text style={[styles.status, floating ? styles.metaLight : null]}>{item.statusLabel}</Text>
 			) : null}
 		</Animated.View>
 	);
@@ -227,6 +229,7 @@ const styles = StyleSheet.create({
 	},
 	timeText: {
 		fontSize: 13,
+		fontFamily: font.regular,
 		color: colors.secondaryLabel,
 	},
 	status: {
@@ -234,7 +237,7 @@ const styles = StyleSheet.create({
 		marginTop: 2,
 		marginRight: bubble.edgeMargin + 8,
 		fontSize: type.delivered.fontSize,
-		fontWeight: "500",
+		fontFamily: font.medium,
 		color: colors.secondaryLabel,
 	},
 	quoteRow: {
@@ -264,6 +267,10 @@ const styles = StyleSheet.create({
 	quoteText: {
 		fontSize: 15,
 		lineHeight: 19,
+		fontFamily: font.regular,
 		color: colors.secondaryLabel,
+	},
+	metaLight: {
+		color: FLOATING_META_COLOR,
 	},
 });

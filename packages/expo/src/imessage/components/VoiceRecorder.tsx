@@ -10,7 +10,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { type LayoutChangeEvent, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { Easing, useAnimatedStyle, withTiming } from "react-native-reanimated";
 import { formatDuration } from "../lib/time";
-import { colors } from "../theme";
+import { colors, font } from "../theme";
 import { Glass } from "./Glass";
 import { Icon } from "./Icon";
 import type { AudioAttachment } from "../types";
@@ -273,6 +273,7 @@ const styles = StyleSheet.create({
 	},
 	timer: {
 		fontSize: 13,
+		fontFamily: font.regular,
 		color: colors.secondaryLabel,
 		fontVariant: ["tabular-nums"],
 	},
