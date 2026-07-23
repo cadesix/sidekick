@@ -85,6 +85,8 @@ const HERO_FRAMING: Framing = { pos: [0, 0.66, 4.2], target: [0, 0.56, 0], fov: 
 // camera back and aim down — the mascot shrinks into the upper band and stays
 // visible above the input while typing. Tune-by-eye.
 const NAMESIDEKICK_FRAMING: Framing = { pos: [0, 1.15, 7.5], target: [0, -0.2, 0], fov: 42 };
+// after he's named, the camera pushes IN a bit for "now what's YOUR name?"
+const ASKNAME_FRAMING: Framing = { pos: [0, 1.05, 6.5], target: [0, -0.05, 0], fov: 40 };
 // Notif beat: the phone pose yaws his body (part of the authored hold armature
 // — see renderer's PHONE_POSE). Rather than un-yaw HIM (which wrecks the
 // hands), the camera orbits onto his facing, so he reads dead-straight at the
@@ -149,7 +151,7 @@ const PHASES: Record<Phase, { framing: Framing; characterVisible: boolean }> = {
   customize: { framing: HERO_FRAMING, characterVisible: true },
   celebrate: { framing: HERO_FRAMING, characterVisible: true },
   nameSidekick: { framing: NAMESIDEKICK_FRAMING, characterVisible: true },
-  askName: { framing: NAMESIDEKICK_FRAMING, characterVisible: true },
+  askName: { framing: ASKNAME_FRAMING, characterVisible: true },
   textIntro: { framing: HERO_FRAMING, characterVisible: true },
   notif: { framing: NOTIF_FRAMING, characterVisible: true },
   chat: { framing: SLIVER_FRAMING, characterVisible: true },
@@ -348,27 +350,39 @@ export default function Onboarding() {
   const startMeet = () => {
     if (animating) return;
     goTo('meetTitle'); // camera settles to the middle (HERO framing)
-    const RISE = 2300;
-    // the ground trembles harder and harder; haptics grow to a massive boom at
-    // the pop, then jumpIn's own touchdown shake stomps it home
-    controllerRef.current?.shake({ amp: 0.09, duration: RISE / 1000, mode: 'build' });
-    playBuildToBoom(RISE, RISE);
+    // BURSTY anticipation: a shake burst, a beat, a bigger burst, a beat —
+    // each burst stronger — with a haptic hit per burst. Then the pop: a
+    // massive shake + jumpIn stomp.
+    const bursts = [
+      { at: 200, amp: 0.03 },
+      { at: 850, amp: 0.05 },
+      { at: 1550, amp: 0.08 },
+      { at: 2300, amp: 0.12 },
+    ];
+    for (const b of bursts) {
+      setTimeout(() => {
+        controllerRef.current?.shake({ amp: b.amp, duration: 0.4, mode: 'impact' });
+        hapticNotif(); // a firm hit per burst
+      }, b.at);
+    }
+    const POP = 3100; // after the last anticipation burst
+    playBuildToBoom(POP, POP);
     setTimeout(() => {
       setAnimating(true);
       goTo('reveal');
-      controllerRef.current?.jumpIn({ duration: 800 }); // BOOM — he pops out + stomps
-    }, RISE);
+      controllerRef.current?.shake({ amp: 0.24, duration: 0.6, mode: 'impact' }); // massive
+      controllerRef.current?.jumpIn({ duration: 800 }); // he pops out + stomps
+    }, POP);
     setTimeout(() => {
       setAnimating(false);
       speak('THERE YOU ARE!', 3200, 'excited');
-    }, RISE + 1000);
+    }, POP + 1000);
   };
 
   // reveal → customize: he wonders about his look (bubble), swatches below.
   const toCustomize = () => {
     goTo('customize');
     controllerRef.current?.setInspect(true); // head down, sweeping his own body
-    controllerRef.current?.pulseFace('surprised', 8); // surprised look at himself
     setTimeout(() => speak('hm, how should i look?', 4200, 'surprised'), 400);
   };
   const pickColor = (c: SkinColor) => {
@@ -610,7 +624,7 @@ export default function Onboarding() {
         <Pressable style={StyleSheet.absoluteFill} onPress={overHere}>
           <Animated.View entering={FadeInUp.duration(350)} style={[styles.sideCopy, styles.sideRight]} pointerEvents="none">
             <SubtleShake intensity={2.2} speed={1.5}>
-              <Text style={styles.h1small}>I'M OVER HERE!</Text>
+              <Text style={styles.overHere}>i'm over here</Text>
             </SubtleShake>
           </Animated.View>
           {/* a curved lead-in from the right edge, pointing at the copy */}
@@ -628,7 +642,7 @@ export default function Onboarding() {
           {/* the camera lands first; the line pops a beat later */}
           <Animated.View entering={FadeInUp.duration(350).delay(550)} style={[styles.sideCopy, styles.sideLeft]} pointerEvents="none">
             <SubtleShake intensity={2.2} speed={1.5}>
-              <Text style={styles.h1small}>NO, OVER HERE!</Text>
+              <Text style={styles.overHere}>no, over here</Text>
             </SubtleShake>
           </Animated.View>
           {/* mirrored curve from the left edge */}
@@ -815,7 +829,7 @@ function HeyTitle() {
       </SubtleShake>
       {/* a quarter-circle pointer: starts flat under the word, bends 90° and
           ends aiming straight down — "the voice came from down there" */}
-      <Svg width={104} height={84} viewBox="0 0 104 84" style={{ marginTop: 10, marginLeft: 16, transform: [{ rotate: '180deg' }] }}>
+      <Svg width={104} height={84} viewBox="0 0 104 84" style={{ marginTop: 10, marginLeft: 44, transform: [{ rotate: '180deg' }] }}>
         <Path d="M14 10 Q 88 10 88 78" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
       </Svg>
     </Animated.View>
@@ -828,30 +842,14 @@ function HeyTitle() {
 // high; "look down here!" smaller, a beat later, a bit lower. Both carry a
 // hard (zero-blur) drop shadow nudged down the y-axis.
 function LookDownCopy({ topInset }: { topInset: number }) {
-  const [second, setSecond] = useState(false);
-  useEffect(() => {
-    const t = setTimeout(() => setSecond(true), streamDurationMs('your head is in the clouds…', 20) + 900);
-    return () => clearTimeout(t);
-  }, []);
-  // Both lines are TOP-anchored at fixed positions — nothing vertically
-  // centers, so the clouds line stays put as it streams (a centered group
-  // would drift when the second line mounts) and "look down here!" sits lower.
+  // just "look down here!" now (the clouds line was removed), held at a fixed
+  // spot so it doesn't drift as it streams.
   return (
-    <>
-      <View
-        style={{ position: 'absolute', top: topInset + 130, left: 0, right: 0, alignItems: 'center', paddingHorizontal: 24, transform: [{ rotate: '-2.5deg' }] }}
-        pointerEvents="none"
-      >
-        <StreamedText text="your head is in the clouds…" style={styles.cloudsBig} cps={20} reserve />
-      </View>
-      {second ? (
-        <View style={{ position: 'absolute', top: topInset + 360, left: 0, right: 0, alignItems: 'center' }} pointerEvents="none">
-          <SubtleShake intensity={1.8} speed={1.4}>
-            <StreamedText text="look down here!" style={styles.lookDownLine} cps={20} reserve />
-          </SubtleShake>
-        </View>
-      ) : null}
-    </>
+    <View style={{ position: 'absolute', top: topInset + 360, left: 0, right: 0, alignItems: 'center' }} pointerEvents="none">
+      <SubtleShake intensity={1.8} speed={1.4}>
+        <StreamedText text="look down here!" style={styles.lookDownLine} cps={20} reserve />
+      </SubtleShake>
+    </View>
   );
 }
 
@@ -1322,6 +1320,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   emph: { color: '#F2C94C' },
+  overHere: { fontFamily: FONT_BOLD, fontSize: 30, letterSpacing: -0.6, color: '#fff' },
   h1small: {
     fontFamily: FONT_BOLD,
     fontSize: 34,
@@ -1352,7 +1351,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     flexGrow: 0,
     marginHorizontal: -32,
-    marginBottom: 2,
+    marginBottom: -6,
     overflow: 'visible',
   },
   chipRailContent: {
