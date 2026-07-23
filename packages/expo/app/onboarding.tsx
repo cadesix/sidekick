@@ -59,7 +59,7 @@ import { applySkin, hydrateSkinFromMirror, saveSkinMirror, SKIN_COLORS, type Ski
 //  4. lookDown  — streamed "your head is in the clouds… look down here!" + CTA
 //  5. hereLeft  — camera panned down-then-LEFT; "I'M OVER HERE!" on the right
 //  6. hereRight — camera whips RIGHT; "NO OVER HERE!" on the left
-//  7. meetTitle — camera shakes, haptics rumble, "Meet Your Sidekick"
+//  7. meetTitle — camera trembles + haptics grow to a boom (no text card)
 //  8. reveal    — he JUMPS in, bubble: "THERE YOU ARE!"
 //  9. customize — bubble "hm, how should i look?" + color swatches
 // 10. celebrate — hands-up hops in the shiny new color
@@ -657,12 +657,9 @@ export default function Onboarding() {
         />
       ) : null}
 
-      {/* 7/8. the build-up: camera trembling, haptics rumbling, title card */}
-      {phase === 'meetTitle' ? (
-        <Animated.View entering={FadeInUp.duration(600)} style={styles.centerCopy} pointerEvents="none">
-          <Text style={styles.h1}>Meet Your Sidekick</Text>
-        </Animated.View>
-      ) : null}
+      {/* 7/8. the build-up: NO title card — just the camera trembling harder and
+          harder while the haptics grow to the boom (see startMeet). The empty
+          meadow shakes; then he pops out. */}
 
       {/* 3. Sidekick jumped in — "Hey {name}, meet your sidekick!" */}
       {phase === 'reveal' && !animating ? (
