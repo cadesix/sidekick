@@ -37,7 +37,7 @@ import { FAUX_KB_HEIGHT, FAUX_KB_VISIBLE, FauxKeyboard } from '../src/components
 const kbBottomInset = (insetBottom: number) => (FAUX_KB_VISIBLE ? FAUX_KB_HEIGHT : insetBottom) + 20;
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { useAuthStore } from '../src/lib/auth-store';
-import type { Framing, SidekickController } from '../src/three/renderer';
+import { PHONE_BODY_YAW, type Framing, type SidekickController } from '../src/three/renderer';
 import { hydrateSettings, loadSettings } from '../src/three/settings';
 import { applySkin, hydrateSkinFromMirror, saveSkinMirror, SKIN_COLORS, type SkinColor } from '../src/store/skin';
 
@@ -71,11 +71,16 @@ const HERO_FRAMING: Framing = { pos: [0, 0.66, 4.2], target: [0, 0.56, 0], fov: 
 // camera back and aim down — the mascot shrinks into the upper band and stays
 // visible above the input while typing. Tune-by-eye.
 const NAMESIDEKICK_FRAMING: Framing = { pos: [0, 1.0, 7.5], target: [0, -0.9, 0], fov: 42 };
-// Notif beat: the phone pose yaws his body 0.55rad (part of the authored hold
-// armature — see renderer's PHONE_POSE). Rather than un-yaw HIM (which wrecks
-// the hands), the camera orbits onto his facing, so he reads dead-straight at
-// the lens, head down at the phone.
-const NOTIF_FRAMING: Framing = { pos: [2.2, 0.66, 3.58], target: [0, 0.56, 0], fov: 41.1 };
+// Notif beat: the phone pose yaws his body (part of the authored hold armature
+// — see renderer's PHONE_POSE). Rather than un-yaw HIM (which wrecks the
+// hands), the camera orbits onto his facing, so he reads dead-straight at the
+// lens, head down at the phone. DERIVED from the exported yaw + the hero
+// distance, so retuning either can't silently desync this shot.
+const NOTIF_FRAMING: Framing = {
+  pos: [4.2 * Math.sin(PHONE_BODY_YAW), 0.66, 4.2 * Math.cos(PHONE_BODY_YAW)],
+  target: [0, 0.56, 0],
+  fov: 41.1,
+};
 // Chat: the sheet covers ~80%, so the camera pulls way back and aims low — the
 // whole standing character composes into the top sliver.
 const SLIVER_FRAMING: Framing = { pos: [0, 1.6, 13], target: [0, -2.0, 0], fov: 30 };
