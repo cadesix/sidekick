@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
 import { isEmojiOnly } from "../lib/emoji";
-import { bubble, colors, type } from "../theme";
+import { bubble, colors, font, type } from "../theme";
 import type { Message } from "../types";
 import { AudioBubble } from "./AudioBubble";
 import { FileBubble } from "./FileBubble";
@@ -36,12 +36,10 @@ export function messageSummary(message: Message): string {
 export function MessageContent({
 	message,
 	tail,
-	backgroundBehind,
 	onOpenGame,
 }: {
 	message: Message;
 	tail: boolean;
-	backgroundBehind?: string;
 	onOpenGame?: (matchId: string) => void;
 }) {
 	const sent = message.role === "me";
@@ -54,7 +52,7 @@ export function MessageContent({
 	}
 	if (message.kind === "audio" && message.audio) {
 		return (
-			<MessageBubble from={message.role} tail={tail} backgroundBehind={backgroundBehind}>
+			<MessageBubble from={message.role} tail={tail}>
 				<AudioBubble audio={message.audio} sent={sent} />
 			</MessageBubble>
 		);
@@ -67,13 +65,12 @@ export function MessageContent({
 				<MessageBubble
 					from={message.role}
 					tail={tail && !hasText}
-					backgroundBehind={backgroundBehind}
 				>
 					<FileBubble file={message.file} sent={sent} />
 				</MessageBubble>
 			) : null}
 			{hasText || !hasAttachments ? (
-				<MessageBubble from={message.role} tail={tail} backgroundBehind={backgroundBehind}>
+				<MessageBubble from={message.role} tail={tail}>
 					<Text style={[styles.text, sent ? styles.textSent : styles.textReceived]}>
 						{message.text}
 					</Text>
@@ -96,6 +93,7 @@ const styles = StyleSheet.create({
 	text: {
 		fontSize: type.body.fontSize,
 		lineHeight: type.body.lineHeight,
+		fontFamily: font.regular,
 	},
 	textSent: {
 		color: colors.sentText,

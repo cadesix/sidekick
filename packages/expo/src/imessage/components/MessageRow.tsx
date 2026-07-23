@@ -14,7 +14,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { formatClockTime } from "../lib/time";
 import type { MessageItem } from "../lib/transcript";
-import { bubble, colors, type } from "../theme";
+import { bubble, colors, font, type } from "../theme";
 import type { Message } from "../types";
 import { Icon } from "./Icon";
 import { MessageContent, messageSummary } from "./MessageContent";
@@ -227,6 +227,7 @@ const styles = StyleSheet.create({
 	},
 	timeText: {
 		fontSize: 13,
+		fontFamily: font.regular,
 		color: colors.secondaryLabel,
 	},
 	status: {
@@ -234,7 +235,7 @@ const styles = StyleSheet.create({
 		marginTop: 2,
 		marginRight: bubble.edgeMargin + 8,
 		fontSize: type.delivered.fontSize,
-		fontWeight: "500",
+		fontFamily: font.medium,
 		color: colors.secondaryLabel,
 	},
 	quoteRow: {
@@ -264,6 +265,7 @@ const styles = StyleSheet.create({
 	quoteText: {
 		fontSize: 15,
 		lineHeight: 19,
+		fontFamily: font.regular,
 		color: colors.secondaryLabel,
 	},
 });

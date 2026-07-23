@@ -1,10 +1,15 @@
-// Values measured from iOS Messages (see plans/research-visual.md).
+import { FONT, FONT_BOLD, FONT_MEDIUM } from "~/lib/tokens";
+
+// Layout metrics measured from iOS Messages (plans/research-visual.md); the
+// look itself is the BRAND's (06-design-system §3.3): cream sidekick bubbles,
+// usergray user bubbles, ink text, Diatype Rounded throughout — not iOS blue.
 export const colors = {
 	blue: "#007AFF",
-	sentBubble: "#007AFF",
-	sentText: "#FFFFFF",
-	receivedBubble: "#E9E9EB",
-	receivedText: "#000000",
+	sentBubble: "#E9E9EC", // usergray — the user's bubbles
+	sentText: "#111111",
+	receivedBubble: "#FBEFC9", // cream — the sidekick's bubbles
+	receivedText: "#111111",
+	field: "#F0F0F2", // input backgrounds (06 §1.1)
 	background: "#FFFFFF",
 	label: "#000000",
 	secondaryLabel: "rgba(60,60,67,0.6)",
@@ -25,23 +30,33 @@ export const colors = {
 	monogramBottom: "#7B86C6",
 } as const;
 
+// 06 §3.3: 24px corners with the ONE corner nearest the sender flattened to
+// 6px (tailRadius) on a group's last bubble; px-4 py-2.5 padding.
 export const bubble = {
-	radius: 18,
-	paddingHorizontal: 13,
-	paddingVertical: 7,
-	maxWidthFraction: 0.75,
+	radius: 24,
+	tailRadius: 6,
+	paddingHorizontal: 16,
+	paddingVertical: 10,
+	maxWidthFraction: 0.8,
 	edgeMargin: 8,
 	gapWithinGroup: 2,
 	gapBetweenGroups: 8,
-	tailWidth: 6,
+} as const;
+
+// One family, ABC Diatype Rounded (06 §1.2). iOS won't faux-bold a custom
+// font, so weights are separate families — set the family, never fontWeight.
+export const font = {
+	regular: FONT,
+	medium: FONT_MEDIUM,
+	bold: FONT_BOLD,
 } as const;
 
 export const type = {
-	body: { fontSize: 17, lineHeight: 22 },
-	listName: { fontSize: 17, fontWeight: "600" as const },
-	listPreview: { fontSize: 15, lineHeight: 20 },
-	listTime: { fontSize: 15 },
-	navName: { fontSize: 11 },
-	separator: { fontSize: 12 },
-	delivered: { fontSize: 11 },
+	body: { fontSize: 15, lineHeight: 21, fontFamily: font.regular }, // chat role: 15/1.375
+	listName: { fontSize: 17, fontFamily: font.bold },
+	listPreview: { fontSize: 15, lineHeight: 20, fontFamily: font.regular },
+	listTime: { fontSize: 15, fontFamily: font.regular },
+	navName: { fontSize: 11, fontFamily: font.medium },
+	separator: { fontSize: 12, fontFamily: font.medium },
+	delivered: { fontSize: 11, fontFamily: font.medium },
 } as const;

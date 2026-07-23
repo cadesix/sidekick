@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSidekickDisplayName } from "../../lib/sidekick-name";
-import { colors } from "../theme";
+import { colors, font } from "../theme";
 import type { GameCard, GameType } from "../types";
 
 /**
@@ -224,11 +224,12 @@ const styles = StyleSheet.create({
 	},
 	name: {
 		fontSize: 15,
-		fontWeight: "600",
+		fontFamily: font.medium,
 		color: colors.label,
 	},
 	status: {
 		fontSize: 13,
+		fontFamily: font.regular,
 		color: colors.secondaryLabel,
 		marginTop: 1,
 	},
@@ -249,6 +250,7 @@ const styles = StyleSheet.create({
 	},
 	pillText: {
 		fontSize: 15,
+		fontFamily: font.regular,
 		color: colors.secondaryLabel,
 	},
 });

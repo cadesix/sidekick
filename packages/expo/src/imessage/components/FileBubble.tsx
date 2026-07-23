@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
 import { fileTypeLabel, formatBytes, truncateFilename } from "../lib/attachments";
-import { colors } from "../theme";
+import { colors, font } from "../theme";
 import type { FileAttachment } from "../types";
 import { Icon } from "./Icon";
 
@@ -9,7 +9,7 @@ import { Icon } from "./Icon";
  * bubble: doc glyph + filename + a `PDF · 2.3 MB` caption.
  */
 export function FileBubble({ file, sent }: { file: FileAttachment; sent: boolean }) {
-	const tint = sent ? "#FFFFFF" : colors.label;
+	const tint = colors.label; // ink on both bubble fills (cream/usergray)
 	const caption = sent ? "rgba(255,255,255,0.8)" : colors.secondaryLabel;
 	return (
 		<View style={styles.row}>
@@ -48,10 +48,11 @@ const styles = StyleSheet.create({
 	},
 	name: {
 		fontSize: 15,
-		fontWeight: "600",
+		fontFamily: font.medium,
 	},
 	caption: {
 		fontSize: 12,
+		fontFamily: font.regular,
 		marginTop: 1,
 	},
 });

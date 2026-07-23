@@ -11,7 +11,7 @@ import {
 	type ViewStyle,
 } from "react-native";
 import Animated, { useAnimatedStyle, withSpring, ZoomIn, ZoomOut } from "react-native-reanimated";
-import { colors } from "../theme";
+import { colors, font } from "../theme";
 import { Glass, liquidGlass } from "./Glass";
 import { Icon } from "./Icon";
 import type { AudioAttachment } from "../types";
@@ -251,7 +251,7 @@ const styles = StyleSheet.create({
 	// The plus button + input field are filled with the received-bubble gray on all
 	// platforms (not the frosted glass), so the composer matches the message bubbles.
 	receivedFill: {
-		backgroundColor: colors.receivedBubble,
+		backgroundColor: colors.field,
 	},
 	trayDivider: {
 		height: StyleSheet.hairlineWidth,
@@ -267,6 +267,7 @@ const styles = StyleSheet.create({
 		flex: 1,
 		fontSize: 17,
 		lineHeight: 21,
+		fontFamily: font.regular,
 		paddingLeft: 14,
 		paddingRight: 4,
 		paddingTop: 9,

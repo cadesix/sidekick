@@ -1,5 +1,5 @@
 import { StyleSheet, Text } from "react-native";
-import { colors, type } from "../theme";
+import { colors, font, type } from "../theme";
 
 export function TimestampSeparator({ day, time }: { day: string; time: string }) {
 	return (
@@ -15,9 +15,10 @@ const styles = StyleSheet.create({
 		marginTop: 18,
 		marginBottom: 6,
 		fontSize: type.separator.fontSize,
+		fontFamily: font.regular,
 		color: colors.secondaryLabel,
 	},
 	day: {
-		fontWeight: "600",
+		fontFamily: font.medium,
 	},
 });

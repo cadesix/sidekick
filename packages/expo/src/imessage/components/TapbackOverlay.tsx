@@ -13,7 +13,7 @@ import Animated, {
 	withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors } from "../theme";
+import { colors, font } from "../theme";
 import { Glass } from "./Glass";
 import type { Message, ReactionType } from "../types";
 import { Icon, type IconName } from "./Icon";
@@ -22,11 +22,6 @@ import type { BubbleLayout } from "./MessageRow";
 import { TAPBACK_BADGE_OVERHANG, TAPBACK_ORDER, TapbackBadge, TapbackGlyph } from "./TapbackBadge";
 
 const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
-
-// The bubble clone floats over the scrim (blurred background + 12% black dim),
-// so its tail cutout must carve with the dimmed background color — the raw
-// background would show as a bright square just above the tail.
-const SCRIM_BEHIND = "#E0E0E0";
 
 const PILL_HEIGHT = 48;
 const MENU_WIDTH = 254;
@@ -219,7 +214,7 @@ export function TapbackOverlay({
 					bubbleStyle,
 				]}
 			>
-				<MessageContent message={message} tail backgroundBehind={SCRIM_BEHIND} />
+				<MessageContent message={message} tail />
 				{message.reactions.map((reaction) => (
 					<TapbackBadge
 						key={reaction.from}
@@ -404,6 +399,7 @@ const styles = StyleSheet.create({
 	},
 	menuLabel: {
 		fontSize: 17,
+		fontFamily: font.regular,
 		color: colors.label,
 	},
 });

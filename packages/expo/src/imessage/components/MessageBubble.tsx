@@ -8,43 +8,26 @@ interface MessageBubbleProps {
 	tail: boolean;
 	children: ReactNode;
 	color?: string;
-	backgroundBehind?: string;
 }
 
-// The classic iMessage bubble. The tail is drawn with two overlapping views:
-// a bubble-colored hook that overhangs the outer edge, and a background-colored
-// cutout that carves its outer curve (samuelkraft technique).
-export function MessageBubble({
-	from,
-	tail,
-	children,
-	color,
-	backgroundBehind,
-}: MessageBubbleProps) {
+// The brand bubble (06 §3.3): cream for the sidekick, usergray for the user,
+// 24px corners — except the corner nearest the sender, which flattens to 6px on
+// a group's LAST bubble (`tail`, replacing the old iMessage tail hook) so the
+// group visibly points at who said it.
+export function MessageBubble({ from, tail, children, color }: MessageBubbleProps) {
 	const sent = from === "me";
 	const fill = color ?? (sent ? colors.sentBubble : colors.receivedBubble);
-	const behind = backgroundBehind ?? colors.background;
 	return (
 		<View style={styles.wrapper}>
-			{tail ? (
-				<View pointerEvents="none" style={styles.tailContainer}>
-					<View
-						style={[
-							styles.tail,
-							sent ? styles.tailSent : styles.tailReceived,
-							{ backgroundColor: fill },
-						]}
-					/>
-					<View
-						style={[
-							styles.tailCutout,
-							sent ? styles.tailCutoutSent : styles.tailCutoutReceived,
-							{ backgroundColor: behind },
-						]}
-					/>
-				</View>
-			) : null}
-			<View style={[styles.bubble, { backgroundColor: fill }]}>{children}</View>
+			<View
+				style={[
+					styles.bubble,
+					tail ? (sent ? styles.tailSent : styles.tailReceived) : null,
+					{ backgroundColor: fill },
+				]}
+			>
+				{children}
+			</View>
 		</View>
 	);
 }
@@ -59,35 +42,10 @@ const styles = StyleSheet.create({
 		paddingHorizontal: bubble.paddingHorizontal,
 		paddingVertical: bubble.paddingVertical,
 	},
-	tailContainer: {
-		...StyleSheet.absoluteFillObject,
-	},
-	tail: {
-		position: "absolute",
-		bottom: 0,
-		width: 20,
-		height: 20,
-	},
 	tailSent: {
-		right: -7,
-		borderBottomLeftRadius: 15,
+		borderBottomRightRadius: bubble.tailRadius,
 	},
 	tailReceived: {
-		left: -7,
-		borderBottomRightRadius: 15,
-	},
-	tailCutout: {
-		position: "absolute",
-		bottom: 0,
-		width: 26,
-		height: 20,
-	},
-	tailCutoutSent: {
-		right: -26,
-		borderBottomLeftRadius: 10,
-	},
-	tailCutoutReceived: {
-		left: -26,
-		borderBottomRightRadius: 10,
+		borderBottomLeftRadius: bubble.tailRadius,
 	},
 });

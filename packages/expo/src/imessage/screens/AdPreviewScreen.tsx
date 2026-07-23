@@ -10,7 +10,7 @@ import type { AdView } from "~/lib/chat-thread";
 import { ChatInputBar } from "../components/ChatInputBar";
 import { Icon } from "../components/Icon";
 import { MessageBubble } from "../components/MessageBubble";
-import { colors, type } from "../theme";
+import { colors, font, type } from "../theme";
 import { Glass } from "../components/Glass";
 
 /**
@@ -189,7 +189,7 @@ const styles = StyleSheet.create({
 	},
 	title: {
 		fontSize: 17,
-		fontWeight: "700",
+		fontFamily: font.bold,
 		color: colors.label,
 	},
 	samples: {
@@ -209,7 +209,7 @@ const styles = StyleSheet.create({
 	},
 	sampleLabel: {
 		fontSize: 14,
-		fontWeight: "600",
+		fontFamily: font.medium,
 		color: colors.secondaryLabel,
 	},
 	sampleLabelActive: {
@@ -231,6 +231,7 @@ const styles = StyleSheet.create({
 	bubbleText: {
 		fontSize: type.body.fontSize,
 		lineHeight: type.body.lineHeight,
+		fontFamily: font.regular,
 	},
 	bubbleTextSent: {
 		color: colors.sentText,
@@ -250,6 +251,7 @@ const styles = StyleSheet.create({
 	},
 	liveStatus: {
 		fontSize: 13,
+		fontFamily: font.regular,
 		color: colors.secondaryLabel,
 		textAlign: "center",
 		marginHorizontal: 12,

@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BottomSheet } from "~/components/BottomSheet";
 import { trpc } from "~/lib/api";
-import { colors } from "../theme";
+import { colors, font } from "../theme";
 import type { GameType } from "../types";
 import { MiniCupRack, MiniPoolTable } from "./GameCardBubble";
 
@@ -96,7 +96,7 @@ export function GamePickerSheet({
 const styles = StyleSheet.create({
 	title: {
 		fontSize: 20,
-		fontWeight: "700",
+		fontFamily: font.bold,
 		color: colors.label,
 		textAlign: "center",
 		marginBottom: 14,
@@ -127,12 +127,13 @@ const styles = StyleSheet.create({
 	},
 	tileName: {
 		fontSize: 16,
-		fontWeight: "600",
+		fontFamily: font.medium,
 		color: colors.label,
 		marginTop: 8,
 	},
 	tileRecord: {
 		fontSize: 13,
+		fontFamily: font.regular,
 		color: colors.secondaryLabel,
 		marginTop: 2,
 	},
