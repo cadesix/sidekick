@@ -1004,9 +1004,6 @@ const styles = StyleSheet.create({
     lineHeight: 60,
     textAlign: 'center',
     color: '#fff',
-    textShadowColor: 'rgba(0,0,0,0.4)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 12,
   },
   centerCopy: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   h1: {
@@ -1017,9 +1014,6 @@ const styles = StyleSheet.create({
     lineHeight: 46,
     textAlign: 'center',
     color: '#fff',
-    textShadowColor: 'rgba(0,0,0,0.4)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 10,
   },
   h1small: {
     fontFamily: FONT_BOLD,
@@ -1029,9 +1023,6 @@ const styles = StyleSheet.create({
     lineHeight: 36,
     textAlign: 'center',
     color: '#fff',
-    textShadowColor: 'rgba(0,0,0,0.4)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 10,
   },
   sub: {
     fontFamily: FONT,
