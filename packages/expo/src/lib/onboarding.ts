@@ -22,7 +22,6 @@ export type OnboardingState = {
   ts: number;
   userName: string;
   sidekickName: string;
-  gender: string;
   // ISO-ish birthday string ("YYYY-MM-DD") collected in onboarding
   birthday: string;
 };
@@ -33,7 +32,6 @@ const EMPTY: OnboardingState = {
   ts: 0,
   userName: '',
   sidekickName: '',
-  gender: '',
   birthday: '',
 };
 

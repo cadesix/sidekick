@@ -21,7 +21,7 @@ import { VoiceRecorder } from "./VoiceRecorder";
 export type AttachmentState = "none" | "settling" | "ready";
 
 // Composer surface: real iOS-26 liquid glass where available, else a FLAT opaque
-// fill in the received-bubble gray. (The blur fallback lightens whatever fill sits
+// fill in the field-gray input token (06 §1.1). (The blur fallback lightens whatever fill sits
 // behind it, so we skip the blur entirely and match the message bubbles exactly.)
 function Surface({
 	isInteractive,
@@ -39,7 +39,7 @@ function Surface({
 			</Glass>
 		);
 	}
-	return <View style={[style, styles.receivedFill]}>{children}</View>;
+	return <View style={[style, styles.fieldFill]}>{children}</View>;
 }
 
 // Single-line resting height (matches the 40pt plus button) and the max before the
@@ -255,9 +255,9 @@ const styles = StyleSheet.create({
 	fieldWithTray: {
 		borderRadius: 26,
 	},
-	// The plus button + input field are filled with the received-bubble gray on all
-	// platforms (not the frosted glass), so the composer matches the message bubbles.
-	receivedFill: {
+	// The plus button + input field are filled with the field input token on all
+	// platforms (not the frosted glass) — deliberately NOT the bubble gray.
+	fieldFill: {
 		backgroundColor: colors.field,
 	},
 	trayDivider: {

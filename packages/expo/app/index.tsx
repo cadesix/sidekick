@@ -767,7 +767,7 @@ export default function Home() {
   const chatIconFadeStyle = useAnimatedStyle(() => ({
     opacity: interpolate(chatProgress.value, [0, 0.3, 0.38, 1], [1, 1, 0, 0]),
   }));
-  // identical to drawerStyle, for the guided habit-add drawer
+  // identical to chatSheetStyle, for the guided habit-add drawer
   const habitDrawerStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: (1 - habitProgress.value) * (SCREEN_H - DRAWER_TOP) }],
   }));
