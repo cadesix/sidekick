@@ -77,8 +77,8 @@ const CHAT_FRAMING: Framing = {
 // of the frame on his phone, and the chat floats in the sky above him.
 // Tune-by-eye values.
 const SKY_CHAT_FRAMING: Framing = {
-  pos: [0, 1.2, 6.4],
-  target: [0, 4.2, -4],
+  pos: [0, 1.1, 6.6],
+  target: [0, 2.9, -3.5],
   fov: 50,
 };
 
