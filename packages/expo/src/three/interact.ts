@@ -260,7 +260,7 @@ export function createInteraction(opts: {
 
     // ground taps aren't pokes AT him — they don't react and don't escalate
     if (part === 'ground') {
-      opts.onPoke?.(part, lookPoint, POKE_FACE.ground, false);
+      opts.onPoke?.(part, lookPoint, null, false);
       return;
     }
     const gap = now - lastPokeAt;
@@ -386,12 +386,3 @@ export function createInteraction(opts: {
   };
 }
 
-// face pulse per poked part — a single poke always reads as delight; the
-// annoyed/big escalation above overrides it when he's being jabbed at
-export const POKE_FACE = {
-  head: 'excited',
-  body: 'excited',
-  handL: 'excited',
-  handR: 'excited',
-  ground: null,
-} as const;

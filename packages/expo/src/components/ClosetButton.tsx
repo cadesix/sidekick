@@ -57,6 +57,9 @@ export function ClosetButton({
       cancelAnimation(drift);
       return;
     }
+    // restart from 0: cancelAnimation freezes mid-ramp, and withRepeat would
+    // loop that midpoint→1 forever — reintroducing the wrap snap
+    drift.value = 0;
     drift.value = withRepeat(withTiming(1, { duration: FLOAT_MS, easing: Easing.linear }), -1, false);
     return () => cancelAnimation(drift);
   }, [hidden, drift]);

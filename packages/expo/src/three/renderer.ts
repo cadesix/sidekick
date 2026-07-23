@@ -840,7 +840,8 @@ export function createSidekickRenderer(
       if (big) {
         // boil-over: jump off the ground, hands thrown up (the jump envelopes
         // raise the arms); the host layer layers haptics + the "hey!" bubble.
-        // Guarded like popDailyBox so it can't clobber a mid-flight entrance.
+        // Guarded like popDailyBox so it can't clobber a mid-flight entrance —
+        // but a hop CAN retrigger a hop (keep-mashing = he keeps re-jumping).
         if (jump === null || jump.hop) {
           jump = { start: clock.getElapsedTime(), dur: 0.7, hop: true };
         }

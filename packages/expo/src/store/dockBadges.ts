@@ -29,6 +29,12 @@ type Store = {
   markMsgsSeen: (at: number) => void;
 };
 
+// Wipe the stamps on an account transition — called beside auth-session's query
+// cache + mirror wipe so one account's "seen" can't suppress another's badges.
+export function resetDockBadges(): void {
+  useDockBadges.setState({ goalsSeenDate: null, shopSeenDate: null, msgsSeenAt: null });
+}
+
 export const useDockBadges = create<Store>()(
   persist(
     (set) => ({

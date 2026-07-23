@@ -299,7 +299,7 @@ export default function Home() {
   // imperative handle the canvas publishes once cosmetics are ready; the Shop
   // uses it to dress the live character
   const [controls, setControls] = useState<CosmeticsControls | null>(null);
-  // raw scene controller for the Settings sheet's live look-dev
+  // raw scene controller (applySettings, face pulses, daily-box pop)
   const [controller, setController] = useState<SidekickController | null>(null);
 
   // Overhead bubble → face. When a line pops over his head, pulse the matching
@@ -663,9 +663,7 @@ export default function Home() {
   return (
     <Profiler id="home" onRender={onHomeRender}>
     <View className="flex-1 bg-white">
-      {/* Full-viewport 3D scene (mounted once saved look-dev state hydrates).
-          Settings reuses the pulled-back chat framing so the meadow, sky and
-          character stay visible above the panel while tuning. */}
+      {/* Full-viewport 3D scene (mounted once saved look-dev state hydrates) */}
       {settings ? (
         <SidekickCanvas
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
@@ -725,9 +723,6 @@ export default function Home() {
           top: insets.top + 8,
           right: 16,
           zIndex: 25,
-          flexDirection: 'row',
-          gap: 8,
-          alignItems: 'center',
           opacity: clusterHidden ? 0 : 1,
         }}
         pointerEvents={clusterHidden ? 'none' : 'box-none'}

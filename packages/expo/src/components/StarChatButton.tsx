@@ -83,6 +83,10 @@ export function StarChatButton({
       cancelAnimation(drift);
       return;
     }
+    // restart from 0: cancelAnimation freezes mid-ramp, and withRepeat would
+    // loop that midpoint→1 forever — reintroducing the drift wrap snap
+    t.value = 0;
+    drift.value = 0;
     t.value = withRepeat(withTiming(1, { duration: 2600, easing: Easing.inOut(Easing.quad) }), -1, true);
     drift.value = withRepeat(withTiming(1, { duration: FLOAT_MS, easing: Easing.linear }), -1, false);
     return () => {
