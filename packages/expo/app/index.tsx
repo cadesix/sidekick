@@ -471,6 +471,14 @@ export default function Home() {
   const finishIntro = useCallback(() => {
     void markHomeIntroDone().then(() => refreshOnboarding(queryClient));
   }, [queryClient]);
+  // when the intro is consumed (or DEV re-arms it) reset the machine so a
+  // later replay starts from the top instead of resuming at 'star'
+  useEffect(() => {
+    if (!introPending) {
+      setIntroStep(null);
+      setIntroBond(0);
+    }
+  }, [introPending]);
 
   // Streak + daily box are server state (plan 20 phase 2): the streak count and
   // the box's claimable/tier come from the snapshot; the touch itself fires from
@@ -857,7 +865,7 @@ export default function Home() {
       {settings && snapshot && nextStarChat ? (
         <StarChatButton
           overhead={overhead}
-          hidden={covered || (introPending && introStep !== 'star')}
+          hidden={covered || (introPending && introStep !== 'bond' && introStep !== 'star')}
           bondOverride={introPending ? introBond : undefined}
           onPress={() => {
             if (introPending) finishIntro(); // star tapped — intro consumed

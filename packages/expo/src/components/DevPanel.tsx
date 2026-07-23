@@ -17,7 +17,7 @@ import {
   type Snapshot,
 } from '../lib/api';
 import { patchSnapshot, SNAPSHOT_QUERY_KEY, type SnapshotPatch, useSnapshot } from '../lib/state';
-import { refreshOnboarding, resetOnboarding } from '../lib/onboarding';
+import { devArmHomeIntro, refreshOnboarding, resetOnboarding } from '../lib/onboarding';
 import { useStarChat } from '../store/star-chat';
 import { CHAT_UI_MODES, useDevPrefs } from '../store/devPrefs';
 import { TIMES, type TimeOfDay } from '../three/settings';
@@ -142,6 +142,13 @@ export function DevPanel({
 
           <Row label="Onboarding">
             <Btn label="Replay onboarding" onPress={replayOnboarding} wide />
+            <Btn
+              label="Replay home intro"
+              onPress={() => {
+                void devArmHomeIntro().then(() => refreshOnboarding(queryClient));
+              }}
+              wide
+            />
           </Row>
 
           {/* which Messages presentation is live (store/devPrefs) */}

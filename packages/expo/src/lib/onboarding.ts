@@ -95,6 +95,12 @@ export async function markHomeIntroDone(): Promise<void> {
   await writeRaw({ ...state, homeIntro: false });
 }
 
+/** DEV: re-arm the guided home intro without replaying onboarding. */
+export async function devArmHomeIntro(): Promise<void> {
+  const state = await readRaw();
+  await writeRaw({ ...state, homeIntro: true });
+}
+
 /** DEV: wipe onboarding state so the flow runs again from welcome. */
 export async function resetOnboarding(): Promise<void> {
   try {
