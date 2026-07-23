@@ -3,7 +3,7 @@ import { Profiler, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { Redirect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Alert, AppState, Dimensions, Pressable, Text, View, type AppStateStatus } from 'react-native';
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, interpolate, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CHAT_SHEET_DETENT, ChatScreen } from '~/imessage';
@@ -25,7 +25,9 @@ import { useStarChat } from '../src/store/star-chat';
 import { useStarFaceConfig } from '../src/store/starFaceConfig';
 import { useSidekickContext, type Astral } from '../src/store/context';
 import { SpeechBubble } from '../src/components/SpeechBubble';
-import { HomeDock, type TileOrigin } from '../src/components/HomeDock';
+import { HomeDock, MESSAGES_BUBBLE_PATH, MESSAGES_GRADIENT, type TileOrigin } from '../src/components/HomeDock';
+import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Path } from 'react-native-svg';
 import { BIOMES, biomeLookForTime, type BiomeId, type EnvironmentId } from '../src/three/biomes';
 import { speak, useSpeech } from '../src/store/speech';
 import { FACE_EXPRESSIONS, type FaceExpression } from '../src/three/face';
@@ -466,12 +468,12 @@ export default function Home() {
     chatOrigin.w.value = origin?.width ?? 60;
     chatOrigin.h.value = origin?.height ?? 60;
     setChatOpen(true);
-    chatProgress.value = withTiming(1, { duration: 440, easing: Easing.out(Easing.cubic) });
+    chatProgress.value = withTiming(1, { duration: 520, easing: Easing.linear });
     stampMsgsSeen(); // they're looking at the chat — what exists now is seen
   }, [chatProgress, chatOrigin, stampMsgsSeen]);
   const closeChat = useCallback(() => {
     setChatOpen(false);
-    chatProgress.value = withTiming(0, { duration: 340, easing: Easing.in(Easing.cubic) });
+    chatProgress.value = withTiming(0, { duration: 340, easing: Easing.linear });
     stampMsgsSeen(); // include everything received while the chat was up
     // As the user walks back to the 3D sidekick, have it get the last word: a
     // snarky one-liner capping off the conversation, over its head. The 500ms
@@ -674,27 +676,47 @@ export default function Home() {
   );
   const darkBackdrop = hexLuminance(topSky) < 0.4;
 
-  // iOS-app-launch zoom: the full-screen chat scales up FROM the Messages
-  // tile's window rect (translate centres the container over the tile, scale
-  // shrinks it to tile size; both ease to identity). RN scales about the
-  // centre, so translate+scale together emulate a transform-origin at the tile.
+  // iOS-app-launch morph. The container starts as the EXACT tile rect (per-axis
+  // scale, so at p=0 it IS the square icon) and each edge runs its own curve:
+  //  - the top edge races ahead with a back-out overshoot — the rect visibly
+  //    STRETCHES upward out of the dock, top corners reaching the screen first
+  //  - the bottom edge trails on an ease-in, leaving the dock last
+  //  - a perspective rotateX bulges mid-flight so the top edge reads longer
+  //    than the bottom (the iOS "coming at you" trapezoid), settling flat
+  // The driver is LINEAR; all shaping lives in these curves.
   const chatZoomStyle = useAnimatedStyle(() => {
     const p = chatProgress.value;
-    const inv = 1 - p;
-    const tileScale = chatOrigin.w.value / SCREEN_W;
+    const b = p - 1;
+    const pTop = 1 + 2.2 * b * b * b + 1.2 * b * b; // back-out: overshoots ~6% past the top
+    const pBot = p * p; // ease-in: trails
+    const pX = 1 - (1 - p) * (1 - p); // ease-out: sides in between
+    const top = chatOrigin.y.value * (1 - pTop);
+    const bottom = (chatOrigin.y.value + chatOrigin.h.value) * (1 - pBot) + SCREEN_H * pBot;
+    const left = chatOrigin.x.value * (1 - pX);
+    const right = (chatOrigin.x.value + chatOrigin.w.value) * (1 - pX) + SCREEN_W * pX;
     return {
       transform: [
-        { translateX: (chatOrigin.x.value + chatOrigin.w.value / 2 - SCREEN_W / 2) * inv },
-        { translateY: (chatOrigin.y.value + chatOrigin.h.value / 2 - SCREEN_H / 2) * inv },
-        { scale: tileScale + (1 - tileScale) * p },
+        { perspective: 900 },
+        { translateX: (left + right) / 2 - SCREEN_W / 2 },
+        { translateY: (top + bottom) / 2 - SCREEN_H / 2 },
+        { rotateX: `${8 * Math.sin(Math.PI * Math.min(1, Math.max(0, p)))}deg` },
+        { scaleX: Math.max(0.001, (right - left) / SCREEN_W) },
+        { scaleY: Math.max(0.001, (bottom - top) / SCREEN_H) },
       ],
-      // tile-ish corners while small, square once full screen
-      borderRadius: 48 * inv,
-      // fully closed = invisible (otherwise a tile-sized chat sits on the dock);
-      // pops to visible the moment the zoom starts
-      opacity: p > 0.01 ? 1 : 0,
+      // tile corners while small, square once full screen
+      borderRadius: 44 * Math.max(0, 1 - p),
+      // fully closed = invisible (otherwise a tile-sized chat sits on the dock)
+      opacity: p > 0.005 ? 1 : 0,
     };
   });
+  // The icon clone rides ON TOP of the chat inside the morphing rect and fades
+  // away mid-flight — the elongating icon crossfades into the screen (fading
+  // the OVERLAY, never the chat content, keeps UIGlassEffect descendants alive
+  // — expo/expo#41024). Around p≈0.5 you get iOS's "half icon, half app,
+  // stretched" frame for free.
+  const chatIconFadeStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(chatProgress.value, [0, 0.32, 0.62, 1], [1, 1, 0, 0]),
+  }));
   // identical to drawerStyle, for the guided habit-add drawer
   const habitDrawerStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: (1 - habitProgress.value) * (SCREEN_H - DRAWER_TOP) }],
@@ -992,6 +1014,17 @@ export default function Home() {
         <View style={{ flex: 1, paddingTop: insets.top }}>
           <ChatScreen onClose={closeChat} onOpenGame={setActiveMatchId} />
         </View>
+        {/* the launching app icon: stretches with the rect, fades into the app */}
+        <Animated.View
+          pointerEvents="none"
+          style={[chatIconFadeStyle, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]}
+        >
+          <LinearGradient colors={MESSAGES_GRADIENT} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <Svg viewBox="0 0 24 24" width="62%" height="62%" preserveAspectRatio="none">
+              <Path fill="#fff" d={MESSAGES_BUBBLE_PATH} />
+            </Svg>
+          </LinearGradient>
+        </Animated.View>
       </Animated.View>
 
       {/* Game overlay (plan 21) — the full-screen turn player, over the chat

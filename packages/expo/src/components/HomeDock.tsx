@@ -17,6 +17,12 @@ import { NewsDot } from './NewsDot';
 // grows out of the Messages tile like an iOS app launch
 export type TileOrigin = { x: number; y: number; width: number; height: number };
 
+// the Messages tile's art, shared with Home's zoom-open icon clone (the clone
+// stretches this over the morphing rect during the launch animation)
+export const MESSAGES_GRADIENT = ['#5BF76B', '#12C93E'] as [string, string];
+export const MESSAGES_BUBBLE_PATH =
+  'M12 4.2C6.9 4.2 3 7.3 3 11.2c0 2.2 1.3 4.2 3.3 5.5-.2 1.1-.8 2.1-1.5 2.9 1.5-.1 3.1-.6 4.3-1.5.9.3 1.9.4 2.9.4 5.1 0 9-3.1 9-7S17.1 4.2 12 4.2z';
+
 type DockProps = {
   hidden?: boolean;
   unread?: number;
@@ -102,12 +108,9 @@ function HomeDockImpl({ hidden, unread = 0, shopDot, goalsDot, onMessages, onSho
       <Glass style={styles.panel}>
         {/* Messages — chat bubble on a green gradient; red unread badge */}
         <View ref={messagesTileRef} collapsable={false}>
-          <AppTile label="Messages" onPress={pressMessages} gradient={['#5BF76B', '#12C93E']}>
+          <AppTile label="Messages" onPress={pressMessages} gradient={MESSAGES_GRADIENT}>
             <Svg viewBox="0 0 24 24" width={ICON} height={ICON}>
-              <Path
-                fill="#fff"
-                d="M12 4.2C6.9 4.2 3 7.3 3 11.2c0 2.2 1.3 4.2 3.3 5.5-.2 1.1-.8 2.1-1.5 2.9 1.5-.1 3.1-.6 4.3-1.5.9.3 1.9.4 2.9.4 5.1 0 9-3.1 9-7S17.1 4.2 12 4.2z"
-              />
+              <Path fill="#fff" d={MESSAGES_BUBBLE_PATH} />
             </Svg>
           </AppTile>
           {unread > 0 ? (
