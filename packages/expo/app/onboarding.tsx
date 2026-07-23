@@ -54,8 +54,8 @@ import { applySkin, hydrateSkinFromMirror, saveSkinMirror, SKIN_COLORS, type Ski
 //
 //  0. auth      — sign in, camera up at the evening sky; skipped if signed in
 //  1. hey       — shaking "Hey!" dead-centre over the sky, "Get Started"
-//  2. askName   — "i'm your sidekick!" + streamed "what should i call you? 🤔"
-//  3. birthday  — "hey {name}! when's your bday?"
+//  2. birthday  — "before we get started, what's your birthday?" (in the sky)
+//  … (customize / celebrate / nameSidekick as below)
 //  4. lookDown  — streamed "your head is in the clouds… look down here!" + CTA
 //  5. hereLeft  — camera panned down-then-LEFT; "I'M OVER HERE!" on the right
 //  6. hereRight — camera whips RIGHT; "NO OVER HERE!" on the left
@@ -118,7 +118,6 @@ type Phase =
 const PHASE_ORDER: Phase[] = [
   'auth',
   'hey',
-  'askName',
   'birthday',
   'lookDown',
   'hereLeft',
@@ -128,6 +127,7 @@ const PHASE_ORDER: Phase[] = [
   'customize',
   'celebrate',
   'nameSidekick',
+  'askName',
   'textIntro',
   'notif',
   'chat',
@@ -139,7 +139,6 @@ const PHASE_ORDER: Phase[] = [
 const PHASES: Record<Phase, { framing: Framing; characterVisible: boolean }> = {
   auth: { framing: SKY_FRAMING, characterVisible: false },
   hey: { framing: SKY_FRAMING, characterVisible: false },
-  askName: { framing: SKY_NAME_FRAMING, characterVisible: false },
   birthday: { framing: SKY_NAME_FRAMING, characterVisible: false },
   lookDown: { framing: SKY_NAME_FRAMING, characterVisible: false },
   hereLeft: { framing: LOOK_LEFT_FRAMING, characterVisible: false },
@@ -149,6 +148,7 @@ const PHASES: Record<Phase, { framing: Framing; characterVisible: boolean }> = {
   customize: { framing: HERO_FRAMING, characterVisible: true },
   celebrate: { framing: HERO_FRAMING, characterVisible: true },
   nameSidekick: { framing: NAMESIDEKICK_FRAMING, characterVisible: true },
+  askName: { framing: NAMESIDEKICK_FRAMING, characterVisible: true },
   textIntro: { framing: HERO_FRAMING, characterVisible: true },
   notif: { framing: NOTIF_FRAMING, characterVisible: true },
   chat: { framing: SLIVER_FRAMING, characterVisible: true },
@@ -308,11 +308,13 @@ export default function Onboarding() {
   }, [phase, authStatus]);
 
 
-  // 2 → birthday: just capture the name (still in the sky).
+  // name captured LAST (after the sidekick names himself) → the text segue.
   const submitUserName = (name: string) => {
     setUserName(name);
     void saveOnboardingField('userName', name);
-    goTo('birthday');
+    goTo('textIntro');
+    speak('let me text u so we can talk!', 2400, 'happy');
+    setTimeout(() => notifBeat(), 2600);
   };
 
   // birthday → lookDown: still in the sky — the pan waits for the CTA.
@@ -386,13 +388,11 @@ export default function Onboarding() {
     setTimeout(() => goTo('nameSidekick'), 1500);
   };
 
-  // naming → textIntro → the phone beat
+  // sidekick named → now ask the USER's name.
   const submitSidekickName = (name: string) => {
     setSidekickName(name);
     void saveOnboardingField('sidekickName', name);
-    goTo('textIntro');
-    speak('let me text u so we can talk!', 2400, 'happy');
-    setTimeout(() => notifBeat(), 2600);
+    goTo('askName');
   };
 
   // textIntro → notif, choreographed in three: (1) he pulls out his phone
@@ -474,10 +474,7 @@ export default function Onboarding() {
         goTo('hey');
         break;
       case 'hey':
-        goTo('askName');
-        break;
-      case 'askName':
-        submitUserName(userName || 'Dev');
+        goTo('birthday');
         break;
       case 'birthday':
         submitBirthday('2000-01-01');
@@ -504,6 +501,9 @@ export default function Onboarding() {
         break; // auto-advance
       case 'nameSidekick':
         submitSidekickName(sidekickName || 'Mochi');
+        break;
+      case 'askName':
+        submitUserName(userName || 'Dev');
         break;
       case 'notif':
         openChat();
@@ -565,21 +565,21 @@ export default function Onboarding() {
             <HeyTitle />
           </View>
           <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
-            <PrimaryButton label="Get Started" onPress={() => goTo('askName')} disabled={animating} />
+            <PrimaryButton label="Get Started" onPress={() => goTo('birthday')} disabled={animating} />
           </View>
         </>
       ) : null}
 
-      {/* 2. i'm your sidekick! + streamed "what should i call you?" */}
+      {/* now YOUR name — after he's named himself, character standing above */}
       {phase === 'askName' && !animating ? (
         <NameEntry
           key="askName"
-          title="what should i call you?"
-          header={<StreamedText text={"i'm your sidekick!\nwhat should i call you?"} style={styles.h2stream} cps={20} reserve />}
-          revealDelayMs={streamDurationMs("i'm your sidekick! what should i call you?", 20) + 350}
+          title="now what's YOUR name?"
+          header={<Text style={styles.h1small}>now what's <Text style={styles.emph}>YOUR</Text> name?</Text>}
           placeholder="Your name"
           cta="continue"
           onSubmit={submitUserName}
+          layout="top"
         />
       ) : null}
 
@@ -591,7 +591,7 @@ export default function Onboarding() {
 
       {/* 2b. Birthday */}
       {phase === 'birthday' && !animating ? (
-        <BirthdayStep title={`hey ${userName || 'there'}! when's your bday?`} onSubmit={submitBirthday} />
+        <BirthdayStep title="before we get started, what's your birthday?" onSubmit={submitBirthday} />
       ) : null}
 
       {/* 4. lookDown — still in the sky */}
@@ -803,7 +803,7 @@ function HeyTitle() {
       </SubtleShake>
       {/* a quarter-circle pointer: starts flat under the word, bends 90° and
           ends aiming straight down — "the voice came from down there" */}
-      <Svg width={104} height={84} viewBox="0 0 104 84" style={{ marginTop: 10, transform: [{ rotate: '180deg' }] }}>
+      <Svg width={104} height={84} viewBox="0 0 104 84" style={{ marginTop: 10, marginLeft: 16, transform: [{ rotate: '180deg' }] }}>
         <Path d="M14 10 Q 88 10 88 78" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
       </Svg>
     </Animated.View>
@@ -1301,6 +1301,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#fff',
   },
+  emph: { color: '#F2C94C' },
   h1small: {
     fontFamily: FONT_BOLD,
     fontSize: 34,
