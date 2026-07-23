@@ -30,7 +30,6 @@ import {
 	locationAccess,
 } from "~/lib/location";
 import { colors } from "~/imessage/theme";
-import { Glass } from "~/imessage/components/Glass";
 import { Icon, type IconName } from "~/imessage/components/Icon";
 const STREAK_ICON = require("../../assets/icons/streak.png");
 
@@ -206,13 +205,13 @@ export function ProfileScreen() {
 		<View style={styles.screen}>
 			<StatusBar style="dark" />
 			<View style={styles.header}>
-				<Glass isInteractive style={styles.glassButton}>
-					<Pressable hitSlop={12} onPress={() => router.back()} style={styles.glassPressable}>
-						<Icon name="chevronLeft" size={20} color={colors.blue} strokeWidth={2.5} />
-					</Pressable>
-				</Glass>
+				{/* bare ink chevron — the Glass wrapper both fought the brand look and
+				    swallowed the tap on web */}
+				<Pressable hitSlop={12} onPress={() => router.back()} style={styles.backButton} accessibilityLabel="Back">
+					<Icon name="chevronLeft" size={24} color={INK} strokeWidth={2.5} />
+				</Pressable>
 				<Text style={styles.title}>Profile</Text>
-				<View style={styles.glassButton} />
+				<View style={styles.backButton} />
 			</View>
 
 			{me.data ? (
@@ -368,15 +367,10 @@ const styles = StyleSheet.create({
 		paddingTop: 12,
 		paddingBottom: 10,
 	},
-	glassButton: {
+	backButton: {
 		width: 42,
 		height: 42,
-		borderRadius: 21,
-		borderCurve: "continuous",
-	},
-	glassPressable: {
-		flex: 1,
-		alignItems: "center",
+		alignItems: "flex-start",
 		justifyContent: "center",
 	},
 	title: {
