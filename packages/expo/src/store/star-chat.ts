@@ -44,6 +44,12 @@ type StarChatStore = {
   // DEV-only (DevPanel): jump straight to the end state so the astral-card reveal
   // sequence can be previewed without chatting through every chapter.
   devSeedArtifact: () => void;
+  // a surface that can't render the star chat itself (Profile's astral CTA)
+  // asks Home to open it; Home consumes the flag on its next render. Transient —
+  // excluded from partialize, so it can't fire again on a later cold start.
+  openRequested: boolean;
+  requestOpen: () => void;
+  clearOpenRequest: () => void;
 };
 
 // a full sample card for the dev jump-to-reveal (archetype + traits + reading +
@@ -68,6 +74,9 @@ export const useStarChat = create<StarChatStore>()(
       artifact: null,
       done: false,
       hydrated: false,
+      openRequested: false,
+      requestOpen: () => set({ openRequested: true }),
+      clearOpenRequest: () => set({ openRequested: false }),
 
       start: (goals = []) => {
         if (get().convo) return; // resume — don't wipe an in-progress conversation

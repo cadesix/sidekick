@@ -13,7 +13,7 @@ import Animated, {
 	withTiming,
 } from "react-native-reanimated";
 import { formatDuration } from "../lib/time";
-import { colors } from "../theme";
+import { colors, font } from "../theme";
 import type { AudioAttachment } from "../types";
 import { Icon } from "./Icon";
 
@@ -258,6 +258,7 @@ const styles = StyleSheet.create({
 	},
 	duration: {
 		fontSize: 13,
+		fontFamily: font.regular,
 		fontVariant: ["tabular-nums"],
 		minWidth: 32,
 		textAlign: "right",

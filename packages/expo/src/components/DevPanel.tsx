@@ -19,6 +19,7 @@ import {
 import { patchSnapshot, SNAPSHOT_QUERY_KEY, type SnapshotPatch, useSnapshot } from '../lib/state';
 import { refreshOnboarding, resetOnboarding } from '../lib/onboarding';
 import { useStarChat } from '../store/star-chat';
+import { CHAT_UI_MODES, useDevPrefs } from '../store/devPrefs';
 import { TIMES, type TimeOfDay } from '../three/settings';
 
 // DEV-only user-state panel — the RN counterpart of the web app's dev chip
@@ -33,9 +34,11 @@ import { TIMES, type TimeOfDay } from '../three/settings';
 // dailyBox.claimable after a box reset, the sessions list after a wipe —
 // reconcile too.
 //
-// __DEV__ is FALSE on the Expo Web dev build, so we gate on SHOW_DEV below.
+// __DEV__ is FALSE on the Expo Web dev build, so gate on NODE_ENV instead —
+// development there, 'production' in any shipped bundle (strips the panel AND
+// the Chat UI experiment row from prod).
 
-const SHOW_DEV = true;
+const SHOW_DEV = process.env.NODE_ENV !== 'production';
 
 const COIN_STEPS = [-1000, -100, 100, 1000, 5000];
 const BOND_PRESETS = [10, 25, 40, 55, 70, 85, 100];
@@ -55,6 +58,7 @@ export function DevPanel({
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const snapshot = useSnapshot().data;
+  const chatUi = useDevPrefs((s) => s.chatUiMode);
 
   if (!SHOW_DEV) return null;
 
@@ -138,6 +142,19 @@ export function DevPanel({
 
           <Row label="Onboarding">
             <Btn label="Replay onboarding" onPress={replayOnboarding} wide />
+          </Row>
+
+          {/* which Messages presentation is live (store/devPrefs) */}
+          <Row label="Chat UI" value={chatUi}>
+            {CHAT_UI_MODES.map((m) => (
+              <Btn
+                key={m}
+                label={m}
+                active={m === chatUi}
+                onPress={() => useDevPrefs.getState().setChatUiMode(m)}
+                wide
+              />
+            ))}
           </Row>
 
           {onSetTimeOfDay ? (

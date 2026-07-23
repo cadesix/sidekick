@@ -1,8 +1,9 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
+import { persist } from 'zustand/middleware';
 
 import { localDay } from '@sidekick/core';
+
+import { ssrSafeStorage } from './persist-storage';
 
 // "Seen" stamps behind the dock's notification dots: each dot clears the moment
 // its surface is LOOKED AT, and re-arms when there's new cause —
@@ -51,7 +52,7 @@ export const useDockBadges = create<Store>()(
     }),
     {
       name: 'sidekick_dock_badges',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: ssrSafeStorage(),
       partialize: (s) => ({ goalsSeenDate: s.goalsSeenDate, shopSeenDate: s.shopSeenDate, msgsSeenAt: s.msgsSeenAt }),
       onRehydrateStorage: () => () => {
         useDockBadges.setState({ hydrated: true });
