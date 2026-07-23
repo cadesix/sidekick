@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Text, View, type TextStyle } from 'react-native';
+import { StyleSheet, Text, View, type TextStyle } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withRepeat, withTiming } from 'react-native-reanimated';
 
 // Shared chat-streaming primitives for the star-chat / onboarding runners: a
@@ -29,6 +29,7 @@ export function StreamedText({
   style,
   onReveal,
   cps = STREAM_CPS,
+  reserve = false,
 }: {
   text: string;
   className?: string;
@@ -36,6 +37,8 @@ export function StreamedText({
   onReveal?: () => void;
   // characters/sec — onboarding's big-copy lines stream slower than chat
   cps?: number;
+  // reserve final layout so the copy doesn't reflow as it types (titles)
+  reserve?: boolean;
 }) {
   const [shown, setShown] = useState(1);
   useEffect(() => {
@@ -46,6 +49,21 @@ export function StreamedText({
     }, 1000 / cps);
     return () => clearTimeout(id);
   }, [shown, text, onReveal, cps]);
+  // `reserve`: lay out the FULL text (invisible) so the box is its final size
+  // from the first frame, and paint the revealed slice on top — the copy stays
+  // put instead of shifting as characters stream in (onboarding titles).
+  if (reserve) {
+    return (
+      <View>
+        <Text className={className} style={[style, { opacity: 0 }]}>
+          {text}
+        </Text>
+        <Text className={className} style={[style, StyleSheet.absoluteFill]}>
+          {text.slice(0, shown)}
+        </Text>
+      </View>
+    );
+  }
   return (
     <Text className={className} style={style}>
       {text.slice(0, shown)}

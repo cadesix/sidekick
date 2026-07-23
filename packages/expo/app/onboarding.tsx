@@ -19,7 +19,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { commitOnboardingResult, setSkinColor } from '../src/lib/api';
-import { hapticNotif, hapticTap, playRevealHaptics } from '../src/lib/haptics';
+import { hapticNotif, hapticTap, playBuildToBoom } from '../src/lib/haptics';
 import { Pressable } from '../src/components/Pressable';
 import { OnboardingIntroChat, type OnboardingResult } from '../src/components/OnboardingIntroChat';
 import {
@@ -344,25 +344,28 @@ export default function Onboarding() {
   // rumble under the title, then he JUMPS in with a bubble.
   const startMeet = () => {
     if (animating) return;
-    goTo('meetTitle');
-    controllerRef.current?.shake({ amp: 0.05, duration: 2.4, mode: 'build' });
-    playRevealHaptics(); // rumble builds with the shake, hard hit at touchdown
+    goTo('meetTitle'); // camera settles to the middle (HERO framing)
+    const RISE = 2300;
+    // the ground trembles harder and harder; haptics grow to a massive boom at
+    // the pop, then jumpIn's own touchdown shake stomps it home
+    controllerRef.current?.shake({ amp: 0.09, duration: RISE / 1000, mode: 'build' });
+    playBuildToBoom(RISE, RISE);
     setTimeout(() => {
       setAnimating(true);
       goTo('reveal');
-      controllerRef.current?.jumpIn({ duration: 800 });
-    }, 2300);
+      controllerRef.current?.jumpIn({ duration: 800 }); // BOOM — he pops out + stomps
+    }, RISE);
     setTimeout(() => {
       setAnimating(false);
       speak('THERE YOU ARE!', 3200, 'excited');
-    }, 3300);
+    }, RISE + 1000);
   };
 
   // reveal → customize: he wonders about his look (bubble), swatches below.
   const toCustomize = () => {
     goTo('customize');
     controllerRef.current?.setInspect(true); // head down, sweeping his own body
-    controllerRef.current?.pulseFace('talkOpen', 8); // open-mouth wonder
+    controllerRef.current?.pulseFace('surprised', 8); // surprised look at himself
     setTimeout(() => speak('hm, how should i look?', 4200, 'surprised'), 400);
   };
   const pickColor = (c: SkinColor) => {
@@ -572,8 +575,8 @@ export default function Onboarding() {
         <NameEntry
           key="askName"
           title="what should i call you?"
-          header={<StreamedText text={"i'm your sidekick!\nwhat should i call you? 🤔"} style={styles.h2stream} cps={20} />}
-          revealDelayMs={streamDurationMs("i'm your sidekick! what should i call you? 🤔", 20) + 350}
+          header={<StreamedText text={"i'm your sidekick!\nwhat should i call you?"} style={styles.h2stream} cps={20} reserve />}
+          revealDelayMs={streamDurationMs("i'm your sidekick! what should i call you?", 20) + 350}
           placeholder="Your name"
           cta="continue"
           onSubmit={submitUserName}
@@ -611,8 +614,13 @@ export default function Onboarding() {
               <Text style={styles.h1small}>I'M OVER HERE!</Text>
             </SubtleShake>
           </Animated.View>
-          {/* a lead-in line from the screen edge to the copy */}
-          <Animated.View entering={FadeInUp.duration(350)} style={[styles.edgeLine, styles.edgeLineRight]} pointerEvents="none" />
+          {/* a curved lead-in from the right edge, pointing at the copy */}
+          <Animated.View entering={FadeInUp.duration(350)} style={styles.edgePointerRight} pointerEvents="none">
+            <Svg width={120} height={90} viewBox="0 0 120 90">
+              <Path d="M118 12 Q 40 12 22 62" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
+              <Path d="M22 62 l 16 -6 M22 62 l 5 -16" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
+            </Svg>
+          </Animated.View>
           <Text style={[styles.tapHint, { bottom: insets.bottom + 28 }]}>tap to continue</Text>
         </Pressable>
       ) : null}
@@ -624,7 +632,13 @@ export default function Onboarding() {
               <Text style={styles.h1small}>NO, OVER HERE!</Text>
             </SubtleShake>
           </Animated.View>
-          <Animated.View entering={FadeInUp.duration(350).delay(550)} style={[styles.edgeLine, styles.edgeLineLeft]} pointerEvents="none" />
+          {/* mirrored curve from the left edge */}
+          <Animated.View entering={FadeInUp.duration(350).delay(550)} style={styles.edgePointerLeft} pointerEvents="none">
+            <Svg width={120} height={90} viewBox="0 0 120 90">
+              <Path d="M2 12 Q 80 12 98 62" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
+              <Path d="M98 62 l -16 -6 M98 62 l -5 -16" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
+            </Svg>
+          </Animated.View>
           <Text style={[styles.tapHint, { bottom: insets.bottom + 28 }]}>tap to continue</Text>
         </Pressable>
       ) : null}
@@ -813,11 +827,13 @@ function LookDownCopy() {
   return (
     <View style={{ alignItems: 'center' }}>
       <View style={{ marginTop: -70, transform: [{ rotate: '-2.5deg' }] }}>
-        <StreamedText text="your head is in the clouds…" style={styles.cloudsBig} cps={20} />
+        <StreamedText text="your head is in the clouds…" style={styles.cloudsBig} cps={20} reserve />
       </View>
       {second ? (
         <View style={{ marginTop: 34 }}>
-          <StreamedText text="look down here!" style={styles.lookDownLine} cps={20} />
+          <SubtleShake intensity={1.8} speed={1.4}>
+            <StreamedText text="look down here!" style={styles.lookDownLine} cps={20} reserve />
+          </SubtleShake>
         </View>
       ) : null}
     </View>
@@ -1235,19 +1251,9 @@ const styles = StyleSheet.create({
   sideCopy: { position: 'absolute', top: 0, bottom: 0, width: '42%', justifyContent: 'center' },
   sideRight: { right: 40 },
   sideLeft: { left: 40 },
-  // the lead-in stroke from the screen edge to the copy
-  edgeLine: {
-    position: 'absolute',
-    top: '50%',
-    height: 4,
-    marginTop: -2,
-    width: 34,
-    borderRadius: 2,
-    backgroundColor: '#fff',
-    opacity: 0.9,
-  },
-  edgeLineRight: { right: 0 },
-  edgeLineLeft: { left: 0 },
+  // curved edge pointers aiming at the over-here copy
+  edgePointerRight: { position: 'absolute', top: '50%', right: 0, marginTop: -20 },
+  edgePointerLeft: { position: 'absolute', top: '50%', left: 0, marginTop: -20 },
   // screen 3: the clouds line at ~2× h1small, tilted, hard y-offset shadow
   cloudsBig: {
     fontFamily: FONT_BOLD,
@@ -1322,14 +1328,20 @@ const styles = StyleSheet.create({
   centerFill: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   nameBottomWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 32, alignItems: 'center' },
   nameCol: { width: '100%', maxWidth: 420, alignItems: 'stretch' },
+  // full screen width (breaks out of nameCol's 32px gutter) so chips scroll off
+  // both edges uncut; the first chip's left aligns to the input's left edge
   chipRail: {
     alignSelf: 'stretch',
     flexGrow: 0,
+    marginHorizontal: -32,
     marginBottom: 14,
+    overflow: 'visible',
   },
   chipRailContent: {
     gap: 8,
-    paddingHorizontal: 24,
+    paddingLeft: 32, // = the input's left gutter
+    paddingRight: 24,
+    paddingVertical: 6, // room for the chip drop shadow, uncut
   },
   dobRow: { flexDirection: 'row', gap: 10, marginTop: 24 },
   dobField: {
