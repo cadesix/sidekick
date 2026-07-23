@@ -765,6 +765,11 @@ export default function Onboarding() {
           <Pressable
             onPress={() => {
               void (async () => {
+                // Home's gate redirects signedOut users back to onboarding, so a
+                // dev who skipped the auth step would bounce. Dev-login first.
+                if (useAuthStore.getState().status !== 'signedIn') {
+                  await signInAsDev();
+                }
                 await devArmHomeIntro();
                 const st = await loadOnboarding();
                 queryClient.setQueryData(ONBOARDING_QUERY_KEY, st);
