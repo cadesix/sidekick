@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { dayString } from '@sidekick/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useMemo, useState } from 'react';
 import { Alert, Dimensions, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Animated, {
@@ -13,30 +13,42 @@ import Animated, {
   withDelay,
   withRepeat,
   withSequence,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { commitOnboardingResult, setSkinColor } from '../src/lib/api';
-import { hapticNotif, hapticTap, playRevealHaptics } from '../src/lib/haptics';
+import { hapticButton, hapticNotif, hapticTap, playBuildToBoom } from '../src/lib/haptics';
+import { devArmHomeIntro } from '../src/lib/onboarding';
 import { Pressable } from '../src/components/Pressable';
 import { OnboardingIntroChat, type OnboardingResult } from '../src/components/OnboardingIntroChat';
 import {
+  type CollectedFields,
   loadOnboarding,
   markOnboardingComplete,
   ONBOARDING_QUERY_KEY,
-  saveOnboardingField,
   saveStep,
 } from '../src/lib/onboarding';
 import { Glass } from '../src/imessage/components/Glass';
 import { OnboardingAuth } from '../src/components/OnboardingAuth';
+import { OverheadSpeech } from '../src/components/OverheadSpeech';
+import { SpeechBubble } from '../src/components/SpeechBubble';
+import { speak } from '../src/store/speech';
+import { streamDurationMs, StreamedText } from '../src/components/chat-stream';
+import Svg, { Path } from 'react-native-svg';
 import { FAUX_KB_HEIGHT, FAUX_KB_VISIBLE, FauxKeyboard } from '../src/components/FauxKeyboard';
 
 // bottom inset for a keyboard-input step: real keyboards are handled by
 // KeyboardAvoidingView; the dev-web faux deck needs its space reserved manually
-const kbBottomInset = (insetBottom: number) => (FAUX_KB_VISIBLE ? FAUX_KB_HEIGHT : insetBottom) + 20;
+const kbBottomInset = (insetBottom: number) => (FAUX_KB_VISIBLE ? FAUX_KB_HEIGHT : insetBottom) + 6;
+
+// lowercase the first letter (keep the rest) — the notif copy reads as casual
+// lowercase texting even if the user capitalized their name.
+const lowerFirst = (s: string) => (s ? s.charAt(0).toLowerCase() + s.slice(1) : s);
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { useAuthStore } from '../src/lib/auth-store';
+import { useDevLogin } from '../src/lib/auth-providers';
 import { PHONE_BODY_YAW, type Framing, type SidekickController } from '../src/three/renderer';
 import { hydrateSettings, loadSettings } from '../src/three/settings';
 import { applySkin, hydrateSkinFromMirror, saveSkinMirror, SKIN_COLORS, type SkinColor } from '../src/store/skin';
@@ -46,31 +58,40 @@ import { applySkin, hydrateSkinFromMirror, saveSkinMirror, SKIN_COLORS, type Ski
 // character's jump-in entrance, camera shakes, and live recolor come through
 // the SidekickController. Faithful RN port of the deleted web onboarding.tsx.
 //
-// 0. auth         — sign in, camera up at the evening sky (OnboardingAuth);
-//                   skipped if already signed in. Advances to welcome once signedIn.
-// 1. welcome      — centered "Welcome" over the sky, "Get started"
-// 2. askName      — still in the sky, centered "what's your name?" input
-// 3. birthday     — sky, date entry
-// 4. meet         — camera PANS DOWN to the empty lawn, shaky "Yes!" CTA
-// 5. reveal       — build shake, sidekick JUMPS in, "Hey {name}, meet your sidekick!"
-// 6. customize    — pick the sidekick's color (live recolor)
-// 7. nameSidekick — "what's your sidekick's name?" + idea chip rail
-// 8. notif        — he studies his phone, an iMessage-style banner drops in
-// 9. chat         — sheet slides up, he holds the phone → finish → home
+//  0. auth      — sign in, camera up at the evening sky; skipped if signed in
+//  1. birthday  — "before we get started, what's your birthday?" (in the sky)
+//  2. hey       — shaking "Hey!" dead-centre over the sky, "Get Started"
+//  … (customize / celebrate / nameSidekick as below)
+//  4. lookDown  — streamed "look down here!" + CTA (still up in the sky)
+//  5. hereLeft  — camera panned down, centred; "i'm over here" on the left edge
+//  6. hereRight — camera turns LEFT; "no, over here!" on the right edge,
+//                 then pans back to CENTRE for the meet
+//  7. meetTitle — camera trembles harder + haptics rumble to a boom (no card)
+//  8. reveal    — he JUMPS in, bubble: "There we go!!"
+//  9. customize — bubble "hey, what color looks best on me?" + color swatches
+// 10. celebrate — hands-up hops in the shiny new color
+// 11. textIntro — bubble "let me text u so we can talk!"
+// 12. notif     — he studies his phone, an iMessage-style banner drops in
+// 13. chat      — sheet slides up, he holds the phone → finish → Home's intro
 
 // Auth/welcome: pointed UP at the evening sky — cloud band composed across the
 // frame, horizon out of shot. Tune-by-eye.
 const SKY_FRAMING: Framing = { pos: [0, 1.4, 8], target: [0, 8.5, -10], fov: 48 };
 // Name/birthday: same sky, a subtle push-in so the steps feel like progress.
 const SKY_NAME_FRAMING: Framing = { pos: [0, 1.5, 7.4], target: [0, 8.2, -9], fov: 44 };
-// Meet step (post pan-down): zoomed in toward where the sidekick will land (still empty).
+// Post pan-down: zoomed in toward where the sidekick will land (still empty).
 const NAME_FRAMING: Framing = { pos: [0, 1.2, 7.2], target: [0, 0.5, 0], fov: 39 };
+// The over-here gag: centred, the camera then looks the WRONG way (hard pan
+// LEFT across the empty meadow) before panning back to centre. Tune-by-eye.
+const LOOK_LEFT_FRAMING: Framing = { pos: [0, 1.2, 7.2], target: [-4.5, 0.7, -1], fov: 42 };
 // Hero: full-body, centered (matches home's hero shot).
 const HERO_FRAMING: Framing = { pos: [0, 0.66, 4.2], target: [0, 0.56, 0], fov: 41.1 };
 // Naming the sidekick: the keyboard rises and the input sits low, so pull the
 // camera back and aim down — the mascot shrinks into the upper band and stays
 // visible above the input while typing. Tune-by-eye.
-const NAMESIDEKICK_FRAMING: Framing = { pos: [0, 1.0, 7.5], target: [0, -0.9, 0], fov: 42 };
+const NAMESIDEKICK_FRAMING: Framing = { pos: [0, 1.15, 7.5], target: [0, -0.2, 0], fov: 42 };
+// after he's named, the camera pushes IN a bit for "now what's YOUR name?"
+const ASKNAME_FRAMING: Framing = { pos: [0, 1.05, 6.5], target: [0, -0.05, 0], fov: 40 };
 // Notif beat: the phone pose yaws his body (part of the authored hold armature
 // — see renderer's PHONE_POSE). Rather than un-yaw HIM (which wrecks the
 // hands), the camera orbits onto his facing, so he reads dead-straight at the
@@ -87,41 +108,68 @@ const SLIVER_FRAMING: Framing = { pos: [0, 1.6, 13], target: [0, -2.0, 0], fov: 
 
 type Phase =
   | 'auth'
-  | 'welcome'
+  | 'hey'
   | 'askName'
   | 'birthday'
-  | 'meet'
+  | 'lookDown'
+  | 'hereLeft'
+  | 'hereRight'
+  | 'meetTitle'
   | 'reveal'
   | 'customize'
+  | 'celebrate'
   | 'nameSidekick'
+  | 'textIntro'
   | 'notif'
   | 'chat';
 
 const PHASE_ORDER: Phase[] = [
   'auth',
-  'welcome',
-  'askName',
   'birthday',
-  'meet',
+  'hey',
+  'lookDown',
+  'hereLeft',
+  'hereRight',
+  'meetTitle',
   'reveal',
   'customize',
+  'celebrate',
   'nameSidekick',
+  'askName',
+  'textIntro',
   'notif',
   'chat',
 ];
 
+// On resume, skip forward past any `transient` phase (see PHASES) to the next
+// phase the user can actually act on — landing cold on a transient one would
+// strand them on a dead screen, since its advancing timer only fires from the
+// transition handler, never on mount.
+function resumablePhase(phase: Phase): Phase {
+  let i = PHASE_ORDER.indexOf(phase);
+  while (i >= 0 && i < PHASE_ORDER.length - 1 && PHASES[PHASE_ORDER[i]].transient) i += 1;
+  return PHASE_ORDER[i] ?? phase;
+}
+
 // Declarative entry state per phase: what the scene must look like when you land
 // on a phase COLD (deep link / reload-resume), independent of whatever cinematic
-// normally plays on the way in.
-const PHASES: Record<Phase, { framing: Framing; characterVisible: boolean }> = {
+// normally plays on the way in. `transient` marks phases advanced ONLY by an
+// in-flight timer/cinematic (no CTA/tap of their own) — a cold resume must skip
+// PAST them (see resumablePhase) or the user is stranded on a dead screen.
+const PHASES: Record<Phase, { framing: Framing; characterVisible: boolean; transient?: boolean }> = {
   auth: { framing: SKY_FRAMING, characterVisible: false },
-  welcome: { framing: SKY_FRAMING, characterVisible: false },
-  askName: { framing: SKY_NAME_FRAMING, characterVisible: false },
+  hey: { framing: SKY_FRAMING, characterVisible: false },
   birthday: { framing: SKY_NAME_FRAMING, characterVisible: false },
-  meet: { framing: NAME_FRAMING, characterVisible: false },
+  lookDown: { framing: SKY_NAME_FRAMING, characterVisible: false },
+  hereLeft: { framing: NAME_FRAMING, characterVisible: false },
+  hereRight: { framing: LOOK_LEFT_FRAMING, characterVisible: false },
+  meetTitle: { framing: HERO_FRAMING, characterVisible: false, transient: true }, // the pre-pop tremble
   reveal: { framing: HERO_FRAMING, characterVisible: true },
   customize: { framing: HERO_FRAMING, characterVisible: true },
+  celebrate: { framing: HERO_FRAMING, characterVisible: true, transient: true }, // the hop
   nameSidekick: { framing: NAMESIDEKICK_FRAMING, characterVisible: true },
+  askName: { framing: ASKNAME_FRAMING, characterVisible: true },
+  textIntro: { framing: HERO_FRAMING, characterVisible: true, transient: true }, // the "let me text u" beat
   notif: { framing: NOTIF_FRAMING, characterVisible: true },
   chat: { framing: SLIVER_FRAMING, characterVisible: true },
 };
@@ -130,7 +178,7 @@ const PHASES: Record<Phase, { framing: Framing; characterVisible: boolean }> = {
 // so they're stripped from production builds.
 const SHOW_DEV = process.env.NODE_ENV !== 'production';
 
-// A LOT of name ideas — the entry UI renders them as a horizontally scrolling
+// Sidekick name ideas — the entry UI renders them as a horizontally scrolling
 // chip rail (a wrap row would eat the whole screen).
 const SIDEKICK_NAME_IDEAS = [
   'lulu', 'pebble', 'sprout', 'gloop', 'wisp', 'arnold',
@@ -148,20 +196,37 @@ export default function Onboarding() {
   const queryClient = useQueryClient();
   const controllerRef = useRef<SidekickController | null>(null);
   // drives the phase-0 auth step: signedOut → start at 'auth'; the advance
-  // effect below moves to 'welcome' once sign-in flips this to 'signedIn'.
+  // effect below moves to 'hey' once sign-in flips this to 'signedIn'.
   const authStatus = useAuthStore((s) => s.status);
+  const { signInAsDev } = useDevLogin();
 
   // resolved once hydrate + resume complete; the scene mounts only after, so the
   // renderer reads the account skin and the resumed phase's entrance state.
   const [ready, setReady] = useState(false);
-  const initialPhaseRef = useRef<Phase>('welcome');
+  const initialPhaseRef = useRef<Phase>('birthday');
 
-  const [phase, setPhase] = useState<Phase>('welcome');
+  const [phase, setPhase] = useState<Phase>('birthday');
   const [framing, setFraming] = useState<Framing>(SKY_FRAMING);
+  // head-tracked overlay target for the speech bubbles (canvas writes per frame)
+  const overheadX = useSharedValue(0);
+  const overheadY = useSharedValue(0);
+  const overheadVisible = useSharedValue(0);
+  const overhead = useMemo(
+    () => ({ x: overheadX, y: overheadY, visible: overheadVisible }),
+    [overheadX, overheadY, overheadVisible],
+  );
   // Locks CTAs / hides overlays while a camera move / jump cinematic is playing.
   const [animating, setAnimating] = useState(false);
   const [userName, setUserName] = useState('');
   const [sidekickName, setSidekickName] = useState('');
+  // A synchronously-updated mirror of the collected fields, folded into EVERY
+  // persisted step write (see goTo). This enforces the invariant "persisted phase
+  // never advances past a missing collected field": if a field-bearing write is
+  // dropped (swallowed storage failure), the next successful step write re-asserts
+  // every known field, so a cold resume can't land past a field screen with the
+  // field absent. (A ref, not state, because the submit handlers persist in the
+  // same tick they set state — the state update wouldn't be visible yet.)
+  const collectedRef = useRef<CollectedFields>({});
   const [colorId, setColorId] = useState<string>(SKIN_COLORS[0].id);
   const [notifIn, setNotifIn] = useState(false);
   // he only glances UP at the notice a beat after it lands (see submitSidekickName),
@@ -194,12 +259,20 @@ export default function Onboarding() {
         return;
       }
       // signed out → auth first (regardless of any saved step); signed in →
-      // resume the saved step (never 'auth' — already signed in), else welcome.
+      // resume the saved step (never 'auth' — already signed in), else hey.
       const saved = (PHASE_ORDER as string[]).includes(st.phase) ? (st.phase as Phase) : null;
-      const initial: Phase = signedOut ? 'auth' : saved && saved !== 'auth' ? saved : 'welcome';
+      // resume the saved step (never 'auth' — already signed in), skipping any
+      // transient phase forward to the next actionable one, else start at birthday.
+      const initial: Phase =
+        signedOut ? 'auth' : saved && saved !== 'auth' ? resumablePhase(saved) : 'birthday';
       initialPhaseRef.current = initial;
       setUserName(st.userName);
       setSidekickName(st.sidekickName);
+      collectedRef.current = {
+        userName: st.userName,
+        sidekickName: st.sidekickName,
+        birthday: st.birthday,
+      };
       setColorId(currentColorId());
       setPhase(initial);
       setFraming(PHASES[initial].framing);
@@ -228,10 +301,12 @@ export default function Onboarding() {
   }, [phase, notifLookUp]);
 
   // every phase change lands here: persist the resume step + apply its framing.
+  // ALL collected fields ride along in the same atomic write, so the persisted
+  // phase can never advance past a field that failed to persist earlier.
   const goTo = (next: Phase, opts?: { keepFraming?: boolean }) => {
     setPhase(next);
     if (!opts?.keepFraming) setFraming(PHASES[next].framing);
-    void saveStep(next);
+    void saveStep(next, collectedRef.current);
   };
 
   // Leave for Home, but tear down OUR scene first so its GL context is released
@@ -249,7 +324,7 @@ export default function Onboarding() {
 
   // auth phase → advance once signed in. A returning user who already completed
   // onboarding (signed out, then back in) goes straight Home; everyone else
-  // starts the flow at welcome. applyAuthResult's queryClient.clear() mid-flow
+  // starts the flow at hey. applyAuthResult's queryClient.clear() mid-flow
   // is safe — phase lives in local state; the onboarding-complete query refetches.
   useEffect(() => {
     if (phase !== 'auth' || authStatus !== 'signedIn') return;
@@ -261,7 +336,7 @@ export default function Onboarding() {
         queryClient.setQueryData(ONBOARDING_QUERY_KEY, st); // sync cache so Home's gate passes
         goHome();
       } else {
-        goTo('welcome');
+        goTo('birthday');
       }
     })();
     return () => {
@@ -272,36 +347,84 @@ export default function Onboarding() {
   }, [phase, authStatus]);
 
 
-  // 2 → birthday: just capture the name (still in the sky).
+  // name captured LAST (after the sidekick names himself) → the text segue.
   const submitUserName = (name: string) => {
+    collectedRef.current.userName = name;
     setUserName(name);
-    void saveOnboardingField('userName', name);
-    goTo('birthday');
+    goTo('textIntro');
+    speak('let me text u so we can talk!', 2400, 'happy');
+    setTimeout(() => notifBeat(), 2600);
   };
 
-  // birthday → meet: the big PAN DOWN — sky to the empty patch of ground where
-  // the sidekick is about to land. UI is hidden while the camera sweeps.
-  const submitBirthday = (birthday: string) => {
+  // birthday → hey: still in the sky — the pan waits until lookDown's CTA.
+  const submitBirthday = (value: string) => {
     if (animating) return;
-    void saveOnboardingField('birthday', birthday);
-    setAnimating(true);
-    goTo('meet');
-    setTimeout(() => setAnimating(false), 1300);
+    collectedRef.current.birthday = value;
+    goTo('hey');
   };
 
-  // meet → reveal: the button IS the trigger — build shake, then he jumps in.
-  const meetSidekick = () => {
+  // lookDown CTA → the two-beat sweep: PAN DOWN to the ground, then whip LEFT
+  // into the first over-here gag. UI hides while the camera travels.
+  const lookDown = () => {
     if (animating) return;
     setAnimating(true);
-    goTo('reveal');
-    controllerRef.current?.shake({ amp: 0.06, duration: 1.4, mode: 'build' });
-    playRevealHaptics(); // rumble builds with the shake, hard hit at touchdown
-    setTimeout(() => controllerRef.current?.jumpIn({ duration: 800 }), 1100);
-    setTimeout(() => setAnimating(false), 2100);
+    setFraming(NAME_FRAMING); // down…
+    setTimeout(() => goTo('hereLeft'), 1700); // …sit a beat… then left
+    setTimeout(() => setAnimating(false), 2400);
   };
 
-  // 3 → 4: customize his color (camera stays on the hero framing).
-  const toCustomize = () => goTo('customize');
+  // 1st tap (voice was on the left) → the camera TURNS LEFT chasing it.
+  const overHere = () => {
+    if (animating) return;
+    setAnimating(true);
+    goTo('hereRight'); // framing = LOOK_LEFT
+    setTimeout(() => setAnimating(false), 700);
+  };
+  // 2nd tap (voice is now on the right) → the camera PANS BACK TO CENTER, and
+  // the anticipation build begins there. (middle → left → middle)
+  const panCenterThenMeet = () => {
+    if (animating) return;
+    setAnimating(true);
+    setFraming(NAME_FRAMING); // pan back to centre
+    setTimeout(() => {
+      setAnimating(false);
+      startMeet();
+    }, 850);
+  };
+
+  // hereRight → meetTitle → reveal: settle centre, camera trembles + haptics
+  // rumble under the title, then he JUMPS in with a bubble.
+  const startMeet = () => {
+    if (animating) return;
+    goTo('meetTitle'); // camera pans back to the middle (HERO framing)
+    const POP = 3450; // the pop, right as the tremble peaks
+    // ANTICIPATION: ONE continuous camera tremble that RAMPS the whole way in —
+    // the 'build' envelope (∝ t²) grows it from a faint quiver to a hard shake
+    // right before he bursts out — under a continuous haptic rumble that
+    // densifies to the boom. No discrete bursts: it reads as rising tension,
+    // not taps. Then the sidekick POPS: a massive impact shake + jumpIn stomp.
+    setTimeout(() => {
+      controllerRef.current?.shake({ amp: 0.48, duration: (POP - 250) / 1000, mode: 'build' });
+    }, 250);
+    playBuildToBoom(POP, POP);
+    setTimeout(() => {
+      setAnimating(true);
+      goTo('reveal');
+      controllerRef.current?.shake({ amp: 0.6, duration: 0.7, mode: 'impact' }); // MASSIVE
+      controllerRef.current?.jumpIn({ duration: 800 }); // he pops out + stomps
+    }, POP);
+    setTimeout(() => {
+      setAnimating(false);
+      speak('There we go!!', 3200, 'excited');
+    }, POP + 1000);
+  };
+
+  // reveal → customize: he wonders about his look (bubble), swatches below.
+  const toCustomize = () => {
+    goTo('customize');
+    controllerRef.current?.setInspect(true); // head down, sweeping his own body
+    setTimeout(() => speak('hey, what color looks best on me?', 4200, 'neutral'), 400);
+  };
   const pickColor = (c: SkinColor) => {
     setColorId(c.id);
     const next = applySkin(c.id); // persists cel colors into shared settings
@@ -311,20 +434,35 @@ export default function Onboarding() {
     setSkinColor(c.body, c.shadow).catch(() => {});
   };
 
-  // 4 → 5: name him (hero framing, centered input).
-  const toNameSidekick = () => goTo('nameSidekick');
+  // customize → celebrate → textIntro: two hands-up hops in the new color,
+  // then the segue line before the phone comes out.
+  const celebrate = () => {
+    controllerRef.current?.setInspect(false);
+    goTo('celebrate');
+    controllerRef.current?.hop(750); // ONE triumphant hop in the new color
+    setTimeout(() => {
+      goTo('nameSidekick');
+      // the prompt lives in a head speech bubble now, not an on-screen title.
+      // Long duration so it holds while the user types (replaced on the next step).
+      speak("what's my name?", 600000, 'happy');
+    }, 1500);
+  };
 
-  // 5 → 6: the notif beat, choreographed in three: (1) he pulls out his phone
-  // (holdingPhone turns on with the 'notif' phase, same pose as opening Messages),
-  // (2) ~2.2s later the notification drops in with a firm haptic hit, (3) a beat
-  // after that he glances up at it — phone still in hand.
+  // sidekick named → now ask the USER's name (also in a head bubble).
   const submitSidekickName = (name: string) => {
+    collectedRef.current.sidekickName = name;
     setSidekickName(name);
-    void saveOnboardingField('sidekickName', name);
+    goTo('askName');
+    speak("now what's YOUR name?", 600000, 'happy');
+  };
+
+  // textIntro → notif, choreographed in three: (1) he pulls out his phone
+  // (holdingPhone turns on with the 'notif' phase, same pose as opening
+  // Messages), (2) ~2.2s later the notification drops in with a firm haptic
+  // hit, (3) a beat after that he glances up at it — phone still in hand.
+  const notifBeat = () => {
     goTo('notif'); // phone comes out here (see holdingPhone on the canvas)
     // NOTE: slot for the real push-notification permission prompt.
-    // He faces you square, studies the phone for a couple of seconds (hands
-    // fidgeting — renderer's phone-hold wobble), THEN the message drops in.
     setTimeout(() => {
       setNotifIn(true);
       hapticNotif(); // the message lands
@@ -356,18 +494,27 @@ export default function Onboarding() {
           reason: summary?.reason ?? 'habits',
           profile: {
             name: (st.userName || userName).trim() || 'friend',
-            birthday: st.birthday || undefined,
+            // fall back to the in-memory collected value on every field, so a
+            // dropped/slow AsyncStorage write can't silently omit what the user
+            // entered. (birthday's fallback is collectedRef — it has no other
+            // component state; name/sidekickName keep their own for rendering.)
+            birthday: (st.birthday || collectedRef.current.birthday) || undefined,
             sidekickName: (st.sidekickName || sidekickName).trim() || undefined,
             sidekickColor: (loadSettings().celBodyColor ?? '') || undefined,
           },
           habit: summary?.habit,
           talk: summary?.talk,
         });
+        // markOnboardingComplete verifies the local write persisted and throws
+        // otherwise — inside the try so a storage failure is handled exactly like
+        // a commit failure (retry) instead of navigating to Home with `complete`
+        // unpersisted, which a cold start would read as not-onboarded and loop.
+        await markOnboardingComplete();
       } catch (err) {
-        // Do NOT mark complete locally on failure — that would permanently skip
-        // onboarding on-device while the server has no profile/goals/memories. Let
-        // the user retry (the flow stays put behind the alert).
-        console.error('[onboarding] commitOnboardingResult failed', err);
+        // Do NOT proceed on failure — that would either strand the server without
+        // a profile/goals/memories, or send the user Home with completion
+        // unpersisted. Let them retry (the flow stays put behind the alert).
+        console.error('[onboarding] finish failed', err);
         Alert.alert(
           'almost there',
           "couldn't finish setting up — check your connection and try again.",
@@ -375,7 +522,6 @@ export default function Onboarding() {
         );
         return;
       }
-      await markOnboardingComplete();
       // Push the completed state into the query cache synchronously so Home's
       // first-run gate sees complete=true immediately. An async invalidate would
       // let Home render the stale (incomplete) state and bounce straight back to
@@ -394,28 +540,39 @@ export default function Onboarding() {
     if (animating) return;
     switch (phase) {
       case 'auth':
-        goTo('welcome');
-        break;
-      case 'welcome':
-        goTo('askName');
-        break;
-      case 'askName':
-        submitUserName(userName || 'Dev');
+        goTo('birthday');
         break;
       case 'birthday':
         submitBirthday('2000-01-01');
         break;
-      case 'meet':
-        meetSidekick();
+      case 'hey':
+        goTo('lookDown');
         break;
+      case 'lookDown':
+        lookDown();
+        break;
+      case 'hereLeft':
+        overHere();
+        break;
+      case 'hereRight':
+        panCenterThenMeet();
+        break;
+      case 'meetTitle':
+        break; // auto-advances into reveal
       case 'reveal':
         toCustomize();
         break;
       case 'customize':
-        toNameSidekick();
+        celebrate();
         break;
+      case 'celebrate':
+      case 'textIntro':
+        break; // auto-advance
       case 'nameSidekick':
         submitSidekickName(sidekickName || 'Mochi');
+        break;
+      case 'askName':
+        submitUserName(userName || 'Dev');
         break;
       case 'notif':
         openChat();
@@ -455,33 +612,44 @@ export default function Onboarding() {
           holdingPhone={phase === 'notif' || phase === 'chat'}
           entrance={!PHASES[initialPhaseRef.current].characterVisible}
           onController={onController}
+          overhead={overhead}
+          overheadActive={PHASES[phase].characterVisible && phase !== 'chat'}
         />
       ) : null}
+
+      {/* head-tracked speech bubble (There we go!! / what color looks best /
+          what's my name? / now what's YOUR name? / let me text u) — same
+          overlay Home uses */}
+      <OverheadSpeech overhead={overhead} hidden={!PHASES[phase].characterVisible || phase === 'chat'}>
+        <SpeechBubble />
+      </OverheadSpeech>
 
       {/* 0. Auth — sign in over the empty stage. Skipped when already signed in
           (the advance effect moves past it the moment status is signedIn). */}
       {phase === 'auth' ? <OnboardingAuth /> : null}
 
-      {/* 1. Welcome */}
-      {phase === 'welcome' && !animating ? (
+      {/* 1. Hey! — dead-centre, shaking, over the sky */}
+      {phase === 'hey' && !animating ? (
         <>
-          <Animated.View entering={FadeInUp.duration(500)} style={styles.centerCopy} pointerEvents="none">
-            <Text style={styles.h1Hero}>Welcome</Text>
-          </Animated.View>
+          <View style={styles.centerCopy} pointerEvents="none">
+            <HeyTitle />
+          </View>
           <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
-            <PrimaryButton label="Get started" onPress={() => goTo('askName')} disabled={animating} />
+            <PrimaryButton label="Get Started" onPress={() => goTo('lookDown')} disabled={animating} />
           </View>
         </>
       ) : null}
 
-      {/* 2. What's your name? */}
+      {/* now YOUR name — after he's named himself, character standing above */}
       {phase === 'askName' && !animating ? (
         <NameEntry
           key="askName"
-          title="What's your name?"
+          title="now what's YOUR name?"
+          titleInBubble
           placeholder="Your name"
           cta="continue"
           onSubmit={submitUserName}
+          layout="top"
         />
       ) : null}
 
@@ -492,53 +660,72 @@ export default function Onboarding() {
       ) : null}
 
       {/* 2b. Birthday */}
-      {phase === 'birthday' && !animating ? <BirthdayStep onSubmit={submitBirthday} /> : null}
+      {phase === 'birthday' && !animating ? (
+        <BirthdayStep title="before we get started, what's your birthday?" onSubmit={submitBirthday} />
+      ) : null}
 
-      {/* 2c. Meet — the camera has panned down to the empty ground */}
-      {phase === 'meet' && !animating ? (
+      {/* 4. lookDown — still in the sky */}
+      {phase === 'lookDown' && !animating ? (
         <>
-          <Animated.View
-            entering={FadeInUp.duration(500)}
-            style={[styles.topCopy, { top: insets.top + 96 }]}
-            pointerEvents="none"
-          >
-            <Text style={styles.h1}>Ready to meet your sidekick?</Text>
-          </Animated.View>
+          <LookDownCopy topInset={insets.top} />
           <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
-            <SubtleShake>
-              <PrimaryButton label="Yes!" onPress={meetSidekick} />
-            </SubtleShake>
+            <PrimaryButton label="look down" onPress={lookDown} />
           </View>
         </>
       ) : null}
 
+      {/* 5/6. the over-here gag — full-screen tap advances */}
+      {phase === 'hereLeft' && !animating ? (
+        <Pressable style={StyleSheet.absoluteFill} onPress={overHere}>
+          {/* camera centered; the voice is off to the LEFT — copy hugs the left edge */}
+          <Animated.View entering={FadeInUp.duration(350)} style={[styles.sideCopy, styles.sideLeft]} pointerEvents="none">
+            <SubtleShake intensity={2.2} speed={1.5}>
+              <Text style={styles.overHere}>i'm over here</Text>
+            </SubtleShake>
+          </Animated.View>
+          <Text style={[styles.tapHint, { bottom: insets.bottom + 28 }]}>tap to continue</Text>
+        </Pressable>
+      ) : null}
+      {phase === 'hereRight' && !animating ? (
+        <Pressable style={StyleSheet.absoluteFill} onPress={panCenterThenMeet}>
+          {/* camera turned left; the voice is now off to the RIGHT — a beat, then it pops */}
+          <Animated.View entering={FadeInUp.duration(350).delay(550)} style={[styles.sideCopy, styles.sideRight]} pointerEvents="none">
+            <SubtleShake intensity={2.2} speed={1.5}>
+              <Text style={styles.overHere}>no, over here!</Text>
+            </SubtleShake>
+          </Animated.View>
+          <Text style={[styles.tapHint, { bottom: insets.bottom + 28 }]}>tap to continue</Text>
+        </Pressable>
+      ) : null}
+
+      {/* 10b. name him — he stands above the input in his new color */}
+      {phase === 'nameSidekick' && !animating ? (
+        <NameEntry
+          key="nameSidekick"
+          title="what's my name?"
+          titleInBubble
+          placeholder="Name your sidekick"
+          cta="continue"
+          onSubmit={submitSidekickName}
+          layout="top"
+          suggestions={SIDEKICK_NAME_IDEAS}
+        />
+      ) : null}
+
+      {/* 7/8. the build-up: NO title card — just the camera trembling harder and
+          harder while the haptics grow to the boom (see startMeet). The empty
+          meadow shakes; then he pops out. */}
+
       {/* 3. Sidekick jumped in — "Hey {name}, meet your sidekick!" */}
       {phase === 'reveal' && !animating ? (
-        <>
-          <Animated.View
-            entering={FadeInUp.duration(500)}
-            style={[styles.topCopy, { top: insets.top + 96 }]}
-            pointerEvents="none"
-          >
-            <Text style={styles.h1small}>Hey {userName || 'there'}, meet your sidekick!</Text>
-          </Animated.View>
-          <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
-            <PrimaryButton label="Continue" onPress={toCustomize} />
-          </View>
-        </>
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
+          <PrimaryButton label="Continue" onPress={toCustomize} />
+        </View>
       ) : null}
 
       {/* 4. Customize — pick a color */}
       {phase === 'customize' && !animating ? (
         <>
-          <Animated.View
-            entering={FadeInUp.duration(500)}
-            style={[styles.topCopy, { top: insets.top + 96 }]}
-            pointerEvents="none"
-          >
-            <Text style={styles.h1small}>Customize your sidekick</Text>
-            <Text style={styles.sub}>Pick a color</Text>
-          </Animated.View>
           <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
             <View style={styles.swatchRow}>
               {SKIN_COLORS.map((c) => {
@@ -560,28 +747,15 @@ export default function Onboarding() {
                 );
               })}
             </View>
-            <PrimaryButton label="Continue" onPress={toNameSidekick} />
+            <PrimaryButton label="Continue" onPress={celebrate} />
           </View>
         </>
-      ) : null}
-
-      {/* 5. What's his name? */}
-      {phase === 'nameSidekick' && !animating ? (
-        <NameEntry
-          key="nameSidekick"
-          title="What's your sidekick's name?"
-          placeholder="Name your sidekick"
-          cta="continue"
-          onSubmit={submitSidekickName}
-          layout="top"
-          suggestions={SIDEKICK_NAME_IDEAS}
-        />
       ) : null}
 
       {/* 6. Notification banner (drops down from the top) */}
       {phase === 'notif' ? (
         <>
-          <NotificationBanner show={notifIn} sender={sender} topInset={insets.top} onTap={openChat} />
+          <NotificationBanner show={notifIn} sender={sender} message={`hey ${lowerFirst(userName) || 'there'}, check your msgs so we can text!`} topInset={insets.top} onTap={openChat} />
           {/* after the notice drops, a big "open chat" CTA rises from the bottom
               and gently shakes to invite the tap (the Messages icon now lives in
               the notice itself). */}
@@ -617,6 +791,24 @@ export default function Onboarding() {
           <Pressable onPress={() => finish()} style={styles.devBtn}>
             <Text style={styles.devBtnText}>⏭ end</Text>
           </Pressable>
+          <Pressable
+            onPress={() => {
+              void (async () => {
+                // Home's gate redirects signedOut users back to onboarding, so a
+                // dev who skipped the auth step would bounce. Dev-login first.
+                if (useAuthStore.getState().status !== 'signedIn') {
+                  await signInAsDev();
+                }
+                await devArmHomeIntro();
+                const st = await loadOnboarding();
+                queryClient.setQueryData(ONBOARDING_QUERY_KEY, st);
+                goHome();
+              })();
+            }}
+            style={styles.devBtn}
+          >
+            <Text style={styles.devBtnText}>✦ home intro</Text>
+          </Pressable>
         </View>
       ) : null}
     </View>
@@ -641,38 +833,137 @@ function currentColorId(): string {
 // the input component below.)
 // A barely-there idle wiggle for a CTA that wants to be pressed — ±1.2° of
 // rotation with a touch of sway, slow loop, never big enough to read as broken.
-function SubtleShake({ children }: { children: React.ReactNode }) {
+function SubtleShake({
+  children,
+  intensity = 1,
+  speed = 1,
+}: {
+  children: React.ReactNode;
+  // multipliers over the base ±1.2° / 1px sway — the "Hey!" and over-here
+  // titles crank these
+  intensity?: number;
+  speed?: number;
+}) {
   const t = useSharedValue(0);
   useEffect(() => {
-    t.value = withRepeat(withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.quad) }), -1, true);
-  }, [t]);
+    t.value = withRepeat(
+      withTiming(1, { duration: 1400 / speed, easing: Easing.inOut(Easing.quad) }),
+      -1,
+      true,
+    );
+  }, [t, speed]);
   const style = useAnimatedStyle(() => ({
     transform: [
-      { rotate: `${Math.sin(t.value * Math.PI * 2) * 1.2}deg` },
-      { translateX: Math.sin(t.value * Math.PI * 4) * 1 },
+      { rotate: `${Math.sin(t.value * Math.PI * 2) * 1.2 * intensity}deg` },
+      { translateX: Math.sin(t.value * Math.PI * 4) * intensity },
     ],
   }));
   return <Animated.View style={style}>{children}</Animated.View>;
 }
 
+// "Hey!" springs in from small, shakes hard, and carries a little curved
+// underline — a swoosh hinting the voice is coming from somewhere below.
+function HeyTitle() {
+  const sc = useSharedValue(0.3);
+  useEffect(() => {
+    sc.value = withSpring(1, { damping: 9, stiffness: 150, mass: 0.7 });
+  }, [sc]);
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: sc.value }] }));
+  return (
+    <Animated.View style={[style, { alignItems: 'center' }]}>
+      <SubtleShake intensity={2.6} speed={1.7}>
+        <Text style={styles.h1Hero}>Hey!</Text>
+      </SubtleShake>
+      {/* a quarter-circle pointer: starts flat under the word, bends 90° and
+          ends aiming straight down — "the voice came from down there" */}
+      <Svg width={104} height={84} viewBox="0 0 104 84" style={{ marginTop: 10, marginLeft: 44, transform: [{ rotate: '180deg' }] }}>
+        <Path d="M14 10 Q 88 10 88 78" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
+      </Svg>
+    </Animated.View>
+  );
+}
+
+// Streams `lines` one after another (each fully types out, a beat, then the
+// next begins) — the sequential, slower cadence the sky copy wants.
+// Screen 3's stacked copy: the clouds line HUGE and slightly tilted, riding
+// high; "look down here!" smaller, a beat later, a bit lower. Both carry a
+// hard (zero-blur) drop shadow nudged down the y-axis.
+function LookDownCopy({ topInset }: { topInset: number }) {
+  // just "look down here!" now (the clouds line was removed), held at a fixed
+  // spot so it doesn't drift as it streams.
+  // ~1/3 up from the bottom of the screen
+  return (
+    <View style={{ position: 'absolute', top: Dimensions.get('window').height * 0.66, left: 0, right: 0, alignItems: 'center' }} pointerEvents="none">
+      <SubtleShake intensity={1.8} speed={1.4}>
+        <StreamedText text="look down here!" style={styles.lookDownLine} cps={20} reserve />
+      </SubtleShake>
+    </View>
+  );
+}
+
+function StreamedLines({
+  lines,
+  style,
+  cps = 20,
+  gapMs = 500,
+}: {
+  lines: string[];
+  style?: import('react-native').TextStyle;
+  cps?: number;
+  gapMs?: number;
+}) {
+  const [visible, setVisible] = useState(1);
+  useEffect(() => {
+    if (visible >= lines.length) return;
+    const id = setTimeout(() => setVisible((v) => v + 1), streamDurationMs(lines[visible - 1], cps) + gapMs);
+    return () => clearTimeout(id);
+  }, [visible, lines, cps, gapMs]);
+  return (
+    <View>
+      {lines.slice(0, visible).map((l, i) => (
+        <View key={i} style={i ? { marginTop: 8 } : null}>
+          <StreamedText text={l} style={style} cps={cps} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function NameEntry({
   title,
+  header,
   placeholder,
   cta,
   onSubmit,
   layout = 'center',
   suggestions,
+  revealDelayMs = 0,
+  titleInBubble = false,
 }: {
   title: string;
+  // richer replacement for the plain title (multi-line / streamed copy);
+  // `title` still labels the step for accessibility fallbacks
+  header?: React.ReactNode;
   placeholder: string;
   cta: string;
   onSubmit: (value: string) => void;
   layout?: 'center' | 'top';
+  // the prompt is spoken in a head speech bubble instead of an on-screen title,
+  // so the top-copy block is suppressed (top layout only)
+  titleInBubble?: boolean;
   // Tappable name suggestions — lowers the cognitive load of inventing a name.
   suggestions?: string[];
+  // hold the input + CTA back (e.g. until the streamed header lands), then fade in
+  revealDelayMs?: number;
 }) {
   const insets = useSafeAreaInsets();
   const [value, setValue] = useState('');
+  const [inputShown, setInputShown] = useState(revealDelayMs === 0);
+  useEffect(() => {
+    if (inputShown) return;
+    const t = setTimeout(() => setInputShown(true), revealDelayMs);
+    return () => clearTimeout(t);
+  }, [inputShown, revealDelayMs]);
   const can = value.trim().length > 0;
   const submit = () => {
     if (can) onSubmit(value.trim());
@@ -720,9 +1011,11 @@ function NameEntry({
         style={StyleSheet.absoluteFill}
         pointerEvents="box-none"
       >
-        <View style={[styles.topCopy, { top: insets.top + 96 }]}>
-          <Text style={styles.h1small}>{title}</Text>
-        </View>
+        {titleInBubble ? null : (
+          <View style={[styles.topCopy, { top: insets.top + 118 }]}>
+            {header ?? <Text style={styles.nameTitle}>{title}</Text>}
+          </View>
+        )}
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.nameBottomWrap}
@@ -730,7 +1023,7 @@ function NameEntry({
           <View style={[styles.nameCol, { paddingBottom: kbBottomInset(insets.bottom) }]}>
             {chipRow}
             {field}
-            <View style={{ height: 12 }} />
+            <View style={{ height: 8 }} />
             <PrimaryButton label={cta} onPress={submit} disabled={!can} />
           </View>
         </KeyboardAvoidingView>
@@ -745,10 +1038,14 @@ function NameEntry({
         style={[styles.centerFill, FAUX_KB_VISIBLE ? { paddingBottom: FAUX_KB_HEIGHT } : null]}
       >
         <View style={styles.nameCol}>
-          <Text style={styles.h1}>{title}</Text>
-          {field}
-          <View style={{ height: 12 }} />
-          <PrimaryButton label={cta} onPress={submit} disabled={!can} />
+          {header ?? <Text style={styles.h1}>{title}</Text>}
+          {inputShown ? (
+            <Animated.View entering={FadeInUp.duration(420)}>
+              {field}
+              <View style={{ height: 12 }} />
+              <PrimaryButton label={cta} onPress={submit} disabled={!can} />
+            </Animated.View>
+          ) : null}
         </View>
       </KeyboardAvoidingView>
     </Animated.View>
@@ -759,7 +1056,7 @@ function NameEntry({
 // no keyboard, no layout to break). On web (no native picker) → three numeric
 // fields. Emits "YYYY-MM-DD". All hooks run unconditionally (Platform is constant),
 // then we branch on platform in render.
-function BirthdayStep({ onSubmit }: { onSubmit: (birthday: string) => void }) {
+function BirthdayStep({ title, onSubmit }: { title?: string; onSubmit: (birthday: string) => void }) {
   const insets = useSafeAreaInsets();
 
   // native spinner default: ~20 years ago
@@ -777,11 +1074,11 @@ function BirthdayStep({ onSubmit }: { onSubmit: (birthday: string) => void }) {
     return (
       <Animated.View entering={FadeInUp.duration(450)} style={StyleSheet.absoluteFill} pointerEvents="box-none">
         <View style={[styles.topCopy, { top: insets.top + 96 }]}>
-          <Text style={styles.h1small}>When's your birthday?</Text>
+          <Text style={styles.h1small}>{title ?? "When's your birthday?"}</Text>
         </View>
         <View style={styles.centerFill} pointerEvents="box-none">
           <View style={styles.nameCol}>
-            <Glass style={styles.dobPickerGlass}>
+            <Glass glassStyle="clear" style={styles.dobPickerGlass}>
               <DateTimePicker
                 value={date}
                 mode="date"
@@ -817,7 +1114,7 @@ function BirthdayStep({ onSubmit }: { onSubmit: (birthday: string) => void }) {
   return (
     <Animated.View entering={FadeInUp.duration(450)} style={StyleSheet.absoluteFill} pointerEvents="box-none">
       <View style={[styles.topCopy, { top: insets.top + 96 }]}>
-        <Text style={styles.h1small}>When's your birthday?</Text>
+        <Text style={styles.h1small}>{title ?? "When's your birthday?"}</Text>
       </View>
       <View style={[styles.nameBottomWrap, { paddingBottom: kbBottomInset(insets.bottom) }]}>
         <View style={styles.nameCol}>
@@ -862,11 +1159,13 @@ function BirthdayStep({ onSubmit }: { onSubmit: (birthday: string) => void }) {
 function NotificationBanner({
   show,
   sender,
+  message,
   topInset,
   onTap,
 }: {
   show: boolean;
   sender: string;
+  message: string;
   topInset: number;
   onTap: () => void;
 }) {
@@ -897,7 +1196,7 @@ function NotificationBanner({
               <Text style={styles.bannerNow}>now</Text>
             </View>
             <Text style={styles.bannerText} numberOfLines={1}>
-              i guess i should formally introduce myself
+              {message}
             </Text>
           </View>
         </Pressable>
@@ -937,7 +1236,7 @@ function PrimaryButton({
   return (
     <Pressable
       onPress={() => {
-        hapticTap();
+        hapticButton();
         onPress();
       }}
       onPressIn={() => setPressed(true)}
@@ -1016,13 +1315,68 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#fff',
   },
-  centerCopy: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  centerCopy: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  // the over-here gag: copy hugs one side while the camera looks the other way
+  sideCopy: { position: 'absolute', top: 0, bottom: 0, width: '42%', justifyContent: 'center' },
+  sideRight: { right: 40 },
+  sideLeft: { left: 40 },
+  // curved edge pointers aiming at the over-here copy
+  // screen 3: the clouds line at ~2× h1small, tilted, hard y-offset shadow
+  cloudsBig: {
+    fontFamily: FONT_BOLD,
+    fontSize: 64,
+    lineHeight: 68,
+    letterSpacing: -2,
+    textAlign: 'center',
+    color: '#fff',
+    textShadowColor: 'rgba(0,0,0,0.35)',
+    textShadowOffset: { width: 0, height: 4 },
+    textShadowRadius: 0,
+  },
+  lookDownLine: {
+    fontFamily: FONT_BOLD,
+    fontSize: 30,
+    lineHeight: 36,
+    textAlign: 'center',
+    color: '#fff',
+    textShadowColor: 'rgba(0,0,0,0.35)',
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 0,
+  },
+  // streamed two-line ask copy — smaller than h1small so it wraps to two lines
+  h2stream: {
+    fontFamily: FONT_BOLD,
+    fontSize: 26,
+    lineHeight: 32,
+    letterSpacing: -0.6,
+    textAlign: 'center',
+    color: '#fff',
+    marginBottom: 18,
+  },
+  tapHint: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+    fontFamily: FONT_MEDIUM,
+    fontSize: 17,
+    color: '#fff',
+  },
   h1: {
     fontFamily: FONT_BOLD,
     fontSize: 44,
     fontWeight: '800',
     letterSpacing: -1.4,
     lineHeight: 46,
+    textAlign: 'center',
+    color: '#fff',
+  },
+  overHere: { fontFamily: FONT_BOLD, fontSize: 30, letterSpacing: -0.6, color: '#fff' },
+  nameTitle: {
+    fontFamily: FONT_BOLD,
+    fontSize: 40,
+    letterSpacing: -1.3,
+    lineHeight: 44,
     textAlign: 'center',
     color: '#fff',
   },
@@ -1050,14 +1404,20 @@ const styles = StyleSheet.create({
   centerFill: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   nameBottomWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 32, alignItems: 'center' },
   nameCol: { width: '100%', maxWidth: 420, alignItems: 'stretch' },
+  // full screen width (breaks out of nameCol's 32px gutter) so chips scroll off
+  // both edges uncut; the first chip's left aligns to the input's left edge
   chipRail: {
     alignSelf: 'stretch',
     flexGrow: 0,
-    marginBottom: 14,
+    marginHorizontal: -32,
+    marginBottom: 8, // = the field→Continue gap below
+    overflow: 'visible',
   },
   chipRailContent: {
     gap: 8,
-    paddingHorizontal: 24,
+    paddingLeft: 32, // = the input's left gutter
+    paddingRight: 24,
+    paddingVertical: 6, // room for the chip drop shadow, uncut
   },
   dobRow: { flexDirection: 'row', gap: 10, marginTop: 24 },
   dobField: {
@@ -1162,11 +1522,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#34C759',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.22,
-    shadowRadius: 14,
-    elevation: 8,
   },
   appBadge: {
     position: 'absolute',

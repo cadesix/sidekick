@@ -124,7 +124,7 @@ const SCRIPT: Node[] = [
     kind: 'say',
     lines: [
       'heyy!',
-      'i guess i should introduce myself',
+      'i guess i should properly introduce myself',
       "i'm {name}. but you named me, so you already know that…",
     ],
   },
@@ -207,7 +207,7 @@ const SCRIPT: Node[] = [
   {
     kind: 'say',
     when: notTalk,
-    lines: ['one last thing —', "can you turn on notifications so my texts don't get blocked?"],
+    lines: ['one last thing', "can you turn on notifications so my texts don't get blocked?"],
   },
   // talk path lead: dive in + the same notif ask, in its own voice
   {
@@ -215,7 +215,7 @@ const SCRIPT: Node[] = [
     when: isTalk,
     lines: [
       'alright lets dive in.',
-      "i'll also remember to check in with you about our conversation — can u do me a quick favor and enable notifications so my messages don't get blocked?",
+      "i'll also remember to check in with you about our conversation. can u do me a quick favor and enable notifications so my messages don't get blocked?",
     ],
   },
   { kind: 'act', act: 'notif' },
@@ -425,7 +425,7 @@ export function OnboardingIntroChat({
       if (!aliveRef.current) return;
       setTyping(false);
       if (res.ok) {
-        setMessages((m) => [...m, { id: nextId(), role: 'them', text: `love it — ${res.action} a day 💪` }]);
+        setMessages((m) => [...m, { id: nextId(), role: 'them', text: `love it. ${res.action} a day 💪` }]);
         hapticMessage();
         pendingRef.current = null;
         varsRef.current = { ...varsRef.current, [pending.set]: res.action };

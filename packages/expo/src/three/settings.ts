@@ -300,8 +300,11 @@ export const DEFAULT_SETTINGS: SidekickSettings = {
   // NOTE: web home4 drives a real shadow map with this; mobile has no shadow
   // map yet (expo-gl risk), so the value is carried but inert
   shadowOpacity: 0.2316,
-  fov: 41.1, // home camera (matches the original HERO_FRAMING)
-  camDist: Math.hypot(0, 0.1, 4.2), // = |HERO pos − target|; reproduces it exactly (k=1)
+  // home camera — the tuned look-dev shot (fov / dolly). These are FIXED
+  // art-direction like faceZoom (pinned in hydrateSettings), so every device
+  // renders the exact web shot instead of a stale/default framing.
+  fov: 50.406,
+  camDist: 3.268,
   camHeight: 0,
   camPos: [-0.8622328104178634, 0.8720766906255945, 5.542186848594252],
   dofAperture: 0.0012,
@@ -348,6 +351,18 @@ export async function hydrateSettings(): Promise<void> {
         evening: { ...SCENE_DEFAULTS.evening, ...savedScenes?.evening },
         night: { ...SCENE_DEFAULTS.night, ...savedScenes?.night },
       };
+      // Face size/height are fixed art-direction, not per-device tuning: always
+      // take the current default so a stale persisted value (e.g. an older
+      // build's faceZoom saved into a device's AsyncStorage) can't shrink/shift
+      // the face. Keeps every device identical to the tuned desktop look.
+      merged.faceZoom = DEFAULT_SETTINGS.faceZoom;
+      merged.faceHeight = DEFAULT_SETTINGS.faceHeight;
+      // Same rationale for the home camera: the shipped shot (fov + dolly) is
+      // fixed art-direction, so a stale persisted framing on a device can't
+      // zoom/shift it away from the tuned web look.
+      merged.fov = DEFAULT_SETTINGS.fov;
+      merged.camDist = DEFAULT_SETTINGS.camDist;
+      merged.camHeight = DEFAULT_SETTINGS.camHeight;
       current = merged;
     }
   } catch {

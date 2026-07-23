@@ -16,6 +16,9 @@ const RESUME_TTL_MS = 6 * 60 * 60 * 1000;
 
 export type OnboardingState = {
   complete: boolean;
+  // one guided pass over the home screen right after onboarding (entrypoints
+  // hidden → bond explained → star prompted); consumed by Home, then cleared
+  homeIntro: boolean;
   // the phase the user last reached (for resume); free-form — the screen
   // validates it against its own PHASE_ORDER before honoring it
   phase: string;
@@ -28,6 +31,7 @@ export type OnboardingState = {
 
 const EMPTY: OnboardingState = {
   complete: false,
+  homeIntro: false,
   phase: 'welcome',
   ts: 0,
   userName: '',
@@ -47,12 +51,40 @@ async function readRaw(): Promise<OnboardingState> {
   }
 }
 
+// Throws on failure (unlike readRaw's soft fallback) — the completion path relies
+// on that to surface a lost write instead of silently sending the user to Home
+// with unpersisted `complete`.
 async function writeRaw(next: OnboardingState): Promise<void> {
-  try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  } catch {
-    // ignore storage failures — worst case the flow restarts next launch
-  }
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+}
+
+// Serialized mutation queue. Every persisted change is a read-modify-write, and
+// they're fired concurrently (a data-collection step saves its field AND the
+// next phase in the same tick, both un-awaited). Run un-serialized they'd
+// interleave and the later write would clobber the earlier's field (lost
+// update) — dropping a collected field, regressing the phase, or worst, a stale
+// step write landing after `finish()` and resetting `complete` to false (which
+// bounces the user back into onboarding on the next cold start). Chaining every
+// mutation onto one promise makes each read see the previous write's result, so
+// none can clobber another. The chain never rejects (a failed write can't wedge
+// later ones); callers that care about durability get the failure via the
+// returned promise.
+let mutationQueue: Promise<unknown> = Promise.resolve();
+
+function enqueue<T>(task: () => Promise<T>): Promise<T> {
+  const run = mutationQueue.then(task, task); // run regardless of the prior outcome
+  mutationQueue = run.catch(() => undefined); // swallow so a failed write can't wedge later ones
+  return run;
+}
+
+/** Serialized read-modify-write. Failures propagate to the returned promise. */
+function mutate(fn: (state: OnboardingState) => OnboardingState): Promise<void> {
+  return enqueue(async () => {
+    const prev = await readRaw();
+    const next = fn(prev);
+    if (next === prev) return; // fn declined to change anything (e.g. saveStep once complete) — skip the write
+    await writeRaw(next);
+  });
 }
 
 /** Full persisted state, with the resume TTL applied (stale step → welcome). */
@@ -64,25 +96,40 @@ export async function loadOnboarding(): Promise<OnboardingState> {
   return state;
 }
 
-/** Persist the current step (resume point) + refresh its timestamp. */
-export async function saveStep(phase: string): Promise<void> {
-  const state = await readRaw();
-  await writeRaw({ ...state, phase, ts: Date.now() });
+/** The profile fields collected during the flow. */
+export type CollectedFields = Partial<Pick<OnboardingState, 'userName' | 'sidekickName' | 'birthday'>>;
+
+/** Persist the current step (resume point) + refresh its timestamp, optionally
+ *  folding in the field(s) just collected on that step — the field and the phase
+ *  advance land in ONE atomic write so they can never diverge (a persisted phase
+ *  past a field screen with the field itself missing, which resume would then
+ *  skip). Best-effort: a lost step/field only costs a restart-from-earlier, so
+ *  failures are swallowed. No-op once complete — the flow is done, there's
+ *  nothing to resume, and writing here could only regress `complete`. */
+export function saveStep(phase: string, fields?: CollectedFields): Promise<void> {
+  return mutate((s) => (s.complete ? s : { ...s, ...fields, phase, ts: Date.now() })).catch(() => {});
 }
 
-/** Persist a collected profile field (userName / sidekickName) as it's entered. */
-export async function saveOnboardingField(
-  field: 'userName' | 'sidekickName' | 'birthday',
-  value: string,
-): Promise<void> {
-  const state = await readRaw();
-  await writeRaw({ ...state, [field]: value });
-}
-
-/** Mark the flow finished so the gate never re-triggers it. */
+/** Mark the flow finished so the gate never re-triggers it. Failures PROPAGATE
+ *  (and the write is read-back verified) so `finish()` can retry instead of
+ *  sending the user to Home with `complete` unpersisted — which a cold start
+ *  would read as not-onboarded and bounce straight back into the flow. */
 export async function markOnboardingComplete(): Promise<void> {
-  const state = await readRaw();
-  await writeRaw({ ...state, complete: true, ts: Date.now() });
+  await mutate((s) => ({ ...s, complete: true, homeIntro: true, ts: Date.now() }));
+  const check = await readRaw();
+  if (!check.complete) throw new Error('onboarding completion did not persist');
+}
+
+/** Home consumed the guided intro (star tapped) — never replay it. Failures
+ *  propagate so the caller can keep the in-session cache authoritative. */
+export function markHomeIntroDone(): Promise<void> {
+  return mutate((s) => ({ ...s, homeIntro: false }));
+}
+
+/** DEV: land on Home with the guided intro armed — marks complete too (else
+ *  Home's front-door gate redirects straight back to /onboarding). */
+export function devArmHomeIntro(): Promise<void> {
+  return mutate((s) => ({ ...s, complete: true, homeIntro: true, ts: Date.now() })).catch(() => {});
 }
 
 /** DEV: wipe onboarding state so the flow runs again from welcome. */

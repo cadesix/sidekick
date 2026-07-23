@@ -21,6 +21,9 @@ interface GlassProps {
   // Fallback blur tuning (simulator, older iOS / Android native blur, web backdrop-filter).
   intensity?: number;
   tint?: BlurViewProps["tint"];
+  // iOS 26 liquid-glass style: "regular" (default, more material tint) or "clear"
+  // (barely-tinted, more see-through — for glass over a dark backdrop with light text).
+  glassStyle?: "regular" | "clear";
 }
 
 /**
@@ -39,12 +42,13 @@ export function Glass({
   isInteractive = false,
   intensity = 100,
   tint = "systemThinMaterialLight",
+  glassStyle = "regular",
 }: GlassProps) {
   // createElement, not JSX: this file compiles with jsxImportSource "nativewind",
   // whose css-interop wrapper silently breaks GlassView's native props — the
   // effect never gets applied and the glass renders fully transparent.
   if (liquidGlass) {
-    return createElement(GlassView, { glassEffectStyle: "regular", isInteractive, style }, children);
+    return createElement(GlassView, { glassEffectStyle: glassStyle, isInteractive, style }, children);
   }
   // The hairline rim stands in for liquid glass's specular edge, so the
   // fallback reads as glass rather than a flat frosted panel.

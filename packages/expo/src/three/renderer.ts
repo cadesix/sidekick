@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { Renderer } from 'expo-three';
 import type { ExpoWebGLRenderingContext } from 'expo-gl';
 import * as THREE from 'three';
@@ -106,6 +107,13 @@ export type SidekickController = {
   // daily loot chest: spawn/hide (tier or null) + trigger the open animation
   setDailyBox: (tier: BoxTier | null) => void;
   popDailyBox: () => void;
+  // a celebratory in-scene hop (hands up via the jump envelopes) — onboarding's
+  // color-pick celebration; safe to retrigger mid-hop
+  hop: (durMs?: number) => void;
+  // self-inspect mode (onboarding's "how should i look?"): head down, slow
+  // left/right sweeps that HOLD at each side, hands raised a touch as if
+  // studying his own palms
+  setInspect: (v: boolean) => void;
   // onboarding: play the character's jump-into-frame entrance (from HIDDEN_Y),
   // and shake the camera ("build" ramps, "impact" spikes then decays)
   jumpIn: (opts?: { duration?: number }) => void;
@@ -148,9 +156,8 @@ const DOF_FOCUS_AT = new THREE.Vector3(0, 0.5, 0); // focal point ≈ character 
 
 // The home camera framing, derived from the look-dev camera settings (fov /
 // camDist / camHeight) so the /sidekick-3d editor and the live home render the
-// EXACT same shot. Defaults (41.1 / 4.20119 / 0) reproduce the original
-// HERO_FRAMING (pos [0, 0.66, 4.2], target [0, 0.56, 0]) — camDist is the true
-// offset length |pos − target| so k = 1 and the position is exact.
+// EXACT same shot. camDist scales HOME_CAM_DIR (the true |pos − target| offset,
+// len ≈ 4.2012) by k = camDist / 4.2012, so the tuned dolly reproduces exactly.
 const HOME_CAM_DIR: [number, number, number] = [0, 0.1, 4.2]; // (pos − target), len ≈ 4.2012
 const HOME_CAM_TY = 0.56; // base target height (character upper body)
 export function homeFraming(fov: number, dist: number, height: number): Framing {
@@ -423,7 +430,7 @@ export function createSidekickRenderer(
 
   // Camera
   let framing = opts.framing;
-  const camera = new THREE.PerspectiveCamera(framing.fov ?? s.fov, width / height, 0.1, 260);
+  const camera = new THREE.PerspectiveCamera(framing.fov ?? s.fov, width / height, 0.5, 260);
   const camBasePos = new THREE.Vector3().fromArray(framing.pos);
   const camBaseTarget = new THREE.Vector3().fromArray(framing.target);
   camera.position.copy(camBasePos);
@@ -599,7 +606,8 @@ export function createSidekickRenderer(
   // composer throws on device and DoF silently never runs. (No public accessor for
   // the target, hence the cast.)
   forceByte((bokehPass as unknown as { _renderTargetDepth: THREE.WebGLRenderTarget })._renderTargetDepth);
-  bokehPass.enabled = HOME_DOF;
+  const IS_WEB = Platform.OS === 'web';
+  bokehPass.enabled = HOME_DOF && IS_WEB;
   composer.addPass(bokehPass);
   composer.addPass(new OutputPass());
   // if the composer chain dies on expo-gl, fall back to direct rendering
@@ -622,6 +630,8 @@ export function createSidekickRenderer(
   let faceMat: THREE.Material | null = null;
   let faceSheet: THREE.Texture | null = null;
   let holdingPhone = !!opts.holdingPhone;
+  let inspect = false; // self-inspect look-around (see setInspect)
+  let inspectBlend = 0;
   let talking = false;
   let studio = !!opts.studio;
   let cosmos = !!opts.cosmos;
@@ -1176,6 +1186,16 @@ export function createSidekickRenderer(
         twR = lerp(twR, 0, armUp);
         foXR = lerp(foXR, 0, armUp);
       }
+      // self-inspect: hands come up a touch (studying his own palms) while the
+      // head math below sweeps left/right
+      inspectBlend += ((inspect ? 1 : 0) - inspectBlend) * 0.06;
+      const ib = inspectBlend;
+      if (ib > 0.01) {
+        swZL += 0.55 * ib;
+        swZR -= 0.55 * ib;
+        foXL -= 0.4 * ib;
+        foXR -= 0.4 * ib;
+      }
       setArm('armL', 'forearmL', 1, swXL, swZL, twL, foXL, foZL);
       setArm('armR', 'forearmR', -1, swXR, swZR, twR, foXR, foZR);
       bones.armL.scale.setScalar(1 + fr.armL.stretch);
@@ -1184,10 +1204,15 @@ export function createSidekickRenderer(
       // just before the character slides out of frame under the camera pan)
       const cosmosLook = Math.min(1, cosmosT / 0.8) * 0.6;
       const upLook = lookUpT * 0.42; // notif beat: tilt the head up toward the notice
+      // inspect sweeps: tanh(sin) flattens near the extremes, so the head
+      // LOOKS left, holds a beat, swings right, holds — reads as him actually
+      // studying each side of himself rather than metronoming
+      const inspectPitch = 0.34 * ib;
+      const inspectYaw = ib * 0.38 * Math.tanh(2.6 * Math.sin(now * 1.05));
       setBone(
         'head',
-        fr.headPitch + PHONE_POSE.headPitch * pb - cosmosLook - upLook,
-        fr.headYaw + PHONE_POSE.headYaw * pb,
+        fr.headPitch + PHONE_POSE.headPitch * pb - cosmosLook - upLook + inspectPitch,
+        fr.headYaw + PHONE_POSE.headYaw * pb + inspectYaw,
         0,
       );
       // body-drag bend splits across waist + spine (arc toward the grab
@@ -1242,7 +1267,10 @@ export function createSidekickRenderer(
       if (sp >= 1) {
         shake = null;
       } else {
-        const env = shake.mode === 'build' ? sp * sp : (1 - sp) * (1 - sp);
+        // build: a perceptible tremor from the START that grows ~linearly to the
+        // pop (a small floor so it's felt immediately, not a back-loaded spike —
+        // sp*sp read as "no shake, then pop"). impact: spike then decay.
+        const env = shake.mode === 'build' ? 0.12 + 0.88 * sp : (1 - sp) * (1 - sp);
         const a = shake.amp * env;
         camera.position.x += Math.sin(now * 92) * a;
         camera.position.y += Math.cos(now * 71) * a;
@@ -1313,21 +1341,28 @@ export function createSidekickRenderer(
     // is used for HOME_DOF (depth-of-field) and/or HOME_BLOOM; both are disabled
     // per-pass above when their flag is off, so an enabled composer only does what
     // it's told. Its render target is MSAA (samples:4) so grass AA still holds.
-    const useComposer = !bloomBroken && (HOME_DOF || (HOME_BLOOM && s.bloomEnabled));
+    const useComposer = IS_WEB && !bloomBroken && (HOME_DOF || (HOME_BLOOM && s.bloomEnabled));
     if (useComposer) {
       try {
         // keep the focal plane on the character (its head bone, ~y 0.5) so it
         // stays sharp as the camera dollies/orbits; the far hill falls out of focus
-        if (HOME_DOF)
+        if (HOME_DOF && IS_WEB)
           (bokehPass.uniforms as Record<string, THREE.IUniform>).focus.value =
             camera.position.distanceTo(DOF_FOCUS_AT) + s.dofFocus;
         composer.render();
       } catch (err) {
         bloomBroken = true;
         console.warn('[sidekick] post composer failed — falling back to direct render', err);
+        // composer.render() left the render target bound to its offscreen
+        // buffer before it threw; reset to the default framebuffer or every
+        // direct render below draws off-screen and the display stays white.
+        renderer.setRenderTarget(null);
         renderer.render(scene, camera);
       }
     } else {
+      // direct render — must always target the screen with clean GL state
+      // (a stale target/depthTest would z-fight the default framebuffer)
+      renderer.setRenderTarget(null);
       renderer.render(scene, camera);
     }
     // pin head-tracked overlays (bond badge / speech bubble): project the head
@@ -1418,6 +1453,12 @@ export function createSidekickRenderer(
         // boil-over, but delighted
         if (startHop(0.75, false)) faceCtl?.pulse('excited', 2);
       }
+    },
+    hop: (durMs) => {
+      if (startHop((durMs ?? 750) / 1000, true)) faceCtl?.pulse('excited', 2);
+    },
+    setInspect: (v) => {
+      inspect = v;
     },
     jumpIn: (o) => {
       jump = { start: clock.getElapsedTime(), dur: (o?.duration ?? 800) / 1000 };

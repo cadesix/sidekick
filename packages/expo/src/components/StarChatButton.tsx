@@ -61,15 +61,21 @@ export function StarChatButton({
   hidden,
   onPress,
   darkBg,
+  bondOverride,
 }: {
   overhead: OverheadTarget;
   hidden?: boolean;
   onPress: () => void;
   // the sky/scene behind the pill is dark → dark glass material + light label
   darkBg?: boolean;
+  // Home's post-onboarding intro counts the score up 0→N visually; the pop
+  // animation below fires on every increment for free
+  bondOverride?: number;
 }) {
-  // server-driven bond (plan 20): the snapshot, patched when a session completes
-  const bond = useSnapshot().data?.bond ?? BOND_MIN;
+  // server-driven bond (plan 20): the snapshot, patched when a session completes.
+  // (hook always runs — ?? on the hook call itself would skip it conditionally)
+  const snapshotBond = useSnapshot().data?.bond ?? BOND_MIN;
+  const bond = bondOverride ?? snapshotBond;
 
   // Twinkle (a slow shimmer, so it reads as invitation rather than chrome) and
   // drift (a free-running 0→1 ramp the Lissajous reads off — linear and

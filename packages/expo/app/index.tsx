@@ -49,7 +49,7 @@ import { patchBoxClaim, snapshotSessions, useSnapshot } from '../src/lib/state';
 import { reconcileWardrobe } from '../src/lib/wardrobe-sync';
 import { useCosmeticVersion } from '../src/store/cosmeticVersion';
 import { hydrateSkinFromMirror, saveSkinMirror } from '../src/store/skin';
-import { useOnboardingState } from '../src/lib/onboarding';
+import { markHomeIntroDone, ONBOARDING_QUERY_KEY, type OnboardingState, useOnboardingState } from '../src/lib/onboarding';
 import { useAuthStore } from '../src/lib/auth-store';
 import { perfFrame, perfMark } from '../src/lib/perf-telemetry';
 
@@ -344,6 +344,8 @@ export default function Home() {
   const [controls, setControls] = useState<CosmeticsControls | null>(null);
   // raw scene controller (applySettings, face pulses, daily-box pop)
   const [controller, setController] = useState<SidekickController | null>(null);
+  const controllerRef = useRef<SidekickController | null>(null);
+  controllerRef.current = controller;
 
   // Overhead bubble → face. When a line pops over his head, pulse the matching
   // expression for the bubble's duration. The server picks the emotion for
@@ -368,6 +370,67 @@ export default function Home() {
       .then(() => hydrateSkinFromMirror())
       .then(() => setSettings(loadSettings()));
   }, []);
+  // ---- post-onboarding guided intro (spec screens 15–19) ----------------
+  // Fresh from onboarding, Home opens BARE (no dock/pin/closet/star). He looks
+  // up and explains the bond score, the score counts 0→N on the star pill, then
+  // the star appears with a prompt. Tapping the star consumes the intro.
+  const introPending = onboarding.data?.homeIntro === true;
+  const [introStep, setIntroStep] = useState<'bond' | 'star' | null>(null);
+  const [introBond, setIntroBond] = useState(0);
+  // reset on the RISING edge too, so a re-arm (dev replay, or a second launch
+  // that re-completes) always restarts from the top instead of resuming at a
+  // stale step. `armed` then gates the driver so it fires exactly once per arm.
+  const wasPending = useRef(false);
+  const introFired = useRef(false); // guards the one-shot driver below
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    // (diagnostics removed — the intro is confirmed working)
+    if (introPending && !wasPending.current) {
+      setIntroStep(null);
+      setIntroBond(0);
+      introFired.current = false;
+      setArmed(true);
+    }
+    if (!introPending) setArmed(false);
+    wasPending.current = introPending;
+  }, [introPending]);
+  useEffect(() => {
+    // Gate on armed + settings + a FIRED-ONCE ref. Crucially NOT on `introStep`
+    // — this effect SETS introStep, so depending on it would re-run the effect
+    // and its cleanup would cancel the very timers we just scheduled (they'd
+    // never fire; the sequence would freeze at 'line'). Also not on `snapshot`
+    // (a fresh account's can lag; count-up defaults the target to 10) or
+    // `controller` (the canvas can lose the WebGL-context race arriving from
+    // onboarding — only the head-tilt needs it, via a live ref).
+    if (!armed || !settings || introFired.current) return;
+    introFired.current = true;
+    // the star pill + percent pop up right away (introStep 'bond' both shows the
+    // star and runs the 0→N count-up); he looks UP at it, then names it, then
+    // prompts the tap.
+    setIntroStep('bond');
+    const timers = [
+      setTimeout(() => controllerRef.current?.setLookUp(true), 450), // glance up at the star
+      setTimeout(() => speak("that's our bond score", 3200, 'happy'), 1400),
+      setTimeout(() => controllerRef.current?.setLookUp(false), 4000), // …then back down
+      setTimeout(() => {
+        setIntroStep('star');
+        speak('tap the star to open our star chat! ✦', 6000, 'excited');
+      }, 4600),
+    ];
+    // reset the head on teardown too (re-arm / unmount), so it can never stick up
+    return () => {
+      timers.forEach(clearTimeout);
+      controllerRef.current?.setLookUp(false);
+    };
+  }, [armed, settings]);
+  // the 0→N count-up (screen 17); each tick re-fires the pill's pop
+  useEffect(() => {
+    if (introStep !== 'bond' && introStep !== 'star') return;
+    const target = Math.max(snapshot?.bond ?? 10, 10);
+    if (introBond >= target) return;
+    const t = setTimeout(() => setIntroBond((b) => Math.min(target, b + 1)), 90);
+    return () => clearTimeout(t);
+  }, [introStep, introBond, snapshot]);
   // Profile's astral CTA can't render the star chat (it lives over the 3D
   // scene) — it raises this flag and dismisses; we consume it once the scene
   // is ready and open the chat.
@@ -433,6 +496,19 @@ export default function Home() {
   }, [snapshot, controls, controller]);
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+  // star tapped during the guided intro — consume it (never replays)
+  const finishIntro = useCallback(() => {
+    controllerRef.current?.setLookUp(false); // never leave the head stuck up
+    // Consume the intro in-session IMMEDIATELY by patching the query cache — the
+    // authoritative source for `introPending` this session. Then persist durably
+    // in the background. (Don't invalidate/refetch afterward: a failed persist
+    // would re-read homeIntro:true and resurrect the intro mid-dismiss. Worst
+    // case a failed write replays it on a future cold start — acceptable.)
+    queryClient.setQueryData<OnboardingState>(ONBOARDING_QUERY_KEY, (prev) =>
+      prev ? { ...prev, homeIntro: false } : prev,
+    );
+    void markHomeIntroDone().catch(() => {});
+  }, [queryClient]);
 
   // Streak + daily box are server state (plan 20 phase 2): the streak count and
   // the box's claimable/tier come from the snapshot; the touch itself fires from
@@ -815,12 +891,21 @@ export default function Home() {
 
       {/* the way into a star chat: a star beside the sidekick's head. Hidden
           once every session is done — nothing left to open — and until the
-          snapshot lands (we don't know the ladder's position before then). */}
-      {settings && snapshot && nextStarChat ? (
+          snapshot lands (we don't know the ladder's position before then).
+          EXCEPTION: during the guided intro the pill drives itself off
+          `introBond` (the 0→N count-up), NOT the snapshot — so it must render
+          even before server data arrives, else the intro has no star to show
+          and, since tapping it is the only way to consume the intro, it'd be
+          stuck forever on a device whose API is slow/unreachable. */}
+      {(introPending ? !!settings : settings && snapshot && nextStarChat) ? (
         <StarChatButton
           overhead={overhead}
-          hidden={covered}
-          onPress={() => setStarChatOpen(true)}
+          hidden={covered || (introPending && introStep !== 'bond' && introStep !== 'star')}
+          bondOverride={introPending ? introBond : undefined}
+          onPress={() => {
+            if (introPending) finishIntro(); // star tapped — intro consumed
+            setStarChatOpen(true);
+          }}
           darkBg={darkBackdrop}
         />
       ) : null}
@@ -832,7 +917,7 @@ export default function Home() {
           the Closet itself is open. */}
       <ClosetButton
         overhead={overhead}
-        hidden={covered}
+        hidden={covered || introPending}
         paused={appearanceOpen || covered}
         onPress={openAppearance}
       />
@@ -845,9 +930,9 @@ export default function Home() {
           top: insets.top + 8,
           right: 16,
           zIndex: 25,
-          opacity: covered ? 0 : 1,
+          opacity: covered || introPending ? 0 : 1,
         }}
-        pointerEvents={covered ? 'none' : 'box-none'}
+        pointerEvents={covered || introPending ? 'none' : 'box-none'}
       >
         {/* Frosted glass — no `overflow:'hidden'` (it kills the glass effect); the
             round shape comes from borderRadius, which Glass clips natively. The
@@ -870,10 +955,36 @@ export default function Home() {
         {unseenIsland ? <NewsDot style={{ top: -2, right: -2 }} /> : null}
       </View>
 
+      {/* Persistent star-chat CTA (spec 19): until the FIRST star chat lands a
+          card, a pill above the dock keeps the path visible. Hidden while the
+          guided intro runs (the star prompt owns that moment) and under any
+          full surface. */}
+      {settings && snapshot && !snapshot.astral && nextStarChat && !covered && !introPending && !starChatOpen ? (
+        <Pressable
+          onPress={() => setStarChatOpen(true)}
+          style={{
+            position: 'absolute',
+            bottom: Math.max(insets.bottom, 16) + 104,
+            alignSelf: 'center',
+            zIndex: 29,
+            backgroundColor: 'rgba(22,14,44,0.92)',
+            borderColor: 'rgba(201,188,255,0.35)',
+            borderWidth: 1,
+            borderRadius: 999,
+            paddingHorizontal: 16,
+            paddingVertical: 9,
+          }}
+        >
+          <Text style={{ fontFamily: 'Diatype-Rounded-Medium', fontSize: 13, color: '#E7E0FF' }}>
+            complete a star chat to unlock your personality read ✦
+          </Text>
+        </Pressable>
+      ) : null}
+
       {/* iOS-style home dock — the sheets slide up OVER it; only the
           full-screen map reveal hides it */}
       <HomeDock
-        hidden={mapShown || skyMode || (chatUi !== 'sheet' && chatOpen)}
+        hidden={mapShown || skyMode || introPending || (chatUi !== 'sheet' && chatOpen)}
         unread={unread}
         shopDot={shopDot}
         goalsDot={goalsDot}
@@ -945,7 +1056,7 @@ export default function Home() {
 
 
       {/* Daily-box flow (home only): streak splash → ground chest → rewards */}
-      {settings && !covered ? (
+      {settings && !covered && !introPending ? (
         <>
           {boxStage === 'streak' ? (
             <StreakSplash streak={streakCount} onDone={() => setBoxStage('ground')} />
@@ -1092,7 +1203,11 @@ export default function Home() {
           ]}
           pointerEvents={chatOpen ? 'auto' : 'none'}
         >
-          <View style={{ flex: 1, paddingTop: insets.top }}>
+          {/* NO top safe-area pad here: the floating transcript runs to the very
+              top of the device so messages scroll up and overflow past the
+              dynamic island instead of being clipped under it. ChatScreen insets
+              its own close button. */}
+          <View style={{ flex: 1 }}>
             {chatScreen}
           </View>
         </Animated.View>
