@@ -156,9 +156,8 @@ const DOF_FOCUS_AT = new THREE.Vector3(0, 0.5, 0); // focal point ≈ character 
 
 // The home camera framing, derived from the look-dev camera settings (fov /
 // camDist / camHeight) so the /sidekick-3d editor and the live home render the
-// EXACT same shot. Defaults (41.1 / 4.20119 / 0) reproduce the original
-// HERO_FRAMING (pos [0, 0.66, 4.2], target [0, 0.56, 0]) — camDist is the true
-// offset length |pos − target| so k = 1 and the position is exact.
+// EXACT same shot. camDist scales HOME_CAM_DIR (the true |pos − target| offset,
+// len ≈ 4.2012) by k = camDist / 4.2012, so the tuned dolly reproduces exactly.
 const HOME_CAM_DIR: [number, number, number] = [0, 0.1, 4.2]; // (pos − target), len ≈ 4.2012
 const HOME_CAM_TY = 0.56; // base target height (character upper body)
 export function homeFraming(fov: number, dist: number, height: number): Framing {
