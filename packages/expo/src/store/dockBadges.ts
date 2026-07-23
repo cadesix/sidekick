@@ -51,7 +51,16 @@ export const useDockBadges = create<Store>()(
     }),
     {
       name: 'sidekick_dock_badges',
-      storage: createJSONStorage(() => AsyncStorage),
+      // expo-router statically renders routes in NODE, where web AsyncStorage
+      // throws (`window is not defined`) — and the post-rehydrate setState below
+      // triggers a persist WRITE whose rejection kills the dev server. RN always
+      // defines a window global, so `typeof window` only gates the node renderer:
+      // give it inert storage and let the real one hydrate in the browser/app.
+      storage: createJSONStorage(() =>
+        typeof window === 'undefined'
+          ? { getItem: async () => null, setItem: async () => {}, removeItem: async () => {} }
+          : AsyncStorage,
+      ),
       partialize: (s) => ({ goalsSeenDate: s.goalsSeenDate, shopSeenDate: s.shopSeenDate, msgsSeenAt: s.msgsSeenAt }),
       onRehydrateStorage: () => () => {
         useDockBadges.setState({ hydrated: true });
