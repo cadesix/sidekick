@@ -1349,9 +1349,16 @@ export function createSidekickRenderer(
       } catch (err) {
         bloomBroken = true;
         console.warn('[sidekick] post composer failed — falling back to direct render', err);
+        // composer.render() left the render target bound to its offscreen
+        // buffer before it threw; reset to the default framebuffer or every
+        // direct render below draws off-screen and the display stays white.
+        renderer.setRenderTarget(null);
         renderer.render(scene, camera);
       }
     } else {
+      // (also null here in case anything left a target bound — direct render
+      // must always target the screen)
+      renderer.setRenderTarget(null);
       renderer.render(scene, camera);
     }
     // pin head-tracked overlays (bond badge / speech bubble): project the head
