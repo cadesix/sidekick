@@ -103,7 +103,9 @@ export function createInteraction(opts: {
   camera: THREE.Camera;
   bone: (n: 'head' | 'handL' | 'handR') => THREE.Object3D | undefined;
   cameraDrag?: boolean;
-  onPoke?: (part: PokePart, point: THREE.Vector3, expr: string | null) => void;
+  // `big` = the boiling-over reaction (kept-at-it pokes): the renderer plays a
+  // jump with hands thrown up; the host layer adds haptics + a "hey!!" bubble
+  onPoke?: (part: PokePart, point: THREE.Vector3, expr: string | null, big?: boolean) => void;
 }): Interaction {
   const { camera } = opts;
 
@@ -126,7 +128,8 @@ export function createInteraction(opts: {
   const camPitch = new Spring(70, 7);
 
   // emotive poke overlays + escalation. Rapid repeated pokes within POKE_WINDOW
-  // stack pokeCount toward annoyance (3+) then anger (5+); an isolated poke resets it.
+  // stack pokeCount toward annoyance (3+) then the big boil-over (5+ — jump,
+  // hands up, "hey!!"); an isolated poke resets it.
   const headShake = new Wiggle();
   const bodyWiggle = new Wiggle();
   let pokeCount = 0;
@@ -250,50 +253,55 @@ export function createInteraction(opts: {
     if (!wasTap) return;
     // tap: look at the point, then react — physically (spring kicks + wiggles)
     // and emotionally (a face expression). Rapid repeated pokes escalate his
-    // mood from playful → annoyed → angry; leaving him alone resets it.
+    // mood from playful → annoyed → the boil-over jump; a pause resets it.
     ndc.set(x, y);
     pointerPoint(lookPoint);
     lookHoldUntil = now + LOOK_HOLD;
 
+    // ground taps aren't pokes AT him — they don't react and don't escalate
+    if (part === 'ground') {
+      opts.onPoke?.(part, lookPoint, null, false);
+      return;
+    }
     const gap = now - lastPokeAt;
     pokeCount = gap < POKE_WINDOW ? pokeCount + 1 : 1;
     lastPokeAt = now;
     const annoyed = pokeCount >= 3;
-    const angry = pokeCount >= 5;
+    const big = pokeCount >= 5;
 
-    let expr: string | null;
-    if (annoyed) {
+    // face: delight for a poke, annoyed once he's being jabbed at
+    const expr = annoyed ? 'annoyed' : 'excited';
+    if (big) {
+      // boiling over: the renderer plays the jump (hands thrown up) off the
+      // `big` flag; here just the sharp head-shake — arm kicks would fight the
+      // jump's own arms-overhead envelope. Counter resets so the escalation
+      // starts from playful again.
+      headShake.trigger(0.5, 5.5, now);
+      pokeCount = 0;
+    } else if (annoyed) {
       // irritated recoil wherever he's poked: a sharp head-shake, a lean back,
-      // arms flicking in, a stomp-y squash — bigger the more you keep jabbing
-      const m = angry ? 1.5 : 1;
-      headShake.trigger(0.42 * m, 5.5, now);
-      tiltX.kick(0.7 * m);
-      squash.kick(0.7 * m);
-      arm.L.swing.kick(-3 * m);
-      arm.R.swing.kick(3 * m);
-      expr = angry ? 'angry' : 'annoyed';
+      // arms flicking in, a stomp-y squash
+      headShake.trigger(0.42, 5.5, now);
+      tiltX.kick(0.7);
+      squash.kick(0.7);
+      arm.L.swing.kick(-3);
+      arm.R.swing.kick(3);
     } else if (part === 'body') {
       // ticklish: a squish plus a quick squirming twist
       squash.kick(1.1);
       bodyWiggle.trigger(0.16, 3.5, now);
-      expr = 'surprised';
     } else if (part === 'head') {
       headPitch.kick(-2.2); // startled head-bob…
       tiltX.kick(0.18); // …plus a tiny recoil back
       squash.kick(0.5);
-      expr = 'happy';
     } else if (part === 'handL') {
       arm.L.swing.kick(5);
       squash.kick(0.4); // little hop
-      expr = 'excited';
-    } else if (part === 'handR') {
+    } else {
       arm.R.swing.kick(-5);
       squash.kick(0.4);
-      expr = 'excited';
-    } else {
-      expr = POKE_FACE[part]; // ground: no reaction
     }
-    opts.onPoke?.(part, lookPoint, expr);
+    opts.onPoke?.(part, lookPoint, expr, big);
   };
 
   const frame: InteractionFrame = {
@@ -372,12 +380,3 @@ export function createInteraction(opts: {
     },
   };
 }
-
-// face pulse per poked part
-export const POKE_FACE = {
-  head: 'happy',
-  body: 'surprised',
-  handL: 'excited',
-  handR: 'excited',
-  ground: null,
-} as const;

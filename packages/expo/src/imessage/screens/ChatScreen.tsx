@@ -350,7 +350,7 @@ function ChatScreenImpl({
 				<View style={styles.grabberWrap} pointerEvents="none">
 					<View style={styles.grabber} />
 				</View>
-				{/* close on the RIGHT now; settings moved to the home screen's gear */}
+				{/* close on the RIGHT now; settings live under Profile (dock tile) */}
 				<View style={styles.headerRow} pointerEvents="box-none">
 					<Glass isInteractive style={styles.glassButton}>
 						<Pressable

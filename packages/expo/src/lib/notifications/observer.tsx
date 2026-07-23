@@ -32,6 +32,8 @@ export function NotificationObserver(): null {
       if (!payload) {
         return;
       }
+      // one key serves both the chat AND the home dock's unread badge (the
+      // badge derives from this same transcript cache)
       void queryClient.invalidateQueries({
         queryKey: ["chat", "transcript", payload.conversationId],
       });

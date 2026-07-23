@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { logout, registerDevice, setAuthToken, signOut, type AuthResult } from "./api";
 import { TOKEN_STORAGE_KEY, USER_STORAGE_KEY, useAuthStore } from "./auth-store";
 import { clearProgressionMirrors } from "./mirror";
+import { resetDockBadges } from "../store/dockBadges";
 import { setStoredItem } from "./secure-storage";
 
 /**
@@ -26,6 +27,7 @@ export function useApplyAuthResult(): (result: AuthResult) => Promise<void> {
     }
     queryClient.clear();
     await clearProgressionMirrors();
+    resetDockBadges(); // dock "seen" stamps are account state too
     useAuthStore.setState({ status: "signedIn", userId });
   };
 }

@@ -286,6 +286,12 @@ export async function streamChatContinuation(
 /** Today's goals checklist — the user's active goals with each day's state (03 / 07 §1). */
 export type GoalsList = Awaited<ReturnType<typeof trpc.goals.list.query>>;
 
+/** One definition of "done today" — GoalsSheet's checkmark and the dock's goals
+ * dot must agree on it. */
+export function goalDoneToday(goal: GoalsList['goals'][number]): boolean {
+  return goal.today.outcome === 'hit' || goal.today.outcome === 'partial';
+}
+
 export function fetchGoals(): Promise<GoalsList> {
   return trpc.goals.list.query();
 }

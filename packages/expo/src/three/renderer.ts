@@ -216,6 +216,9 @@ export function createSidekickRenderer(
     // handed the imperative dressing controls once cosmetics are ready (and
     // null on dispose) — the Shop sheet drives the live character through it
     onControls?: (c: CosmeticsControls | null) => void;
+    // the poke escalation boiled over (5+ rapid pokes): the scene plays the
+    // jump itself; the host layer adds haptics + the "hey!!" speech bubble
+    onAngryPoke?: () => void;
     // per-frame head-bone screen position in NDC (-1..1, +y up) + visibility
     // (z<1 = in front of camera). Drives head-tracked overlays (bond badge,
     // speech bubble); the canvas converts NDC→layout px. Web: overheadRef.
@@ -279,7 +282,7 @@ export function createSidekickRenderer(
     const sn = v.scenes[v.timeOfDay];
     return {
       x: v.hillX, z: v.hillZ, radius: v.hillRadius, flat: v.hillFlat, sink: v.hillSink,
-      hillColor: v.hillColor, treeColor: sn.grassBase,
+      hillColor: v.hillColor, treeColor: sn.grassBase, tipColor: sn.grassTip,
       ridgeHeight: v.ridgeHeight, ridgeHaze: v.ridgeHaze, ridgeDepth: v.ridgeDepth, hazeColor: sn.fog,
     };
   };
@@ -626,7 +629,16 @@ export function createSidekickRenderer(
   // build-up + touchdown. Ported from the web sidekick-canvas.
   const HIDDEN_Y = -3;
   let entranceY = opts.entrance ? HIDDEN_Y : 0;
-  let jump: { start: number; dur: number } | null = null;
+  // hop: an in-scene jump from the ground (poke boil-over, chest pop) — same
+  // arms-up/tuck envelopes as the entrance, but the arc starts at 0 instead of
+  // HIDDEN_Y. startHop owns the one guard rule: never clobber a mid-flight
+  // ENTRANCE; retriggering an in-flight hop is the caller's choice.
+  let jump: { start: number; dur: number; hop?: boolean } | null = null;
+  const startHop = (dur: number, retrigger: boolean): boolean => {
+    if (jump !== null && !(retrigger && jump.hop)) return false;
+    jump = { start: clock.getElapsedTime(), dur, hop: true };
+    return true;
+  };
   let landed = false;
   let shake: { start: number; dur: number; amp: number; mode: 'impact' | 'build' } | null = null;
   let cos: CosmeticsHandle | null = null;
@@ -829,9 +841,16 @@ export function createSidekickRenderer(
     camera,
     bone: (n) => bones[n],
     cameraDrag: true,
-    onPoke: (_part, _point, expr) => {
-      // interact.ts decides the expression (incl. the annoyed/angry escalation)
+    onPoke: (_part, _point, expr, big) => {
+      // interact.ts decides the expression (incl. the annoyed/big escalation)
       if (expr) faceCtl?.pulse(expr as FaceExpression, 1.6);
+      if (big) {
+        // boil-over: jump off the ground, hands thrown up (the jump envelopes
+        // raise the arms); the host layer layers haptics + the "hey!!" bubble.
+        // retrigger: keep-mashing = he keeps re-jumping.
+        startHop(0.7, true);
+        opts.onAngryPoke?.();
+      }
     },
   });
 
@@ -1073,15 +1092,21 @@ export function createSidekickRenderer(
     scene.fog = inCover ? null : envFog;
 
     // jump-into-frame entrance: launch from HIDDEN_Y with an eased rise + a
-    // short arc overshoot; fire the impact shake at touchdown (onboarding only)
+    // short arc overshoot; fire the impact shake at touchdown (onboarding only).
+    // A `hop` jump is the in-scene variant: a plain sine arc off the ground
+    // (poke boil-over), no camera shake.
     if (jump) {
       const p = THREE.MathUtils.clamp((now - jump.start) / jump.dur, 0, 1);
-      const rise = 1 - Math.pow(1 - p, 3);
-      const hop = Math.sin(p * Math.PI) * 0.3;
-      entranceY = THREE.MathUtils.lerp(HIDDEN_Y, 0, rise) + hop;
-      if (p >= 0.9 && !landed) {
-        landed = true;
-        shake = { start: now, dur: 0.55, amp: 0.2, mode: 'impact' };
+      if (jump.hop) {
+        entranceY = Math.sin(p * Math.PI) * 0.24;
+      } else {
+        const rise = 1 - Math.pow(1 - p, 3);
+        const hop = Math.sin(p * Math.PI) * 0.3;
+        entranceY = THREE.MathUtils.lerp(HIDDEN_Y, 0, rise) + hop;
+        if (p >= 0.9 && !landed) {
+          landed = true;
+          shake = { start: now, dur: 0.55, amp: 0.2, mode: 'impact' };
+        }
       }
       if (p >= 1) {
         entranceY = 0;
@@ -1381,7 +1406,12 @@ export function createSidekickRenderer(
       dailyBox = tier;
     },
     popDailyBox: () => {
-      if (boxPop < 0) boxPop = clock.getElapsedTime();
+      if (boxPop < 0) {
+        boxPop = clock.getElapsedTime();
+        // celebrate with the chest: the same hands-up hop as the poke
+        // boil-over, but delighted
+        if (startHop(0.75, false)) faceCtl?.pulse('excited', 2);
+      }
     },
     jumpIn: (o) => {
       jump = { start: clock.getElapsedTime(), dur: (o?.duration ?? 800) / 1000 };

@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { type ReactNode, useState } from "react";
 import {
 	Alert,
+	Image,
 	Linking,
 	Pressable,
 	ScrollView,
@@ -14,8 +15,12 @@ import {
 	View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BOND_MIN } from "@sidekick/core";
+import { StreakModal } from "./StreakModal";
 import { locationStatus, trpc } from "~/lib/api";
 import { useSignOut } from "~/lib/auth";
+import { useSnapshot } from "~/lib/state";
+import { FONT, FONT_BOLD, FONT_MEDIUM, INK } from "~/lib/tokens";
 import { getLocalFocusSettings } from "~/lib/focus";
 import { HEALTH_CONNECTION_QUERY_KEY, loadHealthConnection } from "~/lib/health-connection";
 import { sidekickDisplayName } from "~/lib/sidekick-name";
@@ -24,10 +29,14 @@ import {
 	enableLocationAccess,
 	locationAccess,
 } from "~/lib/location";
-import { colors } from "../theme";
-import { Glass } from "../components/Glass";
-import { Icon, type IconName } from "../components/Icon";
-import { enablePushNotifications } from "~/lib/notifications/registration";
+import { colors } from "~/imessage/theme";
+import { Glass } from "~/imessage/components/Glass";
+import { Icon, type IconName } from "~/imessage/components/Icon";
+const STREAK_ICON = require("../../assets/icons/streak.png");
+
+const INK_55 = "rgba(17,17,17,0.55)";
+const INK_45 = "rgba(17,17,17,0.45)";
+const INK_12 = "rgba(17,17,17,0.12)";
 
 /** An iOS-style grouped field: label on the left, editable value on the right. */
 function Field({
@@ -105,6 +114,7 @@ function Group({
 	return (
 		<View style={styles.group}>
 			<Text style={styles.groupTitle}>{title}</Text>
+			{/* the shared card surface: a friendly grey stroke, no shadow */}
 			<View style={styles.card}>{children}</View>
 			{footer ? <Text style={styles.groupFooter}>{footer}</Text> : null}
 		</View>
@@ -181,20 +191,22 @@ function IntegrationLinkRow({
 	);
 }
 
-export function SettingsScreen() {
+export function ProfileScreen() {
 	const insets = useSafeAreaInsets();
 	const router = useRouter();
 	const queryClient = useQueryClient();
 	const me = useQuery({ queryKey: ["me"], queryFn: () => trpc.users.me.query() });
+	// the latest astral card, bond and streak — all server-owned snapshot slices
+	const snapshot = useSnapshot().data;
+	const astral = snapshot?.astral ?? null;
+	const bond = snapshot?.bond ?? BOND_MIN;
+	const streakCount = snapshot?.streak.count ?? 0;
+	const [streakOpen, setStreakOpen] = useState(false);
 	const location = useQuery({ queryKey: ["location", "setting"], queryFn: loadLocationSetting });
 	const focus = useQuery({ queryKey: ["focus-local"], queryFn: getLocalFocusSettings });
 	const health = useQuery({
 		queryKey: HEALTH_CONNECTION_QUERY_KEY,
 		queryFn: loadHealthConnection,
-	});
-	const notifications = useQuery({
-		queryKey: ["notifications", "preferences"],
-		queryFn: () => trpc.notifications.preferences.query(),
 	});
 	// the character's name (bracketed diagnostic) — used in persona copy below;
 	// the iOS-Settings app-name reference stays the literal "Sidekick" brand
@@ -230,40 +242,6 @@ export function SettingsScreen() {
 		},
 	});
 
-	const updateNotifications = useMutation({
-		mutationFn: async (patch: {
-			proactiveEnabled?: boolean;
-			checkinsEnabled?: boolean;
-			remindersEnabled?: boolean;
-			awakeStart?: string;
-			awakeEnd?: string;
-		}) => {
-			await trpc.notifications.updatePreferences.mutate(patch);
-			if (patch.proactiveEnabled) {
-				try {
-					const enabled = await enablePushNotifications();
-					if (!enabled) {
-						Alert.alert(
-							"Notifications are off",
-							`${sidekickName} can still leave messages in chat. You can turn alerts on in iOS Settings.`,
-							[
-								{ text: "Not now", style: "cancel" },
-								{ text: "Open Settings", onPress: () => void Linking.openSettings() },
-							],
-						);
-					}
-				} catch {
-					Alert.alert(
-						"Couldn’t register this device",
-						`Your preference was saved. ${sidekickName} will try notifications again when the app reconnects.`,
-					);
-				}
-			}
-		},
-		onSuccess: () =>
-			queryClient.invalidateQueries({ queryKey: ["notifications", "preferences"] }),
-	});
-
 	const signOut = useSignOut();
 	const signOutMutation = useMutation({ mutationFn: signOut });
 
@@ -278,7 +256,7 @@ export function SettingsScreen() {
 						<Icon name="chevronLeft" size={20} color={colors.blue} strokeWidth={2.5} />
 					</Pressable>
 				</Glass>
-				<Text style={styles.title}>Settings</Text>
+				<Text style={styles.title}>Profile</Text>
 				<View style={styles.glassButton} />
 			</View>
 
@@ -287,6 +265,57 @@ export function SettingsScreen() {
 					contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
 					keyboardDismissMode="on-drag"
 				>
+					{/* your name, big at the top — edited via the You group below */}
+					<Text style={styles.profileName}>{me.data.name ?? "You"}</Text>
+
+					{/* headline stats: the bond score, large, plus the streak (moved
+					    here from the home top-right; taps open the milestone ladder) */}
+					<View style={styles.statsRow}>
+						<View style={[styles.card, styles.statCard]}>
+							<Text style={styles.statValue}>
+								<Text style={styles.statStar}>✦ </Text>
+								{bond}%
+							</Text>
+							<Text style={styles.statCaption}>bond</Text>
+						</View>
+						<Pressable style={[styles.card, styles.statCard]} onPress={() => setStreakOpen(true)}>
+							<View style={styles.statValueRow}>
+								<Image source={STREAK_ICON} style={styles.statIcon} />
+								<Text style={styles.statValue}>{streakCount}</Text>
+							</View>
+							<Text style={styles.statCaption}>day streak</Text>
+						</Pressable>
+					</View>
+
+					{/* the latest astral card — same dark-purple treatment as the
+					    star-chat reveal, compact; a nudge toward a first star chat
+					    until a card exists */}
+					<View style={[styles.card, styles.astralCard]}>
+						<View style={styles.astralLabelRow}>
+							<Text style={styles.astralStar}>✦</Text>
+							<Text style={styles.astralLabel}>your astral card</Text>
+						</View>
+						{astral ? (
+							<>
+								<Text style={styles.astralArchetype}>{astral.archetype}</Text>
+								{astral.traits.length ? (
+									<View style={styles.astralTraits}>
+										{astral.traits.map((tr, i) => (
+											<View key={i} style={styles.astralChip}>
+												<Text style={styles.astralChipText}>{tr}</Text>
+											</View>
+										))}
+									</View>
+								) : null}
+								<Text style={styles.astralReading}>{astral.reading}</Text>
+							</>
+						) : (
+							<Text style={styles.astralReading}>
+								Do an astral chat with {sidekickName} to reveal your card.
+							</Text>
+						)}
+					</View>
+
 					<Group title="You">
 						<Field
 							label="Name"
@@ -308,65 +337,6 @@ export function SettingsScreen() {
 							<Text style={styles.rowValue}>{me.data.timezone ?? "—"}</Text>
 						</View>
 					</Group>
-					{notifications.data ? (
-						<Group
-							title="Notifications"
-							footer="Proactive messages wait until you’ve been away for 12 hours and arrive at a varied time inside your awake window."
-						>
-							<View style={styles.row}>
-								<Text style={styles.rowLabel}>Messages from {sidekickName}</Text>
-								<Switch
-									style={styles.switch}
-									value={notifications.data.proactiveEnabled}
-									disabled={updateNotifications.isPending}
-									onValueChange={(proactiveEnabled) =>
-										updateNotifications.mutate({ proactiveEnabled })
-									}
-									trackColor={{ false: colors.gray4, true: colors.green }}
-								/>
-							</View>
-							<View style={styles.divider} />
-							<View style={styles.row}>
-								<Text style={styles.rowLabel}>Goal check-ins</Text>
-								<Switch
-									style={styles.switch}
-									value={notifications.data.checkinsEnabled}
-									disabled={updateNotifications.isPending}
-									onValueChange={(checkinsEnabled) =>
-										updateNotifications.mutate({ checkinsEnabled })
-									}
-									trackColor={{ false: colors.gray4, true: colors.green }}
-								/>
-							</View>
-							<View style={styles.divider} />
-							<View style={styles.row}>
-								<Text style={styles.rowLabel}>Reminders</Text>
-								<Switch
-									style={styles.switch}
-									value={notifications.data.remindersEnabled}
-									disabled={updateNotifications.isPending}
-									onValueChange={(remindersEnabled) =>
-										updateNotifications.mutate({ remindersEnabled })
-									}
-									trackColor={{ false: colors.gray4, true: colors.green }}
-								/>
-							</View>
-							<View style={styles.divider} />
-							<Field
-								label="Awake from"
-								value={notifications.data.awakeStart}
-								placeholder="09:00"
-								onCommit={(awakeStart) => updateNotifications.mutate({ awakeStart })}
-							/>
-							<View style={styles.divider} />
-							<Field
-								label="Until"
-								value={notifications.data.awakeEnd}
-								placeholder="21:30"
-								onCommit={(awakeEnd) => updateNotifications.mutate({ awakeEnd })}
-							/>
-						</Group>
-					) : null}
 					<Group
 						title="Connected"
 						footer={`Each connection explains what stays on your iPhone and what ${sidekickName} can use. You can review or disconnect it anytime.`}
@@ -427,6 +397,9 @@ export function SettingsScreen() {
 					) : null}
 				</ScrollView>
 			) : null}
+
+			{/* streak milestone ladder — opened from the streak stat card */}
+			<StreakModal open={streakOpen} onClose={() => setStreakOpen(false)} />
 		</View>
 	);
 }
@@ -434,7 +407,7 @@ export function SettingsScreen() {
 const styles = StyleSheet.create({
 	screen: {
 		flex: 1,
-		backgroundColor: colors.gray6,
+		backgroundColor: "#FFFFFF", // design system: the app background is always white
 	},
 	header: {
 		flexDirection: "row",
@@ -459,35 +432,143 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 	},
 	title: {
+		fontFamily: FONT_BOLD,
 		fontSize: 17,
-		fontWeight: "700",
-		color: colors.label,
+		color: INK,
 	},
 	content: {
+		paddingHorizontal: 20, // screen gutter (06 §1.3)
+	},
+	// heading role: 27/800, −0.02em tracking — left-aligned like the rest
+	profileName: {
+		marginTop: 18,
+		fontFamily: FONT_BOLD,
+		fontSize: 27,
+		letterSpacing: -0.54,
+		color: INK,
+	},
+	// the card surface: no shadow, just a friendly slightly-thick grey stroke
+	card: {
+		backgroundColor: "#FFFFFF",
+		borderRadius: 16,
+		borderCurve: "continuous",
+		borderWidth: 1.5,
+		borderColor: "#E4E4E7",
+	},
+	statsRow: {
+		marginTop: 16,
+		flexDirection: "row",
+		gap: 10,
+	},
+	statCard: {
+		flex: 1,
+		alignItems: "flex-start",
+		paddingVertical: 16,
 		paddingHorizontal: 16,
+		gap: 2,
+	},
+	statValueRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+	},
+	statValue: {
+		fontFamily: FONT_BOLD,
+		fontSize: 34,
+		lineHeight: 40,
+		color: INK,
+	},
+	statStar: {
+		fontSize: 22,
+		color: "#7A5AF8",
+	},
+	statIcon: {
+		width: 30,
+		height: 30,
+		resizeMode: "contain",
+	},
+	statCaption: {
+		fontFamily: FONT_MEDIUM,
+		fontSize: 12,
+		textTransform: "uppercase",
+		letterSpacing: 0.6,
+		color: INK_45,
+	},
+	// compact take on the star-chat reveal card (same palette), on the shared
+	// card stroke; its dark fill overrides the card's white
+	astralCard: {
+		marginTop: 16,
+		backgroundColor: "#160e2c",
+		padding: 20,
+	},
+	astralLabelRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+	},
+	astralStar: {
+		fontSize: 12,
+		color: "#C9BCFF",
+	},
+	astralLabel: {
+		fontFamily: FONT_BOLD,
+		fontSize: 11,
+		textTransform: "uppercase",
+		letterSpacing: 2,
+		color: "#C9BCFF",
+	},
+	astralArchetype: {
+		marginTop: 8,
+		fontFamily: FONT_BOLD,
+		fontSize: 24,
+		lineHeight: 28,
+		color: "#FFFFFF",
+	},
+	astralTraits: {
+		marginTop: 10,
+		flexDirection: "row",
+		flexWrap: "wrap",
+		gap: 6,
+	},
+	astralChip: {
+		borderRadius: 999,
+		borderWidth: 1,
+		borderColor: "rgba(255,255,255,0.1)",
+		backgroundColor: "rgba(255,255,255,0.1)",
+		paddingHorizontal: 10,
+		paddingVertical: 4,
+	},
+	astralChipText: {
+		fontFamily: FONT_MEDIUM,
+		fontSize: 12,
+		color: "#E7E0FF",
+	},
+	astralReading: {
+		marginTop: 12,
+		fontFamily: FONT,
+		fontSize: 14,
+		lineHeight: 21,
+		color: "rgba(231,224,255,0.9)",
 	},
 	group: {
 		marginTop: 22,
 	},
 	groupTitle: {
-		fontSize: 13,
+		fontFamily: FONT_MEDIUM,
+		fontSize: 12,
 		textTransform: "uppercase",
-		letterSpacing: 0.4,
-		color: colors.secondaryLabel,
+		letterSpacing: 0.6,
+		color: INK_45,
 		marginBottom: 8,
 		marginLeft: 4,
 	},
 	groupFooter: {
+		fontFamily: FONT,
 		fontSize: 13,
 		lineHeight: 18,
-		color: colors.secondaryLabel,
-		marginTop: 8,
+		color: INK_45,
+		marginTop: 10,
 		marginHorizontal: 4,
-	},
-	card: {
-		backgroundColor: "#FFFFFF",
-		borderRadius: 14,
-		borderCurve: "continuous",
 	},
 	row: {
 		flexDirection: "row",
@@ -499,19 +580,22 @@ const styles = StyleSheet.create({
 		height: 52,
 	},
 	rowLabel: {
+		fontFamily: FONT,
 		fontSize: 17,
-		color: colors.label,
+		color: INK,
 	},
 	rowInput: {
 		flex: 1,
+		fontFamily: FONT,
 		fontSize: 17,
-		color: colors.secondaryLabel,
+		color: INK_55,
 		textAlign: "right",
 	},
 	rowValue: {
 		flex: 1,
+		fontFamily: FONT,
 		fontSize: 17,
-		color: colors.secondaryLabel,
+		color: INK_55,
 		textAlign: "right",
 	},
 	rowChevron: {
@@ -519,6 +603,7 @@ const styles = StyleSheet.create({
 		alignItems: "flex-end",
 	},
 	signOutLabel: {
+		fontFamily: FONT_MEDIUM,
 		fontSize: 17,
 		color: colors.red,
 	},
@@ -529,7 +614,7 @@ const styles = StyleSheet.create({
 	},
 	divider: {
 		height: StyleSheet.hairlineWidth,
-		backgroundColor: colors.gray3,
+		backgroundColor: INK_12,
 		marginLeft: 16,
 	},
 	integrationRow: {
@@ -554,13 +639,14 @@ const styles = StyleSheet.create({
 		gap: 2,
 	},
 	integrationDescription: {
+		fontFamily: FONT,
 		fontSize: 13,
 		lineHeight: 17,
-		color: colors.secondaryLabel,
+		color: INK_55,
 	},
 	integrationDivider: {
 		height: StyleSheet.hairlineWidth,
-		backgroundColor: colors.gray3,
+		backgroundColor: INK_12,
 		marginLeft: 66,
 	},
 });

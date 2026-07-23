@@ -12,9 +12,12 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { useOverheadDrift } from './useOverheadDrift';
+
 import { BOND_MIN } from '@sidekick/core';
 
 import { Glass, glassTint } from '~/imessage/components/Glass';
+import { FONT_BOLD } from '../lib/tokens';
 import { Pressable } from './Pressable';
 import { useSnapshot } from '../lib/state';
 import type { OverheadTarget } from './SidekickCanvas';
@@ -32,19 +35,20 @@ const SIZE = 48; // pill height (BADGE 36 + 6 padding each side) — vertical ce
 // star reads as hanging in the SKY the chat pans up into rather than as a button
 // stuck to the character.
 //
-// Horizontally the whole row (star + score) is CENTRED on the head: the head is
-// centre-screen on a phone, so any fixed rightward offset ran the label off the
-// edge. Centring is measured, not guessed, because the row's width moves with
-// the score ("bond score 5%" vs "bond score 100%").
+// Horizontally the row (star + score) is centred on the head then nudged LEFT —
+// the closet avatar floats on the right side, so the pair reads as a loose halo
+// around the head rather than a stack. Centring is measured, not guessed
+// (the row's width moves with the score: "5%" vs "100%").
 //
-// Vertically it sits above the head, close enough to read as the sidekick's own
-// star rather than a detached UI chip. It can brush the top of a tall speech
-// bubble (which bottom-anchors at the same head point and grows UPWARD); that's
-// the accepted trade for keeping it near the character.
-const OFFSET_Y = -100;
+// Vertically it hangs just above the head, close enough to read as the
+// sidekick's own star rather than a detached UI chip. It can brush the top of a
+// tall speech bubble (which bottom-anchors at the same head point and grows
+// UPWARD); that's the accepted trade for keeping it near the character.
+const OFFSET_X = -18;
+const OFFSET_Y = -84;
 
 // A lazy drift so it feels like it's floating rather than pinned. Two sines at
-// different rates (and out of phase) trace a slow wander instead of an obvious
+// integer rates (1:2, out of phase) trace a slow wander instead of an obvious
 // loop; the periods are deliberately not multiples of each other. The label is
 // inside the same drifting box, so it stays welded to the star.
 const FLOAT_X = 7; // px
@@ -75,20 +79,16 @@ export function StarChatButton({
   // tick two worklets a frame into an invisible view — during the session, on
   // top of the sky's own 550-star draw.
   const t = useSharedValue(0);
-  const drift = useSharedValue(0);
+  const drift = useOverheadDrift(hidden, FLOAT_MS);
   useEffect(() => {
     if (hidden) {
       cancelAnimation(t);
-      cancelAnimation(drift);
       return;
     }
+    t.value = 0;
     t.value = withRepeat(withTiming(1, { duration: 2600, easing: Easing.inOut(Easing.quad) }), -1, true);
-    drift.value = withRepeat(withTiming(1, { duration: FLOAT_MS, easing: Easing.linear }), -1, false);
-    return () => {
-      cancelAnimation(t);
-      cancelAnimation(drift);
-    };
-  }, [hidden, t, drift]);
+    return () => cancelAnimation(t);
+  }, [hidden, t]);
 
   // the score still pops when it goes up — the one bit of the old bond badge
   // worth keeping now the bar is gone
@@ -110,13 +110,13 @@ export function StarChatButton({
 
   const boxStyle = useAnimatedStyle(() => {
     const p = drift.value * TAU;
-    // 1 : 0.63 with a phase offset — near enough to a Lissajous that the path
-    // never visibly repeats at a glance
+    // 1 : 2 with a phase offset — a lazy figure-eight (integer rates: see
+    // useOverheadDrift for why the wrap stays seamless)
     const fx = Math.sin(p) * FLOAT_X;
-    const fy = Math.sin(p * 0.63 + 1.1) * FLOAT_Y;
+    const fy = Math.sin(p * 2 + 1.1) * FLOAT_Y;
     return {
       transform: [
-        { translateX: overhead.x.value + fx - rowW.value / 2 },
+        { translateX: overhead.x.value + OFFSET_X + fx - rowW.value / 2 },
         { translateY: overhead.y.value + OFFSET_Y + fy - SIZE / 2 },
       ],
       opacity: hidden ? 0 : overhead.visible.value,
@@ -162,7 +162,7 @@ export function StarChatButton({
             </View>
           </View>
           <Animated.Text style={[styles.label, darkBg && styles.labelLight, labelStyle]}>
-            bond score {bond}%
+            {bond}%
           </Animated.Text>
         </Pressable>
       </Glass>
@@ -225,11 +225,11 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: '#fff',
   },
-  // dark ink over light glass; flips to white when the glass goes dark
+  // dark ink over light glass; flips to white when the glass goes dark.
+  // Brand font — iOS won't faux-bold Diatype, so the Bold family carries weight.
   label: {
-    fontFamily: 'monospace',
-    fontSize: 14,
-    fontWeight: '700',
+    fontFamily: FONT_BOLD,
+    fontSize: 15,
     color: '#1a1a1a',
   },
   labelLight: { color: '#fff' },
