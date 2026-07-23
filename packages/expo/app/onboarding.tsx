@@ -110,6 +110,7 @@ type Phase =
   | 'reveal'
   | 'customize'
   | 'celebrate'
+  | 'nameSidekick'
   | 'textIntro'
   | 'notif'
   | 'chat';
@@ -126,6 +127,7 @@ const PHASE_ORDER: Phase[] = [
   'reveal',
   'customize',
   'celebrate',
+  'nameSidekick',
   'textIntro',
   'notif',
   'chat',
@@ -146,6 +148,7 @@ const PHASES: Record<Phase, { framing: Framing; characterVisible: boolean }> = {
   reveal: { framing: HERO_FRAMING, characterVisible: true },
   customize: { framing: HERO_FRAMING, characterVisible: true },
   celebrate: { framing: HERO_FRAMING, characterVisible: true },
+  nameSidekick: { framing: NAMESIDEKICK_FRAMING, characterVisible: true },
   textIntro: { framing: HERO_FRAMING, characterVisible: true },
   notif: { framing: NOTIF_FRAMING, characterVisible: true },
   chat: { framing: SLIVER_FRAMING, characterVisible: true },
@@ -154,6 +157,13 @@ const PHASES: Record<Phase, { framing: Framing; characterVisible: boolean }> = {
 // DEV-only onboarding skip controls — same gate as OnboardingAuth's dev login,
 // so they're stripped from production builds.
 const SHOW_DEV = process.env.NODE_ENV !== 'production';
+
+// Sidekick name ideas — the entry UI renders them as a horizontally scrolling
+// chip rail (a wrap row would eat the whole screen).
+const SIDEKICK_NAME_IDEAS = [
+  'lulu', 'pebble', 'sprout', 'gloop', 'wisp', 'arnold',
+  'gummy', 'sage', 'linda', 'wiggle', 'glitch', 'obama',
+];
 
 // Force the evening look live (in-memory, never persisted) so onboarding always
 // plays at dusk regardless of the real time-of-day — and Home is untouched.
@@ -352,6 +362,7 @@ export default function Onboarding() {
   const toCustomize = () => {
     goTo('customize');
     controllerRef.current?.setInspect(true); // head down, sweeping his own body
+    controllerRef.current?.pulseFace('talkOpen', 8); // open-mouth wonder
     setTimeout(() => speak('hm, how should i look?', 4200, 'surprised'), 400);
   };
   const pickColor = (c: SkinColor) => {
@@ -368,13 +379,17 @@ export default function Onboarding() {
   const celebrate = () => {
     controllerRef.current?.setInspect(false);
     goTo('celebrate');
-    controllerRef.current?.hop(750);
-    setTimeout(() => controllerRef.current?.hop(700), 850);
-    setTimeout(() => {
-      goTo('textIntro');
-      speak('let me text u so we can talk!', 2400, 'happy');
-    }, 1900);
-    setTimeout(() => notifBeat(), 4400);
+    controllerRef.current?.hop(750); // ONE triumphant hop in the new color
+    setTimeout(() => goTo('nameSidekick'), 1500);
+  };
+
+  // naming → textIntro → the phone beat
+  const submitSidekickName = (name: string) => {
+    setSidekickName(name);
+    void saveOnboardingField('sidekickName', name);
+    goTo('textIntro');
+    speak('let me text u so we can talk!', 2400, 'happy');
+    setTimeout(() => notifBeat(), 2600);
   };
 
   // textIntro → notif, choreographed in three: (1) he pulls out his phone
@@ -484,6 +499,9 @@ export default function Onboarding() {
       case 'celebrate':
       case 'textIntro':
         break; // auto-advance
+      case 'nameSidekick':
+        submitSidekickName(sidekickName || 'Mochi');
+        break;
       case 'notif':
         openChat();
         break;
@@ -554,7 +572,7 @@ export default function Onboarding() {
         <NameEntry
           key="askName"
           title="what should i call you?"
-          header={<StreamedText text="i'm your sidekick! what should i call you? 🤔" style={styles.h2stream} cps={20} />}
+          header={<StreamedText text={"i'm your sidekick!\nwhat should i call you? 🤔"} style={styles.h2stream} cps={20} />}
           revealDelayMs={streamDurationMs("i'm your sidekick! what should i call you? 🤔", 20) + 350}
           placeholder="Your name"
           cta="continue"
@@ -564,7 +582,7 @@ export default function Onboarding() {
 
       {/* DEV (web): dummy keyboard under every keyboard-input step, so layouts
           are judged with the space the real keyboard will take on device */}
-      {(phase === 'askName' || phase === 'birthday') && !animating ? (
+      {(phase === 'askName' || phase === 'birthday' || phase === 'nameSidekick') && !animating ? (
         <FauxKeyboard />
       ) : null}
 
@@ -577,7 +595,7 @@ export default function Onboarding() {
       {phase === 'lookDown' && !animating ? (
         <>
           <View style={styles.centerCopy} pointerEvents="none">
-            <StreamedLines lines={['your head is in the clouds…', 'look down here!']} style={styles.h1small} gapMs={900} />
+            <LookDownCopy />
           </View>
           <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
             <PrimaryButton label="look down" onPress={lookDown} />
@@ -609,6 +627,20 @@ export default function Onboarding() {
           <Animated.View entering={FadeInUp.duration(350).delay(550)} style={[styles.edgeLine, styles.edgeLineLeft]} pointerEvents="none" />
           <Text style={[styles.tapHint, { bottom: insets.bottom + 28 }]}>tap to continue</Text>
         </Pressable>
+      ) : null}
+
+      {/* 10b. name him — he stands above the input in his new color */}
+      {phase === 'nameSidekick' && !animating ? (
+        <NameEntry
+          key="nameSidekick"
+          title="what should you call me?"
+          header={<Text style={styles.h1small}>what should you call me?</Text>}
+          placeholder="Name your sidekick"
+          cta="continue"
+          onSubmit={submitSidekickName}
+          layout="top"
+          suggestions={SIDEKICK_NAME_IDEAS}
+        />
       ) : null}
 
       {/* 7/8. the build-up: camera trembling, haptics rumbling, title card */}
@@ -760,7 +792,7 @@ function HeyTitle() {
       </SubtleShake>
       {/* a quarter-circle pointer: starts flat under the word, bends 90° and
           ends aiming straight down — "the voice came from down there" */}
-      <Svg width={104} height={84} viewBox="0 0 104 84" style={{ marginTop: 10 }}>
+      <Svg width={104} height={84} viewBox="0 0 104 84" style={{ marginTop: 10, transform: [{ rotate: '180deg' }] }}>
         <Path d="M14 10 Q 88 10 88 78" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
       </Svg>
     </Animated.View>
@@ -769,6 +801,29 @@ function HeyTitle() {
 
 // Streams `lines` one after another (each fully types out, a beat, then the
 // next begins) — the sequential, slower cadence the sky copy wants.
+// Screen 3's stacked copy: the clouds line HUGE and slightly tilted, riding
+// high; "look down here!" smaller, a beat later, a bit lower. Both carry a
+// hard (zero-blur) drop shadow nudged down the y-axis.
+function LookDownCopy() {
+  const [second, setSecond] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setSecond(true), streamDurationMs('your head is in the clouds…', 20) + 900);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <View style={{ alignItems: 'center' }}>
+      <View style={{ marginTop: -70, transform: [{ rotate: '-2.5deg' }] }}>
+        <StreamedText text="your head is in the clouds…" style={styles.cloudsBig} cps={20} />
+      </View>
+      {second ? (
+        <View style={{ marginTop: 34 }}>
+          <StreamedText text="look down here!" style={styles.lookDownLine} cps={20} />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function StreamedLines({
   lines,
   style,
@@ -876,7 +931,7 @@ function NameEntry({
         pointerEvents="box-none"
       >
         <View style={[styles.topCopy, { top: insets.top + 96 }]}>
-          <Text style={styles.h1small}>{title}</Text>
+          {header ?? <Text style={styles.h1small}>{title}</Text>}
         </View>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -1193,6 +1248,28 @@ const styles = StyleSheet.create({
   },
   edgeLineRight: { right: 0 },
   edgeLineLeft: { left: 0 },
+  // screen 3: the clouds line at ~2× h1small, tilted, hard y-offset shadow
+  cloudsBig: {
+    fontFamily: FONT_BOLD,
+    fontSize: 64,
+    lineHeight: 68,
+    letterSpacing: -2,
+    textAlign: 'center',
+    color: '#fff',
+    textShadowColor: 'rgba(0,0,0,0.35)',
+    textShadowOffset: { width: 0, height: 4 },
+    textShadowRadius: 0,
+  },
+  lookDownLine: {
+    fontFamily: FONT_BOLD,
+    fontSize: 30,
+    lineHeight: 36,
+    textAlign: 'center',
+    color: '#fff',
+    textShadowColor: 'rgba(0,0,0,0.35)',
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 0,
+  },
   // streamed two-line ask copy — smaller than h1small so it wraps to two lines
   h2stream: {
     fontFamily: FONT_BOLD,
