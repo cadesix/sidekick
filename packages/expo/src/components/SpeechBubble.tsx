@@ -9,6 +9,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useSpeech } from '../store/speech';
+import { FONT_BOLD } from '../lib/tokens';
 
 // RN port of sidekick/src/components/speech-bubble.tsx. Rendered inside the
 // head-tracked OverheadSpeech box, so it bottom-anchors just above the head
@@ -60,7 +61,7 @@ export function SpeechBubble() {
 const styles = StyleSheet.create({
   wrap: { alignItems: 'center' },
   bubble: {
-    maxWidth: 230,
+    maxWidth: 260,
     borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.95)',
     paddingHorizontal: 14,
@@ -71,7 +72,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 6,
   },
-  text: { textAlign: 'center', fontSize: 13, fontWeight: '700', lineHeight: 17, color: '#111' },
+  text: { textAlign: 'center', fontFamily: FONT_BOLD, fontSize: 17, lineHeight: 22, color: '#111' },
   tail: {
     marginTop: -5,
     height: 10,
