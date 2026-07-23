@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { Renderer } from 'expo-three';
 import type { ExpoWebGLRenderingContext } from 'expo-gl';
 import * as THREE from 'three';
@@ -430,7 +431,7 @@ export function createSidekickRenderer(
 
   // Camera
   let framing = opts.framing;
-  const camera = new THREE.PerspectiveCamera(framing.fov ?? s.fov, width / height, 0.1, 260);
+  const camera = new THREE.PerspectiveCamera(framing.fov ?? s.fov, width / height, 0.5, 260);
   const camBasePos = new THREE.Vector3().fromArray(framing.pos);
   const camBaseTarget = new THREE.Vector3().fromArray(framing.target);
   camera.position.copy(camBasePos);
@@ -606,7 +607,8 @@ export function createSidekickRenderer(
   // composer throws on device and DoF silently never runs. (No public accessor for
   // the target, hence the cast.)
   forceByte((bokehPass as unknown as { _renderTargetDepth: THREE.WebGLRenderTarget })._renderTargetDepth);
-  bokehPass.enabled = HOME_DOF;
+  const IS_WEB = Platform.OS === 'web';
+  bokehPass.enabled = HOME_DOF && IS_WEB;
   composer.addPass(bokehPass);
   composer.addPass(new OutputPass());
   // if the composer chain dies on expo-gl, fall back to direct rendering
@@ -1337,12 +1339,12 @@ export function createSidekickRenderer(
     // is used for HOME_DOF (depth-of-field) and/or HOME_BLOOM; both are disabled
     // per-pass above when their flag is off, so an enabled composer only does what
     // it's told. Its render target is MSAA (samples:4) so grass AA still holds.
-    const useComposer = !bloomBroken && (HOME_DOF || (HOME_BLOOM && s.bloomEnabled));
+    const useComposer = !bloomBroken && (!IS_WEB || HOME_DOF || (HOME_BLOOM && s.bloomEnabled));
     if (useComposer) {
       try {
         // keep the focal plane on the character (its head bone, ~y 0.5) so it
         // stays sharp as the camera dollies/orbits; the far hill falls out of focus
-        if (HOME_DOF)
+        if (HOME_DOF && IS_WEB)
           (bokehPass.uniforms as Record<string, THREE.IUniform>).focus.value =
             camera.position.distanceTo(DOF_FOCUS_AT) + s.dofFocus;
         composer.render();
