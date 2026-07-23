@@ -232,7 +232,7 @@ export default function Home() {
   const skyMode = !!sessionId || starChatOpen;
   // TEMPORARY: live star-face look-dev, driven by the sliders in SessionChat.
   // Only pushed while tuning — otherwise the persisted config would override the
-  // constants baked into renderer.ts, and a stale device config would silently
+  // constants baked into three/star-face.ts, and a stale device config would silently
   // win over the code.
   const starFaceCfg = useStarFaceConfig();
   const starFace = STAR_FACE_TUNING ? starFaceCfg : undefined;

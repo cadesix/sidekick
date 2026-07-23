@@ -45,7 +45,7 @@ const OFFSET_X = -18;
 const OFFSET_Y = -84;
 
 // A lazy drift so it feels like it's floating rather than pinned. Two sines at
-// different rates (and out of phase) trace a slow wander instead of an obvious
+// integer rates (1:2, out of phase) trace a slow wander instead of an obvious
 // loop; the periods are deliberately not multiples of each other. The label is
 // inside the same drifting box, so it stays welded to the star.
 const FLOAT_X = 7; // px

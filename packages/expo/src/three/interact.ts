@@ -104,7 +104,7 @@ export function createInteraction(opts: {
   bone: (n: 'head' | 'handL' | 'handR') => THREE.Object3D | undefined;
   cameraDrag?: boolean;
   // `big` = the boiling-over reaction (kept-at-it pokes): the renderer plays a
-  // jump with hands thrown up; the host layer adds haptics + a "Hey!" bubble
+  // jump with hands thrown up; the host layer adds haptics + a "hey!!" bubble
   onPoke?: (part: PokePart, point: THREE.Vector3, expr: string | null, big?: boolean) => void;
 }): Interaction {
   const { camera } = opts;
@@ -129,7 +129,7 @@ export function createInteraction(opts: {
 
   // emotive poke overlays + escalation. Rapid repeated pokes within POKE_WINDOW
   // stack pokeCount toward annoyance (3+) then the big boil-over (5+ — jump,
-  // hands up, "Hey!"); an isolated poke resets it.
+  // hands up, "hey!!"); an isolated poke resets it.
   const headShake = new Wiggle();
   const bodyWiggle = new Wiggle();
   let pokeCount = 0;
@@ -385,4 +385,3 @@ export function createInteraction(opts: {
     },
   };
 }
-

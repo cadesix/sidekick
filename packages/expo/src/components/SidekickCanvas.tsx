@@ -77,7 +77,7 @@ export function SidekickCanvas({
   // world environment (map travel): 'meadow' | biome id
   environment?: EnvironmentId;
   onControls?: (c: CosmeticsControls | null) => void;
-  // the raw scene controller (Settings sheet uses applySettings for live look-dev)
+  // the raw scene controller (applySettings, face pulses, daily-box pop)
   onController?: (c: SidekickController | null) => void;
   // head-tracked overlay position sink (bond badge / speech bubble)
   overhead?: OverheadTarget;

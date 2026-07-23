@@ -217,7 +217,7 @@ export function createSidekickRenderer(
     // null on dispose) — the Shop sheet drives the live character through it
     onControls?: (c: CosmeticsControls | null) => void;
     // the poke escalation boiled over (5+ rapid pokes): the scene plays the
-    // jump itself; the host layer adds haptics + the "Hey!" speech bubble
+    // jump itself; the host layer adds haptics + the "hey!!" speech bubble
     onAngryPoke?: () => void;
     // per-frame head-bone screen position in NDC (-1..1, +y up) + visibility
     // (z<1 = in front of camera). Drives head-tracked overlays (bond badge,

@@ -32,7 +32,7 @@ import { snapshotSessions, useSnapshot } from '../lib/state';
 import { useSidekickContext } from '../store/context';
 
 // RN port of sidekick/src/components/world-map.tsx: the full-screen "world map"
-// the dock's Map icon opens. A static 3:4 map fills the viewport height (cover),
+// the top-right map pin opens. A static 3:4 map fills the viewport height (cover),
 // fixed and centered — the side overhang is clipped, never panned. Each island
 // is locked behind ONE guided session.
 // Unlocked islands show an emoji badge + name pill; locked islands show the
