@@ -1,6 +1,7 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
+import { persist } from 'zustand/middleware';
+
+import { ssrSafeStorage } from './persist-storage';
 
 // DEV-only presentation experiments, persisted so a reload keeps the variant
 // under review. Read by Home, set from the DevPanel.
@@ -13,6 +14,10 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 export type ChatUiMode = 'sheet' | 'fullscreen' | 'sky';
 export const CHAT_UI_MODES: ChatUiMode[] = ['sheet', 'fullscreen', 'sky'];
 
+// the one mode production ships (also the store default) — change HERE when a
+// winner is picked, nowhere else
+const SHIPPED_CHAT_UI: ChatUiMode = 'fullscreen';
+
 type Store = {
   chatUiMode: ChatUiMode;
   setChatUiMode: (m: ChatUiMode) => void;
@@ -21,18 +26,19 @@ type Store = {
 export const useDevPrefs = create<Store>()(
   persist(
     (set) => ({
-      chatUiMode: 'fullscreen',
+      chatUiMode: SHIPPED_CHAT_UI,
       setChatUiMode: (m) => set({ chatUiMode: m }),
     }),
     {
       name: 'sidekick_dev_prefs',
-      // inert storage under expo-router's node renderer (no `window` there) —
-      // same guard as dockBadges; a persist write would kill the dev server
-      storage: createJSONStorage(() =>
-        typeof window === 'undefined'
-          ? { getItem: async () => null, setItem: async () => {}, removeItem: async () => {} }
-          : AsyncStorage,
-      ),
+      storage: ssrSafeStorage(),
     },
   ),
 );
+
+// The ONLY sanctioned way to read the chat presentation: DEV builds follow the
+// DevPanel switch; production pins the shipped mode without even subscribing —
+// a persisted dev value can never steer (or re-render) a prod build.
+export function useChatUiMode(): ChatUiMode {
+  return useDevPrefs((s) => (process.env.NODE_ENV !== 'production' ? s.chatUiMode : SHIPPED_CHAT_UI));
+}

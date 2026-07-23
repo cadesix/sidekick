@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 
@@ -20,7 +21,10 @@ const ROWS = [
   ['⇧', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '⌫'],
 ];
 
-export function FauxKeyboard({
+// memoized: ~45 static views that would otherwise reconcile on every parent
+// render (its props are a stable shared value + a constant)
+export const FauxKeyboard = memo(FauxKeyboardImpl);
+function FauxKeyboardImpl({
   progress,
   height = FAUX_KB_HEIGHT,
 }: {

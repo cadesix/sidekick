@@ -12,7 +12,7 @@ import Animated, {
 	withSpring,
 	withTiming,
 } from "react-native-reanimated";
-import { FloatingChat } from "../floating-chat";
+import { FLOATING_META_COLOR, FloatingChat } from "../floating-chat";
 import { formatClockTime } from "../lib/time";
 import type { MessageItem } from "../lib/transcript";
 import { bubble, colors, font, type } from "../theme";
@@ -271,6 +271,6 @@ const styles = StyleSheet.create({
 		color: colors.secondaryLabel,
 	},
 	metaLight: {
-		color: "#FFFFFF",
+		color: FLOATING_META_COLOR,
 	},
 });

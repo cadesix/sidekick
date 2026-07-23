@@ -7,6 +7,7 @@ import { Alert, Dimensions, FlatList, Pressable, StyleSheet, View } from "react-
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, {
+	type SharedValue,
 	Easing,
 	interpolate,
 	useAnimatedProps,
@@ -43,6 +44,48 @@ import { TimestampSeparator } from "../components/TimestampSeparator";
 import { TypingIndicator } from "../components/TypingIndicator";
 
 const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
+
+// Floating ("sky") presentation: reserve the bottom of the screen for the
+// character — the newest message rests ABOVE his head, the band between input
+// bar and transcript shows only the environment. Fraction of screen height,
+// tuned to SKY_CHAT_FRAMING's standing-body framing (app/index.tsx). The
+// reserve COLLAPSES as the keyboard rises (the keyboard covers the character
+// anyway, and the transcript shouldn't ride 22% above the composer).
+const CHARACTER_ZONE = Math.round(Dimensions.get("window").height * 0.22);
+
+// The reply-mode blur, as its own memoized LEAF: mounting it inline made every
+// reply open/close commit the whole transcript twice (the delayed-unmount state
+// lived on ChatScreen). It must UNMOUNT at idle — expo-blur's web shim applies
+// backdrop-filter saturate(180%) even at intensity 0, washing the scene behind
+// the floating chat — but must survive the 220ms exit or dismissal pops the
+// blur off in one frame.
+const ReplyScrim = memo(function ReplyScrim({
+	replyActive,
+	replyProgress,
+}: {
+	replyActive: boolean;
+	replyProgress: SharedValue<number>;
+}) {
+	const [mounted, setMounted] = useState(false);
+	useEffect(() => {
+		if (replyActive) {
+			setMounted(true);
+			return;
+		}
+		const t = setTimeout(() => setMounted(false), 260);
+		return () => clearTimeout(t);
+	}, [replyActive]);
+	const blurProps = useAnimatedProps(() => ({ intensity: replyProgress.value * 28 }));
+	if (!mounted) return null;
+	return (
+		<AnimatedBlurView
+			tint="light"
+			pointerEvents="none"
+			animatedProps={blurProps}
+			style={StyleSheet.absoluteFill}
+		/>
+	);
+});
 
 const TYPING_ITEM = "typing";
 const ENTRY_ANIMATION_WINDOW = 1200;
@@ -126,16 +169,17 @@ function ChatScreenImpl({
 	// emulates one — the same shared-value shapes the real hook drives (height
 	// runs 0 → -kb, progress 0 → 1), letting the keyboard layout be exercised
 	// in the browser. Native uses the real thing untouched.
-	const EMU_KB_HEIGHT = FAUX_KB_HEIGHT;
 	const emuKbHeight = useSharedValue(0);
 	const emuKbProgress = useSharedValue(0);
-	// the emulation only exists where the faux deck renders (dev web) — a prod
+	// The emulation only exists where the faux deck renders (dev web) — a prod
 	// web build must use the real (no-op) hook or focusing the composer would
-	// fly the transcript up 320px over nothing
-	const keyboard = FAUX_KB_VISIBLE ? { height: emuKbHeight, progress: emuKbProgress } : realKeyboard;
+	// fly the transcript up 320px over nothing. Memoized: a fresh object per
+	// render would rebuild every worklet that closes over `keyboard`.
+	const emuKeyboard = useMemo(() => ({ height: emuKbHeight, progress: emuKbProgress }), [emuKbHeight, emuKbProgress]);
+	const keyboard = FAUX_KB_VISIBLE ? emuKeyboard : realKeyboard;
 	const emulateKeyboard = (open: boolean) => {
 		if (!FAUX_KB_VISIBLE) return;
-		emuKbHeight.value = withTiming(open ? -EMU_KB_HEIGHT : 0, { duration: 260 });
+		emuKbHeight.value = withTiming(open ? -FAUX_KB_HEIGHT : 0, { duration: 260 });
 		emuKbProgress.value = withTiming(open ? 1 : 0, { duration: 260 });
 	};
 	const inputBarHeight = useSharedValue(56);
@@ -152,21 +196,6 @@ function ChatScreenImpl({
 		});
 	}, [replyActive]);
 
-	const scrimBlurProps = useAnimatedProps(() => ({
-		intensity: replyProgress.value * 28,
-	}));
-	// The blur must UNMOUNT at idle (its web shim's backdrop-filter saturates the
-	// scene even at intensity 0) but must survive the 220ms exit animation, or
-	// dismissing a reply pops the blur off in one frame.
-	const [scrimMounted, setScrimMounted] = useState(false);
-	useEffect(() => {
-		if (replyTo !== undefined) {
-			setScrimMounted(true);
-			return;
-		}
-		const t = setTimeout(() => setScrimMounted(false), 260);
-		return () => clearTimeout(t);
-	}, [replyTo]);
 	const scrimTintStyle = useAnimatedStyle(() => ({
 		opacity: replyProgress.value,
 	}));
@@ -187,13 +216,6 @@ function ChatScreenImpl({
 	// Short feather above the composer so messages dissolve into it instead of
 	// cutting hard at its edge — without a fixed slab overhanging readable text.
 	const FADE_FEATHER = 24;
-	// Floating ("sky") presentation: reserve the bottom of the screen for the
-	// character — the newest message rests ABOVE his head, and the band between
-	// the input bar and the transcript shows only the environment. Fraction of
-	// screen height, tuned to SKY_CHAT_FRAMING's standing-body framing. The
-	// reserve COLLAPSES as the keyboard rises (the keyboard covers the character
-	// anyway, and the transcript shouldn't ride 30% above the composer).
-	const CHARACTER_ZONE = Math.round(Dimensions.get("window").height * 0.22);
 	// In an inverted list the header renders at the visual bottom; it reserves
 	// room for the input bar (plus the fade feather) and however far the keyboard
 	// lifted it — so the newest message rests ABOVE the fade, not under it.
@@ -368,17 +390,7 @@ function ChatScreenImpl({
 				/>
 			</GestureDetector>
 
-			{/* Mounted ONLY while replying: expo-blur's web shim applies
-			    backdrop-filter saturate(180%) even at intensity 0, which visibly
-			    over-saturates the environment behind the floating chat. */}
-			{scrimMounted ? (
-				<AnimatedBlurView
-					tint="light"
-					pointerEvents="none"
-					animatedProps={scrimBlurProps}
-					style={StyleSheet.absoluteFill}
-				/>
-			) : null}
+			<ReplyScrim replyActive={replyTo !== undefined} replyProgress={replyProgress} />
 			<Animated.View
 				pointerEvents="none"
 				style={[StyleSheet.absoluteFill, styles.replyScrim, scrimTintStyle]}
@@ -391,19 +403,20 @@ function ChatScreenImpl({
 			) : null}
 
 			<View style={styles.header} pointerEvents="box-none">
+				{/* the white header fade + grabber both vanish when floating (they'd
+				    read as fog / a non-functional pill over the scene) */}
 				{floating ? null : (
-					<LinearGradient
-						colors={["rgba(255,255,255,0.96)", "rgba(255,255,255,0.82)", "rgba(255,255,255,0)"]}
-						locations={[0, 0.55, 1]}
-						style={styles.headerFade}
-						pointerEvents="none"
-					/>
-				)}
-				{/* grabber: hidden when floating (kept in the solid presentations) */}
-				{floating ? null : (
-					<View style={styles.grabberWrap} pointerEvents="none">
-						<View style={styles.grabber} />
-					</View>
+					<>
+						<LinearGradient
+							colors={["rgba(255,255,255,0.96)", "rgba(255,255,255,0.82)", "rgba(255,255,255,0)"]}
+							locations={[0, 0.55, 1]}
+							style={styles.headerFade}
+							pointerEvents="none"
+						/>
+						<View style={styles.grabberWrap} pointerEvents="none">
+							<View style={styles.grabber} />
+						</View>
+					</>
 				)}
 				{/* close on the RIGHT now; settings live under Profile (dock tile) */}
 				<View style={styles.headerRow} pointerEvents="box-none">
@@ -427,7 +440,7 @@ function ChatScreenImpl({
 				/>
 			) : null}
 
-			<FauxKeyboard progress={emuKbProgress} height={EMU_KB_HEIGHT} />
+			<FauxKeyboard progress={emuKbProgress} />
 
 			<Animated.View style={[styles.footer, footerStyle]} pointerEvents="box-none">
 				{floating ? null : (

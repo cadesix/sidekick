@@ -1,5 +1,5 @@
 import { useContext } from "react";
-import { FloatingChat } from "../floating-chat";
+import { FLOATING_META_COLOR, FloatingChat } from "../floating-chat";
 import { StyleSheet, Text } from "react-native";
 import { colors, font, type } from "../theme";
 
@@ -25,6 +25,6 @@ const styles = StyleSheet.create({
 		fontFamily: font.medium,
 	},
 	light: {
-		color: "#FFFFFF",
+		color: FLOATING_META_COLOR,
 	},
 });

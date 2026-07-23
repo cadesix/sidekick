@@ -1,8 +1,9 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
+import { persist } from 'zustand/middleware';
 
 import { localDay } from '@sidekick/core';
+
+import { ssrSafeStorage } from './persist-storage';
 
 // "Seen" stamps behind the dock's notification dots: each dot clears the moment
 // its surface is LOOKED AT, and re-arms when there's new cause —
@@ -51,16 +52,7 @@ export const useDockBadges = create<Store>()(
     }),
     {
       name: 'sidekick_dock_badges',
-      // expo-router statically renders routes in NODE, where web AsyncStorage
-      // throws (`window is not defined`) — and the post-rehydrate setState below
-      // triggers a persist WRITE whose rejection kills the dev server. RN always
-      // defines a window global, so `typeof window` only gates the node renderer:
-      // give it inert storage and let the real one hydrate in the browser/app.
-      storage: createJSONStorage(() =>
-        typeof window === 'undefined'
-          ? { getItem: async () => null, setItem: async () => {}, removeItem: async () => {} }
-          : AsyncStorage,
-      ),
+      storage: ssrSafeStorage(),
       partialize: (s) => ({ goalsSeenDate: s.goalsSeenDate, shopSeenDate: s.shopSeenDate, msgsSeenAt: s.msgsSeenAt }),
       onRehydrateStorage: () => () => {
         useDockBadges.setState({ hydrated: true });

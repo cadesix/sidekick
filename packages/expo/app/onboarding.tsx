@@ -31,6 +31,10 @@ import {
 import { Glass } from '../src/imessage/components/Glass';
 import { OnboardingAuth } from '../src/components/OnboardingAuth';
 import { FAUX_KB_HEIGHT, FAUX_KB_VISIBLE, FauxKeyboard } from '../src/components/FauxKeyboard';
+
+// bottom inset for a keyboard-input step: real keyboards are handled by
+// KeyboardAvoidingView; the dev-web faux deck needs its space reserved manually
+const kbBottomInset = (insetBottom: number) => (FAUX_KB_VISIBLE ? FAUX_KB_HEIGHT : insetBottom) + 20;
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { useAuthStore } from '../src/lib/auth-store';
 import type { Framing, SidekickController } from '../src/three/renderer';
@@ -262,11 +266,6 @@ export default function Onboarding() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, authStatus]);
 
-  // 1 → 2: a gentle push further into the sky for the questions.
-  const startNaming = () => {
-    if (animating) return;
-    goTo('askName');
-  };
 
   // 2 → birthday: just capture the name (still in the sky).
   const submitUserName = (name: string) => {
@@ -393,7 +392,7 @@ export default function Onboarding() {
         goTo('welcome');
         break;
       case 'welcome':
-        startNaming();
+        goTo('askName');
         break;
       case 'askName':
         submitUserName(userName || 'Dev');
@@ -465,7 +464,7 @@ export default function Onboarding() {
             <Text style={styles.h1Hero}>Welcome</Text>
           </Animated.View>
           <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
-            <PrimaryButton label="Get started" onPress={startNaming} disabled={animating} />
+            <PrimaryButton label="Get started" onPress={() => goTo('askName')} disabled={animating} />
           </View>
         </>
       ) : null}
@@ -723,7 +722,7 @@ function NameEntry({
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.nameBottomWrap}
         >
-          <View style={[styles.nameCol, { paddingBottom: (FAUX_KB_VISIBLE ? FAUX_KB_HEIGHT : insets.bottom) + 20 }]}>
+          <View style={[styles.nameCol, { paddingBottom: kbBottomInset(insets.bottom) }]}>
             {chipRow}
             {field}
             <View style={{ height: 12 }} />
@@ -815,7 +814,7 @@ function BirthdayStep({ onSubmit }: { onSubmit: (birthday: string) => void }) {
       <View style={[styles.topCopy, { top: insets.top + 96 }]}>
         <Text style={styles.h1small}>When's your birthday?</Text>
       </View>
-      <View style={[styles.nameBottomWrap, { paddingBottom: (FAUX_KB_VISIBLE ? FAUX_KB_HEIGHT : insets.bottom) + 20 }]}>
+      <View style={[styles.nameBottomWrap, { paddingBottom: kbBottomInset(insets.bottom) }]}>
         <View style={styles.nameCol}>
           <View style={styles.dobRow}>
             <TextInput

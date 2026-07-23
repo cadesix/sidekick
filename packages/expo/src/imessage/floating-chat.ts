@@ -6,3 +6,7 @@ import { createContext } from "react";
 // disappears against the environment; white would disappear against the
 // sheet/fullscreen modes' white fill. Provided by ChatScreen.
 export const FloatingChat = createContext(false);
+
+// the one color meta text renders in over the scene — consumers share this so
+// a third meta surface can't mint a fourth white
+export const FLOATING_META_COLOR = "#FFFFFF";

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import {
 	Alert,
 	Image,
@@ -67,7 +67,7 @@ function Group({
 	children,
 	footer,
 }: {
-	title: string;
+	title?: string;
 	children: ReactNode;
 	footer?: string;
 }) {
@@ -162,8 +162,11 @@ export function ProfileScreen() {
 	const bond = snapshot?.bond ?? BOND_MIN;
 	// gate the star-chat CTA the same way Home gates its star button: no
 	// unfinished session → nothing to open (a completed reading would resume
-	// into stale local phase state)
-	const nextStarChat = snapshot ? coreNextSession(snapshotSessions(snapshot)) : null;
+	// into stale local phase state). Memoized — this scans the session ladder.
+	const nextStarChat = useMemo(
+		() => (snapshot ? coreNextSession(snapshotSessions(snapshot)) : null),
+		[snapshot],
+	);
 	const streakCount = snapshot?.streak.count ?? 0;
 	const [streakOpen, setStreakOpen] = useState(false);
 	const location = useQuery({ queryKey: ["location", "setting"], queryFn: loadLocationSetting });
@@ -292,7 +295,6 @@ export function ProfileScreen() {
 					{/* Connections — a proper section title, not a settings caption */}
 					<Text style={styles.sectionTitle}>Connections</Text>
 					<Group
-						title=""
 						footer={`Each connection explains what stays on your iPhone and what ${sidekickName} can use. You can review or disconnect it anytime.`}
 					>
 						<View style={styles.integrationRow}>
@@ -445,7 +447,7 @@ const styles = StyleSheet.create({
 	bondTrack: {
 		height: 10,
 		borderRadius: 999,
-		backgroundColor: "#F0F0F2",
+		backgroundColor: colors.field, // 06 §1.1 input/track token
 		overflow: "hidden",
 	},
 	bondFill: {

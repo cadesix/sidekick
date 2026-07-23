@@ -3,7 +3,7 @@ import { Profiler, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { Redirect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Alert, AppState, Dimensions, Pressable, Text, View, type AppStateStatus } from 'react-native';
-import Animated, { Easing, interpolate, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, interpolate, useAnimatedStyle, useSharedValue, withSpring, withTiming, type SharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CHAT_SHEET_DETENT, ChatScreen } from '~/imessage';
@@ -44,7 +44,7 @@ import { mainConversation } from '../src/imessage/server';
 import { CHAT_MAIN_KEY, chatTranscriptKey, fetchMainTranscript } from '~/imessage/useSidekickChat';
 import { GOALS_QUERY_KEY } from '../src/components/GoalsSheet';
 import { useDockBadges } from '../src/store/dockBadges';
-import { useDevPrefs } from '../src/store/devPrefs';
+import { useChatUiMode } from '../src/store/devPrefs';
 import { patchBoxClaim, snapshotSessions, useSnapshot } from '../src/lib/state';
 import { reconcileWardrobe } from '../src/lib/wardrobe-sync';
 import { useCosmeticVersion } from '../src/store/cosmeticVersion';
@@ -134,6 +134,21 @@ const TRAVEL_LINES: Record<EnvironmentId, string> = {
 };
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+
+// The fullscreen launch morph's per-edge curves, as NAMED standard easings
+// (hoisted: building them inside the worklet would allocate per frame).
+// back(1.7) ≈ the old 1 + 2.7b³ + 1.7b² overshoot polynomial.
+const EASE_TOP = Easing.out(Easing.back(1.7));
+const EASE_BOTTOM = Easing.in(Easing.cubic);
+const EASE_SIDES = Easing.out(Easing.quad);
+
+// slide-up-from-below used by every drawer-ish chat surface (0 = off-screen
+// by `distance`, 1 = in place)
+function useSlideUp(progress: SharedValue<number>, distance: number) {
+  return useAnimatedStyle(() => ({
+    transform: [{ translateY: (1 - progress.value) * distance }],
+  }));
+}
 // The chat drawer covers the lower 75%; the mascot lives in the band above.
 const DRAWER_TOP = SCREEN_H * (1 - CHAT_SHEET_DETENT);
 
@@ -224,23 +239,14 @@ export default function Home() {
   // redirect itself lives just before the return so every hook still runs.
   const onboarding = useOnboardingState();
   const authStatus = useAuthStore((s) => s.status);
-  // which Messages presentation is live. The DevPanel switch only steers DEV
-  // builds — production pins the shipped mode (a persisted dev value must never
-  // leak into a prod build with no DevPanel to escape it).
-  const devChatUi = useDevPrefs((s) => s.chatUiMode);
-  const chatUi = process.env.NODE_ENV !== 'production' ? devChatUi : 'fullscreen';
+  // which Messages presentation is live (devPrefs owns the prod pin — see
+  // useChatUiMode: DEV builds follow the DevPanel switch, prod ships one mode)
+  const chatUi = useChatUiMode();
   // chatOpen drives the camera/holdingPhone; chatProgress runs the open animation
   const [chatOpen, setChatOpen] = useState(false);
   const chatProgress = useSharedValue(0);
   // the dock tile the chat grows out of (window coords; see openChat)
-  const chatOriginX = useSharedValue(SCREEN_W / 2 - 30);
-  const chatOriginY = useSharedValue(SCREEN_H - 140);
-  const chatOriginW = useSharedValue(60);
-  const chatOriginH = useSharedValue(60);
-  const chatOrigin = useMemo(
-    () => ({ x: chatOriginX, y: chatOriginY, w: chatOriginW, h: chatOriginH }),
-    [chatOriginX, chatOriginY, chatOriginW, chatOriginH],
-  );
+  const chatOrigin = useSharedValue({ x: SCREEN_W / 2 - 30, y: SCREEN_H - 140, w: 60, h: 60 });
   // guided habit-add ("+" from Goals) presents in the classic chat drawer
   // (same camera/pose/slide as the 'sheet' presentation), driven by this value.
   const habitProgress = useSharedValue(0);
@@ -369,9 +375,11 @@ export default function Home() {
   useEffect(() => {
     if (starChatRequested && settings) {
       useStarChat.getState().clearOpenRequest();
-      setStarChatOpen(true);
+      // same gate as the star button: only open when a session remains — the
+      // raiser (Profile) checks too, but the consumer must not trust it
+      if (coreNextSession(snapshotSessions(snapshot))) setStarChatOpen(true);
     }
-  }, [starChatRequested, settings]);
+  }, [starChatRequested, settings, snapshot]);
   // The scene time-of-day tracks the real clock. hydrate sets it at launch; this
   // catches a session left open across a boundary (dusk → night) when the app
   // comes back to the foreground, and re-applies the matching preset live.
@@ -476,14 +484,16 @@ export default function Home() {
     useDockBadges.getState().markMsgsSeen(newest > 0 ? newest : Date.now());
   }, [queryClient]);
   const openChat = useCallback((origin?: TileOrigin) => {
-    // zoom out of the pressed dock tile, iOS-app-launch style; entries without
-    // a tile (goal check-ins, the map) grow from the dock's neighborhood
-    chatOrigin.x.value = origin?.x ?? SCREEN_W / 2 - 30;
-    chatOrigin.y.value = origin?.y ?? SCREEN_H - 140;
-    chatOrigin.w.value = origin?.width ?? 60;
-    chatOrigin.h.value = origin?.height ?? 60;
     setChatOpen(true);
     if (chatUi === 'fullscreen') {
+      // zoom out of the pressed dock tile, iOS-app-launch style; entries without
+      // a tile (goal check-ins, the map) grow from the dock's neighborhood
+      chatOrigin.value = {
+        x: origin?.x ?? SCREEN_W / 2 - 30,
+        y: origin?.y ?? SCREEN_H - 140,
+        w: origin?.width ?? 60,
+        h: origin?.height ?? 60,
+      };
       // a spring drives the whole flight: quick, lively through the middle,
       // decelerating into a settle at the end (curves below shape the geometry)
       chatProgress.value = withSpring(1, { damping: 16, stiffness: 170, mass: 0.75 });
@@ -701,6 +711,7 @@ export default function Home() {
   );
   const darkBackdrop = hexLuminance(topSky) < 0.4;
 
+  // (hoisted so the worklet doesn't rebuild the easing closures per frame)
   // iOS-app-launch morph. The container starts as the EXACT tile rect (per-axis
   // scale, so at p=0 it IS the square icon) and each edge runs its own curve:
   //  - the top edge races ahead with a back-out overshoot — the rect visibly
@@ -712,27 +723,28 @@ export default function Home() {
   // the geometric character lives in these per-edge curves either way.
   const chatZoomStyle = useAnimatedStyle(() => {
     const p = chatProgress.value;
+    const o = chatOrigin.value;
     // top: compressed into the first ~60% of the flight with a hard back-out —
     // it FLIES up and fills its corners early, overshooting ~10% then settling
-    const tT = Math.min(1, p / 0.6);
-    const bT = tT - 1;
-    const pTop = 1 + 2.7 * bT * bT * bT + 1.7 * bT * bT;
+    const pTop = EASE_TOP(Math.min(1, p / 0.6));
     // bottom: gravity-pinned early, then arrives by ~92% — close enough behind
     // the top that the landing reads as one settle, not two separate hits
-    const tB = Math.min(1, p / 0.92);
-    const pBot = tB * tB * tB;
+    const pBot = EASE_BOTTOM(Math.min(1, p / 0.92));
     // sides: quick ease-out, resolved by ~70% so the width leads the bottom
-    const tX = Math.min(1, p / 0.7);
-    const pX = 1 - (1 - tX) * (1 - tX);
-    const top = chatOrigin.y.value * (1 - pTop);
-    const bottom = (chatOrigin.y.value + chatOrigin.h.value) * (1 - pBot) + SCREEN_H * pBot;
-    const left = chatOrigin.x.value * (1 - pX);
-    const right = (chatOrigin.x.value + chatOrigin.w.value) * (1 - pX) + SCREEN_W * pX;
+    const pX = EASE_SIDES(Math.min(1, p / 0.7));
+    const top = o.y * (1 - pTop);
+    const bottom = (o.y + o.h) * (1 - pBot) + SCREEN_H * pBot;
+    const left = o.x * (1 - pX);
+    const right = (o.x + o.w) * (1 - pX) + SCREEN_W * pX;
     return {
       transform: [
         { perspective: 650 },
         { translateX: (left + right) / 2 - SCREEN_W / 2 },
-        { translateY: (top + bottom) / 2 - SCREEN_H / 2 },
+        // fully closed = parked OFF-SCREEN inside the transform (transform-only:
+        // a layout prop like marginTop would re-run Yoga on the whole chat tree
+        // every frame; and never an opacity write — Glass descendants die if an
+        // ancestor's opacity animates, expo/expo#41024)
+        { translateY: (top + bottom) / 2 - SCREEN_H / 2 + (p > 0.005 ? 0 : SCREEN_H * 4) },
         // NEGATIVE rotateX tips the BOTTOM away: the bottom edge renders
         // narrower than the top (reverse pyramid). The tilt snaps in over the
         // first quarter, then the flatten TRACKS the bottom's arrival — so the
@@ -744,22 +756,14 @@ export default function Home() {
       ],
       // tile corners while small, square once full screen
       borderRadius: 44 * Math.max(0, 1 - p),
-      // fully closed = parked OFF-SCREEN (never an opacity write — Glass
-      // descendants die if an ancestor's opacity animates, expo/expo#41024)
-      marginTop: p > 0.005 ? 0 : SCREEN_H * 2,
     };
   });
-  // v1 sheet: the original slide-up drawer over the lower ~82%
-  const chatSheetStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: (1 - chatProgress.value) * (SCREEN_H - DRAWER_TOP) }],
-  }));
-  // v3 sky: the transcript slides up over the scene. NO animated opacity here —
-  // the wrapper holds Glass descendants (header X, composer), and animating an
-  // ancestor's opacity permanently kills UIGlassEffect views (expo/expo#41024;
-  // same reason HomeDock slides instead of fading).
-  const chatSkyStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: (1 - chatProgress.value) * SCREEN_H }],
-  }));
+  // v1 sheet slides over the lower ~82%; v3 sky slides the full height over the
+  // scene. Slides, never fades: the wrappers hold Glass descendants, and
+  // animating an ancestor's opacity permanently kills UIGlassEffect views
+  // (expo/expo#41024 — same reason HomeDock slides instead of fading).
+  const chatSheetStyle = useSlideUp(chatProgress, SCREEN_H - DRAWER_TOP);
+  const chatSkyStyle = useSlideUp(chatProgress, SCREEN_H);
   // The icon clone rides ON TOP of the chat inside the morphing rect and fades
   // away in a BLINK (~2 frames) — one stretched half-icon/half-app frame, then
   // it's the screen. (Fading the OVERLAY, never the chat content, keeps
@@ -767,10 +771,7 @@ export default function Home() {
   const chatIconFadeStyle = useAnimatedStyle(() => ({
     opacity: interpolate(chatProgress.value, [0, 0.3, 0.38, 1], [1, 1, 0, 0]),
   }));
-  // identical to chatSheetStyle, for the guided habit-add drawer
-  const habitDrawerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: (1 - habitProgress.value) * (SCREEN_H - DRAWER_TOP) }],
-  }));
+  const habitDrawerStyle = useSlideUp(habitProgress, SCREEN_H - DRAWER_TOP);
 
   // Front-door gate (see the query at the top). Placed after every hook so the
   // hook order is stable across renders; a one-frame blank while it resolves.
@@ -872,7 +873,7 @@ export default function Home() {
       {/* iOS-style home dock — the sheets slide up OVER it; only the
           full-screen map reveal hides it */}
       <HomeDock
-        hidden={mapShown || skyMode || (chatUi === 'sky' && chatOpen)}
+        hidden={mapShown || skyMode || (chatUi !== 'sheet' && chatOpen)}
         unread={unread}
         shopDot={shopDot}
         goalsDot={goalsDot}
@@ -1047,7 +1048,10 @@ export default function Home() {
           v2 'fullscreen': takeover zooming out of the dock tile (icon morph)
           v3 'sky': camera pans up (SKY_CHAT_FRAMING), the chat floats above
           the character; the header's X closes it */}
-      {chatUi === 'sheet' ? (
+      {(() => {
+        // one ChatScreen instance shared by whichever wrapper is live
+        const chatScreen = <ChatScreen floating={chatUi === 'sky'} onClose={closeChat} onOpenGame={setActiveMatchId} />;
+        return chatUi === 'sheet' ? (
         <>
           {chatOpen ? (
             <Pressable
@@ -1074,7 +1078,7 @@ export default function Home() {
             ]}
             pointerEvents={chatOpen ? 'auto' : 'none'}
           >
-            <ChatScreen onClose={closeChat} onOpenGame={setActiveMatchId} />
+            {chatScreen}
           </Animated.View>
         </>
       ) : chatUi === 'sky' ? (
@@ -1089,7 +1093,7 @@ export default function Home() {
           pointerEvents={chatOpen ? 'auto' : 'none'}
         >
           <View style={{ flex: 1, paddingTop: insets.top }}>
-            <ChatScreen floating onClose={closeChat} onOpenGame={setActiveMatchId} />
+            {chatScreen}
           </View>
         </Animated.View>
       ) : (
@@ -1110,7 +1114,7 @@ export default function Home() {
           pointerEvents={chatOpen ? 'auto' : 'none'}
         >
           <View style={{ flex: 1, paddingTop: insets.top }}>
-            <ChatScreen onClose={closeChat} onOpenGame={setActiveMatchId} />
+            {chatScreen}
           </View>
           {/* the launching app icon: stretches with the rect, fades into the app */}
           <Animated.View
@@ -1124,7 +1128,8 @@ export default function Home() {
             </LinearGradient>
           </Animated.View>
         </Animated.View>
-      )}
+      );
+      })()}
 
       {/* Game overlay (plan 21) — the full-screen turn player, over the chat
           drawer; a turn card tap or the picker sheet opens it */}
