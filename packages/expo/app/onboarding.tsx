@@ -374,7 +374,7 @@ export default function Onboarding() {
     // densifies to the boom. No discrete bursts: it reads as rising tension,
     // not taps. Then the sidekick POPS: a massive impact shake + jumpIn stomp.
     setTimeout(() => {
-      controllerRef.current?.shake({ amp: 0.44, duration: (POP - 250) / 1000, mode: 'build' });
+      controllerRef.current?.shake({ amp: 0.48, duration: (POP - 250) / 1000, mode: 'build' });
     }, 250);
     playBuildToBoom(POP, POP);
     setTimeout(() => {

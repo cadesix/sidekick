@@ -1267,7 +1267,10 @@ export function createSidekickRenderer(
       if (sp >= 1) {
         shake = null;
       } else {
-        const env = shake.mode === 'build' ? sp * sp : (1 - sp) * (1 - sp);
+        // build: a perceptible tremor from the START that grows ~linearly to the
+        // pop (a small floor so it's felt immediately, not a back-loaded spike —
+        // sp*sp read as "no shake, then pop"). impact: spike then decay.
+        const env = shake.mode === 'build' ? 0.12 + 0.88 * sp : (1 - sp) * (1 - sp);
         const a = shake.amp * env;
         camera.position.x += Math.sin(now * 92) * a;
         camera.position.y += Math.cos(now * 71) * a;
