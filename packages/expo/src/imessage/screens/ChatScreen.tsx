@@ -351,12 +351,17 @@ function ChatScreenImpl({
 				/>
 			</GestureDetector>
 
-			<AnimatedBlurView
-				tint="light"
-				pointerEvents="none"
-				animatedProps={scrimBlurProps}
-				style={StyleSheet.absoluteFill}
-			/>
+			{/* Mounted ONLY while replying: expo-blur's web shim applies
+			    backdrop-filter saturate(180%) even at intensity 0, which visibly
+			    over-saturates the environment behind the floating chat. */}
+			{replyTo !== undefined ? (
+				<AnimatedBlurView
+					tint="light"
+					pointerEvents="none"
+					animatedProps={scrimBlurProps}
+					style={StyleSheet.absoluteFill}
+				/>
+			) : null}
 			<Animated.View
 				pointerEvents="none"
 				style={[StyleSheet.absoluteFill, styles.replyScrim, scrimTintStyle]}
