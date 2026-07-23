@@ -1,5 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,13 +13,18 @@ import { NewsDot } from './NewsDot';
 // Profile), each a hand-drawn SVG + gradient. Fades down while a sheet covers
 // the dock. (Map moved to the top-right pin; Profile folds in settings.)
 
+// where a tile sits on screen (window coords) — the chat's zoom-open animation
+// grows out of the Messages tile like an iOS app launch
+export type TileOrigin = { x: number; y: number; width: number; height: number };
+
 type DockProps = {
   hidden?: boolean;
   unread?: number;
   // wordless news dots: unseen shop restock / a goal not yet done today
   shopDot?: boolean;
   goalsDot?: boolean;
-  onMessages: () => void;
+  // called with the Messages tile's measured window rect (when measurable)
+  onMessages: (origin?: TileOrigin) => void;
   onShop?: () => void;
   onGoals?: () => void;
   onProfile?: () => void;
@@ -70,6 +75,16 @@ function HomeDockImpl({ hidden, unread = 0, shopDot, goalsDot, onMessages, onSho
   useEffect(() => {
     shown.value = withTiming(hidden ? 0 : 1, { duration: 300 });
   }, [hidden, shown]);
+  // the Messages tile's wrapper — measured on press so the chat can zoom out
+  // of the tile's actual on-screen position
+  const messagesTileRef = useRef<View>(null);
+  const pressMessages = () => {
+    const node = messagesTileRef.current;
+    if (!node) return onMessages();
+    node.measureInWindow((x, y, width, height) => {
+      onMessages(width > 0 ? { x, y, width, height } : undefined);
+    });
+  };
   // Slides fully off-screen rather than fading: animating a parent's opacity
   // permanently kills descendant UIGlassEffect views (expo/expo#41024).
   const dockStyle = useAnimatedStyle(() => ({
@@ -86,8 +101,8 @@ function HomeDockImpl({ hidden, unread = 0, shopDot, goalsDot, onMessages, onSho
     >
       <Glass style={styles.panel}>
         {/* Messages — chat bubble on a green gradient; red unread badge */}
-        <View>
-          <AppTile label="Messages" onPress={onMessages} gradient={['#5BF76B', '#12C93E']}>
+        <View ref={messagesTileRef} collapsable={false}>
+          <AppTile label="Messages" onPress={pressMessages} gradient={['#5BF76B', '#12C93E']}>
             <Svg viewBox="0 0 24 24" width={ICON} height={ICON}>
               <Path
                 fill="#fff"

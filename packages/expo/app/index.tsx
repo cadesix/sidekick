@@ -3,7 +3,7 @@ import { Profiler, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { Redirect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Alert, AppState, Dimensions, Pressable, Text, View, type AppStateStatus } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CHAT_SHEET_DETENT, ChatScreen } from '~/imessage';
@@ -25,7 +25,7 @@ import { useStarChat } from '../src/store/star-chat';
 import { useStarFaceConfig } from '../src/store/starFaceConfig';
 import { useSidekickContext, type Astral } from '../src/store/context';
 import { SpeechBubble } from '../src/components/SpeechBubble';
-import { HomeDock } from '../src/components/HomeDock';
+import { HomeDock, type TileOrigin } from '../src/components/HomeDock';
 import { BIOMES, biomeLookForTime, type BiomeId, type EnvironmentId } from '../src/three/biomes';
 import { speak, useSpeech } from '../src/store/speech';
 import { FACE_EXPRESSIONS, type FaceExpression } from '../src/three/face';
@@ -51,8 +51,7 @@ import { useAuthStore } from '../src/lib/auth-store';
 import { perfFrame, perfMark } from '../src/lib/perf-telemetry';
 
 // RN port of sidekick/src/home4.tsx: full-viewport 3D mascot with an iOS-style
-// dock. Messages presents the chat as a native sheet over the lower ~75%
-// (camera eases to CHAT_FRAMING, the mascot holds its phone in the band above),
+// dock. Messages is a full-screen takeover that zooms out of its dock tile,
 // Shop swaps the meadow for a studio and opens the wardrobe sheet, Map rockets
 // the camera up while the world map circle-reveals over it.
 
@@ -122,7 +121,7 @@ const TRAVEL_LINES: Record<EnvironmentId, string> = {
   volcano: 'uhh is that lava?? 🌋 this is fine. we’re fine.',
 };
 
-const { height: SCREEN_H } = Dimensions.get('window');
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 // The chat drawer covers the lower 75%; the mascot lives in the band above.
 const DRAWER_TOP = SCREEN_H * (1 - CHAT_SHEET_DETENT);
 
@@ -213,9 +212,18 @@ export default function Home() {
   // redirect itself lives just before the return so every hook still runs.
   const onboarding = useOnboardingState();
   const authStatus = useAuthStore((s) => s.status);
-  // chatOpen drives the camera/holdingPhone; chatProgress slides the drawer
+  // chatOpen drives the camera/holdingPhone; chatProgress runs the zoom-open
   const [chatOpen, setChatOpen] = useState(false);
   const chatProgress = useSharedValue(0);
+  // the dock tile the chat grows out of (window coords; see openChat)
+  const chatOriginX = useSharedValue(SCREEN_W / 2 - 30);
+  const chatOriginY = useSharedValue(SCREEN_H - 140);
+  const chatOriginW = useSharedValue(60);
+  const chatOriginH = useSharedValue(60);
+  const chatOrigin = useMemo(
+    () => ({ x: chatOriginX, y: chatOriginY, w: chatOriginW, h: chatOriginH }),
+    [chatOriginX, chatOriginY, chatOriginW, chatOriginH],
+  );
   // guided habit-add ("+" from Goals) presents in an IDENTICAL drawer to the main
   // chat — same camera/pose/slide — driven by this progress value.
   const habitProgress = useSharedValue(0);
@@ -450,15 +458,21 @@ export default function Home() {
     if (msgs) for (const m of msgs) newest = Math.max(newest, m.createdAt);
     useDockBadges.getState().markMsgsSeen(newest > 0 ? newest : Date.now());
   }, [queryClient]);
-  const openChat = useCallback(() => {
-    setChatOpen(true); // camera starts easing while the drawer slides up
-    chatProgress.value = withTiming(1, { duration: 380 });
+  const openChat = useCallback((origin?: TileOrigin) => {
+    // zoom out of the pressed dock tile, iOS-app-launch style; entries without
+    // a tile (goal check-ins, the map) grow from the dock's neighborhood
+    chatOrigin.x.value = origin?.x ?? SCREEN_W / 2 - 30;
+    chatOrigin.y.value = origin?.y ?? SCREEN_H - 140;
+    chatOrigin.w.value = origin?.width ?? 60;
+    chatOrigin.h.value = origin?.height ?? 60;
+    setChatOpen(true);
+    chatProgress.value = withTiming(1, { duration: 440, easing: Easing.out(Easing.cubic) });
     stampMsgsSeen(); // they're looking at the chat — what exists now is seen
-  }, [chatProgress, stampMsgsSeen]);
+  }, [chatProgress, chatOrigin, stampMsgsSeen]);
   const closeChat = useCallback(() => {
     setChatOpen(false);
-    chatProgress.value = withTiming(0, { duration: 340 });
-    stampMsgsSeen(); // include everything received while the drawer was up
+    chatProgress.value = withTiming(0, { duration: 340, easing: Easing.in(Easing.cubic) });
+    stampMsgsSeen(); // include everything received while the chat was up
     // As the user walks back to the 3D sidekick, have it get the last word: a
     // snarky one-liner capping off the conversation, over its head. The 500ms
     // beat lets the drawer clear and the camera ease back to HERO first.
@@ -660,12 +674,27 @@ export default function Home() {
   );
   const darkBackdrop = hexLuminance(topSky) < 0.4;
 
-  // No opacity here: animating a parent's opacity permanently breaks descendant
-  // UIGlassEffect views (expo/expo#41024) — the closed drawer is already fully
-  // off-screen via the translate.
-  const drawerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: (1 - chatProgress.value) * (SCREEN_H - DRAWER_TOP) }],
-  }));
+  // iOS-app-launch zoom: the full-screen chat scales up FROM the Messages
+  // tile's window rect (translate centres the container over the tile, scale
+  // shrinks it to tile size; both ease to identity). RN scales about the
+  // centre, so translate+scale together emulate a transform-origin at the tile.
+  const chatZoomStyle = useAnimatedStyle(() => {
+    const p = chatProgress.value;
+    const inv = 1 - p;
+    const tileScale = chatOrigin.w.value / SCREEN_W;
+    return {
+      transform: [
+        { translateX: (chatOrigin.x.value + chatOrigin.w.value / 2 - SCREEN_W / 2) * inv },
+        { translateY: (chatOrigin.y.value + chatOrigin.h.value / 2 - SCREEN_H / 2) * inv },
+        { scale: tileScale + (1 - tileScale) * p },
+      ],
+      // tile-ish corners while small, square once full screen
+      borderRadius: 48 * inv,
+      // fully closed = invisible (otherwise a tile-sized chat sits on the dock);
+      // pops to visible the moment the zoom starts
+      opacity: p > 0.01 ? 1 : 0,
+    };
+  });
   // identical to drawerStyle, for the guided habit-add drawer
   const habitDrawerStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: (1 - habitProgress.value) * (SCREEN_H - DRAWER_TOP) }],
@@ -941,42 +970,28 @@ export default function Home() {
         />
       ) : null}
 
-      {/* Chat drawer — slides over the lower ~75%, undimmed so the mascot
-          (holding its phone) stays visible in the band above; tap that band
-          to close */}
-      {chatOpen ? (
-        <Pressable
-          onPress={closeChat}
-          accessibilityLabel="Close chat"
-          style={{
+      {/* Messages — a full-screen takeover that zooms out of the dock's
+          Messages tile (and shrinks back into it on close). The close chevron
+          lives in ChatScreen's header. */}
+      <Animated.View
+        style={[
+          chatZoomStyle,
+          {
             position: 'absolute',
             top: 0,
             left: 0,
             right: 0,
-            height: DRAWER_TOP,
-            zIndex: 30,
-          }}
-        />
-      ) : null}
-      <Animated.View
-        style={[
-          drawerStyle,
-          {
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            top: DRAWER_TOP,
-            height: SCREEN_H - DRAWER_TOP,
+            bottom: 0,
             zIndex: 40,
-            shadowColor: '#000',
-            shadowOpacity: 0.12,
-            shadowRadius: 24,
-            shadowOffset: { width: 0, height: -8 },
+            overflow: 'hidden',
+            backgroundColor: '#fff',
           },
         ]}
         pointerEvents={chatOpen ? 'auto' : 'none'}
       >
-        <ChatScreen onClose={closeChat} onOpenGame={setActiveMatchId} />
+        <View style={{ flex: 1, paddingTop: insets.top }}>
+          <ChatScreen onClose={closeChat} onOpenGame={setActiveMatchId} />
+        </View>
       </Animated.View>
 
       {/* Game overlay (plan 21) — the full-screen turn player, over the chat
