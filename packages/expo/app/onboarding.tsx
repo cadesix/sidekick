@@ -121,8 +121,8 @@ type Phase =
 
 const PHASE_ORDER: Phase[] = [
   'auth',
-  'hey',
   'birthday',
+  'hey',
   'lookDown',
   'hereLeft',
   'hereRight',
@@ -187,9 +187,9 @@ export default function Onboarding() {
   // resolved once hydrate + resume complete; the scene mounts only after, so the
   // renderer reads the account skin and the resumed phase's entrance state.
   const [ready, setReady] = useState(false);
-  const initialPhaseRef = useRef<Phase>('hey');
+  const initialPhaseRef = useRef<Phase>('birthday');
 
-  const [phase, setPhase] = useState<Phase>('hey');
+  const [phase, setPhase] = useState<Phase>('birthday');
   const [framing, setFraming] = useState<Framing>(SKY_FRAMING);
   // head-tracked overlay target for the speech bubbles (canvas writes per frame)
   const overheadX = useSharedValue(0);
@@ -237,7 +237,7 @@ export default function Onboarding() {
       // signed out → auth first (regardless of any saved step); signed in →
       // resume the saved step (never 'auth' — already signed in), else hey.
       const saved = (PHASE_ORDER as string[]).includes(st.phase) ? (st.phase as Phase) : null;
-      const initial: Phase = signedOut ? 'auth' : saved && saved !== 'auth' ? saved : 'hey';
+      const initial: Phase = signedOut ? 'auth' : saved && saved !== 'auth' ? saved : 'birthday';
       initialPhaseRef.current = initial;
       setUserName(st.userName);
       setSidekickName(st.sidekickName);
@@ -302,7 +302,7 @@ export default function Onboarding() {
         queryClient.setQueryData(ONBOARDING_QUERY_KEY, st); // sync cache so Home's gate passes
         goHome();
       } else {
-        goTo('hey');
+        goTo('birthday');
       }
     })();
     return () => {
@@ -322,11 +322,11 @@ export default function Onboarding() {
     setTimeout(() => notifBeat(), 2600);
   };
 
-  // birthday → lookDown: still in the sky — the pan waits for the CTA.
+  // birthday → hey: still in the sky — the pan waits until lookDown's CTA.
   const submitBirthday = (birthday: string) => {
     if (animating) return;
     void saveOnboardingField('birthday', birthday);
-    goTo('lookDown');
+    goTo('hey');
   };
 
   // lookDown CTA → the two-beat sweep: PAN DOWN to the ground, then whip LEFT
@@ -500,13 +500,13 @@ export default function Onboarding() {
     if (animating) return;
     switch (phase) {
       case 'auth':
-        goTo('hey');
-        break;
-      case 'hey':
         goTo('birthday');
         break;
       case 'birthday':
         submitBirthday('2000-01-01');
+        break;
+      case 'hey':
+        goTo('lookDown');
         break;
       case 'lookDown':
         lookDown();
@@ -594,7 +594,7 @@ export default function Onboarding() {
             <HeyTitle />
           </View>
           <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
-            <PrimaryButton label="Get Started" onPress={() => goTo('birthday')} disabled={animating} />
+            <PrimaryButton label="Get Started" onPress={() => goTo('lookDown')} disabled={animating} />
           </View>
         </>
       ) : null}
@@ -642,13 +642,6 @@ export default function Onboarding() {
               <Text style={styles.overHere}>i'm over here</Text>
             </SubtleShake>
           </Animated.View>
-          {/* curved lead-in from the LEFT edge, pointing at the copy */}
-          <Animated.View entering={FadeInUp.duration(350)} style={styles.edgePointerLeft} pointerEvents="none">
-            <Svg width={120} height={90} viewBox="0 0 120 90">
-              <Path d="M2 12 Q 80 12 98 62" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
-              <Path d="M98 62 l -16 -6 M98 62 l -5 -16" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
-            </Svg>
-          </Animated.View>
           <Text style={[styles.tapHint, { bottom: insets.bottom + 28 }]}>tap to continue</Text>
         </Pressable>
       ) : null}
@@ -659,13 +652,6 @@ export default function Onboarding() {
             <SubtleShake intensity={2.2} speed={1.5}>
               <Text style={styles.overHere}>no over here</Text>
             </SubtleShake>
-          </Animated.View>
-          {/* curved lead-in from the RIGHT edge */}
-          <Animated.View entering={FadeInUp.duration(350).delay(550)} style={styles.edgePointerRight} pointerEvents="none">
-            <Svg width={120} height={90} viewBox="0 0 120 90">
-              <Path d="M118 12 Q 40 12 22 62" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
-              <Path d="M22 62 l 16 -6 M22 62 l 5 -16" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
-            </Svg>
           </Animated.View>
           <Text style={[styles.tapHint, { bottom: insets.bottom + 28 }]}>tap to continue</Text>
         </Pressable>
@@ -1288,8 +1274,6 @@ const styles = StyleSheet.create({
   sideRight: { right: 40 },
   sideLeft: { left: 40 },
   // curved edge pointers aiming at the over-here copy
-  edgePointerRight: { position: 'absolute', top: '50%', right: 0, marginTop: -20 },
-  edgePointerLeft: { position: 'absolute', top: '50%', left: 0, marginTop: -20 },
   // screen 3: the clouds line at ~2× h1small, tilted, hard y-offset shadow
   cloudsBig: {
     fontFamily: FONT_BOLD,
