@@ -144,8 +144,8 @@ const PHASES: Record<Phase, { framing: Framing; characterVisible: boolean }> = {
   hey: { framing: SKY_FRAMING, characterVisible: false },
   birthday: { framing: SKY_NAME_FRAMING, characterVisible: false },
   lookDown: { framing: SKY_NAME_FRAMING, characterVisible: false },
-  hereLeft: { framing: LOOK_LEFT_FRAMING, characterVisible: false },
-  hereRight: { framing: LOOK_RIGHT_FRAMING, characterVisible: false },
+  hereLeft: { framing: NAME_FRAMING, characterVisible: false },
+  hereRight: { framing: LOOK_LEFT_FRAMING, characterVisible: false },
   meetTitle: { framing: HERO_FRAMING, characterVisible: false },
   reveal: { framing: HERO_FRAMING, characterVisible: true },
   customize: { framing: HERO_FRAMING, characterVisible: true },
@@ -337,12 +337,23 @@ export default function Onboarding() {
     setTimeout(() => setAnimating(false), 2400);
   };
 
-  // hereLeft → hereRight: whip pan the other way.
+  // 1st tap (voice was on the left) → the camera TURNS LEFT chasing it.
   const overHere = () => {
     if (animating) return;
     setAnimating(true);
-    goTo('hereRight');
+    goTo('hereRight'); // framing = LOOK_LEFT
     setTimeout(() => setAnimating(false), 700);
+  };
+  // 2nd tap (voice is now on the right) → the camera PANS RIGHT, then settles
+  // center and the anticipation build begins.
+  const panRightThenMeet = () => {
+    if (animating) return;
+    setAnimating(true);
+    setFraming(LOOK_RIGHT_FRAMING); // whip right
+    setTimeout(() => {
+      setAnimating(false);
+      startMeet();
+    }, 850);
   };
 
   // hereRight → meetTitle → reveal: settle centre, camera trembles + haptics
@@ -350,27 +361,28 @@ export default function Onboarding() {
   const startMeet = () => {
     if (animating) return;
     goTo('meetTitle'); // camera settles to the middle (HERO framing)
-    // BURSTY anticipation: a shake burst, a beat, a bigger burst, a beat —
-    // each burst stronger — with a haptic hit per burst. Then the pop: a
-    // massive shake + jumpIn stomp.
+    // ANTICIPATION: a burst of shaking, then a BEAT of stillness, then a
+    // STRONGER burst, another beat — escalating with every burst, a haptic per
+    // burst — building tension. Then the sidekick POPS out: a massive shake +
+    // the jumpIn stomp, and he settles.
     const bursts = [
-      { at: 200, amp: 0.03 },
-      { at: 850, amp: 0.05 },
-      { at: 1550, amp: 0.08 },
-      { at: 2300, amp: 0.12 },
+      { at: 300, amp: 0.08 },
+      { at: 1100, amp: 0.14 },
+      { at: 1900, amp: 0.22 },
+      { at: 2650, amp: 0.32 },
     ];
     for (const b of bursts) {
       setTimeout(() => {
-        controllerRef.current?.shake({ amp: b.amp, duration: 0.4, mode: 'impact' });
+        controllerRef.current?.shake({ amp: b.amp, duration: 0.45, mode: 'impact' });
         hapticNotif(); // a firm hit per burst
       }, b.at);
     }
-    const POP = 3100; // after the last anticipation burst
+    const POP = 3450; // right after the last, strongest anticipation burst
     playBuildToBoom(POP, POP);
     setTimeout(() => {
       setAnimating(true);
       goTo('reveal');
-      controllerRef.current?.shake({ amp: 0.24, duration: 0.6, mode: 'impact' }); // massive
+      controllerRef.current?.shake({ amp: 0.55, duration: 0.7, mode: 'impact' }); // MASSIVE
       controllerRef.current?.jumpIn({ duration: 800 }); // he pops out + stomps
     }, POP);
     setTimeout(() => {
@@ -501,7 +513,7 @@ export default function Onboarding() {
         overHere();
         break;
       case 'hereRight':
-        startMeet();
+        panRightThenMeet();
         break;
       case 'meetTitle':
         break; // auto-advances into reveal
@@ -622,34 +634,35 @@ export default function Onboarding() {
       {/* 5/6. the over-here gag — full-screen tap advances */}
       {phase === 'hereLeft' && !animating ? (
         <Pressable style={StyleSheet.absoluteFill} onPress={overHere}>
-          <Animated.View entering={FadeInUp.duration(350)} style={[styles.sideCopy, styles.sideRight]} pointerEvents="none">
+          {/* camera centered; the voice is off to the LEFT — copy hugs the left edge */}
+          <Animated.View entering={FadeInUp.duration(350)} style={[styles.sideCopy, styles.sideLeft]} pointerEvents="none">
             <SubtleShake intensity={2.2} speed={1.5}>
               <Text style={styles.overHere}>i'm over here</Text>
             </SubtleShake>
           </Animated.View>
-          {/* a curved lead-in from the right edge, pointing at the copy */}
-          <Animated.View entering={FadeInUp.duration(350)} style={styles.edgePointerRight} pointerEvents="none">
+          {/* curved lead-in from the LEFT edge, pointing at the copy */}
+          <Animated.View entering={FadeInUp.duration(350)} style={styles.edgePointerLeft} pointerEvents="none">
             <Svg width={120} height={90} viewBox="0 0 120 90">
-              <Path d="M118 12 Q 40 12 22 62" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
-              <Path d="M22 62 l 16 -6 M22 62 l 5 -16" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
+              <Path d="M2 12 Q 80 12 98 62" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
+              <Path d="M98 62 l -16 -6 M98 62 l -5 -16" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
             </Svg>
           </Animated.View>
           <Text style={[styles.tapHint, { bottom: insets.bottom + 28 }]}>tap to continue</Text>
         </Pressable>
       ) : null}
       {phase === 'hereRight' && !animating ? (
-        <Pressable style={StyleSheet.absoluteFill} onPress={startMeet}>
-          {/* the camera lands first; the line pops a beat later */}
-          <Animated.View entering={FadeInUp.duration(350).delay(550)} style={[styles.sideCopy, styles.sideLeft]} pointerEvents="none">
+        <Pressable style={StyleSheet.absoluteFill} onPress={panRightThenMeet}>
+          {/* camera turned left; the voice is now off to the RIGHT — a beat, then it pops */}
+          <Animated.View entering={FadeInUp.duration(350).delay(550)} style={[styles.sideCopy, styles.sideRight]} pointerEvents="none">
             <SubtleShake intensity={2.2} speed={1.5}>
-              <Text style={styles.overHere}>no, over here</Text>
+              <Text style={styles.overHere}>i'm over here</Text>
             </SubtleShake>
           </Animated.View>
-          {/* mirrored curve from the left edge */}
-          <Animated.View entering={FadeInUp.duration(350).delay(550)} style={styles.edgePointerLeft} pointerEvents="none">
+          {/* curved lead-in from the RIGHT edge */}
+          <Animated.View entering={FadeInUp.duration(350).delay(550)} style={styles.edgePointerRight} pointerEvents="none">
             <Svg width={120} height={90} viewBox="0 0 120 90">
-              <Path d="M2 12 Q 80 12 98 62" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
-              <Path d="M98 62 l -16 -6 M98 62 l -5 -16" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
+              <Path d="M118 12 Q 40 12 22 62" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
+              <Path d="M22 62 l 16 -6 M22 62 l 5 -16" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
             </Svg>
           </Animated.View>
           <Text style={[styles.tapHint, { bottom: insets.bottom + 28 }]}>tap to continue</Text>
