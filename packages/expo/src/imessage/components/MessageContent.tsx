@@ -1,4 +1,6 @@
+import { useContext } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { FloatingChat } from "../floating-chat";
 import { isEmojiOnly } from "../lib/emoji";
 import { bubble, colors, font, type } from "../theme";
 import type { Message } from "../types";
@@ -42,6 +44,7 @@ export function MessageContent({
 	tail: boolean;
 	onOpenGame?: (matchId: string) => void;
 }) {
+	const frosted = useContext(FloatingChat);
 	const sent = message.role === "me";
 	if (message.kind === "game" && message.game) {
 		return <GameCardBubble game={message.game} onOpenGame={onOpenGame} />;
@@ -71,7 +74,7 @@ export function MessageContent({
 			) : null}
 			{hasText || !hasAttachments ? (
 				<MessageBubble from={message.role} tail={tail}>
-					<Text style={[styles.text, sent ? styles.textSent : styles.textReceived]}>
+					<Text style={[styles.text, sent ? styles.textSent : styles.textReceived, frosted ? styles.textFrosted : null]}>
 						{message.text}
 					</Text>
 				</MessageBubble>
@@ -100,6 +103,9 @@ const styles = StyleSheet.create({
 	},
 	textReceived: {
 		color: colors.receivedText,
+	},
+	textFrosted: {
+		color: "#FFFFFF",
 	},
 	bigEmoji: {
 		fontSize: 46,
