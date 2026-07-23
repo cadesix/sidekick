@@ -657,7 +657,7 @@ export default function Onboarding() {
           {/* camera turned left; the voice is now off to the RIGHT — a beat, then it pops */}
           <Animated.View entering={FadeInUp.duration(350).delay(550)} style={[styles.sideCopy, styles.sideRight]} pointerEvents="none">
             <SubtleShake intensity={2.2} speed={1.5}>
-              <Text style={styles.overHere}>i'm over here</Text>
+              <Text style={styles.overHere}>no over here</Text>
             </SubtleShake>
           </Animated.View>
           {/* curved lead-in from the RIGHT edge */}
