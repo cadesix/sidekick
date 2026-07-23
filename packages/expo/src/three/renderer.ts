@@ -1339,7 +1339,7 @@ export function createSidekickRenderer(
     // is used for HOME_DOF (depth-of-field) and/or HOME_BLOOM; both are disabled
     // per-pass above when their flag is off, so an enabled composer only does what
     // it's told. Its render target is MSAA (samples:4) so grass AA still holds.
-    const useComposer = !bloomBroken && (!IS_WEB || HOME_DOF || (HOME_BLOOM && s.bloomEnabled));
+    const useComposer = IS_WEB && !bloomBroken && (HOME_DOF || (HOME_BLOOM && s.bloomEnabled));
     if (useComposer) {
       try {
         // keep the focal plane on the character (its head bone, ~y 0.5) so it
@@ -1358,8 +1358,8 @@ export function createSidekickRenderer(
         renderer.render(scene, camera);
       }
     } else {
-      // (also null here in case anything left a target bound — direct render
-      // must always target the screen)
+      // direct render — must always target the screen with clean GL state
+      // (a stale target/depthTest would z-fight the default framebuffer)
       renderer.setRenderTarget(null);
       renderer.render(scene, camera);
     }
