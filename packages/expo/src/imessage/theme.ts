@@ -1,14 +1,15 @@
 import { FONT, FONT_BOLD, FONT_MEDIUM } from "~/lib/tokens";
 
-// Layout metrics measured from iOS Messages (plans/research-visual.md); the
-// look itself is the BRAND's (06-design-system §3.3): cream sidekick bubbles,
-// usergray user bubbles, ink text, Diatype Rounded throughout — not iOS blue.
+// Layout metrics measured from iOS Messages (plans/research-visual.md).
+// Bubble colors are the CLASSIC iMessage set (blue sent / gray received);
+// type is the brand's Diatype Rounded and the geometry keeps the flattened
+// 6px tail corner.
 export const colors = {
 	blue: "#007AFF",
-	sentBubble: "#E9E9EC", // usergray — the user's bubbles
-	sentText: "#111111",
-	receivedBubble: "#FBEFC9", // cream — the sidekick's bubbles
-	receivedText: "#111111",
+	sentBubble: "#007AFF",
+	sentText: "#FFFFFF",
+	receivedBubble: "#E9E9EB",
+	receivedText: "#000000",
 	field: "#F0F0F2", // input backgrounds (06 §1.1)
 	background: "#FFFFFF",
 	label: "#000000",

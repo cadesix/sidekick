@@ -9,7 +9,7 @@ import { Icon } from "./Icon";
  * bubble: doc glyph + filename + a `PDF · 2.3 MB` caption.
  */
 export function FileBubble({ file, sent }: { file: FileAttachment; sent: boolean }) {
-	const tint = colors.label; // ink on both bubble fills (cream/usergray)
+	const tint = sent ? "#FFFFFF" : colors.label;
 	const caption = sent ? "rgba(255,255,255,0.8)" : colors.secondaryLabel;
 	return (
 		<View style={styles.row}>

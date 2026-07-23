@@ -210,8 +210,8 @@ interface AudioBubbleProps {
 export function AudioBubble({ audio, sent }: AudioBubbleProps) {
 	const { playing, currentTime, toggle, seek } = usePlayback(audio.uri, audio.durationSec);
 
-	const tint = "rgba(60,60,67,0.7)"; // legible on both bubble fills
-	const playedColor = colors.blue;
+	const tint = sent ? "#FFFFFF" : "rgba(60,60,67,0.7)";
+	const playedColor = sent ? "#FFFFFF" : colors.blue;
 	const unplayedColor = sent ? "rgba(255,255,255,0.4)" : colors.gray2;
 	const remaining = playing
 		? Math.max(0, audio.durationSec - currentTime)
