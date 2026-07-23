@@ -344,6 +344,8 @@ export default function Home() {
   const [controls, setControls] = useState<CosmeticsControls | null>(null);
   // raw scene controller (applySettings, face pulses, daily-box pop)
   const [controller, setController] = useState<SidekickController | null>(null);
+  const controllerRef = useRef<SidekickController | null>(null);
+  controllerRef.current = controller;
 
   // Overhead bubble → face. When a line pops over his head, pulse the matching
   // expression for the bubble's duration. The server picks the emotion for
@@ -391,29 +393,31 @@ export default function Home() {
     wasPending.current = introPending;
   }, [introPending]);
   useEffect(() => {
-    // wait for the scene controller too, so the look-up gesture actually fires
-    // (the timers below capture it) rather than no-opping on a null ref. NOTE:
-    // we do NOT gate on `snapshot` — a fresh account's snapshot can lag, and
-    // the line/look-up don't need it (the count-up defaults the target to 10).
-    if (!armed || !settings || !controller || introStep !== null) return;
+    // Gate ONLY on armed + settings — NOT on `snapshot` (a fresh account's can
+    // lag; the count-up defaults its target to 10) and NOT on `controller` (the
+    // canvas can lose the WebGL-context race when we arrive here straight from
+    // onboarding, leaving controller null indefinitely). The speech, count-up
+    // and star don't need the controller; only the head-tilt does, and it reads
+    // a live ref so it fires if/when the context comes up and no-ops otherwise.
+    if (!armed || !settings || introStep !== null) return;
     if (__DEV__) console.log('[home-intro] driver firing');
     setIntroStep('line');
     const timers = [
       setTimeout(() => {
-        controller.setLookUp(true); // he glances up while explaining
+        controllerRef.current?.setLookUp(true); // glance up (if the scene is up)
         speak('the more i get to know you, the higher our bond score goes, and i become better at guiding you', 7200, 'happy');
-      }, 1200),
+      }, 700),
       setTimeout(() => {
-        controller.setLookUp(false);
+        controllerRef.current?.setLookUp(false);
         setIntroStep('bond');
-      }, 8800),
+      }, 8300),
       setTimeout(() => {
         setIntroStep('star');
         speak('tap the star to open our star chat! ✦', 6000, 'excited');
-      }, 11200),
+      }, 10700),
     ];
     return () => timers.forEach(clearTimeout);
-  }, [armed, settings, controller, introStep]);
+  }, [armed, settings, introStep]);
   // the 0→N count-up (screen 17); each tick re-fires the pill's pop
   useEffect(() => {
     if (introStep !== 'bond' && introStep !== 'star') return;
