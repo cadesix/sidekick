@@ -409,14 +409,19 @@ export default function Home() {
     // prompts the tap.
     setIntroStep('bond');
     const timers = [
-      setTimeout(() => controllerRef.current?.setLookUp(true), 450), // look up at the star
+      setTimeout(() => controllerRef.current?.setLookUp(true), 450), // glance up at the star
       setTimeout(() => speak("that's our bond score", 3200, 'happy'), 1400),
+      setTimeout(() => controllerRef.current?.setLookUp(false), 4000), // …then back down
       setTimeout(() => {
         setIntroStep('star');
         speak('tap the star to open our star chat! ✦', 6000, 'excited');
       }, 4600),
     ];
-    return () => timers.forEach(clearTimeout);
+    // reset the head on teardown too (re-arm / unmount), so it can never stick up
+    return () => {
+      timers.forEach(clearTimeout);
+      controllerRef.current?.setLookUp(false);
+    };
   }, [armed, settings]);
   // the 0→N count-up (screen 17); each tick re-fires the pill's pop
   useEffect(() => {
@@ -493,6 +498,7 @@ export default function Home() {
   const queryClient = useQueryClient();
   // star tapped during the guided intro — consume it (never replays)
   const finishIntro = useCallback(() => {
+    controllerRef.current?.setLookUp(false); // never leave the head stuck up
     void markHomeIntroDone().then(() => refreshOnboarding(queryClient));
   }, [queryClient]);
 
