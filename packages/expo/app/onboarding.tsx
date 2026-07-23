@@ -410,14 +410,20 @@ export default function Onboarding() {
     controllerRef.current?.setInspect(false);
     goTo('celebrate');
     controllerRef.current?.hop(750); // ONE triumphant hop in the new color
-    setTimeout(() => goTo('nameSidekick'), 1500);
+    setTimeout(() => {
+      goTo('nameSidekick');
+      // the prompt lives in a head speech bubble now, not an on-screen title.
+      // Long duration so it holds while the user types (replaced on the next step).
+      speak("what's my name?", 600000, 'happy');
+    }, 1500);
   };
 
-  // sidekick named → now ask the USER's name.
+  // sidekick named → now ask the USER's name (also in a head bubble).
   const submitSidekickName = (name: string) => {
     setSidekickName(name);
     void saveOnboardingField('sidekickName', name);
     goTo('askName');
+    speak("now what's YOUR name?", 600000, 'happy');
   };
 
   // textIntro → notif, choreographed in three: (1) he pulls out his phone
@@ -573,8 +579,9 @@ export default function Onboarding() {
         />
       ) : null}
 
-      {/* head-tracked speech bubble (THERE YOU ARE! / how should i look? /
-          let me text u) — same overlay Home uses */}
+      {/* head-tracked speech bubble (There we go!! / what color looks best /
+          what's my name? / now what's YOUR name? / let me text u) — same
+          overlay Home uses */}
       <OverheadSpeech overhead={overhead} hidden={!PHASES[phase].characterVisible || phase === 'chat'}>
         <SpeechBubble />
       </OverheadSpeech>
@@ -600,7 +607,7 @@ export default function Onboarding() {
         <NameEntry
           key="askName"
           title="now what's YOUR name?"
-          header={<Text style={styles.nameTitle}>now what's <Text style={styles.emph}>YOUR</Text> name?</Text>}
+          titleInBubble
           placeholder="Your name"
           cta="continue"
           onSubmit={submitUserName}
@@ -658,7 +665,7 @@ export default function Onboarding() {
         <NameEntry
           key="nameSidekick"
           title="what's my name?"
-          header={<Text style={styles.nameTitle}>what's my name?</Text>}
+          titleInBubble
           placeholder="Name your sidekick"
           cta="continue"
           onSubmit={submitSidekickName}
@@ -893,6 +900,7 @@ function NameEntry({
   layout = 'center',
   suggestions,
   revealDelayMs = 0,
+  titleInBubble = false,
 }: {
   title: string;
   // richer replacement for the plain title (multi-line / streamed copy);
@@ -902,6 +910,9 @@ function NameEntry({
   cta: string;
   onSubmit: (value: string) => void;
   layout?: 'center' | 'top';
+  // the prompt is spoken in a head speech bubble instead of an on-screen title,
+  // so the top-copy block is suppressed (top layout only)
+  titleInBubble?: boolean;
   // Tappable name suggestions — lowers the cognitive load of inventing a name.
   suggestions?: string[];
   // hold the input + CTA back (e.g. until the streamed header lands), then fade in
@@ -962,9 +973,11 @@ function NameEntry({
         style={StyleSheet.absoluteFill}
         pointerEvents="box-none"
       >
-        <View style={[styles.topCopy, { top: insets.top + 118 }]}>
-          {header ?? <Text style={styles.nameTitle}>{title}</Text>}
-        </View>
+        {titleInBubble ? null : (
+          <View style={[styles.topCopy, { top: insets.top + 118 }]}>
+            {header ?? <Text style={styles.nameTitle}>{title}</Text>}
+          </View>
+        )}
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.nameBottomWrap}
@@ -1320,7 +1333,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#fff',
   },
-  emph: { color: '#F2C94C' },
   overHere: { fontFamily: FONT_BOLD, fontSize: 30, letterSpacing: -0.6, color: '#fff' },
   nameTitle: {
     fontFamily: FONT_BOLD,
