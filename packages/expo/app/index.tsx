@@ -375,16 +375,32 @@ export default function Home() {
   const introPending = onboarding.data?.homeIntro === true;
   const [introStep, setIntroStep] = useState<'line' | 'bond' | 'star' | null>(null);
   const [introBond, setIntroBond] = useState(0);
+  // reset on the RISING edge too, so a re-arm (dev replay, or a second launch
+  // that re-completes) always restarts from the top instead of resuming at a
+  // stale step. `armed` then gates the driver so it fires exactly once per arm.
+  const wasPending = useRef(false);
+  const [armed, setArmed] = useState(false);
   useEffect(() => {
-    if (!introPending || !settings || !snapshot || introStep !== null) return;
+    if (introPending && !wasPending.current) {
+      setIntroStep(null);
+      setIntroBond(0);
+      setArmed(true);
+    }
+    if (!introPending) setArmed(false);
+    wasPending.current = introPending;
+  }, [introPending]);
+  useEffect(() => {
+    // wait for the scene controller too, so the look-up gesture actually fires
+    // (the timers below capture it) rather than no-opping on a null ref
+    if (!armed || !settings || !snapshot || !controller || introStep !== null) return;
     setIntroStep('line');
     const timers = [
       setTimeout(() => {
-        controller?.setLookUp(true); // he glances up while explaining
+        controller.setLookUp(true); // he glances up while explaining
         speak('the more i get to know you, the higher our bond score goes, and i become better at guiding you', 7200, 'happy');
       }, 1200),
       setTimeout(() => {
-        controller?.setLookUp(false);
+        controller.setLookUp(false);
         setIntroStep('bond');
       }, 8800),
       setTimeout(() => {
@@ -393,7 +409,7 @@ export default function Home() {
       }, 11200),
     ];
     return () => timers.forEach(clearTimeout);
-  }, [introPending, settings, snapshot, introStep, controller]);
+  }, [armed, settings, snapshot, controller, introStep]);
   // the 0→N count-up (screen 17); each tick re-fires the pill's pop
   useEffect(() => {
     if (introStep !== 'bond' && introStep !== 'star') return;
@@ -471,14 +487,6 @@ export default function Home() {
   const finishIntro = useCallback(() => {
     void markHomeIntroDone().then(() => refreshOnboarding(queryClient));
   }, [queryClient]);
-  // when the intro is consumed (or DEV re-arms it) reset the machine so a
-  // later replay starts from the top instead of resuming at 'star'
-  useEffect(() => {
-    if (!introPending) {
-      setIntroStep(null);
-      setIntroBond(0);
-    }
-  }, [introPending]);
 
   // Streak + daily box are server state (plan 20 phase 2): the streak count and
   // the box's claimable/tier come from the snapshot; the touch itself fires from
