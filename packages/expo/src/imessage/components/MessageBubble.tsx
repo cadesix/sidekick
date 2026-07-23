@@ -27,7 +27,7 @@ export function MessageBubble({ from, tail, children, color }: MessageBubbleProp
 		return (
 			<View style={styles.wrapper}>
 				<View style={[styles.bubble, styles.bubbleFrosted, corner]}>
-					<BlurView tint="dark" intensity={26} style={StyleSheet.absoluteFill} />
+					<BlurView tint="dark" intensity={55} style={StyleSheet.absoluteFill} />
 					<View style={[StyleSheet.absoluteFill, styles.frostTint]} />
 					{children}
 				</View>
