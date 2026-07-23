@@ -3,7 +3,7 @@ import { dayString } from '@sidekick/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Dimensions, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Dimensions, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Animated, {
   Easing,
@@ -30,6 +30,7 @@ import {
 } from '../src/lib/onboarding';
 import { Glass } from '../src/imessage/components/Glass';
 import { OnboardingAuth } from '../src/components/OnboardingAuth';
+import { FauxKeyboard } from '../src/components/FauxKeyboard';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { useAuthStore } from '../src/lib/auth-store';
 import type { Framing, SidekickController } from '../src/three/renderer';
@@ -114,6 +115,13 @@ const PHASES: Record<Phase, { framing: Framing; characterVisible: boolean }> = {
 // DEV-only onboarding skip controls — same gate as OnboardingAuth's dev login,
 // so they're stripped from production builds.
 const SHOW_DEV = process.env.NODE_ENV !== 'production';
+
+// A LOT of name ideas — the entry UI renders them as a horizontally scrolling
+// chip rail (a wrap row would eat the whole screen).
+const SIDEKICK_NAME_IDEAS = [
+  'lulu', 'pebble', 'sprout', 'gloop', 'wisp', 'arnold',
+  'gummy', 'sage', 'linda', 'wiggle', 'glitch', 'obama',
+];
 
 // Force the evening look live (in-memory, never persisted) so onboarding always
 // plays at dusk regardless of the real time-of-day — and Home is untouched.
@@ -472,6 +480,12 @@ export default function Onboarding() {
         />
       ) : null}
 
+      {/* DEV (web): dummy keyboard under every keyboard-input step, so layouts
+          are judged with the space the real keyboard will take on device */}
+      {(phase === 'askName' || phase === 'birthday' || phase === 'nameSidekick') && !animating ? (
+        <FauxKeyboard />
+      ) : null}
+
       {/* 2b. Birthday */}
       {phase === 'birthday' && !animating ? <BirthdayStep onSubmit={submitBirthday} /> : null}
 
@@ -553,7 +567,7 @@ export default function Onboarding() {
           cta="continue"
           onSubmit={submitSidekickName}
           layout="top"
-          suggestions={['Mochi', 'Luna', 'Coco', 'Peaches', 'Boba']}
+          suggestions={SIDEKICK_NAME_IDEAS}
         />
       ) : null}
 
@@ -640,7 +654,12 @@ function NameEntry({
   };
   const chipRow =
     suggestions && suggestions.length > 0 ? (
-      <View style={styles.chipRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.chipRail}
+        contentContainerStyle={styles.chipRailContent}
+      >
         {suggestions.map((s) => (
           <Pressable
             key={s}
@@ -653,7 +672,7 @@ function NameEntry({
             <Text style={styles.nameChipText}>{s}</Text>
           </Pressable>
         ))}
-      </View>
+      </ScrollView>
     ) : null;
   const field = (
     <TextInput
@@ -1000,6 +1019,15 @@ const styles = StyleSheet.create({
   centerFill: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   nameBottomWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 32, alignItems: 'center' },
   nameCol: { width: '100%', maxWidth: 420, alignItems: 'stretch' },
+  chipRail: {
+    alignSelf: 'stretch',
+    flexGrow: 0,
+    marginBottom: 14,
+  },
+  chipRailContent: {
+    gap: 8,
+    paddingHorizontal: 24,
+  },
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
