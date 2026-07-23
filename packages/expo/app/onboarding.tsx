@@ -53,7 +53,12 @@ import { applySkin, hydrateSkinFromMirror, saveSkinMirror, SKIN_COLORS, type Ski
 
 // Establishing shot: pulled back on the empty lawn (character parked below).
 const WIDE_FRAMING: Framing = { pos: [0, 1.9, 9.5], target: [0, 0.5, 0], fov: 43 };
-// Name step: zoomed in toward where the sidekick will land (still empty).
+// Auth/welcome: pointed UP at the evening sky — cloud band composed across the
+// frame, horizon out of shot. Tune-by-eye.
+const SKY_FRAMING: Framing = { pos: [0, 1.4, 8], target: [0, 8.5, -10], fov: 48 };
+// Name/birthday: same sky, a subtle push-in so the steps feel like progress.
+const SKY_NAME_FRAMING: Framing = { pos: [0, 1.5, 7.4], target: [0, 8.2, -9], fov: 44 };
+// Meet step (post pan-down): zoomed in toward where the sidekick will land (still empty).
 const NAME_FRAMING: Framing = { pos: [0, 1.2, 7.2], target: [0, 0.5, 0], fov: 39 };
 // Hero: full-body, centered (matches home's hero shot).
 const HERO_FRAMING: Framing = { pos: [0, 0.66, 4.2], target: [0, 0.56, 0], fov: 41.1 };
@@ -69,8 +74,8 @@ type Phase =
   | 'auth'
   | 'welcome'
   | 'askName'
-  | 'gender'
   | 'birthday'
+  | 'meet'
   | 'reveal'
   | 'customize'
   | 'nameSidekick'
@@ -81,8 +86,8 @@ const PHASE_ORDER: Phase[] = [
   'auth',
   'welcome',
   'askName',
-  'gender',
   'birthday',
+  'meet',
   'reveal',
   'customize',
   'nameSidekick',
@@ -94,11 +99,11 @@ const PHASE_ORDER: Phase[] = [
 // on a phase COLD (deep link / reload-resume), independent of whatever cinematic
 // normally plays on the way in.
 const PHASES: Record<Phase, { framing: Framing; characterVisible: boolean }> = {
-  auth: { framing: WIDE_FRAMING, characterVisible: false },
-  welcome: { framing: WIDE_FRAMING, characterVisible: false },
-  askName: { framing: NAME_FRAMING, characterVisible: false },
-  gender: { framing: NAME_FRAMING, characterVisible: false },
-  birthday: { framing: NAME_FRAMING, characterVisible: false },
+  auth: { framing: SKY_FRAMING, characterVisible: false },
+  welcome: { framing: SKY_FRAMING, characterVisible: false },
+  askName: { framing: SKY_NAME_FRAMING, characterVisible: false },
+  birthday: { framing: SKY_NAME_FRAMING, characterVisible: false },
+  meet: { framing: NAME_FRAMING, characterVisible: false },
   reveal: { framing: HERO_FRAMING, characterVisible: true },
   customize: { framing: HERO_FRAMING, characterVisible: true },
   nameSidekick: { framing: NAMESIDEKICK_FRAMING, characterVisible: true },
@@ -130,7 +135,7 @@ export default function Onboarding() {
   const initialPhaseRef = useRef<Phase>('welcome');
 
   const [phase, setPhase] = useState<Phase>('welcome');
-  const [framing, setFraming] = useState<Framing>(WIDE_FRAMING);
+  const [framing, setFraming] = useState<Framing>(SKY_FRAMING);
   // Locks CTAs / hides overlays while a camera move / jump cinematic is playing.
   const [animating, setAnimating] = useState(false);
   const [userName, setUserName] = useState('');
@@ -244,34 +249,32 @@ export default function Onboarding() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, authStatus]);
 
-  // 1 → 2: zoom the empty shot in toward where the sidekick will appear.
+  // 1 → 2: a gentle push further into the sky for the questions.
   const startNaming = () => {
     if (animating) return;
-    setAnimating(true);
-    setFraming(NAME_FRAMING);
-    setTimeout(() => {
-      goTo('askName');
-      setAnimating(false);
-    }, 700);
+    goTo('askName');
   };
 
-  // 2 → gender: just capture the name (the reveal cinematic now fires after birthday).
+  // 2 → birthday: just capture the name (still in the sky).
   const submitUserName = (name: string) => {
     setUserName(name);
     void saveOnboardingField('userName', name);
-    goTo('gender');
-  };
-
-  // gender → birthday
-  const submitGender = (gender: string) => {
-    void saveOnboardingField('gender', gender);
     goTo('birthday');
   };
 
-  // birthday → reveal: ease to the hero framing, build suspense, then he jumps in.
+  // birthday → meet: the big PAN DOWN — sky to the empty patch of ground where
+  // the sidekick is about to land. UI is hidden while the camera sweeps.
   const submitBirthday = (birthday: string) => {
     if (animating) return;
     void saveOnboardingField('birthday', birthday);
+    setAnimating(true);
+    goTo('meet');
+    setTimeout(() => setAnimating(false), 1300);
+  };
+
+  // meet → reveal: the button IS the trigger — build shake, then he jumps in.
+  const meetSidekick = () => {
+    if (animating) return;
     setAnimating(true);
     goTo('reveal');
     controllerRef.current?.shake({ amp: 0.06, duration: 1.4, mode: 'build' });
@@ -381,11 +384,11 @@ export default function Onboarding() {
       case 'askName':
         submitUserName(userName || 'Dev');
         break;
-      case 'gender':
-        submitGender('other');
-        break;
       case 'birthday':
         submitBirthday('2000-01-01');
+        break;
+      case 'meet':
+        meetSidekick();
         break;
       case 'reveal':
         toCustomize();
@@ -450,7 +453,7 @@ export default function Onboarding() {
             pointerEvents="none"
           >
             <Text style={styles.h1}>Welcome!</Text>
-            <Text style={styles.sub}>Ready to meet your sidekick?</Text>
+            <Text style={styles.sub}>First, a couple of quick questions</Text>
           </Animated.View>
           <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
             <PrimaryButton label="Let's go" onPress={startNaming} disabled={animating} />
@@ -469,11 +472,24 @@ export default function Onboarding() {
         />
       ) : null}
 
-      {/* 2b. Gender */}
-      {phase === 'gender' && !animating ? <GenderStep onSubmit={submitGender} /> : null}
-
-      {/* 2c. Birthday */}
+      {/* 2b. Birthday */}
       {phase === 'birthday' && !animating ? <BirthdayStep onSubmit={submitBirthday} /> : null}
+
+      {/* 2c. Meet — the camera has panned down to the empty ground */}
+      {phase === 'meet' && !animating ? (
+        <>
+          <Animated.View
+            entering={FadeInUp.duration(500)}
+            style={[styles.topCopy, { top: insets.top + 96 }]}
+            pointerEvents="none"
+          >
+            <Text style={styles.h1}>Ready to meet your sidekick?</Text>
+          </Animated.View>
+          <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
+            <PrimaryButton label="Meet your sidekick" onPress={meetSidekick} />
+          </View>
+        </>
+      ) : null}
 
       {/* 3. Sidekick jumped in — "Hey {name}, meet your sidekick!" */}
       {phase === 'reveal' && !animating ? (
@@ -691,34 +707,6 @@ function NameEntry({
           <PrimaryButton label={cta} onPress={submit} disabled={!can} />
         </View>
       </KeyboardAvoidingView>
-    </Animated.View>
-  );
-}
-
-// Gender step — tappable options, auto-advances on tap (low friction, no keyboard).
-function GenderStep({ onSubmit }: { onSubmit: (gender: string) => void }) {
-  return (
-    <Animated.View entering={FadeInUp.duration(450)} style={styles.centerFill}>
-      <View style={styles.nameCol}>
-        <Text style={styles.h1small}>How would you describe yourself?</Text>
-        <View style={{ height: 20 }} />
-        {[
-          { label: 'Female', value: 'female' },
-          { label: 'Male', value: 'male' },
-          { label: 'Other', value: 'other' },
-        ].map((o) => (
-          <Pressable
-            key={o.value}
-            onPress={() => {
-              hapticTap();
-              onSubmit(o.value);
-            }}
-            style={styles.optionCard}
-          >
-            <Text style={styles.optionText}>{o.label}</Text>
-          </Pressable>
-        ))}
-      </View>
     </Animated.View>
   );
 }
