@@ -1,10 +1,13 @@
+import { useContext } from "react";
+import { FloatingChat } from "../floating-chat";
 import { StyleSheet, Text } from "react-native";
 import { colors, font, type } from "../theme";
 
 export function TimestampSeparator({ day, time }: { day: string; time: string }) {
+	const floating = useContext(FloatingChat);
 	return (
-		<Text style={styles.label}>
-			<Text style={styles.day}>{day}</Text> {time}
+		<Text style={[styles.label, floating ? styles.light : null]}>
+			<Text style={[styles.day, floating ? styles.light : null]}>{day}</Text> {time}
 		</Text>
 	);
 }
@@ -20,5 +23,8 @@ const styles = StyleSheet.create({
 	},
 	day: {
 		fontFamily: font.medium,
+	},
+	light: {
+		color: "#FFFFFF",
 	},
 });

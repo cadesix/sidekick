@@ -34,6 +34,7 @@ import {
 	TIME_REVEAL_WIDTH,
 	type BubbleLayout,
 } from "../components/MessageRow";
+import { FloatingChat } from "../floating-chat";
 import { GamePickerSheet } from "../components/GamePickerSheet";
 import { type DrawerAction, PlusDrawer } from "../components/PlusDrawer";
 import { ReplyChain } from "../components/ReplyChain";
@@ -333,6 +334,7 @@ function ChatScreenImpl({
 	}
 
 	return (
+		<FloatingChat.Provider value={!!floating}>
 		<View ref={containerRef} style={[styles.container, floating ? styles.containerFloating : null]}>
 			<GestureDetector gesture={timeRevealPan}>
 				<FlatList
@@ -486,6 +488,7 @@ function ChatScreenImpl({
 				/>
 			) : null}
 		</View>
+		</FloatingChat.Provider>
 	);
 }
 
