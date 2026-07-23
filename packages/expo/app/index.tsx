@@ -865,7 +865,7 @@ export default function Home() {
       {/* iOS-style home dock — the sheets slide up OVER it; only the
           full-screen map reveal hides it */}
       <HomeDock
-        hidden={mapShown || skyMode}
+        hidden={mapShown || skyMode || (chatUi === 'sky' && chatOpen)}
         unread={unread}
         shopDot={shopDot}
         goalsDot={goalsDot}
@@ -1071,41 +1071,20 @@ export default function Home() {
           </Animated.View>
         </>
       ) : chatUi === 'sky' ? (
-        <>
-          {chatOpen ? (
-            <Pressable
-              onPress={closeChat}
-              accessibilityLabel="Close chat"
-              style={{ position: 'absolute', left: 0, right: 0, top: SCREEN_H * 0.62, bottom: 0, zIndex: 30 }}
-            />
-          ) : null}
-          <Animated.View
-            style={[
-              chatSkyStyle,
-              {
-                position: 'absolute',
-                left: 0,
-                right: 0,
-                top: 0,
-                height: SCREEN_H * 0.62,
-                zIndex: 40,
-                borderBottomLeftRadius: 28,
-                borderBottomRightRadius: 28,
-                overflow: 'hidden',
-                backgroundColor: '#fff',
-                shadowColor: '#000',
-                shadowOpacity: 0.12,
-                shadowRadius: 24,
-                shadowOffset: { width: 0, height: 8 },
-              },
-            ]}
-            pointerEvents={chatOpen ? 'auto' : 'none'}
-          >
-            <View style={{ flex: 1, paddingTop: insets.top }}>
-              <ChatScreen onClose={closeChat} onOpenGame={setActiveMatchId} />
-            </View>
-          </Animated.View>
-        </>
+        /* no panel at all: the transcript + input bar float straight over the
+           environment (ChatScreen `floating`); the dock fades out beneath and
+           the input bar takes its place at the bottom */
+        <Animated.View
+          style={[
+            chatSkyStyle,
+            { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 },
+          ]}
+          pointerEvents={chatOpen ? 'auto' : 'none'}
+        >
+          <View style={{ flex: 1, paddingTop: insets.top }}>
+            <ChatScreen floating onClose={closeChat} onOpenGame={setActiveMatchId} />
+          </View>
+        </Animated.View>
       ) : (
         <Animated.View
           style={[

@@ -67,9 +67,13 @@ export const ChatScreen = memo(ChatScreenImpl);
 function ChatScreenImpl({
 	onClose,
 	onOpenGame,
+	floating,
 }: {
 	onClose: () => void;
 	onOpenGame: (matchId: string) => void;
+	// "sky" presentation: transparent over the 3D scene — no white fill, no
+	// sheet corners/grabber, no white header/input fades; bubbles float free
+	floating?: boolean;
 }) {
 	const insets = useSafeAreaInsets();
 	const { thread, messages, composerAd, typing, send, addReaction, removeMessage } =
@@ -304,7 +308,7 @@ function ChatScreenImpl({
 	}
 
 	return (
-		<View ref={containerRef} style={styles.container}>
+		<View ref={containerRef} style={[styles.container, floating ? styles.containerFloating : null]}>
 			<GestureDetector gesture={timeRevealPan}>
 				<FlatList
 					inverted
@@ -340,16 +344,20 @@ function ChatScreenImpl({
 			) : null}
 
 			<View style={styles.header} pointerEvents="box-none">
-				<LinearGradient
-					colors={["rgba(255,255,255,0.96)", "rgba(255,255,255,0.82)", "rgba(255,255,255,0)"]}
-					locations={[0, 0.55, 1]}
-					style={styles.headerFade}
-					pointerEvents="none"
-				/>
-				{/* grabber: signals the sheet slides down to dismiss */}
-				<View style={styles.grabberWrap} pointerEvents="none">
-					<View style={styles.grabber} />
-				</View>
+				{floating ? null : (
+					<LinearGradient
+						colors={["rgba(255,255,255,0.96)", "rgba(255,255,255,0.82)", "rgba(255,255,255,0)"]}
+						locations={[0, 0.55, 1]}
+						style={styles.headerFade}
+						pointerEvents="none"
+					/>
+				)}
+				{/* grabber: signals the sheet slides down to dismiss (sheet only) */}
+				{floating ? null : (
+					<View style={styles.grabberWrap} pointerEvents="none">
+						<View style={styles.grabber} />
+					</View>
+				)}
 				{/* close on the RIGHT now; settings live under Profile (dock tile) */}
 				<View style={styles.headerRow} pointerEvents="box-none">
 					<Glass isInteractive style={styles.glassButton}>
@@ -373,13 +381,15 @@ function ChatScreenImpl({
 			) : null}
 
 			<Animated.View style={[styles.footer, footerStyle]} pointerEvents="box-none">
-				<Animated.View style={[styles.inputFade, inputFadeStyle]} pointerEvents="none">
-					<LinearGradient
-						colors={["rgba(255,255,255,0)", colors.background]}
-						locations={[0, 1]}
-						style={StyleSheet.absoluteFill}
-					/>
-				</Animated.View>
+				{floating ? null : (
+					<Animated.View style={[styles.inputFade, inputFadeStyle]} pointerEvents="none">
+						<LinearGradient
+							colors={["rgba(255,255,255,0)", colors.background]}
+							locations={[0, 1]}
+							style={StyleSheet.absoluteFill}
+						/>
+					</Animated.View>
+				)}
 				<Animated.View
 					style={inputBarPaddingStyle}
 					onLayout={(event) => {
@@ -454,6 +464,12 @@ const styles = StyleSheet.create({
 		borderTopLeftRadius: 28,
 		borderTopRightRadius: 28,
 		overflow: "hidden",
+	},
+	// floating ("sky") presentation: the environment IS the background
+	containerFloating: {
+		backgroundColor: "transparent",
+		borderTopLeftRadius: 0,
+		borderTopRightRadius: 0,
 	},
 	list: {
 		flex: 1,
