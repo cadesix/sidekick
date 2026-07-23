@@ -68,9 +68,10 @@ type BoneName = keyof typeof BONE_MAP;
 // two-handed "holding phone" pose (authored in the /pose studio), verbatim
 const PHONE_R = { swingX: -0.1, swingZ: 2.12, foreX: -0.47, foreZ: -0.53, twist: -1.06 };
 const PHONE_L = { swingX: -1.41, swingZ: -1.56, foreX: -0.6, foreZ: -0.06, twist: 0.51 };
-// Facing SQUARE to camera (yaw zeroed — he used to angle away); head tipped
-// down at the screen in his hands.
-const PHONE_POSE = { headPitch: 0.24, headYaw: 0, bodyYaw: 0 };
+// The hold pose's yaws are part of the authored armature (arms were posed in
+// this yawed frame — zeroing them wrecks the hold). Head pitch is the one
+// intentional delta: clearly looking DOWN at the phone.
+const PHONE_POSE = { headPitch: 0.32, headYaw: -0.13, bodyYaw: 0.55 };
 
 export type Framing = {
   pos: [number, number, number];
@@ -1171,15 +1172,6 @@ export function createSidekickRenderer(
         swZR = lerp(swZR, -0.95, armUp);
         twR = lerp(twR, 0, armUp);
         foXR = lerp(foXR, 0, armUp);
-      }
-      // phone-hold fidget: tiny out-of-phase wobbles on each arm while the
-      // phone is up — reads as thumbs/hands moving, not a frozen statue
-      if (pb > 0.02) {
-        const fid = pb * 0.03;
-        swZL += Math.sin(now * 2.3) * fid;
-        foXL += Math.sin(now * 3.1 + 1.2) * fid;
-        swZR -= Math.sin(now * 2.7 + 0.6) * fid;
-        foXR += Math.sin(now * 3.4 + 2.0) * fid;
       }
       setArm('armL', 'forearmL', 1, swXL, swZL, twL, foXL, foZL);
       setArm('armR', 'forearmR', -1, swXR, swZR, twR, foXR, foZR);

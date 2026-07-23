@@ -10,7 +10,9 @@ import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reani
 // emulated-keyboard focus animation. Omit it for a statically-visible deck
 // (onboarding's always-focused input steps).
 export const FAUX_KB_HEIGHT = 320;
-const SHOW = Platform.OS === 'web' && process.env.NODE_ENV !== 'production';
+// exported so keyboard-adjacent layouts can reserve the deck's space in dev-web
+export const FAUX_KB_VISIBLE = Platform.OS === 'web' && process.env.NODE_ENV !== 'production';
+const SHOW = FAUX_KB_VISIBLE;
 
 const ROWS = [
   ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],

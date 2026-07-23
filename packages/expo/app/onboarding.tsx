@@ -30,7 +30,7 @@ import {
 } from '../src/lib/onboarding';
 import { Glass } from '../src/imessage/components/Glass';
 import { OnboardingAuth } from '../src/components/OnboardingAuth';
-import { FauxKeyboard } from '../src/components/FauxKeyboard';
+import { FAUX_KB_HEIGHT, FAUX_KB_VISIBLE, FauxKeyboard } from '../src/components/FauxKeyboard';
 import { SidekickCanvas } from '../src/components/SidekickCanvas';
 import { useAuthStore } from '../src/lib/auth-store';
 import type { Framing, SidekickController } from '../src/three/renderer';
@@ -457,16 +457,11 @@ export default function Onboarding() {
       {/* 1. Welcome */}
       {phase === 'welcome' && !animating ? (
         <>
-          <Animated.View
-            entering={FadeInUp.duration(500)}
-            style={[styles.topCopy, { top: insets.top + 48 }]}
-            pointerEvents="none"
-          >
-            <Text style={styles.h1}>Welcome!</Text>
-            <Text style={styles.sub}>First, a couple of quick questions</Text>
+          <Animated.View entering={FadeInUp.duration(500)} style={styles.centerCopy} pointerEvents="none">
+            <Text style={styles.h1Hero}>Welcome</Text>
           </Animated.View>
           <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
-            <PrimaryButton label="Let's go" onPress={startNaming} disabled={animating} />
+            <PrimaryButton label="Get started" onPress={startNaming} disabled={animating} />
           </View>
         </>
       ) : null}
@@ -502,7 +497,9 @@ export default function Onboarding() {
             <Text style={styles.h1}>Ready to meet your sidekick?</Text>
           </Animated.View>
           <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
-            <PrimaryButton label="Meet your sidekick" onPress={meetSidekick} />
+            <SubtleShake>
+              <PrimaryButton label="Yes!" onPress={meetSidekick} />
+            </SubtleShake>
           </View>
         </>
       ) : null}
@@ -632,6 +629,22 @@ function currentColorId(): string {
 //   the bottom — so the mascot (framed in the band between them) stays visible
 //   while typing and the keyboard doesn't cover the input (the "what's his
 //   name?" step).
+// A barely-there idle wiggle for a CTA that wants to be pressed — ±1.2° of
+// rotation with a touch of sway, slow loop, never big enough to read as broken.
+function SubtleShake({ children }: { children: React.ReactNode }) {
+  const t = useSharedValue(0);
+  useEffect(() => {
+    t.value = withRepeat(withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.quad) }), -1, true);
+  }, [t]);
+  const style = useAnimatedStyle(() => ({
+    transform: [
+      { rotate: `${Math.sin(t.value * Math.PI * 2) * 1.2}deg` },
+      { translateX: Math.sin(t.value * Math.PI * 4) * 1 },
+    ],
+  }));
+  return <Animated.View style={style}>{children}</Animated.View>;
+}
+
 function NameEntry({
   title,
   placeholder,
@@ -704,7 +717,7 @@ function NameEntry({
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.nameBottomWrap}
         >
-          <View style={[styles.nameCol, { paddingBottom: insets.bottom + 20 }]}>
+          <View style={[styles.nameCol, { paddingBottom: (FAUX_KB_VISIBLE ? FAUX_KB_HEIGHT : insets.bottom) + 20 }]}>
             {chipRow}
             {field}
             <View style={{ height: 12 }} />
@@ -719,7 +732,7 @@ function NameEntry({
     <Animated.View entering={FadeInUp.duration(450)} style={StyleSheet.absoluteFill}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.centerFill}
+        style={[styles.centerFill, FAUX_KB_VISIBLE ? { paddingBottom: FAUX_KB_HEIGHT } : null]}
       >
         <View style={styles.nameCol}>
           <Text style={styles.h1}>{title}</Text>
@@ -982,6 +995,20 @@ const styles = StyleSheet.create({
   },
   devBtnText: { fontFamily: 'monospace', fontSize: 11, fontWeight: '700', color: '#bef264' },
   topCopy: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 32, alignItems: 'center' },
+  // the one-word hero title: bigger and heavier than h1, dead-centre of screen
+  h1Hero: {
+    fontFamily: FONT_BOLD,
+    fontSize: 58,
+    fontWeight: '900',
+    letterSpacing: -2,
+    lineHeight: 60,
+    textAlign: 'center',
+    color: '#fff',
+    textShadowColor: 'rgba(0,0,0,0.4)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 12,
+  },
+  centerCopy: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   h1: {
     fontFamily: FONT_BOLD,
     fontSize: 44,
