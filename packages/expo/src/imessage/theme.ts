@@ -52,7 +52,7 @@ export const font = {
 } as const;
 
 export const type = {
-	body: { fontSize: 15, lineHeight: 21, fontFamily: font.regular }, // chat role: 15/1.375
+	body: { fontSize: 16, lineHeight: 22, fontFamily: font.regular }, // chat role, bumped one step
 	listName: { fontSize: 17, fontFamily: font.bold },
 	listPreview: { fontSize: 15, lineHeight: 20, fontFamily: font.regular },
 	listTime: { fontSize: 15, fontFamily: font.regular },
