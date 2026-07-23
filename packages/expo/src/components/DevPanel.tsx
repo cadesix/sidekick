@@ -34,9 +34,11 @@ import { TIMES, type TimeOfDay } from '../three/settings';
 // dailyBox.claimable after a box reset, the sessions list after a wipe —
 // reconcile too.
 //
-// __DEV__ is FALSE on the Expo Web dev build, so we gate on SHOW_DEV below.
+// __DEV__ is FALSE on the Expo Web dev build, so gate on NODE_ENV instead —
+// development there, 'production' in any shipped bundle (strips the panel AND
+// the Chat UI experiment row from prod).
 
-const SHOW_DEV = true;
+const SHOW_DEV = process.env.NODE_ENV !== 'production';
 
 const COIN_STEPS = [-1000, -100, 100, 1000, 5000];
 const BOND_PRESETS = [10, 25, 40, 55, 70, 85, 100];

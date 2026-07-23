@@ -3,11 +3,10 @@ import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Dimensions, FlatList, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Alert, Dimensions, FlatList, Pressable, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, {
-	type SharedValue,
 	Easing,
 	interpolate,
 	useAnimatedProps,
@@ -400,7 +399,7 @@ function ChatScreenImpl({
 						pointerEvents="none"
 					/>
 				)}
-				{/* grabber: signals the sheet slides down to dismiss (sheet only) */}
+				{/* grabber: hidden when floating (kept in the solid presentations) */}
 				{floating ? null : (
 					<View style={styles.grabberWrap} pointerEvents="none">
 						<View style={styles.grabber} />

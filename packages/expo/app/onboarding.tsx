@@ -352,7 +352,6 @@ export default function Onboarding() {
           reason: summary?.reason ?? 'habits',
           profile: {
             name: (st.userName || userName).trim() || 'friend',
-            gender: st.gender || undefined,
             birthday: st.birthday || undefined,
             sidekickName: (st.sidekickName || sidekickName).trim() || undefined,
             sidekickColor: (loadSettings().celBodyColor ?? '') || undefined,
@@ -634,6 +633,8 @@ function currentColorId(): string {
 //   the bottom — so the mascot (framed in the band between them) stays visible
 //   while typing and the keyboard doesn't cover the input (the "what's his
 //   name?" step).
+// (Sits above NameEntry only for proximity to its use sites — unrelated to
+// the input component below.)
 // A barely-there idle wiggle for a CTA that wants to be pressed — ±1.2° of
 // rotation with a touch of sway, slow loop, never big enough to read as broken.
 function SubtleShake({ children }: { children: React.ReactNode }) {
@@ -1068,7 +1069,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   // Flat white cards/inputs with a hard (zero-blur) grey drop shadow — a raised,
-  // solid look. Reused across the onboarding inputs + option cards + chips.
+  // solid look. Reused across the onboarding inputs + chips.
   nameChip: {
     paddingHorizontal: 14,
     paddingVertical: 9,
