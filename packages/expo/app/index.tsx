@@ -681,8 +681,8 @@ export default function Home() {
   //  - the top edge races ahead with a back-out overshoot — the rect visibly
   //    STRETCHES upward out of the dock, top corners reaching the screen first
   //  - the bottom edge trails on an ease-in, leaving the dock last
-  //  - a perspective rotateX bulges mid-flight so the top edge reads longer
-  //    than the bottom (the iOS "coming at you" trapezoid), settling flat
+  //  - a perspective rotateX tips the bottom AWAY mid-flight so the rect reads
+  //    as a reverse pyramid — wide top edge, narrow bottom edge — settling flat
   // The driver is LINEAR; all shaping lives in these curves.
   const chatZoomStyle = useAnimatedStyle(() => {
     const p = chatProgress.value;
@@ -703,10 +703,13 @@ export default function Home() {
     const right = (chatOrigin.x.value + chatOrigin.w.value) * (1 - pX) + SCREEN_W * pX;
     return {
       transform: [
-        { perspective: 900 },
+        { perspective: 650 },
         { translateX: (left + right) / 2 - SCREEN_W / 2 },
         { translateY: (top + bottom) / 2 - SCREEN_H / 2 },
-        { rotateX: `${10 * Math.sin(Math.PI * Math.min(1, Math.max(0, p / 0.7)))}deg` },
+        // NEGATIVE rotateX tips the BOTTOM away from the viewer: with the
+        // perspective above, the bottom edge renders visibly NARROWER than the
+        // top — the reverse-pyramid / cone silhouette — flattening as it fills
+        { rotateX: `${-22 * Math.sin(Math.PI * Math.min(1, Math.max(0, p / 0.8)))}deg` },
         { scaleX: Math.max(0.001, (right - left) / SCREEN_W) },
         { scaleY: Math.max(0.001, (bottom - top) / SCREEN_H) },
       ],
