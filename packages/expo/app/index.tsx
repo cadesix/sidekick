@@ -224,8 +224,11 @@ export default function Home() {
   // redirect itself lives just before the return so every hook still runs.
   const onboarding = useOnboardingState();
   const authStatus = useAuthStore((s) => s.status);
-  // which Messages presentation is live — DEV experiment switch (DevPanel)
-  const chatUi = useDevPrefs((s) => s.chatUiMode);
+  // which Messages presentation is live. The DevPanel switch only steers DEV
+  // builds — production pins the shipped mode (a persisted dev value must never
+  // leak into a prod build with no DevPanel to escape it).
+  const devChatUi = useDevPrefs((s) => s.chatUiMode);
+  const chatUi = process.env.NODE_ENV !== 'production' ? devChatUi : 'fullscreen';
   // chatOpen drives the camera/holdingPhone; chatProgress runs the open animation
   const [chatOpen, setChatOpen] = useState(false);
   const chatProgress = useSharedValue(0);
@@ -238,8 +241,8 @@ export default function Home() {
     () => ({ x: chatOriginX, y: chatOriginY, w: chatOriginW, h: chatOriginH }),
     [chatOriginX, chatOriginY, chatOriginW, chatOriginH],
   );
-  // guided habit-add ("+" from Goals) presents in an IDENTICAL drawer to the main
-  // chat — same camera/pose/slide — driven by this progress value.
+  // guided habit-add ("+" from Goals) presents in the classic chat drawer
+  // (same camera/pose/slide as the 'sheet' presentation), driven by this value.
   const habitProgress = useSharedValue(0);
   // mapOpen drives the camera pull-back; mapShown drives the map's circle
   // reveal, a beat later, so the camera starts flying out before the map grows.
@@ -705,7 +708,8 @@ export default function Home() {
   //  - the bottom edge trails on an ease-in, leaving the dock last
   //  - a perspective rotateX tips the bottom AWAY mid-flight so the rect reads
   //    as a reverse pyramid — wide top edge, narrow bottom edge — settling flat
-  // The driver is LINEAR; all shaping lives in these curves.
+  // Open is driven by a spring (see openChat), close by a linear timing;
+  // the geometric character lives in these per-edge curves either way.
   const chatZoomStyle = useAnimatedStyle(() => {
     const p = chatProgress.value;
     // top: compressed into the first ~60% of the flight with a hard back-out —
@@ -740,18 +744,21 @@ export default function Home() {
       ],
       // tile corners while small, square once full screen
       borderRadius: 44 * Math.max(0, 1 - p),
-      // fully closed = invisible (otherwise a tile-sized chat sits on the dock)
-      opacity: p > 0.005 ? 1 : 0,
+      // fully closed = parked OFF-SCREEN (never an opacity write — Glass
+      // descendants die if an ancestor's opacity animates, expo/expo#41024)
+      marginTop: p > 0.005 ? 0 : SCREEN_H * 2,
     };
   });
   // v1 sheet: the original slide-up drawer over the lower ~82%
   const chatSheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: (1 - chatProgress.value) * (SCREEN_H - DRAWER_TOP) }],
   }));
-  // v3 sky: the chat floats down-to-up into the sky band above the character
+  // v3 sky: the transcript slides up over the scene. NO animated opacity here —
+  // the wrapper holds Glass descendants (header X, composer), and animating an
+  // ancestor's opacity permanently kills UIGlassEffect views (expo/expo#41024;
+  // same reason HomeDock slides instead of fading).
   const chatSkyStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: (1 - chatProgress.value) * 90 }],
-    opacity: chatProgress.value,
+    transform: [{ translateY: (1 - chatProgress.value) * SCREEN_H }],
   }));
   // The icon clone rides ON TOP of the chat inside the morphing rect and fades
   // away in a BLINK (~2 frames) — one stretched half-icon/half-app frame, then
@@ -1039,7 +1046,7 @@ export default function Home() {
           v1 'sheet': the original slide-up drawer, character peeking above it
           v2 'fullscreen': takeover zooming out of the dock tile (icon morph)
           v3 'sky': camera pans up (SKY_CHAT_FRAMING), the chat floats above
-          the character in the sky band; tap his band below to close */}
+          the character; the header's X closes it */}
       {chatUi === 'sheet' ? (
         <>
           {chatOpen ? (

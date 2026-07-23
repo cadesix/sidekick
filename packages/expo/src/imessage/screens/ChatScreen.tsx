@@ -2,8 +2,8 @@ import { BlurView } from "expo-blur";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { memo, useCallback, useMemo, useRef, useState } from "react";
-import { Alert, Dimensions, FlatList, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Dimensions, FlatList, Platform, Pressable, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, {
@@ -35,7 +35,7 @@ import {
 	type BubbleLayout,
 } from "../components/MessageRow";
 import { FloatingChat } from "../floating-chat";
-import { FAUX_KB_HEIGHT, FauxKeyboard } from "~/components/FauxKeyboard";
+import { FAUX_KB_HEIGHT, FAUX_KB_VISIBLE, FauxKeyboard } from "~/components/FauxKeyboard";
 import { GamePickerSheet } from "../components/GamePickerSheet";
 import { type DrawerAction, PlusDrawer } from "../components/PlusDrawer";
 import { ReplyChain } from "../components/ReplyChain";
@@ -130,9 +130,12 @@ function ChatScreenImpl({
 	const EMU_KB_HEIGHT = FAUX_KB_HEIGHT;
 	const emuKbHeight = useSharedValue(0);
 	const emuKbProgress = useSharedValue(0);
-	const keyboard = Platform.OS === "web" ? { height: emuKbHeight, progress: emuKbProgress } : realKeyboard;
+	// the emulation only exists where the faux deck renders (dev web) — a prod
+	// web build must use the real (no-op) hook or focusing the composer would
+	// fly the transcript up 320px over nothing
+	const keyboard = FAUX_KB_VISIBLE ? { height: emuKbHeight, progress: emuKbProgress } : realKeyboard;
 	const emulateKeyboard = (open: boolean) => {
-		if (Platform.OS !== "web") return;
+		if (!FAUX_KB_VISIBLE) return;
 		emuKbHeight.value = withTiming(open ? -EMU_KB_HEIGHT : 0, { duration: 260 });
 		emuKbProgress.value = withTiming(open ? 1 : 0, { duration: 260 });
 	};
@@ -153,6 +156,18 @@ function ChatScreenImpl({
 	const scrimBlurProps = useAnimatedProps(() => ({
 		intensity: replyProgress.value * 28,
 	}));
+	// The blur must UNMOUNT at idle (its web shim's backdrop-filter saturates the
+	// scene even at intensity 0) but must survive the 220ms exit animation, or
+	// dismissing a reply pops the blur off in one frame.
+	const [scrimMounted, setScrimMounted] = useState(false);
+	useEffect(() => {
+		if (replyTo !== undefined) {
+			setScrimMounted(true);
+			return;
+		}
+		const t = setTimeout(() => setScrimMounted(false), 260);
+		return () => clearTimeout(t);
+	}, [replyTo]);
 	const scrimTintStyle = useAnimatedStyle(() => ({
 		opacity: replyProgress.value,
 	}));
@@ -357,7 +372,7 @@ function ChatScreenImpl({
 			{/* Mounted ONLY while replying: expo-blur's web shim applies
 			    backdrop-filter saturate(180%) even at intensity 0, which visibly
 			    over-saturates the environment behind the floating chat. */}
-			{replyTo !== undefined ? (
+			{scrimMounted ? (
 				<AnimatedBlurView
 					tint="light"
 					pointerEvents="none"

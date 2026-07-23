@@ -74,7 +74,7 @@ export async function saveStep(phase: string): Promise<void> {
 
 /** Persist a collected profile field (userName / sidekickName) as it's entered. */
 export async function saveOnboardingField(
-  field: 'userName' | 'sidekickName' | 'gender' | 'birthday',
+  field: 'userName' | 'sidekickName' | 'birthday',
   value: string,
 ): Promise<void> {
   const state = await readRaw();

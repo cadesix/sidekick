@@ -42,18 +42,18 @@ import { applySkin, hydrateSkinFromMirror, saveSkinMirror, SKIN_COLORS, type Ski
 // character's jump-in entrance, camera shakes, and live recolor come through
 // the SidekickController. Faithful RN port of the deleted web onboarding.tsx.
 //
-// 0. auth         — sign in over the empty lawn (OnboardingAuth); skipped if
-//                   already signed in. Advances to welcome once signedIn.
-// 1. welcome      — wide empty evening lawn, "Ready to meet your sidekick?"
-// 2. askName      — camera zooms in, centered "what's your name?" input
-// 3. reveal       — camera to hero, sidekick JUMPS in, "Hey {name}, meet your sidekick!"
-// 4. customize    — pick the sidekick's color (live recolor)
-// 5. nameSidekick — centered "what's his name?" input
-// 6. notif        — an iMessage-style banner drops in (push-prompt slot)
-// 7. chat         — STUB: sheet slides up, he holds the phone → finish → home
+// 0. auth         — sign in, camera up at the evening sky (OnboardingAuth);
+//                   skipped if already signed in. Advances to welcome once signedIn.
+// 1. welcome      — centered "Welcome" over the sky, "Get started"
+// 2. askName      — still in the sky, centered "what's your name?" input
+// 3. birthday     — sky, date entry
+// 4. meet         — camera PANS DOWN to the empty lawn, shaky "Yes!" CTA
+// 5. reveal       — build shake, sidekick JUMPS in, "Hey {name}, meet your sidekick!"
+// 6. customize    — pick the sidekick's color (live recolor)
+// 7. nameSidekick — "what's your sidekick's name?" + idea chip rail
+// 8. notif        — he studies his phone, an iMessage-style banner drops in
+// 9. chat         — sheet slides up, he holds the phone → finish → home
 
-// Establishing shot: pulled back on the empty lawn (character parked below).
-const WIDE_FRAMING: Framing = { pos: [0, 1.9, 9.5], target: [0, 0.5, 0], fov: 43 };
 // Auth/welcome: pointed UP at the evening sky — cloud band composed across the
 // frame, horizon out of shot. Tune-by-eye.
 const SKY_FRAMING: Framing = { pos: [0, 1.4, 8], target: [0, 8.5, -10], fov: 48 };
@@ -812,7 +812,7 @@ function BirthdayStep({ onSubmit }: { onSubmit: (birthday: string) => void }) {
       <View style={[styles.topCopy, { top: insets.top + 96 }]}>
         <Text style={styles.h1small}>When's your birthday?</Text>
       </View>
-      <View style={[styles.nameBottomWrap, { paddingBottom: insets.bottom + 20 }]}>
+      <View style={[styles.nameBottomWrap, { paddingBottom: (FAUX_KB_VISIBLE ? FAUX_KB_HEIGHT : insets.bottom) + 20 }]}>
         <View style={styles.nameCol}>
           <View style={styles.dobRow}>
             <TextInput
@@ -1004,7 +1004,6 @@ const styles = StyleSheet.create({
   h1Hero: {
     fontFamily: FONT_BOLD,
     fontSize: 58,
-    fontWeight: '900',
     letterSpacing: -2,
     lineHeight: 60,
     textAlign: 'center',
@@ -1053,41 +1052,6 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 24,
   },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 8,
-    marginBottom: 4,
-  },
-  // Flat white cards/inputs with a hard (zero-blur) grey drop shadow — a raised,
-  // solid look. Reused across the onboarding inputs + option cards + chips.
-  nameChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 999,
-    backgroundColor: '#fff',
-    shadowColor: '#c4c4c4',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
-  },
-  nameChipText: { fontFamily: FONT_MEDIUM, fontSize: 15, fontWeight: '600', color: '#111' },
-  optionCard: {
-    width: '100%',
-    paddingVertical: 16,
-    borderRadius: 18,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    marginBottom: 12,
-    shadowColor: '#c4c4c4',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 3,
-  },
-  optionText: { fontFamily: FONT_MEDIUM, fontSize: 17, fontWeight: '600', color: '#111' },
   dobRow: { flexDirection: 'row', gap: 10, marginTop: 24 },
   dobField: {
     flex: 1,
@@ -1103,6 +1067,20 @@ const styles = StyleSheet.create({
     color: '#111',
     textAlign: 'center',
   },
+  // Flat white cards/inputs with a hard (zero-blur) grey drop shadow — a raised,
+  // solid look. Reused across the onboarding inputs + option cards + chips.
+  nameChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: '#fff',
+    shadowColor: '#c4c4c4',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
+  },
+  nameChipText: { fontFamily: FONT_MEDIUM, fontSize: 15, fontWeight: '600', color: '#111' },
   dobYear: { flex: 1.5 },
   dobPickerCard: {
     marginTop: 24,

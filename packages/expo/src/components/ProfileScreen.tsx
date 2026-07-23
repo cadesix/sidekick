@@ -14,12 +14,12 @@ import {
 	View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BOND_MAX, BOND_MIN } from "@sidekick/core";
+import { BOND_MAX, BOND_MIN, nextSession as coreNextSession } from "@sidekick/core";
 import { StreakModal } from "./StreakModal";
 import { useStarChat } from "../store/star-chat";
 import { locationStatus, trpc } from "~/lib/api";
 import { useSignOut } from "~/lib/auth";
-import { useSnapshot } from "~/lib/state";
+import { snapshotSessions, useSnapshot } from "~/lib/state";
 import { FONT, FONT_BOLD, FONT_MEDIUM, INK } from "~/lib/tokens";
 import { getLocalFocusSettings } from "~/lib/focus";
 import { HEALTH_CONNECTION_QUERY_KEY, loadHealthConnection } from "~/lib/health-connection";
@@ -160,6 +160,10 @@ export function ProfileScreen() {
 	const snapshot = useSnapshot().data;
 	const astral = snapshot?.astral ?? null;
 	const bond = snapshot?.bond ?? BOND_MIN;
+	// gate the star-chat CTA the same way Home gates its star button: no
+	// unfinished session → nothing to open (a completed reading would resume
+	// into stale local phase state)
+	const nextStarChat = snapshot ? coreNextSession(snapshotSessions(snapshot)) : null;
 	const streakCount = snapshot?.streak.count ?? 0;
 	const [streakOpen, setStreakOpen] = useState(false);
 	const location = useQuery({ queryKey: ["location", "setting"], queryFn: loadLocationSetting });
@@ -270,16 +274,19 @@ export function ProfileScreen() {
 								Do an astral chat with {sidekickName} to reveal your card.
 							</Text>
 						)}
-						{/* the way in: dismiss Profile and ask Home to open the star chat */}
-						<Pressable
-							style={styles.astralCta}
-							onPress={() => {
-								useStarChat.getState().requestOpen();
-								router.back();
-							}}
-						>
-							<Text style={styles.astralCtaText}>{astral ? "Continue your star chat ✦" : "Start your star chat ✦"}</Text>
-						</Pressable>
+						{/* the way in: dismiss Profile and ask Home to open the star chat —
+						    only while a session remains to be played */}
+						{nextStarChat ? (
+							<Pressable
+								style={styles.astralCta}
+								onPress={() => {
+									useStarChat.getState().requestOpen();
+									router.back();
+								}}
+							>
+								<Text style={styles.astralCtaText}>{astral ? "Continue your star chat ✦" : "Start your star chat ✦"}</Text>
+							</Pressable>
+						) : null}
 					</View>
 
 					{/* Connections — a proper section title, not a settings caption */}
@@ -566,13 +573,6 @@ const styles = StyleSheet.create({
 		fontFamily: FONT,
 		fontSize: 17,
 		color: INK,
-	},
-	rowInput: {
-		flex: 1,
-		fontFamily: FONT,
-		fontSize: 17,
-		color: INK_55,
-		textAlign: "right",
 	},
 	rowValue: {
 		flex: 1,
