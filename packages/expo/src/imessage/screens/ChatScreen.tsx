@@ -3,7 +3,7 @@ import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
-import { Alert, Dimensions, FlatList, Pressable, StyleSheet, View } from "react-native";
+import { Alert, Dimensions, FlatList, Platform, Pressable, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, {
@@ -119,7 +119,20 @@ function ChatScreenImpl({
 		[typing, transcript],
 	);
 
-	const keyboard = useReanimatedKeyboardAnimation();
+	const realKeyboard = useReanimatedKeyboardAnimation();
+	// WEB (dev aid): the browser has no virtual keyboard, so composer focus
+	// emulates one — the same shared-value shapes the real hook drives (height
+	// runs 0 → -kb, progress 0 → 1), letting the keyboard layout be exercised
+	// in the browser. Native uses the real thing untouched.
+	const EMU_KB_HEIGHT = 320;
+	const emuKbHeight = useSharedValue(0);
+	const emuKbProgress = useSharedValue(0);
+	const keyboard = Platform.OS === "web" ? { height: emuKbHeight, progress: emuKbProgress } : realKeyboard;
+	const emulateKeyboard = (open: boolean) => {
+		if (Platform.OS !== "web") return;
+		emuKbHeight.value = withTiming(open ? -EMU_KB_HEIGHT : 0, { duration: 260 });
+		emuKbProgress.value = withTiming(open ? 1 : 0, { duration: 260 });
+	};
 	const inputBarHeight = useSharedValue(56);
 	const revealX = useSharedValue(0);
 	const replyProgress = useSharedValue(0);
@@ -160,8 +173,10 @@ function ChatScreenImpl({
 	// Floating ("sky") presentation: reserve the bottom of the screen for the
 	// character — the newest message rests ABOVE his head, and the band between
 	// the input bar and the transcript shows only the environment. Fraction of
-	// screen height, tuned to SKY_CHAT_FRAMING's standing-body framing.
-	const CHARACTER_ZONE = Math.round(Dimensions.get("window").height * 0.3);
+	// screen height, tuned to SKY_CHAT_FRAMING's standing-body framing. The
+	// reserve COLLAPSES as the keyboard rises (the keyboard covers the character
+	// anyway, and the transcript shouldn't ride 30% above the composer).
+	const CHARACTER_ZONE = Math.round(Dimensions.get("window").height * 0.22);
 	// In an inverted list the header renders at the visual bottom; it reserves
 	// room for the input bar (plus the fade feather) and however far the keyboard
 	// lifted it — so the newest message rests ABOVE the fade, not under it.
@@ -170,7 +185,7 @@ function ChatScreenImpl({
 			inputBarHeight.value -
 			keyboard.height.value +
 			FADE_FEATHER +
-			(floating ? CHARACTER_ZONE : 0),
+			(floating ? CHARACTER_ZONE * (1 - keyboard.progress.value) : 0),
 	}));
 	// The bottom fade tracks the live composer height (which now grows with
 	// multi-line text) plus that feather, so it hugs the composer instead of the
@@ -415,6 +430,8 @@ function ChatScreenImpl({
 					<View>
 						{plusOpen ? <PlusDrawer onSelect={handleDrawerAction} /> : null}
 						<ChatInputBar
+							onInputFocus={() => emulateKeyboard(true)}
+							onInputBlur={() => emulateKeyboard(false)}
 							replyActive={replyTo !== undefined}
 							attachmentState={attachmentState}
 							tray={

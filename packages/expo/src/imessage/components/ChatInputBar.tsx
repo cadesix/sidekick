@@ -58,6 +58,9 @@ interface ChatInputBarProps {
 	tray: ReactNode;
 	onSendText: (text: string) => void;
 	onSendAudio: (audio: AudioAttachment) => void;
+	// composer focus/blur — the sky chat uses these to emulate a keyboard on web
+	onInputFocus?: () => void;
+	onInputBlur?: () => void;
 	onTogglePlusMenu: () => void;
 	plusMenuOpen: boolean;
 	recording: boolean;
@@ -70,6 +73,8 @@ export function ChatInputBar({
 	tray,
 	onSendText,
 	onSendAudio,
+	onInputFocus,
+	onInputBlur,
 	onTogglePlusMenu,
 	plusMenuOpen,
 	recording,
@@ -157,6 +162,8 @@ export function ChatInputBar({
 								ref={inputRef}
 								value={text}
 								onChangeText={setText}
+								onFocus={onInputFocus}
+								onBlur={onInputBlur}
 								placeholder={replyActive ? "Reply" : "Message"}
 								placeholderTextColor={colors.tertiaryLabel}
 								multiline
