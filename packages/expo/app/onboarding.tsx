@@ -314,11 +314,13 @@ export default function Onboarding() {
     void saveOnboardingField('sidekickName', name);
     goTo('notif'); // phone comes out here (see holdingPhone on the canvas)
     // NOTE: slot for the real push-notification permission prompt.
+    // He faces you square, studies the phone for a couple of seconds (hands
+    // fidgeting — renderer's phone-hold wobble), THEN the message drops in.
     setTimeout(() => {
       setNotifIn(true);
       hapticNotif(); // the message lands
-    }, 850);
-    setTimeout(() => setNotifLookUp(true), 1200); // then he looks up at it
+    }, 2200);
+    setTimeout(() => setNotifLookUp(true), 2600); // then he looks up at it
   };
 
   // 6 → 7: tap the banner → he lifts the phone (holdingPhone) + chat opens.
