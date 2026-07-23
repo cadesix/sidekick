@@ -141,36 +141,35 @@ const PHASE_ORDER: Phase[] = [
   'chat',
 ];
 
-// Phases advanced ONLY by an in-flight timer/cinematic — they have no CTA or tap
-// of their own (meetTitle = the pre-pop tremble, celebrate = the hop, textIntro =
-// the "let me text u" beat). Their advancing timer fires from the transition
-// handler, never on mount, so a cold resume (kill/reload mid-transition) that
-// landed on one would strand the user on a dead screen. On resume we skip forward
-// to the next phase the user can actually act on.
-const TRANSIENT_PHASES = new Set<Phase>(['meetTitle', 'celebrate', 'textIntro']);
+// On resume, skip forward past any `transient` phase (see PHASES) to the next
+// phase the user can actually act on — landing cold on a transient one would
+// strand them on a dead screen, since its advancing timer only fires from the
+// transition handler, never on mount.
 function resumablePhase(phase: Phase): Phase {
   let i = PHASE_ORDER.indexOf(phase);
-  while (i >= 0 && i < PHASE_ORDER.length - 1 && TRANSIENT_PHASES.has(PHASE_ORDER[i])) i += 1;
+  while (i >= 0 && i < PHASE_ORDER.length - 1 && PHASES[PHASE_ORDER[i]].transient) i += 1;
   return PHASE_ORDER[i] ?? phase;
 }
 
 // Declarative entry state per phase: what the scene must look like when you land
 // on a phase COLD (deep link / reload-resume), independent of whatever cinematic
-// normally plays on the way in.
-const PHASES: Record<Phase, { framing: Framing; characterVisible: boolean }> = {
+// normally plays on the way in. `transient` marks phases advanced ONLY by an
+// in-flight timer/cinematic (no CTA/tap of their own) — a cold resume must skip
+// PAST them (see resumablePhase) or the user is stranded on a dead screen.
+const PHASES: Record<Phase, { framing: Framing; characterVisible: boolean; transient?: boolean }> = {
   auth: { framing: SKY_FRAMING, characterVisible: false },
   hey: { framing: SKY_FRAMING, characterVisible: false },
   birthday: { framing: SKY_NAME_FRAMING, characterVisible: false },
   lookDown: { framing: SKY_NAME_FRAMING, characterVisible: false },
   hereLeft: { framing: NAME_FRAMING, characterVisible: false },
   hereRight: { framing: LOOK_LEFT_FRAMING, characterVisible: false },
-  meetTitle: { framing: HERO_FRAMING, characterVisible: false },
+  meetTitle: { framing: HERO_FRAMING, characterVisible: false, transient: true }, // the pre-pop tremble
   reveal: { framing: HERO_FRAMING, characterVisible: true },
   customize: { framing: HERO_FRAMING, characterVisible: true },
-  celebrate: { framing: HERO_FRAMING, characterVisible: true },
+  celebrate: { framing: HERO_FRAMING, characterVisible: true, transient: true }, // the hop
   nameSidekick: { framing: NAMESIDEKICK_FRAMING, characterVisible: true },
   askName: { framing: ASKNAME_FRAMING, characterVisible: true },
-  textIntro: { framing: HERO_FRAMING, characterVisible: true },
+  textIntro: { framing: HERO_FRAMING, characterVisible: true, transient: true }, // the "let me text u" beat
   notif: { framing: NOTIF_FRAMING, characterVisible: true },
   chat: { framing: SLIVER_FRAMING, characterVisible: true },
 };
@@ -220,10 +219,6 @@ export default function Onboarding() {
   const [animating, setAnimating] = useState(false);
   const [userName, setUserName] = useState('');
   const [sidekickName, setSidekickName] = useState('');
-  // birthday lives in component state too (not only AsyncStorage) so a dropped/
-  // slow persisted write can't silently omit it from the server commit — same
-  // in-memory fallback userName/sidekickName already have.
-  const [birthday, setBirthday] = useState('');
   // A synchronously-updated mirror of the collected fields, folded into EVERY
   // persisted step write (see goTo). This enforces the invariant "persisted phase
   // never advances past a missing collected field": if a field-bearing write is
@@ -273,7 +268,6 @@ export default function Onboarding() {
       initialPhaseRef.current = initial;
       setUserName(st.userName);
       setSidekickName(st.sidekickName);
-      setBirthday(st.birthday);
       collectedRef.current = {
         userName: st.userName,
         sidekickName: st.sidekickName,
@@ -366,7 +360,6 @@ export default function Onboarding() {
   const submitBirthday = (value: string) => {
     if (animating) return;
     collectedRef.current.birthday = value;
-    setBirthday(value);
     goTo('hey');
   };
 
@@ -501,9 +494,11 @@ export default function Onboarding() {
           reason: summary?.reason ?? 'habits',
           profile: {
             name: (st.userName || userName).trim() || 'friend',
-            // fall back to component state on every field, so a dropped/slow
-            // AsyncStorage write can't silently omit a value the user entered.
-            birthday: (st.birthday || birthday) || undefined,
+            // fall back to the in-memory collected value on every field, so a
+            // dropped/slow AsyncStorage write can't silently omit what the user
+            // entered. (birthday's fallback is collectedRef — it has no other
+            // component state; name/sidekickName keep their own for rendering.)
+            birthday: (st.birthday || collectedRef.current.birthday) || undefined,
             sidekickName: (st.sidekickName || sidekickName).trim() || undefined,
             sidekickColor: (loadSettings().celBodyColor ?? '') || undefined,
           },

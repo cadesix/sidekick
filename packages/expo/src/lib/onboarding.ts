@@ -73,17 +73,17 @@ let mutationQueue: Promise<unknown> = Promise.resolve();
 
 function enqueue<T>(task: () => Promise<T>): Promise<T> {
   const run = mutationQueue.then(task, task); // run regardless of the prior outcome
-  mutationQueue = run.then(
-    () => undefined,
-    () => undefined,
-  );
+  mutationQueue = run.catch(() => undefined); // swallow so a failed write can't wedge later ones
   return run;
 }
 
 /** Serialized read-modify-write. Failures propagate to the returned promise. */
 function mutate(fn: (state: OnboardingState) => OnboardingState): Promise<void> {
   return enqueue(async () => {
-    await writeRaw(fn(await readRaw()));
+    const prev = await readRaw();
+    const next = fn(prev);
+    if (next === prev) return; // fn declined to change anything (e.g. saveStep once complete) — skip the write
+    await writeRaw(next);
   });
 }
 
