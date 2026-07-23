@@ -109,6 +109,10 @@ export type SidekickController = {
   // a celebratory in-scene hop (hands up via the jump envelopes) — onboarding's
   // color-pick celebration; safe to retrigger mid-hop
   hop: (durMs?: number) => void;
+  // self-inspect mode (onboarding's "how should i look?"): head down, slow
+  // left/right sweeps that HOLD at each side, hands raised a touch as if
+  // studying his own palms
+  setInspect: (v: boolean) => void;
   // onboarding: play the character's jump-into-frame entrance (from HIDDEN_Y),
   // and shake the camera ("build" ramps, "impact" spikes then decays)
   jumpIn: (opts?: { duration?: number }) => void;
@@ -625,6 +629,8 @@ export function createSidekickRenderer(
   let faceMat: THREE.Material | null = null;
   let faceSheet: THREE.Texture | null = null;
   let holdingPhone = !!opts.holdingPhone;
+  let inspect = false; // self-inspect look-around (see setInspect)
+  let inspectBlend = 0;
   let talking = false;
   let studio = !!opts.studio;
   let cosmos = !!opts.cosmos;
@@ -1179,6 +1185,16 @@ export function createSidekickRenderer(
         twR = lerp(twR, 0, armUp);
         foXR = lerp(foXR, 0, armUp);
       }
+      // self-inspect: hands come up a touch (studying his own palms) while the
+      // head math below sweeps left/right
+      inspectBlend += ((inspect ? 1 : 0) - inspectBlend) * 0.06;
+      const ib = inspectBlend;
+      if (ib > 0.01) {
+        swZL += 0.55 * ib;
+        swZR -= 0.55 * ib;
+        foXL -= 0.4 * ib;
+        foXR -= 0.4 * ib;
+      }
       setArm('armL', 'forearmL', 1, swXL, swZL, twL, foXL, foZL);
       setArm('armR', 'forearmR', -1, swXR, swZR, twR, foXR, foZR);
       bones.armL.scale.setScalar(1 + fr.armL.stretch);
@@ -1187,10 +1203,15 @@ export function createSidekickRenderer(
       // just before the character slides out of frame under the camera pan)
       const cosmosLook = Math.min(1, cosmosT / 0.8) * 0.6;
       const upLook = lookUpT * 0.42; // notif beat: tilt the head up toward the notice
+      // inspect sweeps: tanh(sin) flattens near the extremes, so the head
+      // LOOKS left, holds a beat, swings right, holds — reads as him actually
+      // studying each side of himself rather than metronoming
+      const inspectPitch = 0.34 * ib;
+      const inspectYaw = ib * 0.38 * Math.tanh(2.6 * Math.sin(now * 1.05));
       setBone(
         'head',
-        fr.headPitch + PHONE_POSE.headPitch * pb - cosmosLook - upLook,
-        fr.headYaw + PHONE_POSE.headYaw * pb,
+        fr.headPitch + PHONE_POSE.headPitch * pb - cosmosLook - upLook + inspectPitch,
+        fr.headYaw + PHONE_POSE.headYaw * pb + inspectYaw,
         0,
       );
       // body-drag bend splits across waist + spine (arc toward the grab
@@ -1424,6 +1445,9 @@ export function createSidekickRenderer(
     },
     hop: (durMs) => {
       if (startHop((durMs ?? 750) / 1000, true)) faceCtl?.pulse('excited', 2);
+    },
+    setInspect: (v) => {
+      inspect = v;
     },
     jumpIn: (o) => {
       jump = { start: clock.getElapsedTime(), dur: (o?.duration ?? 800) / 1000 };

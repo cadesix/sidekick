@@ -351,6 +351,7 @@ export default function Onboarding() {
   // reveal → customize: he wonders about his look (bubble), swatches below.
   const toCustomize = () => {
     goTo('customize');
+    controllerRef.current?.setInspect(true); // head down, sweeping his own body
     setTimeout(() => speak('hm, how should i look?', 4200, 'surprised'), 400);
   };
   const pickColor = (c: SkinColor) => {
@@ -365,6 +366,7 @@ export default function Onboarding() {
   // customize → celebrate → textIntro: two hands-up hops in the new color,
   // then the segue line before the phone comes out.
   const celebrate = () => {
+    controllerRef.current?.setInspect(false);
     goTo('celebrate');
     controllerRef.current?.hop(750);
     setTimeout(() => controllerRef.current?.hop(700), 850);
@@ -552,7 +554,8 @@ export default function Onboarding() {
         <NameEntry
           key="askName"
           title="what should i call you?"
-          header={<StreamedLines lines={["i'm your sidekick!", 'what should i call you? 🤔']} style={styles.h1small} />}
+          header={<StreamedText text="i'm your sidekick! what should i call you? 🤔" style={styles.h2stream} cps={20} />}
+          revealDelayMs={streamDurationMs("i'm your sidekick! what should i call you? 🤔", 20) + 350}
           placeholder="Your name"
           cta="continue"
           onSubmit={submitUserName}
@@ -590,6 +593,8 @@ export default function Onboarding() {
               <Text style={styles.h1small}>I'M OVER HERE!</Text>
             </SubtleShake>
           </Animated.View>
+          {/* a lead-in line from the screen edge to the copy */}
+          <Animated.View entering={FadeInUp.duration(350)} style={[styles.edgeLine, styles.edgeLineRight]} pointerEvents="none" />
           <Text style={[styles.tapHint, { bottom: insets.bottom + 28 }]}>tap to continue</Text>
         </Pressable>
       ) : null}
@@ -601,6 +606,7 @@ export default function Onboarding() {
               <Text style={styles.h1small}>NO, OVER HERE!</Text>
             </SubtleShake>
           </Animated.View>
+          <Animated.View entering={FadeInUp.duration(350).delay(550)} style={[styles.edgeLine, styles.edgeLineLeft]} pointerEvents="none" />
           <Text style={[styles.tapHint, { bottom: insets.bottom + 28 }]}>tap to continue</Text>
         </Pressable>
       ) : null}
@@ -752,8 +758,10 @@ function HeyTitle() {
       <SubtleShake intensity={2.6} speed={1.7}>
         <Text style={styles.h1Hero}>Hey!</Text>
       </SubtleShake>
-      <Svg width={132} height={26} viewBox="0 0 132 26" style={{ marginTop: 8 }}>
-        <Path d="M10 5 Q 66 27 122 5" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
+      {/* a quarter-circle pointer: starts flat under the word, bends 90° and
+          ends aiming straight down — "the voice came from down there" */}
+      <Svg width={104} height={84} viewBox="0 0 104 84" style={{ marginTop: 10 }}>
+        <Path d="M14 10 Q 88 10 88 78" stroke="#fff" strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.9} />
       </Svg>
     </Animated.View>
   );
@@ -764,8 +772,8 @@ function HeyTitle() {
 function StreamedLines({
   lines,
   style,
-  cps = 12,
-  gapMs = 600,
+  cps = 20,
+  gapMs = 500,
 }: {
   lines: string[];
   style?: import('react-native').TextStyle;
@@ -797,6 +805,7 @@ function NameEntry({
   onSubmit,
   layout = 'center',
   suggestions,
+  revealDelayMs = 0,
 }: {
   title: string;
   // richer replacement for the plain title (multi-line / streamed copy);
@@ -808,9 +817,17 @@ function NameEntry({
   layout?: 'center' | 'top';
   // Tappable name suggestions — lowers the cognitive load of inventing a name.
   suggestions?: string[];
+  // hold the input + CTA back (e.g. until the streamed header lands), then fade in
+  revealDelayMs?: number;
 }) {
   const insets = useSafeAreaInsets();
   const [value, setValue] = useState('');
+  const [inputShown, setInputShown] = useState(revealDelayMs === 0);
+  useEffect(() => {
+    if (inputShown) return;
+    const t = setTimeout(() => setInputShown(true), revealDelayMs);
+    return () => clearTimeout(t);
+  }, [inputShown, revealDelayMs]);
   const can = value.trim().length > 0;
   const submit = () => {
     if (can) onSubmit(value.trim());
@@ -884,9 +901,13 @@ function NameEntry({
       >
         <View style={styles.nameCol}>
           {header ?? <Text style={styles.h1}>{title}</Text>}
-          {field}
-          <View style={{ height: 12 }} />
-          <PrimaryButton label={cta} onPress={submit} disabled={!can} />
+          {inputShown ? (
+            <Animated.View entering={FadeInUp.duration(420)}>
+              {field}
+              <View style={{ height: 12 }} />
+              <PrimaryButton label={cta} onPress={submit} disabled={!can} />
+            </Animated.View>
+          ) : null}
         </View>
       </KeyboardAvoidingView>
     </Animated.View>
@@ -1035,7 +1056,7 @@ function NotificationBanner({
               <Text style={styles.bannerNow}>now</Text>
             </View>
             <Text style={styles.bannerText} numberOfLines={1}>
-              i guess i should formally introduce myself
+              hey, open your messages so we can text!
             </Text>
           </View>
         </Pressable>
@@ -1156,9 +1177,32 @@ const styles = StyleSheet.create({
   },
   centerCopy: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   // the over-here gag: copy hugs one side while the camera looks the other way
-  sideCopy: { position: 'absolute', top: 0, bottom: 0, width: '46%', justifyContent: 'center' },
-  sideRight: { right: 16 },
-  sideLeft: { left: 16 },
+  sideCopy: { position: 'absolute', top: 0, bottom: 0, width: '42%', justifyContent: 'center' },
+  sideRight: { right: 40 },
+  sideLeft: { left: 40 },
+  // the lead-in stroke from the screen edge to the copy
+  edgeLine: {
+    position: 'absolute',
+    top: '50%',
+    height: 4,
+    marginTop: -2,
+    width: 34,
+    borderRadius: 2,
+    backgroundColor: '#fff',
+    opacity: 0.9,
+  },
+  edgeLineRight: { right: 0 },
+  edgeLineLeft: { left: 0 },
+  // streamed two-line ask copy — smaller than h1small so it wraps to two lines
+  h2stream: {
+    fontFamily: FONT_BOLD,
+    fontSize: 26,
+    lineHeight: 32,
+    letterSpacing: -0.6,
+    textAlign: 'center',
+    color: '#fff',
+    marginBottom: 18,
+  },
   tapHint: {
     position: 'absolute',
     left: 0,
